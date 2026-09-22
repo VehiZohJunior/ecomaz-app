@@ -29,44 +29,44 @@
       </div>
       <div class="brand-text">
         <strong id="brandSchoolName">EcoMaZ</strong>
-        <span>Garderie · Maternelle · Primaire</span>
+        <span data-i18n="brand_tagline">Garderie · Maternelle · Primaire</span>
       </div>
     </div>
 
     <nav class="nav" id="nav">
-      <button class="nav-item active" data-view="dashboard" data-roles="enseignant secretariat direction fondation"><span class="ic">📊</span>Tableau de bord</button>
+      <button class="nav-item active" data-view="dashboard" data-roles="enseignant secretariat direction fondation"><span class="ic">📊</span><span data-i18n="nav_dashboard">Tableau de bord</span></button>
 
-      <div class="nav-group" data-roles="secretariat direction fondation">Élèves</div>
-      <button class="nav-item" data-view="eleves" data-roles="secretariat direction fondation"><span class="ic">🧒</span>Élèves &amp; Inscriptions</button>
+      <div class="nav-group" data-roles="secretariat direction fondation" data-i18n="nav_group_eleves">Élèves</div>
+      <button class="nav-item" data-view="eleves" data-roles="secretariat direction fondation"><span class="ic">🧒</span><span data-i18n="nav_eleves">Élèves &amp; Inscriptions</span></button>
 
-      <div class="nav-group" data-roles="enseignant secretariat direction fondation">Pédagogie</div>
-      <button class="nav-item" data-view="notes" data-roles="enseignant secretariat direction fondation"><span class="ic">📝</span>Notes &amp; Bulletins</button>
-      <button class="nav-item" data-view="presences-eleves" data-roles="enseignant secretariat direction fondation"><span class="ic">✅</span>Pointage élèves (Appel)</button>
-      <button class="nav-item" data-view="emploi-temps" data-roles="enseignant secretariat direction fondation"><span class="ic">🗓️</span>Emploi du temps</button>
-      <button class="nav-item" data-view="programmes" data-roles="enseignant secretariat direction fondation"><span class="ic">📚</span>Programmes pédagogiques</button>
+      <div class="nav-group" data-roles="enseignant secretariat direction fondation" data-i18n="nav_group_pedagogie">Pédagogie</div>
+      <button class="nav-item" data-view="notes" data-roles="enseignant secretariat direction fondation"><span class="ic">📝</span><span data-i18n="nav_notes">Notes &amp; Bulletins</span></button>
+      <button class="nav-item" data-view="presences-eleves" data-roles="enseignant secretariat direction fondation"><span class="ic">✅</span><span data-i18n="nav_presences_eleves">Pointage élèves (Appel)</span></button>
+      <button class="nav-item" data-view="emploi-temps" data-roles="enseignant secretariat direction fondation"><span class="ic">🗓️</span><span data-i18n="nav_emploi_temps">Emploi du temps</span></button>
+      <button class="nav-item" data-view="programmes" data-roles="enseignant secretariat direction fondation"><span class="ic">📚</span><span data-i18n="nav_programmes">Programmes pédagogiques</span></button>
 
-      <div class="nav-group" data-roles="secretariat direction fondation">Pointage &amp; Enseignants</div>
-      <button class="nav-item" data-view="pointage-scan" data-roles="secretariat direction fondation"><span class="ic">📷</span>Scanner un badge</button>
-      <button class="nav-item" data-view="enseignants" data-roles="secretariat direction fondation"><span class="ic">👩‍🏫</span>Enseignants</button>
-      <button class="nav-item" data-view="presences-enseignants" data-roles="secretariat direction fondation"><span class="ic">🕘</span>Pointage enseignants — Journal</button>
+      <div class="nav-group" data-roles="secretariat direction fondation" data-i18n="nav_group_pointage_ens">Pointage &amp; Enseignants</div>
+      <button class="nav-item" data-view="pointage-scan" data-roles="secretariat direction fondation"><span class="ic">📷</span><span data-i18n="nav_scan">Scanner un badge</span></button>
+      <button class="nav-item" data-view="enseignants" data-roles="secretariat direction fondation"><span class="ic">👩‍🏫</span><span data-i18n="nav_enseignants">Enseignants</span></button>
+      <button class="nav-item" data-view="presences-enseignants" data-roles="secretariat direction fondation"><span class="ic">🕘</span><span data-i18n="nav_presences_enseignants">Pointage enseignants — Journal</span></button>
 
-      <div class="nav-group" data-roles="secretariat direction fondation">Finances</div>
-      <button class="nav-item" data-view="comptabilite" data-roles="secretariat direction fondation"><span class="ic">💰</span>Comptabilité</button>
+      <div class="nav-group" data-roles="secretariat direction fondation" data-i18n="nav_group_finances">Finances</div>
+      <button class="nav-item" data-view="comptabilite" data-roles="secretariat direction fondation"><span class="ic">💰</span><span data-i18n="nav_comptabilite">Comptabilité</span></button>
 
-      <div class="nav-group" data-roles="secretariat direction fondation">Communication</div>
-      <button class="nav-item" data-view="messagerie" data-roles="secretariat direction fondation"><span class="ic">📨</span>Messagerie</button>
+      <div class="nav-group" data-roles="secretariat direction fondation" data-i18n="nav_group_communication">Communication</div>
+      <button class="nav-item" data-view="messagerie" data-roles="secretariat direction fondation"><span class="ic">📨</span><span data-i18n="nav_messagerie">Messagerie</span></button>
 
-      <div class="nav-group" data-roles="direction fondation">Système</div>
-      <button class="nav-item" data-view="parametres" data-roles="direction fondation"><span class="ic">⚙️</span>Paramètres</button>
+      <div class="nav-group" data-roles="direction fondation" data-i18n="nav_group_systeme">Système</div>
+      <button class="nav-item" data-view="parametres" data-roles="direction fondation"><span class="ic">⚙️</span><span data-i18n="nav_parametres">Paramètres</span></button>
     </nav>
 
     <div class="sidebar-footer">
       <div class="role-badge" id="roleBadge">—</div>
-      <div class="year-badge">Année scolaire <strong id="anneeScolaire">2025-2026</strong></div>
-      <button class="btn-install" id="btnInstallApp" style="display:none;">📲 Installer l'application</button>
-      <button class="btn-reset" id="btnResetData" data-roles="direction fondation">Recharger les données démo</button>
-      <button class="btn-reset" id="btnSwitchRole">🔒 Changer de profil</button>
-      <div class="powered-by">Propulsé par <strong>EcoMaZ</strong></div>
+      <div class="year-badge"><span data-i18n="footer_annee">Année scolaire</span> <strong id="anneeScolaire">2025-2026</strong></div>
+      <button class="btn-install" id="btnInstallApp" style="display:none;" data-i18n="footer_install">📲 Installer l'application</button>
+      <button class="btn-reset" id="btnResetData" data-roles="direction fondation" data-i18n="footer_demo">Recharger les données démo</button>
+      <button class="btn-reset" id="btnSwitchRole" data-i18n="footer_switch">🔒 Changer de profil</button>
+      <div class="powered-by"><span data-i18n="footer_poweredby">Propulsé par</span> <strong>EcoMaZ</strong></div>
     </div>
   </aside>
 
@@ -102,6 +102,8 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
+<script src="i18n.js"></script>
+<script>document.documentElement.lang = langCourante; appliquerTraductionsDOM();</script>
 <script src="supabase-client.js"></script>
 <script src="app.js"></script>
 <script>

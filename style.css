@@ -267,7 +267,10 @@ tbody tr:hover{ background:var(--surface-2); }
 /* LOGIN GATE (sélection de profil) */
 .login-gate{ display:none; position:fixed; inset:0; background:linear-gradient(160deg,var(--bg),var(--primary-dim)); z-index:300; align-items:center; justify-content:center; padding:20px; overflow-y:auto; }
 .login-gate.open{ display:flex; }
-.login-card{ background:var(--surface); border-radius:20px; box-shadow:0 20px 60px rgba(0,0,0,.2); padding:36px 34px; max-width:560px; width:100%; text-align:center; }
+.login-card{ position:relative; background:var(--surface); border-radius:20px; box-shadow:0 20px 60px rgba(0,0,0,.2); padding:36px 34px; max-width:560px; width:100%; text-align:center; }
+.lang-switch{ position:absolute; top:16px; right:16px; display:flex; gap:4px; background:var(--surface-2); border-radius:8px; padding:3px; }
+.lang-switch button{ border:none; background:transparent; color:var(--text-dim); font-size:11px; font-weight:700; padding:5px 9px; border-radius:6px; cursor:pointer; }
+.lang-switch button.active{ background:var(--primary); color:#fff; }
 .login-logo{ width:64px; height:64px; margin:0 auto 14px; border-radius:16px; background:var(--surface-2); display:flex; align-items:center; justify-content:center; font-size:30px; overflow:hidden; }
 .login-logo img{ width:100%; height:100%; object-fit:contain; }
 .login-card h1{ font-size:19px; margin:0 0 4px; }

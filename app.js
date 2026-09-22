@@ -774,25 +774,31 @@ function applyRoleVisibility(){
 }
 
 const ESPACES_DEF = [
-  { key:'enseignant',  ic:'👩‍🏫', label:'Enseignant(e)', desc:'Notes, présences élèves, emploi du temps, programmes.' },
-  { key:'secretariat', ic:'🗂️', label:'Secrétariat', desc:'Élèves, enseignants, comptabilité (chiffres globaux masqués).' },
-  { key:'direction',   ic:'🎩', label:'Direction', desc:'Accès complet, y compris finances et paramètres.' },
-  { key:'fondation',   ic:'🏛️', label:'Fondation', desc:'Accès complet, identique à la Direction.' },
+  { key:'enseignant',  ic:'👩‍🏫' },
+  { key:'secretariat', ic:'🗂️' },
+  { key:'direction',   ic:'🎩' },
+  { key:'fondation',   ic:'🏛️' },
 ];
+function langSwitcherHtml(){
+  return `<div class="lang-switch">${LANGUES_DISPONIBLES.map(l=>`
+    <button type="button" class="${l.code===langCourante?'active':''}" onclick="changerLangue('${l.code}')">${l.code.toUpperCase()}</button>
+  `).join('')}</div>`;
+}
 function renderLoginGate(step, error, loading){
   step = step || 'espaces';
   if(step === 'espaces'){
     return `
     <div class="login-card">
+      ${langSwitcherHtml()}
       <div class="login-logo">🎓</div>
-      <h1>EcoMaZ</h1>
-      <div class="sub">Sélectionnez votre espace pour continuer</div>
+      <h1>${t('app_name')}</h1>
+      <div class="sub">${t('espaces_sub')}</div>
       <div class="role-grid">
         ${ESPACES_DEF.map(e=>`
           <div class="role-card" onclick="chooseEspace('${e.key}')">
             <div class="ric">${e.ic}</div>
-            <div class="rlabel">${e.label}</div>
-            <div class="rdesc">${e.desc}</div>
+            <div class="rlabel">${t('espace_'+e.key+'_label')}</div>
+            <div class="rdesc">${t('espace_'+e.key+'_desc')}</div>
           </div>`).join('')}
       </div>
     </div>`;
@@ -801,16 +807,16 @@ function renderLoginGate(step, error, loading){
     return `
     <div class="login-card">
       <div class="login-logo">🔑</div>
-      <h1>Mot de passe oublié</h1>
-      <div class="sub">Entrez votre email — un lien de réinitialisation vous sera envoyé</div>
+      <h1>${t('forgot_title')}</h1>
+      <div class="sub">${t('forgot_sub')}</div>
       <form class="pin-pad" onsubmit="return handleForgotSubmit(event)">
         <div class="field" style="text-align:left;margin-bottom:10px;">
-          <label>Email</label>
+          <label>${t('label_email')}</label>
           <input type="email" id="forgotEmail" required autofocus>
         </div>
         <div class="pin-error">${error?escapeHtml(error):''}</div>
-        <button class="btn" type="submit" style="width:100%;margin-top:10px;" ${loading?'disabled':''}>${loading?'Envoi…':'Envoyer le lien'}</button>
-        <button type="button" class="pin-back" onclick="showLoginGate()">← Retour à la connexion</button>
+        <button class="btn" type="submit" style="width:100%;margin-top:10px;" ${loading?'disabled':''}>${loading?t('btn_send_link_loading'):t('btn_send_link')}</button>
+        <button type="button" class="pin-back" onclick="showLoginGate()">${t('btn_back_to_login')}</button>
       </form>
     </div>`;
   }
@@ -818,28 +824,28 @@ function renderLoginGate(step, error, loading){
     return `
     <div class="login-card">
       <div class="login-logo">📧</div>
-      <h1>Email envoyé</h1>
-      <div class="sub">Si un compte existe avec cet email, un lien de réinitialisation vient d'être envoyé. Vérifiez votre boîte de réception (et vos spams) — le lien est valable un temps limité.</div>
-      <button type="button" class="btn" style="width:100%;margin-top:14px;" onclick="showLoginGate()">Retour à la connexion</button>
+      <h1>${t('sent_title')}</h1>
+      <div class="sub">${t('sent_sub')}</div>
+      <button type="button" class="btn" style="width:100%;margin-top:14px;" onclick="showLoginGate()">${t('btn_back_to_login_plain')}</button>
     </div>`;
   }
   if(step === 'reset'){
     return `
     <div class="login-card">
       <div class="login-logo">🔑</div>
-      <h1>Nouveau mot de passe</h1>
-      <div class="sub">Choisissez un nouveau mot de passe pour votre compte</div>
+      <h1>${t('reset_title')}</h1>
+      <div class="sub">${t('reset_sub')}</div>
       <form class="pin-pad" onsubmit="return handleResetSubmit(event)">
         <div class="field" style="text-align:left;margin-bottom:10px;">
-          <label>Nouveau mot de passe</label>
+          <label>${t('label_new_password')}</label>
           <input type="password" id="resetPassword1" required minlength="6" autofocus autocomplete="new-password">
         </div>
         <div class="field" style="text-align:left;">
-          <label>Confirmer le mot de passe</label>
+          <label>${t('label_confirm_password')}</label>
           <input type="password" id="resetPassword2" required minlength="6" autocomplete="new-password">
         </div>
         <div class="pin-error">${error?escapeHtml(error):''}</div>
-        <button class="btn" type="submit" style="width:100%;margin-top:10px;" ${loading?'disabled':''}>${loading?'Enregistrement…':'Enregistrer le mot de passe'}</button>
+        <button class="btn" type="submit" style="width:100%;margin-top:10px;" ${loading?'disabled':''}>${loading?t('btn_save_password_loading'):t('btn_save_password')}</button>
       </form>
     </div>`;
   }
@@ -847,21 +853,21 @@ function renderLoginGate(step, error, loading){
   return `
     <div class="login-card">
       <div class="login-logo">${espace ? espace.ic : '🎓'}</div>
-      <h1>${espace ? 'Espace ' + espace.label : 'EcoMaZ'}</h1>
-      <div class="sub">Connectez-vous avec le compte fourni par votre établissement</div>
+      <h1>${espace ? t('login_espace_prefix') + t('espace_'+espace.key+'_label') : t('app_name')}</h1>
+      <div class="sub">${t('login_sub')}</div>
       <form class="pin-pad" onsubmit="return handleLoginSubmit(event)">
         <div class="field" style="text-align:left;margin-bottom:10px;">
-          <label>Email</label>
+          <label>${t('label_email')}</label>
           <input type="email" id="loginEmail" required autocomplete="username" autofocus>
         </div>
         <div class="field" style="text-align:left;">
-          <label>Mot de passe</label>
+          <label>${t('label_password')}</label>
           <input type="password" id="loginPassword" required autocomplete="current-password">
         </div>
         <div class="pin-error">${error ? escapeHtml(error) : ''}</div>
-        <button class="btn" type="submit" style="width:100%;margin-top:14px;" ${loading?'disabled':''}>${loading?'Connexion…':'Se connecter'}</button>
-        <button type="button" class="pin-back" onclick="showForgotPassword()">Mot de passe oublié ?</button>
-        <button type="button" class="pin-back" onclick="showEspaces()">← Changer d'espace</button>
+        <button class="btn" type="submit" style="width:100%;margin-top:14px;" ${loading?'disabled':''}>${loading?t('btn_login_loading'):t('btn_login')}</button>
+        <button type="button" class="pin-back" onclick="showForgotPassword()">${t('btn_forgot')}</button>
+        <button type="button" class="pin-back" onclick="showEspaces()">${t('btn_change_espace')}</button>
       </form>
     </div>`;
 }
