@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title id="pageTitle">EcoMaZ — Gestion Scolaire</title>
+<link rel="icon" id="favicon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#4f5fea">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="EcoMaZ">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="login-gate" id="loginGate"></div>
+
+<div class="app" id="appRoot">
+  <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
+  <!-- SIDEBAR -->
+  <aside class="sidebar" id="sidebar">
+    <div class="brand">
+      <div class="brand-logo-wrap">
+        <img class="brand-logo-img" id="brandLogoImg" alt="Logo" style="display:none;">
+        <div class="brand-logo" id="brandLogoEmoji">🎓</div>
+      </div>
+      <div class="brand-text">
+        <strong id="brandSchoolName">EcoMaZ</strong>
+        <span>Garderie · Maternelle · Primaire</span>
+      </div>
+    </div>
+
+    <nav class="nav" id="nav">
+      <button class="nav-item active" data-view="dashboard" data-roles="enseignant secretariat direction fondation"><span class="ic">📊</span>Tableau de bord</button>
+
+      <div class="nav-group" data-roles="secretariat direction fondation">Élèves</div>
+      <button class="nav-item" data-view="eleves" data-roles="secretariat direction fondation"><span class="ic">🧒</span>Élèves &amp; Inscriptions</button>
+
+      <div class="nav-group" data-roles="enseignant secretariat direction fondation">Pédagogie</div>
+      <button class="nav-item" data-view="notes" data-roles="enseignant secretariat direction fondation"><span class="ic">📝</span>Notes &amp; Bulletins</button>
+      <button class="nav-item" data-view="presences-eleves" data-roles="enseignant secretariat direction fondation"><span class="ic">✅</span>Pointage élèves (Appel)</button>
+      <button class="nav-item" data-view="emploi-temps" data-roles="enseignant secretariat direction fondation"><span class="ic">🗓️</span>Emploi du temps</button>
+      <button class="nav-item" data-view="programmes" data-roles="enseignant secretariat direction fondation"><span class="ic">📚</span>Programmes pédagogiques</button>
+
+      <div class="nav-group" data-roles="secretariat direction fondation">Pointage &amp; Enseignants</div>
+      <button class="nav-item" data-view="pointage-scan" data-roles="secretariat direction fondation"><span class="ic">📷</span>Scanner un badge</button>
+      <button class="nav-item" data-view="enseignants" data-roles="secretariat direction fondation"><span class="ic">👩‍🏫</span>Enseignants</button>
+      <button class="nav-item" data-view="presences-enseignants" data-roles="secretariat direction fondation"><span class="ic">🕘</span>Pointage enseignants — Journal</button>
+
+      <div class="nav-group" data-roles="secretariat direction fondation">Finances</div>
+      <button class="nav-item" data-view="comptabilite" data-roles="secretariat direction fondation"><span class="ic">💰</span>Comptabilité</button>
+
+      <div class="nav-group" data-roles="secretariat direction fondation">Communication</div>
+      <button class="nav-item" data-view="messagerie" data-roles="secretariat direction fondation"><span class="ic">📨</span>Messagerie</button>
+
+      <div class="nav-group" data-roles="direction fondation">Système</div>
+      <button class="nav-item" data-view="parametres" data-roles="direction fondation"><span class="ic">⚙️</span>Paramètres</button>
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="role-badge" id="roleBadge">—</div>
+      <div class="year-badge">Année scolaire <strong id="anneeScolaire">2025-2026</strong></div>
+      <button class="btn-install" id="btnInstallApp" style="display:none;">📲 Installer l'application</button>
+      <button class="btn-reset" id="btnResetData" data-roles="direction fondation">Recharger les données démo</button>
+      <button class="btn-reset" id="btnSwitchRole">🔒 Changer de profil</button>
+      <div class="powered-by">Propulsé par <strong>EcoMaZ</strong></div>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <main class="main">
+    <header class="topbar">
+      <button class="burger" id="burger">☰</button>
+      <h1 id="viewTitle">Tableau de bord</h1>
+      <div class="topbar-right">
+        <span class="pill" id="topbarPill">Année scolaire 2025-2026</span>
+      </div>
+    </header>
+
+    <div class="view-container" id="viewContainer">
+      <!-- Views injected here by app.js -->
+    </div>
+  </main>
+</div>
+
+<!-- Generic Modal -->
+<div class="modal-backdrop" id="modalBackdrop">
+  <div class="modal" id="modal">
+    <div class="modal-header">
+      <h3 id="modalTitle">Titre</h3>
+      <button class="modal-close" id="modalClose">✕</button>
+    </div>
+    <div class="modal-body" id="modalBody"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
+<script src="supabase-client.js"></script>
+<script src="app.js"></script>
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+  }
+</script>
+</body>
+</html>
