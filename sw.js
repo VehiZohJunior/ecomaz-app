@@ -12,6 +12,7 @@ const SHELL_FILES = [
   './index.html',
   './style.css',
   './app.js',
+  './config.js',
   './supabase-client.js',
   './i18n.js',
   './manifest.json',

@@ -5,9 +5,10 @@
    appliquée au niveau de la base (RLS), pas seulement dans l'interface.
    ========================================================================= */
 
-const SUPABASE_URL = 'https://hvqtsvpkxffseclsfoun.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_nKIXMo3r5_XIhi78hcgXyw_zvdYGJQY';
-
+// SUPABASE_URL et SUPABASE_KEY viennent maintenant de config.js (chargé
+// avant ce fichier) — c'est ce qui permet à la même application de
+// tourner contre le cloud ou contre un serveur local, sans dupliquer
+// aucun fichier.
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 /* ---------------------------------------------------------------------
