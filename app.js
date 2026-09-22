@@ -3403,6 +3403,9 @@ function renderParametres(){
         ⏱️ Déconnexion automatique après 10 minutes d'inactivité.<br>
         💾 Les données sont hébergées sur Supabase (PostgreSQL géré), chiffrées au repos et en transit.
       </div>
+      <div class="form-actions" style="justify-content:flex-start;border-top:none;padding-top:10px;">
+        <a class="btn secondary" href="confidentialite.html" target="_blank" rel="noopener">📄 Politique de confidentialité</a>
+      </div>
     </div>
 
     <div class="panel">
