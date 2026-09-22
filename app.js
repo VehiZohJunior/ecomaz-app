@@ -76,7 +76,21 @@ function appliquerFiltreNiveaux(db){
   return db;
 }
 async function chargerDB(){
-  return appliquerFiltreNiveaux(await loadAllFromSupabase());
+  try{
+    const db = appliquerFiltreNiveaux(await loadAllFromSupabase());
+    db.meta.horsLigne = false;
+    try{ await idbPut('snapshot', { ecoleId: session.ecoleId, donnees: db, horodatage: Date.now() }); }catch(_e){ /* cache best-effort */ }
+    return db;
+  }catch(e){
+    if(!erreurReseau(e)) throw e;
+    // Hors ligne : on retombe sur la dernière copie connue des données de
+    // cette école, enregistrée localement lors du dernier chargement réussi.
+    const cache = await idbGet('snapshot', session.ecoleId).catch(()=>null);
+    if(!cache) throw e; // jamais chargé avec succès sur cet appareil : rien à afficher
+    const db = cache.donnees;
+    db.meta.horsLigne = true;
+    return db;
+  }
 }
 
 const MATIERES_BY_CYCLE = {
@@ -944,7 +958,40 @@ function enterApp(){
   applyRoleVisibility();
   go('dashboard');
   startIdleWatcher();
+  majBanniereHorsLigne();
+  synchroniserFileAttente();
 }
+
+/* ---------------------------------------------------------------------
+   Bannière hors ligne / synchronisation — reflète l'état réel de la
+   connexion et de la file d'attente (voir supabase-client.js).
+   --------------------------------------------------------------------- */
+function majBanniereHorsLigne(){
+  const el = $('#offlineBanner');
+  if(!el) return;
+  if(navigator.onLine === false || DB?.meta?.horsLigne){
+    el.hidden = false;
+    el.className = 'offline-banner mode-hors-ligne';
+    el.textContent = t('banner_offline');
+  } else if(compteurFileAttente > 0){
+    el.hidden = false;
+    el.className = 'offline-banner mode-synchro';
+    el.textContent = t('banner_syncing', { n: compteurFileAttente });
+  } else {
+    el.hidden = true;
+  }
+}
+function onFileAttenteChange(n){
+  compteurFileAttente = n;
+  majBanniereHorsLigne();
+  if(n === 0 && DB?.meta?.horsLigne === true){
+    // La file d'attente vient d'être vidée : on recharge les données
+    // fraîches depuis le serveur pour sortir proprement du mode hors ligne.
+    chargerDB().then(db => { DB = db; majBanniereHorsLigne(); renderView(ui.currentView); }).catch(()=>{});
+  }
+}
+window.addEventListener('online', majBanniereHorsLigne);
+window.addEventListener('offline', majBanniereHorsLigne);
 // Le rôle "développeur" n'est rattaché à aucune école (ecole_id null) — il
 // n'a pas accès à l'application cliente normale, seulement à sa propre
 // console de gestion des écoles clientes.

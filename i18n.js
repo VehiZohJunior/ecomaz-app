@@ -88,6 +88,9 @@ const TRADUCTIONS = {
     footer_demo: 'Recharger les données démo',
     footer_switch: '🔒 Changer de profil',
     footer_poweredby: 'Propulsé par',
+
+    banner_offline: '🔌 Hors ligne — vous consultez les dernières données synchronisées. Vos actions seront envoyées dès le retour de la connexion.',
+    banner_syncing: '🔄 Synchronisation en cours… {n} modification(s) en attente.',
   },
   en: {
     app_name: 'EcoMaZ',
@@ -153,6 +156,9 @@ const TRADUCTIONS = {
     footer_demo: 'Reload demo data',
     footer_switch: '🔒 Switch profile',
     footer_poweredby: 'Powered by',
+
+    banner_offline: "🔌 Offline — you're viewing the last synced data. Your actions will be sent once the connection comes back.",
+    banner_syncing: '🔄 Syncing… {n} change(s) pending.',
   },
 };
 

@@ -1,19 +1,19 @@
 /* =========================================================================
    EcoMaZ — Service Worker
    Rend l'application installable ("Ajouter à l'écran d'accueil") et lui
-   permet de s'OUVRIR même sans connexion (dernière version vue). Les
-   données restent hébergées sur Supabase : sans connexion, l'appli
-   s'ouvre mais ne peut pas charger/enregistrer de données tant que le
-   réseau n'est pas revenu — ceci ne rend pas l'appli utilisable hors
-   ligne, seulement installable et capable de s'ouvrir hors ligne.
+   permet de s'ouvrir même sans connexion. Les données elles-mêmes sont
+   mises en cache et synchronisées séparément, via IndexedDB et la file
+   d'attente hors ligne (voir supabase-client.js) — pas ce fichier, qui ne
+   s'occupe que des fichiers de l'application (HTML/CSS/JS/icônes).
    ========================================================================= */
-const CACHE_NAME = 'ecomaz-shell-v1';
+const CACHE_NAME = 'ecomaz-shell-v2';
 const SHELL_FILES = [
   './',
   './index.html',
   './style.css',
   './app.js',
   './supabase-client.js',
+  './i18n.js',
   './manifest.json',
   './icon-192.png',
   './icon-512.png',

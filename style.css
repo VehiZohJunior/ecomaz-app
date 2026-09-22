@@ -271,6 +271,10 @@ tbody tr:hover{ background:var(--surface-2); }
 .lang-switch{ position:absolute; top:16px; right:16px; display:flex; gap:4px; background:var(--surface-2); border-radius:8px; padding:3px; }
 .lang-switch button{ border:none; background:transparent; color:var(--text-dim); font-size:11px; font-weight:700; padding:5px 9px; border-radius:6px; cursor:pointer; }
 .lang-switch button.active{ background:var(--primary); color:#fff; }
+
+.offline-banner{ font-size:12.5px; font-weight:700; text-align:center; padding:8px 14px; }
+.offline-banner.mode-hors-ligne{ background:var(--amber-bg); color:var(--amber); }
+.offline-banner.mode-synchro{ background:var(--primary-dim); color:var(--primary-dark); }
 .login-logo{ width:64px; height:64px; margin:0 auto 14px; border-radius:16px; background:var(--surface-2); display:flex; align-items:center; justify-content:center; font-size:30px; overflow:hidden; }
 .login-logo img{ width:100%; height:100%; object-fit:contain; }
 .login-card h1{ font-size:19px; margin:0 0 4px; }
