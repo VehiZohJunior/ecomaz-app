@@ -1,13 +1,12 @@
 /* =========================================================================
-   EcoMaZ — Prototype de gestion scolaire (Garderie / Maternelle / Primaire)
-   Application 100% cliente : les données sont stockées dans le navigateur
-   (localStorage). Aucune installation ni serveur requis.
+   EcoMaZ — Gestion scolaire multi-établissements
+   Les données sont hébergées sur Supabase (Postgres + Auth + RLS), pas en
+   local — voir supabase-client.js pour la couche de connexion.
    ========================================================================= */
 
 /* ---------------------------------------------------------------------
    0. CONSTANTES
    --------------------------------------------------------------------- */
-const STORAGE_KEY = 'ecoleManagerDB_v1';
 const JOURS = ['Lundi','Mardi','Mercredi','Jeudi','Vendredi'];
 const TRIMESTRES = ['Trimestre 1','Trimestre 2','Trimestre 3'];
 
@@ -3607,6 +3606,36 @@ function exportData(){
   URL.revokeObjectURL(url);
   toast('Export démarré');
 }
+
+/* ---------------------------------------------------------------------
+   12bis. SURVEILLANCE TECHNIQUE — journalise automatiquement les erreurs
+   JavaScript non gérées dans "erreurs_client" (voir schema.sql section 23),
+   pour que le développeur soit informé d'un bug sans dépendre d'un
+   signalement du client. Toujours "best effort" : ne doit jamais elle-même
+   faire planter l'appli, et se limite à un nombre d'erreurs par session
+   pour ne pas inonder la base en cas de boucle d'erreurs.
+   --------------------------------------------------------------------- */
+let __nbErreursJournalisees = 0;
+async function journaliserErreurClient(message, pile){
+  if(__nbErreursJournalisees >= 20) return;
+  __nbErreursJournalisees++;
+  try{
+    await sb.from('erreurs_client').insert({
+      ecole_id: session?.ecoleId || null,
+      role: session?.role || null,
+      message: String(message || '').slice(0, 2000),
+      pile: String(pile || '').slice(0, 4000),
+      page: window.location.href,
+      user_agent: navigator.userAgent,
+    });
+  }catch(_e){ /* surveillance best-effort : ne jamais bloquer l'appli pour ça */ }
+}
+window.addEventListener('error', (ev) => {
+  journaliserErreurClient(ev.message, ev.error?.stack);
+});
+window.addEventListener('unhandledrejection', (ev) => {
+  journaliserErreurClient('Promise rejetée : ' + (ev.reason?.message || ev.reason), ev.reason?.stack);
+});
 
 /* ---------------------------------------------------------------------
    13. INITIALISATION
