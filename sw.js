@@ -1,20 +1,17 @@
 /* =========================================================================
-   EcoMaZ — Service Worker
-   Rend l'application installable ("Ajouter à l'écran d'accueil") et lui
-   permet de s'ouvrir même sans connexion. Les données elles-mêmes sont
-   mises en cache et synchronisées séparément, via IndexedDB et la file
-   d'attente hors ligne (voir supabase-client.js) — pas ce fichier, qui ne
-   s'occupe que des fichiers de l'application (HTML/CSS/JS/icônes).
+   EcoMaZ Console Développeur — Service Worker
+   Rend la console installable et capable de s'ouvrir même sans connexion
+   (elle a de toute façon besoin d'internet pour agir sur les écoles du
+   cloud — ceci ne fait que permettre à l'interface de s'afficher).
    ========================================================================= */
-const CACHE_NAME = 'ecomaz-shell-v2';
+const CACHE_NAME = 'ecomaz-dev-console-shell-v1';
 const SHELL_FILES = [
   './',
   './index.html',
   './style.css',
-  './app.js',
+  './app-dev.js',
   './config.js',
   './supabase-client.js',
-  './i18n.js',
   './manifest.json',
   './icon-192.png',
   './icon-512.png',
@@ -32,9 +29,6 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
-// Réseau d'abord — toujours la version la plus fraîche dès qu'il y a une
-// connexion (aucun risque de rester bloqué sur une vieille version après
-// une mise à jour). Le cache ne sert que de repli si le réseau échoue.
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
   event.respondWith(

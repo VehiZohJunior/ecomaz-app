@@ -1,12 +1,12 @@
 {
-  "name": "EcoMaZ — Gestion Scolaire",
-  "short_name": "EcoMaZ",
-  "description": "Gestion scolaire : élèves, notes, présences, comptabilité",
+  "name": "EcoMaZ — Console Développeur",
+  "short_name": "EcoMaZ Dev",
+  "description": "Gestion technique des écoles clientes EcoMaZ",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "background_color": "#ffffff",
-  "theme_color": "#4f5fea",
+  "theme_color": "#363c4f",
   "orientation": "portrait-primary",
   "icons": [
     { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
