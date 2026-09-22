@@ -158,7 +158,10 @@ async function loadAllFromSupabase(){
     sb.from('ecoles').select('*').eq('id', session.ecoleId).single(),
     dbSelectAll('classes'),
     dbSelectAll('eleves'),
-    dbSelectAll('enseignants'),
+    // "enseignants_lecture" (pas "enseignants" directement) : une vue qui
+    // masque automatiquement téléphone/email/salaire/jeton QR pour tout
+    // le monde sauf le personnel administratif — voir schema.sql section 21.
+    dbSelectAll('enseignants_lecture'),
     dbSelectAll('notes'),
     dbSelectAll('presences_eleves'),
     dbSelectAll('presences_enseignants'),

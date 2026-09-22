@@ -1587,27 +1587,19 @@ async function savePresencesEleves(){
     renderView('presences-eleves');
   }catch(e){ alert('Erreur : ' + e.message); }
 }
+// Le numéro de téléphone du parent n'est plus jamais chargé ni manipulé
+// dans le navigateur : toute la logique (composition du message, journal
+// des destinataires, envoi du SMS réel) tourne côté serveur, dans la
+// fonction Edge "notifier-absence-eleve" — voir schema.sql section 22.
+// Avant ce correctif, le numéro transitait par DB.eleves (visible dans la
+// mémoire du navigateur de tout compte pouvant faire l'appel).
 async function envoyerNotificationAbsenceEleve(eleveId, date, motif){
-  const e = eleveById(eleveId);
-  const contenu = composeMsgAbsenceEleve(DB.meta.nomEcole, eleveFullName(e), classeName(e.classeId), date, motif);
-  const destinataires = [
-    {nom:e.parentNom, role:'Parent', tel:e.parentTel, canal:'SMS'},
-    {nom:DB.meta.directeurNom||'Direction', role:'Directeur', tel:'', canal:'Application'},
-    {nom:DB.meta.fondateurNom||'Fondation', role:'Fondateur', tel:'', canal:'Application'},
-  ].map(d=>({date, heure:nowTime(), destinataireNom:d.nom, destinataireRole:d.role, destinataireTel:d.tel, canal:d.canal, type:'Absence élève', contenu, eleveId}));
-  const inserted = await dbInsertMany('messages', destinataires);
-  DB.messages.push(...inserted);
-
-  // Envoi du vrai SMS au parent uniquement — Direction/Fondation restent des
-  // notifications internes à l'appli (déjà connectés, pas de coût SMS ajouté).
-  if(e.parentTel){
-    const res = await envoyerSmsReel(e.parentTel, contenu);
-    const msgParent = inserted.find(m=>m.destinataireRole==='Parent');
-    if(msgParent){
-      const nouveauStatut = res.ok ? 'Envoyé' : 'Échec envoi';
-      msgParent.statut = nouveauStatut;
-      try{ await dbUpdate('messages', msgParent.id, {statut: nouveauStatut}); }catch(err){ /* le message reste consultable même si la mise à jour du statut échoue */ }
-    }
+  try{
+    const { data, error } = await sb.functions.invoke('notifier-absence-eleve', { body: { eleveId, date, motif } });
+    if(error) throw error;
+    if(!data?.ok) throw new Error(data?.error || "Échec de la notification");
+  }catch(e){
+    console.warn('Échec notification absence élève :', e.message);
   }
 }
 
