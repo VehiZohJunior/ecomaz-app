@@ -2622,6 +2622,25 @@ function renderComptaApercu(){
   const maskNum = `<div class="num masked-num">🔒 ••••••</div>`;
   const maskPanel = `<div class="hint" style="text-align:center;padding:40px 10px;">🔒 Répartition masquée pour ce profil<div class="mask-badge" style="margin-top:8px;">Réservé à la Direction / Fondation</div></div>`;
 
+  // Solde par mode de paiement — cumulé depuis le début (pas filtré par
+  // période, contrairement au reste de l'Aperçu), car un solde est un
+  // stock accumulé (ex: combien de FCFA en espèces devraient être dans le
+  // tiroir), pas un flux d'une période donnée.
+  const soldesParMode = MODES_PAIEMENT.map(mode=>{
+    const entrees = DB.paiementsScolarite.filter(p=>p.modePaiement===mode).reduce((s,p)=>s+p.montant,0)
+      + DB.paiementsCotisations.filter(p=>p.modePaiement===mode).reduce((s,p)=>s+p.montant,0)
+      + DB.ventesGadgets.filter(v=>v.modePaiement===mode).reduce((s,v)=>s+v.montantTotal,0);
+    const sorties = DB.paiementsSalaires.filter(p=>p.modePaiement===mode).reduce((s,p)=>s+p.montant,0)
+      + DB.depenses.filter(d=>d.modePaiement===mode).reduce((s,d)=>s+d.montant,0);
+    return {mode, entrees, sorties, solde: entrees-sorties};
+  });
+  const soldesRows = soldesParMode.map(s=>`<tr>
+    <td>${s.mode}</td>
+    <td class="amount in">${fmtFCFA(s.entrees)}</td>
+    <td class="amount out">${fmtFCFA(s.sorties)}</td>
+    <td style="font-weight:700;color:${s.solde>=0?'var(--green)':'var(--red)'};">${fmtFCFA(s.solde)}</td>
+  </tr>`).join('');
+
   return `
     <div class="section-note">💰 Vue financière consolidée : scolarité, activités extra-scolaires, boutique, salaires et charges. Toutes les données sont générées automatiquement à partir des paiements enregistrés dans les autres onglets.</div>
     ${secret ? `<div class="section-note" style="background:var(--amber-bg);color:var(--amber);">🔒 Les montants globaux (recettes, dépenses, résultat net et répartitions) sont masqués pour le profil Secrétariat. Vous pouvez toujours enregistrer les paiements et consulter le détail par élève.</div>` : ''}
@@ -2644,6 +2663,12 @@ function renderComptaApercu(){
     <div class="grid-2">
       <div class="panel"><div class="panel-head"><div><h2>Élèves en impayé</h2><div class="sub">Solde de scolarité dû, tous trimestres confondus</div></div></div>${impayesHtml}</div>
       <div class="panel"><div class="panel-head"><div><h2>Dernières transactions</h2></div></div><div class="txn-list">${txnsHtml}</div></div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><div><h2>Solde par mode de paiement</h2><div class="sub">Cumulé depuis le début — combien devrait théoriquement se trouver dans chaque caisse (espèces, compte bancaire, mobile money…)</div></div></div>
+      ${secret ? maskPanel : `
+      <div class="table-wrap"><table><thead><tr><th>Mode</th><th>Entrées</th><th>Sorties</th><th>Solde théorique</th></tr></thead><tbody>${soldesRows}</tbody></table></div>
+      <div class="hint" style="margin-top:10px;">⚠️ Ceci est un calcul théorique basé sur ce qui a été saisi dans l'appli — ce n'est pas un rapprochement bancaire vérifié. Compare régulièrement avec le solde réel (tiroir-caisse, relevé bancaire) pour détecter un écart.</div>`}
     </div>`;
 }
 
