@@ -2444,6 +2444,25 @@ function scolariteEleveInfo(eleveId){
   else if(paye>0) statut = 'Partiel';
   return {du, paye, solde, statut};
 }
+// Détail élève × échéance (Frais d'inscription, 1er Versement, ...) — la
+// "grille intelligente" : chaque échéance configurée dans Paramètres devient
+// une colonne, avec son propre statut payé/partiel/impayé, plutôt qu'un
+// unique solde global qui ne dit pas QUELLE tranche reste due.
+function scolariteEleveParEcheance(eleveId){
+  const paiements = DB.paiementsScolarite.filter(p=>p.eleveId===eleveId);
+  const parTranche = {};
+  paiements.forEach(p=>{ parTranche[p.tranche] = (parTranche[p.tranche]||0) + p.montant; });
+  const echeances = (DB.echeancesScolarite||[]).slice().sort((a,b)=>(a.ordre-b.ordre)||(a.dateEcheance||'').localeCompare(b.dateEcheance||''));
+  const detail = echeances.map(ech=>{
+    const paye = parTranche[ech.label] || 0;
+    const statut = ech.montant>0 && paye>=ech.montant ? 'paye' : paye>0 ? 'partiel' : 'impaye';
+    return {label:ech.label, montant:ech.montant, paye, statut};
+  });
+  const total = echeances.reduce((s,e)=>s+e.montant,0);
+  const totalPaye = paiements.reduce((s,p)=>s+p.montant,0);
+  const reste = Math.max(0, total-totalPaye);
+  return {detail, total, totalPaye, reste};
+}
 function personnelNomById(id, type){
   if(type==='enseignant'){ const t = enseignantById(id); return t ? ensFullName(t) : '—'; }
   const p = DB.personnelAutre.find(x=>x.id===id);
@@ -2644,11 +2663,36 @@ function renderComptaScolarite(){
   }
   const classeId = ui.filters.comptaClasse || DB.classes[0].id;
   ui.filters.comptaClasse = classeId;
-  const du = DB.fraisScolarite[classeId] || 0;
   const eleves = DB.eleves.filter(e=>e.classeId===classeId && e.statut==='Actif').sort((a,b)=>a.nom.localeCompare(b.nom));
+  const echeances = (DB.echeancesScolarite||[]).slice().sort((a,b)=>(a.ordre-b.ordre)||(a.dateEcheance||'').localeCompare(b.dateEcheance||''));
+  const grilleActive = echeances.length > 0;
 
+  const du = DB.fraisScolarite[classeId] || 0;
   let totalDu=0, totalPaye=0;
+
   const rows = eleves.map(e=>{
+    if(grilleActive){
+      const info = scolariteEleveParEcheance(e.id);
+      totalDu += info.total; totalPaye += info.totalPaye;
+      const cellules = info.detail.map(d=>{
+        const cls = d.statut==='paye' ? 'green' : d.statut==='partiel' ? 'amber' : 'red';
+        const contenu = d.statut==='paye'
+          ? `<span class="badge ${cls}">✓ ${fmtFCFA(d.paye)}</span>`
+          : d.statut==='partiel'
+            ? `<span class="badge ${cls}" style="cursor:pointer;" onclick="openPaiementScolariteForm('${e.id}','${escapeHtml(d.label).replace(/'/g,"\\'")}')">${fmtFCFA(d.paye)} / ${fmtFCFA(d.montant)}</span>`
+            : `<button class="icon-btn" title="Enregistrer ce versement" onclick="openPaiementScolariteForm('${e.id}','${escapeHtml(d.label).replace(/'/g,"\\'")}')">➕</button>`;
+        return `<td style="text-align:center;">${contenu}</td>`;
+      }).join('');
+      return `<tr>
+        <td><div class="row-name"><span class="avatar">${initials(e.prenom,e.nom)}</span>${escapeHtml(eleveFullName(e))}</div></td>
+        ${cellules}
+        <td class="amount" style="font-weight:800;">${fmtFCFA(info.total)}</td>
+        <td class="amount ${info.reste>0?'out':''}" style="font-weight:800;">${fmtFCFA(info.reste)}</td>
+        <td style="white-space:nowrap;">
+          <button class="icon-btn" title="Historique" onclick="voirHistoriqueScolarite('${e.id}')">🧾</button>
+        </td>
+      </tr>`;
+    }
     const info = scolariteEleveInfo(e.id);
     totalDu += info.du; totalPaye += info.paye;
     const bc = info.statut==='Soldé'?'green':info.statut==='Partiel'?'amber':'red';
@@ -2666,41 +2710,52 @@ function renderComptaScolarite(){
   }).join('');
   const tauxClasse = totalDu ? Math.round(100*totalPaye/totalDu) : 0;
 
+  const theadHtml = grilleActive
+    ? `<tr><th>Élève</th>${echeances.map(ech=>`<th style="text-align:center;">${escapeHtml(ech.label)}<div class="hint" style="font-weight:400;">${fmtFCFA(ech.montant)}</div></th>`).join('')}<th>TOTAL</th><th>RESTE</th><th>Actions</th></tr>`
+    : `<tr><th>Élève</th><th>Dû (annuel)</th><th>Payé</th><th>Solde</th><th>Statut</th><th>Actions</th></tr>`;
+
   return `
     <div class="panel">
       <div class="panel-head">
-        <div><h2>État de la scolarité par classe</h2><div class="sub">Frais annuel : ${fmtFCFA(du)} · Recouvré : ${tauxClasse}% (${fmtFCFA(totalPaye)} / ${fmtFCFA(totalDu)})</div></div>
+        <div><h2>État de la scolarité par classe</h2><div class="sub">${grilleActive ? `Recouvré : ${tauxClasse}% (${fmtFCFA(totalPaye)} / ${fmtFCFA(totalDu)})` : `Frais annuel : ${fmtFCFA(du)} · Recouvré : ${tauxClasse}% (${fmtFCFA(totalPaye)} / ${fmtFCFA(totalDu)})`}</div></div>
         <div style="display:flex;gap:10px;flex-wrap:wrap;">
           <select onchange="ui.filters.comptaClasse=this.value; renderView('comptabilite')">
             ${DB.classes.map(c=>`<option value="${c.id}" ${classeId===c.id?'selected':''}>${c.nom}</option>`).join('')}
           </select>
-          <button class="btn secondary" onclick="openFraisScolariteForm()">⚙️ Configurer les frais</button>
+          <button class="btn secondary" onclick="renderView('parametres')" title="Gérer les échéances (Frais d'inscription, versements...) depuis Paramètres">🎓 Échéances</button>
+          ${grilleActive ? '' : `<button class="btn secondary" onclick="openFraisScolariteForm()">⚙️ Configurer les frais</button>`}
         </div>
       </div>
+      ${grilleActive ? `<div class="section-note">💡 Grille par échéance active — configurée dans Paramètres → Échéances de scolarité. Cliquez ➕ pour enregistrer un versement précis.</div>` : ''}
       <div class="progress" style="margin-bottom:16px;"><div style="width:${tauxClasse}%;background:${tauxClasse>=80?'var(--green)':tauxClasse>=50?'var(--amber)':'var(--red)'};"></div></div>
       ${eleves.length===0 ? `<div class="empty-state"><div class="em-ic">🎓</div>Aucun élève actif dans cette classe.</div>` : `
       <div class="table-wrap"><table>
-        <thead><tr><th>Élève</th><th>Dû (annuel)</th><th>Payé</th><th>Solde</th><th>Statut</th><th>Actions</th></tr></thead>
+        <thead>${theadHtml}</thead>
         <tbody>${rows}</tbody>
       </table></div>`}
     </div>`;
 }
 
-function optionsEcheancesScolarite(){
+function optionsEcheancesScolarite(selectedLabel){
   if((DB.echeancesScolarite||[]).length){
-    return DB.echeancesScolarite.map(e=>`<option value="${escapeHtml(e.label)}" data-montant="${e.montant}">${escapeHtml(e.label)} — ${fmtFCFA(e.montant)}</option>`).join('');
+    return DB.echeancesScolarite.map(e=>`<option value="${escapeHtml(e.label)}" data-montant="${e.montant}" ${selectedLabel===e.label?'selected':''}>${escapeHtml(e.label)} — ${fmtFCFA(e.montant)}</option>`).join('');
   }
-  return TRANCHES_SCOLARITE.map(t=>`<option>${t}</option>`).join('');
+  return TRANCHES_SCOLARITE.map(t=>`<option ${selectedLabel===t?'selected':''}>${t}</option>`).join('');
 }
-function openPaiementScolariteForm(eleveId){
+function openPaiementScolariteForm(eleveId, trancheLabel){
   const e = eleveById(eleveId);
   const info = scolariteEleveInfo(eleveId);
+  const grille = scolariteEleveParEcheance(eleveId);
+  // Si on cible une échéance précise (clic sur une case de la grille), on
+  // pré-remplit avec le reste exact dû sur CETTE échéance, pas le solde global.
+  const echCible = trancheLabel ? grille.detail.find(d=>d.label===trancheLabel) : null;
+  const montantDefaut = echCible ? Math.max(0, echCible.montant - echCible.paye) : (Math.min(info.solde,info.du)||10000);
   openModal(`Paiement scolarité — ${eleveFullName(e)}`, `
-    <div class="section-note">Solde restant dû : <strong>${fmtFCFA(info.solde)}</strong> sur ${fmtFCFA(info.du)}</div>
+    <div class="section-note">${echCible ? `${escapeHtml(echCible.label)} : reste <strong>${fmtFCFA(montantDefaut)}</strong> sur ${fmtFCFA(echCible.montant)}` : `Solde restant dû : <strong>${fmtFCFA(info.solde)}</strong> sur ${fmtFCFA(info.du)}`}</div>
     <form onsubmit="return handleSavePaiementScolarite(event,'${eleveId}')">
       <div class="form-grid">
-        <div class="field"><label>Montant (${DEVISE})</label><input type="number" id="paiementMontant" name="montant" min="500" step="500" required value="${Math.min(info.solde,info.du)||10000}"></div>
-        <div class="field"><label>Échéance / Tranche</label><select name="tranche" onchange="const o=this.selectedOptions[0]; if(o && o.dataset.montant) document.getElementById('paiementMontant').value = o.dataset.montant;">${optionsEcheancesScolarite()}</select></div>
+        <div class="field"><label>Montant (${DEVISE})</label><input type="number" id="paiementMontant" name="montant" min="500" step="500" required value="${montantDefaut}"></div>
+        <div class="field"><label>Échéance / Tranche</label><select name="tranche" onchange="const o=this.selectedOptions[0]; if(o && o.dataset.montant) document.getElementById('paiementMontant').value = o.dataset.montant;">${optionsEcheancesScolarite(trancheLabel)}</select></div>
         <div class="field"><label>Date</label><input type="date" name="date" value="${todayISO()}"></div>
         <div class="field"><label>Mode de paiement</label><select name="modePaiement">${MODES_PAIEMENT.map(m=>`<option>${m}</option>`).join('')}</select></div>
       </div>
