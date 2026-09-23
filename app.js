@@ -210,6 +210,7 @@ const COMPTA_TABS = [
   {id:'annees', label:'Comparaison annuelle', icon:'📅'},
   {id:'budget', label:'Budget prévisionnel', icon:'🎯'},
   {id:'syscohada', label:'Plan SYSCOHADA', icon:'📗'},
+  {id:'rapprochement', label:'Rapprochement bancaire', icon:'🏦'},
 ];
 
 /* --- Rôles / Interfaces --- */
@@ -2558,14 +2559,14 @@ function renderComptabilite(){
     apercu: renderComptaApercu, scolarite: renderComptaScolarite, activites: renderComptaActivites,
     ventes: renderComptaVentes, salaires: renderComptaSalaires, depenses: renderComptaDepenses,
     journal: renderComptaJournal, annees: renderComptaAnnees, budget: renderComptaBudget,
-    syscohada: renderComptaSyscohada,
+    syscohada: renderComptaSyscohada, rapprochement: renderComptaRapprochement,
   };
-  // Le journal d'audit, la comparaison annuelle, le budget et le plan
-  // SYSCOHADA (totaux globaux) sont réservés à Direction/Fondation, comme
-  // les totaux globaux ailleurs dans ce module — le Secrétariat saisit
-  // les paiements mais ne voit pas ça.
+  // Le journal d'audit, la comparaison annuelle, le budget, le plan
+  // SYSCOHADA et le rapprochement bancaire (totaux globaux) sont réservés
+  // à Direction/Fondation, comme les totaux globaux ailleurs dans ce
+  // module — le Secrétariat saisit les paiements mais ne voit pas ça.
   const estAdmin = ui.role==='direction' || ui.role==='fondation';
-  const ongletsReserves = ['journal','annees','budget','syscohada'];
+  const ongletsReserves = ['journal','annees','budget','syscohada','rapprochement'];
   const tabsVisibles = COMPTA_TABS.filter(t => !ongletsReserves.includes(t.id) || estAdmin);
   const cacheAReinitialiser = {journal:'__journalComptaCache', budget:'__budgetsComptaCache'};
   return `
@@ -2956,6 +2957,112 @@ function exporterGrandLivreSyscohadaCSV(){
   a.click();
   URL.revokeObjectURL(url);
   toast(`Export démarré — ${ecritures.length} lignes d'écriture (à faire valider par un comptable)`);
+}
+
+/* ---------------------------------------------------------------------
+   12.1quinquies RAPPROCHEMENT BANCAIRE (ROADMAP COMPTABILITÉ — ÉTAPE 8)
+   Compare les mouvements enregistrés dans l'appli (pour un mode de
+   paiement et un mois donnés) à un relevé collé manuellement — aucune
+   donnée n'est envoyée nulle part, tout reste dans le navigateur, rien
+   n'est sauvegardé. Appariement simple : même montant, écart de date
+   ≤ 5 jours (délai de traitement bancaire habituel).
+   --------------------------------------------------------------------- */
+function joursEntre(dateA, dateB){
+  return Math.round((new Date(dateB) - new Date(dateA)) / 86400000);
+}
+function normaliserDateReleve(s){
+  let m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if(m) return `${m[3]}-${pad(+m[2])}-${pad(+m[1])}`;
+  m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if(m) return `${m[1]}-${pad(+m[2])}-${pad(+m[3])}`;
+  return null;
+}
+function parseLignesReleve(texte){
+  return texte.split('\n').map(l=>l.trim()).filter(Boolean).map(ligne=>{
+    const parts = ligne.split(/[;\t]+|,(?=\s*[\d"])/).map(p=>p.trim()).filter(p=>p!=='');
+    if(parts.length<3) return null;
+    const [dateRaw, libelle, montantRaw] = parts;
+    const date = normaliserDateReleve(dateRaw);
+    const montant = Math.round(Math.abs(parseFloat(String(montantRaw).replace(/[^\d.,-]/g,'').replace(',', '.'))) || 0);
+    if(!date || !montant) return null;
+    return {date, libelle, montant};
+  }).filter(Boolean);
+}
+function renderComptaRapprochement(){
+  const mois = ui.filters.comptaMois || thisMonthISO();
+  ui.filters.comptaMois = mois;
+  const mode = ui.filters.rapprochementMode || 'Virement bancaire';
+  ui.filters.rapprochementMode = mode;
+  const texte = ui.filters.rapprochementTexte || '';
+
+  const dansLeMois = iso => iso && iso.slice(0,7)===mois;
+  const mouvementsApp = [];
+  DB.paiementsScolarite.filter(p=>p.modePaiement===mode && dansLeMois(p.date)).forEach(p=>mouvementsApp.push({date:p.date, libelle:`Scolarité — ${p.tranche}`, montant:p.montant}));
+  DB.paiementsCotisations.filter(p=>p.modePaiement===mode && dansLeMois(p.date)).forEach(p=>mouvementsApp.push({date:p.date, libelle:'Cotisation activité', montant:p.montant}));
+  DB.ventesGadgets.filter(v=>v.modePaiement===mode && dansLeMois(v.date)).forEach(v=>mouvementsApp.push({date:v.date, libelle:'Vente boutique', montant:v.montantTotal}));
+  DB.paiementsSalaires.filter(p=>p.modePaiement===mode && dansLeMois(p.datePaiement)).forEach(p=>mouvementsApp.push({date:p.datePaiement, libelle:`Salaire — ${personnelNomById(p.personnelId,p.personnelType)}`, montant:p.montant}));
+  DB.depenses.filter(d=>d.modePaiement===mode && dansLeMois(d.date)).forEach(d=>mouvementsApp.push({date:d.date, libelle:d.libelle, montant:d.montant}));
+
+  const ligneReleve = parseLignesReleve(texte);
+  const appDispo = mouvementsApp.map(m=>({...m, matched:false}));
+  const releveDispo = ligneReleve.map(l=>({...l, matched:false}));
+  const correspondances = [];
+  releveDispo.forEach(rl=>{
+    const candidat = appDispo.find(am=>!am.matched && am.montant===rl.montant && Math.abs(joursEntre(am.date, rl.date))<=5);
+    if(candidat){ candidat.matched=true; rl.matched=true; correspondances.push({app:candidat, releve:rl}); }
+  });
+  const appNonTrouves = appDispo.filter(m=>!m.matched);
+  const releveNonTrouves = releveDispo.filter(l=>!l.matched);
+
+  const ligneCorrespondance = c => `<tr>
+    <td>${fmtDate(c.app.date)}</td><td>${escapeHtml(c.app.libelle)}</td><td class="amount in">${fmtFCFA(c.app.montant)}</td>
+    <td>${fmtDate(c.releve.date)}</td><td>${escapeHtml(c.releve.libelle)}</td>
+  </tr>`;
+  const ligneAppSeule = m => `<tr><td>${fmtDate(m.date)}</td><td>${escapeHtml(m.libelle)}</td><td class="amount out">${fmtFCFA(m.montant)}</td></tr>`;
+  const ligneReleveSeule = l => `<tr><td>${fmtDate(l.date)}</td><td>${escapeHtml(l.libelle)}</td><td class="amount out">${fmtFCFA(l.montant)}</td></tr>`;
+
+  return `
+    <div class="section-note">🏦 Compare les mouvements enregistrés dans l'appli à un relevé bancaire que tu colles ci-dessous — rien n'est envoyé ni sauvegardé, tout reste dans ton navigateur le temps de la vérification.</div>
+    <div class="panel">
+      <div class="panel-head"><div><h2>1. Choisir la période et le mode</h2></div></div>
+      <div class="filters">
+        <select onchange="ui.filters.comptaMois=this.value; renderView('comptabilite')">${lastNMonths(6).map(m=>`<option value="${m}" ${mois===m?'selected':''}>${moisLabel(m)}</option>`).join('')}</select>
+        <select onchange="ui.filters.rapprochementMode=this.value; renderView('comptabilite')">${MODES_PAIEMENT.filter(m=>m!=='Espèces').map(m=>`<option ${mode===m?'selected':''}>${m}</option>`).join('')}</select>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><div><h2>2. Coller le relevé</h2><div class="sub">Une ligne par mouvement : Date;Libellé;Montant — ex : 15/09/2026;Virement Kouassi;25000</div></div></div>
+      <textarea id="texteReleve" rows="6" style="width:100%;font-family:monospace;font-size:12.5px;" placeholder="15/09/2026;Virement reçu — Kouassi;25000
+18/09/2026;Virement salaire — Aya Kouadio;60000">${escapeHtml(texte)}</textarea>
+      <div class="form-actions" style="justify-content:flex-start;border-top:none;padding-top:10px;">
+        <button class="btn" onclick="handleComparerReleve()">🔍 Comparer</button>
+      </div>
+    </div>
+    ${texte ? `
+    <div class="cards">
+      <div class="card"><div class="num" style="color:var(--green);">${correspondances.length}</div><div class="label">Correspondances trouvées</div></div>
+      <div class="card"><div class="num" style="color:var(--red);">${appNonTrouves.length}</div><div class="label">Dans l'appli, absent du relevé</div></div>
+      <div class="card"><div class="num" style="color:var(--red);">${releveNonTrouves.length}</div><div class="label">Au relevé, absent de l'appli</div></div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><div><h2>✅ Correspondances</h2></div></div>
+      ${correspondances.length===0 ? `<div class="hint">Aucune correspondance trouvée.</div>` : `
+      <div class="table-wrap"><table><thead><tr><th colspan="3">Dans l'appli</th><th colspan="2">Au relevé</th></tr></thead><tbody>${correspondances.map(ligneCorrespondance).join('')}</tbody></table></div>`}
+    </div>
+    <div class="panel">
+      <div class="panel-head"><div><h2>⚠️ Dans l'appli, mais pas dans le relevé</h2><div class="sub">Peut être normal (délai bancaire) ou signaler une erreur de saisie</div></div></div>
+      ${appNonTrouves.length===0 ? `<div class="hint">Aucun écart — bravo ! 🎉</div>` : `
+      <div class="table-wrap"><table><thead><tr><th>Date</th><th>Libellé</th><th>Montant</th></tr></thead><tbody>${appNonTrouves.map(ligneAppSeule).join('')}</tbody></table></div>`}
+    </div>
+    <div class="panel">
+      <div class="panel-head"><div><h2>⚠️ Au relevé, mais pas dans l'appli</h2><div class="sub">Un mouvement bancaire jamais enregistré dans EcoMaZ — à vérifier</div></div></div>
+      ${releveNonTrouves.length===0 ? `<div class="hint">Aucun écart — bravo ! 🎉</div>` : `
+      <div class="table-wrap"><table><thead><tr><th>Date</th><th>Libellé</th><th>Montant</th></tr></thead><tbody>${releveNonTrouves.map(ligneReleveSeule).join('')}</tbody></table></div>`}
+    </div>` : ''}`;
+}
+function handleComparerReleve(){
+  ui.filters.rapprochementTexte = document.getElementById('texteReleve').value;
+  renderView('comptabilite');
 }
 
 /* --- 12.2 Scolarité --- */
