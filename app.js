@@ -756,21 +756,6 @@ $('#sidebarBackdrop').addEventListener('click', () => {
   $('#sidebar').classList.remove('open');
   $('#sidebarBackdrop').classList.remove('open');
 });
-$('#btnResetData').addEventListener('click', async () => {
-  if(!confirm("Recharger des données de démonstration (élèves, enseignants, notes, présences fictifs) ? L'identité de l'école (nom, logo, directeur, fondateur) sera conservée.\n\nCeci remplace TOUTES les données actuelles de l'école dans la base.")) return;
-  toast('Génération des données de démonstration…');
-  const seed = buildSeed(DB.meta);
-  try{
-    await pousserSeedVersSupabase(seed);
-    DB = await chargerDB();
-    applyBranding();
-    toast('Données de démonstration rechargées');
-    renderView(ui.currentView);
-  }catch(e){
-    alert("Erreur lors du chargement des données de démonstration : " + e.message);
-  }
-});
-
 /* ---------------------------------------------------------------------
    3.1 ACCÈS / INTERFACES PAR RÔLE — authentification réelle (Supabase Auth)
    --------------------------------------------------------------------- */
@@ -3546,11 +3531,6 @@ function renderParametres(){
       <div class="panel-head"><div><h2>Données</h2><div class="sub">Hébergées sur Supabase — partagées en temps réel entre tous les postes de l'école</div></div></div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;">
         <button class="btn secondary" onclick="exportData()">⬇️ Exporter une sauvegarde (JSON)</button>
-        <button class="btn secondary" onclick="document.getElementById('btnResetData').click()">🎬 Recharger les données de démonstration</button>
-      </div>
-      <div class="hint" style="margin-top:14px;">Vous configurez l'application pour un nouveau client ? Videz les données de démonstration tout en conservant l'identité déjà renseignée ci-dessus.</div>
-      <div class="form-actions" style="justify-content:flex-start;border-top:none;padding-top:10px;">
-        <button class="btn danger" onclick="clearEcoleData()">🆕 Préparer une nouvelle école (vider les données)</button>
       </div>
     </div>
   </div>`;
