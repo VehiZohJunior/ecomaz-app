@@ -207,6 +207,7 @@ const COMPTA_TABS = [
   {id:'salaires', label:'Salaires', icon:'💵'},
   {id:'depenses', label:'Charges & Dépenses', icon:'🏠'},
   {id:'journal', label:"Journal d'audit", icon:'📜'},
+  {id:'annees', label:'Comparaison annuelle', icon:'📅'},
 ];
 
 /* --- Rôles / Interfaces --- */
@@ -2541,12 +2542,13 @@ function renderComptabilite(){
   const renderers = {
     apercu: renderComptaApercu, scolarite: renderComptaScolarite, activites: renderComptaActivites,
     ventes: renderComptaVentes, salaires: renderComptaSalaires, depenses: renderComptaDepenses,
-    journal: renderComptaJournal,
+    journal: renderComptaJournal, annees: renderComptaAnnees,
   };
-  // Le journal d'audit financier (qui a créé/modifié/supprimé quoi) est
-  // réservé à Direction/Fondation, comme les totaux globaux ailleurs dans
+  // Le journal d'audit et la comparaison annuelle (totaux globaux) sont
+  // réservés à Direction/Fondation, comme les totaux globaux ailleurs dans
   // ce module — le Secrétariat saisit les paiements mais ne voit pas ça.
-  const tabsVisibles = COMPTA_TABS.filter(t => t.id!=='journal' || ui.role==='direction' || ui.role==='fondation');
+  const estAdmin = ui.role==='direction' || ui.role==='fondation';
+  const tabsVisibles = COMPTA_TABS.filter(t => (t.id!=='journal' && t.id!=='annees') || estAdmin);
   return `
   <div class="view active">
     <div class="subtabs">
@@ -2670,6 +2672,52 @@ function renderComptaApercu(){
       ${secret ? maskPanel : `
       <div class="table-wrap"><table><thead><tr><th>Mode</th><th>Entrées</th><th>Sorties</th><th>Solde théorique</th></tr></thead><tbody>${soldesRows}</tbody></table></div>
       <div class="hint" style="margin-top:10px;">⚠️ Ceci est un calcul théorique basé sur ce qui a été saisi dans l'appli — ce n'est pas un rapprochement bancaire vérifié. Compare régulièrement avec le solde réel (tiroir-caisse, relevé bancaire) pour détecter un écart.</div>`}
+    </div>`;
+}
+
+/* ---------------------------------------------------------------------
+   12.1bis COMPARAISON ANNUELLE (ROADMAP COMPTABILITÉ — ÉTAPE 5)
+   Déduit automatiquement l'année scolaire de chaque mouvement à partir de
+   sa date (septembre à août, calendrier scolaire ivoirien) — aucune
+   colonne supplémentaire nécessaire, ça marche même sur l'historique déjà
+   enregistré. Purement en lecture, ne modifie ni ne verrouille rien.
+   --------------------------------------------------------------------- */
+function anneeScolaireDe(dateISO){
+  if(!dateISO) return '—';
+  const [y, m] = dateISO.split('-').map(Number);
+  return m>=9 ? `${y}-${y+1}` : `${y-1}-${y}`;
+}
+function renderComptaAnnees(){
+  const parAnnee = {};
+  const ajouter = (annee, type, montant) => {
+    if(!parAnnee[annee]) parAnnee[annee] = {recettes:0, depenses:0};
+    parAnnee[annee][type] += montant;
+  };
+  DB.paiementsScolarite.forEach(p=>ajouter(anneeScolaireDe(p.date), 'recettes', p.montant));
+  DB.paiementsCotisations.forEach(p=>ajouter(anneeScolaireDe(p.date), 'recettes', p.montant));
+  DB.ventesGadgets.forEach(v=>ajouter(anneeScolaireDe(v.date), 'recettes', v.montantTotal));
+  DB.paiementsSalaires.forEach(p=>ajouter(anneeScolaireDe(p.datePaiement), 'depenses', p.montant));
+  DB.depenses.forEach(d=>ajouter(anneeScolaireDe(d.date), 'depenses', d.montant));
+
+  const annees = Object.keys(parAnnee).sort().reverse();
+  const rows = annees.map(a=>{
+    const {recettes, depenses} = parAnnee[a];
+    const resultat = recettes - depenses;
+    const estAnneeCourante = a === DB.meta.anneeScolaire;
+    return `<tr>
+      <td>${a} ${estAnneeCourante ? '<span class="badge blue">Année en cours</span>' : ''}</td>
+      <td class="amount in">${fmtFCFA(recettes)}</td>
+      <td class="amount out">${fmtFCFA(depenses)}</td>
+      <td style="font-weight:700;color:${resultat>=0?'var(--green)':'var(--red)'};">${fmtFCFA(resultat)}</td>
+    </tr>`;
+  }).join('');
+
+  return `
+    <div class="section-note">📅 Répartition automatique par année scolaire (septembre à août), déduite de la date de chaque mouvement — aucune configuration nécessaire, fonctionne aussi sur l'historique déjà saisi.</div>
+    <div class="panel">
+      <div class="panel-head"><div><h2>Comparaison par année scolaire</h2></div></div>
+      ${annees.length===0 ? `<div class="empty-state"><div class="em-ic">📅</div>Aucun mouvement enregistré pour l'instant.</div>` : `
+      <div class="table-wrap"><table><thead><tr><th>Année scolaire</th><th>Recettes</th><th>Dépenses</th><th>Résultat net</th></tr></thead><tbody>${rows}</tbody></table></div>`}
     </div>`;
 }
 
