@@ -209,6 +209,7 @@ const COMPTA_TABS = [
   {id:'journal', label:"Journal d'audit", icon:'📜'},
   {id:'annees', label:'Comparaison annuelle', icon:'📅'},
   {id:'budget', label:'Budget prévisionnel', icon:'🎯'},
+  {id:'syscohada', label:'Plan SYSCOHADA', icon:'📗'},
 ];
 
 /* --- Rôles / Interfaces --- */
@@ -2544,13 +2545,14 @@ function renderComptabilite(){
     apercu: renderComptaApercu, scolarite: renderComptaScolarite, activites: renderComptaActivites,
     ventes: renderComptaVentes, salaires: renderComptaSalaires, depenses: renderComptaDepenses,
     journal: renderComptaJournal, annees: renderComptaAnnees, budget: renderComptaBudget,
+    syscohada: renderComptaSyscohada,
   };
-  // Le journal d'audit, la comparaison annuelle et le budget (totaux
-  // globaux) sont réservés à Direction/Fondation, comme les totaux
-  // globaux ailleurs dans ce module — le Secrétariat saisit les paiements
-  // mais ne voit pas ça.
+  // Le journal d'audit, la comparaison annuelle, le budget et le plan
+  // SYSCOHADA (totaux globaux) sont réservés à Direction/Fondation, comme
+  // les totaux globaux ailleurs dans ce module — le Secrétariat saisit
+  // les paiements mais ne voit pas ça.
   const estAdmin = ui.role==='direction' || ui.role==='fondation';
-  const ongletsReserves = ['journal','annees','budget'];
+  const ongletsReserves = ['journal','annees','budget','syscohada'];
   const tabsVisibles = COMPTA_TABS.filter(t => !ongletsReserves.includes(t.id) || estAdmin);
   const cacheAReinitialiser = {journal:'__journalComptaCache', budget:'__budgetsComptaCache'};
   return `
@@ -2807,6 +2809,140 @@ async function handleSaveBudget(type, categorie, mois, valeurStr){
     }
     toast('Budget enregistré');
   }catch(e){ alert('Erreur : ' + e.message); }
+}
+
+/* ---------------------------------------------------------------------
+   12.1quater PLAN COMPTABLE SYSCOHADA (ROADMAP COMPTABILITÉ — ÉTAPE 7)
+   IMPORTANT : les codes ci-dessous sont des PROPOSITIONS STANDARD, pas
+   une validation professionnelle — chaque école doit les faire relire
+   par un comptable OHADA avant tout usage officiel (déclaration, audit).
+   Modifiables ici, sauvegardés dans comptes_syscohada (schema.sql §26).
+   --------------------------------------------------------------------- */
+const CODES_SYSCOHADA_DEFAUT = {
+  'recette|Scolarité': {code:'706', libelle:'Services vendus (prestations d’enseignement)'},
+  'recette|Activités extra-scolaires': {code:'707', libelle:'Produits accessoires'},
+  'recette|Boutique scolaire': {code:'707', libelle:'Produits accessoires'},
+  'depense|Salaires': {code:'661', libelle:'Rémunérations directes versées au personnel'},
+  'depense|Loyer': {code:'6132', libelle:'Locations'},
+  'depense|Entretien': {code:'624', libelle:'Entretien, réparations et maintenance'},
+  'depense|Matériel pédagogique': {code:'604', libelle:'Achats stockés de matières et fournitures'},
+  'depense|Fournitures scolaires': {code:'604', libelle:'Achats stockés de matières et fournitures'},
+  'depense|Électricité & Eau': {code:'6051', libelle:'Fournitures non stockables (eau, électricité)'},
+  'depense|Transport': {code:'614', libelle:'Transports du personnel'},
+  'depense|Restauration': {code:'604', libelle:'Achats stockés de matières et fournitures'},
+  'depense|Autre': {code:'628', libelle:'Divers — Autres charges externes'},
+  'tresorerie|Espèces': {code:'571', libelle:'Caisse'},
+  'tresorerie|Mobile Money': {code:'521', libelle:'Banques locales (simplifié)'},
+  'tresorerie|Virement bancaire': {code:'521', libelle:'Banques locales'},
+  'tresorerie|Chèque': {code:'521', libelle:'Banques locales'},
+};
+let __syscohadaCache = null;
+async function chargerComptesSyscohada(){
+  try{
+    const { data, error } = await sb.from('comptes_syscohada').select('*');
+    if(error) throw error;
+    __syscohadaCache = data;
+  }catch(e){
+    __syscohadaCache = [];
+  }
+  if(ui.currentView==='comptabilite' && ui.filters.comptaTab==='syscohada') renderView('comptabilite');
+}
+function compteSyscohada(type, categorie){
+  const trouve = (__syscohadaCache||[]).find(x=>x.type===type && x.categorie===categorie);
+  if(trouve) return {code:trouve.code, libelle:trouve.libelle};
+  return CODES_SYSCOHADA_DEFAUT[`${type}|${categorie}`] || {code:'', libelle:''};
+}
+function renderComptaSyscohada(){
+  if(__syscohadaCache===null){
+    chargerComptesSyscohada();
+    return `<div class="panel"><div class="hint" style="text-align:center;padding:40px 10px;">Chargement…</div></div>`;
+  }
+  const ligne = (type, categorie) => {
+    const c = compteSyscohada(type, categorie);
+    return `<tr>
+      <td>${categorie}</td>
+      <td><input type="text" value="${escapeHtml(c.code)}" style="width:80px;" onchange="handleSaveSyscohada('${type}','${categorie}','code',this.value)"></td>
+      <td><input type="text" value="${escapeHtml(c.libelle)}" style="width:100%;" onchange="handleSaveSyscohada('${type}','${categorie}','libelle',this.value)"></td>
+    </tr>`;
+  };
+  const rowsRecettes = CATEGORIES_RECETTES_BUDGET.map(c=>ligne('recette', c)).join('');
+  const rowsDepenses = ['Salaires', ...CATEGORIES_DEPENSES].map(c=>ligne('depense', c)).join('');
+  const rowsTresorerie = MODES_PAIEMENT.map(m=>ligne('tresorerie', m)).join('');
+
+  return `
+    <div class="section-note" style="background:var(--amber-bg);color:var(--amber);">⚠️ Ces codes SYSCOHADA sont des propositions standard, PAS une validation professionnelle. Fais-les relire par un comptable OHADA avant tout usage officiel (déclaration, audit). Modifie librement les champs ci-dessous.</div>
+    <div class="panel">
+      <div class="panel-head"><div><h2>Comptes de produits (recettes) — classe 7</h2></div></div>
+      <div class="table-wrap"><table><thead><tr><th>Catégorie</th><th>Compte</th><th>Intitulé</th></tr></thead><tbody>${rowsRecettes}</tbody></table></div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><div><h2>Comptes de charges (dépenses) — classe 6</h2></div></div>
+      <div class="table-wrap"><table><thead><tr><th>Catégorie</th><th>Compte</th><th>Intitulé</th></tr></thead><tbody>${rowsDepenses}</tbody></table></div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><div><h2>Comptes de trésorerie — classe 5</h2><div class="sub">Par mode de paiement</div></div></div>
+      <div class="table-wrap"><table><thead><tr><th>Mode</th><th>Compte</th><th>Intitulé</th></tr></thead><tbody>${rowsTresorerie}</tbody></table></div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><div><h2>Export grand livre</h2><div class="sub">Écritures en partie double (Débit/Crédit), prêtes pour un logiciel comptable</div></div></div>
+      <button class="btn" onclick="exporterGrandLivreSyscohadaCSV()">⬇️ Exporter le grand livre (CSV)</button>
+    </div>`;
+}
+async function handleSaveSyscohada(type, categorie, champ, valeur){
+  try{
+    const existant = __syscohadaCache.find(x=>x.type===type && x.categorie===categorie);
+    if(existant){
+      await dbUpdate('comptes_syscohada', existant.id, {[champ]: valeur});
+      existant[champ] = valeur;
+    } else {
+      const defaut = CODES_SYSCOHADA_DEFAUT[`${type}|${categorie}`] || {code:'', libelle:''};
+      const patch = {type, categorie, code: defaut.code, libelle: defaut.libelle, [champ]: valeur};
+      const rec = await dbInsert('comptes_syscohada', patch);
+      __syscohadaCache.push(rec);
+    }
+    toast('Compte enregistré');
+  }catch(e){ alert('Erreur : ' + e.message); }
+}
+function exporterGrandLivreSyscohadaCSV(){
+  const ecritures = [];
+  const ajouter = (date, type, categorie, tresorerie, libelle, montant) => {
+    const compteMouvement = compteSyscohada(type, categorie);
+    const compteTreso = compteSyscohada('tresorerie', tresorerie);
+    if(type==='recette'){
+      ecritures.push({date, compte:compteTreso.code, intitule:compteTreso.libelle, libelle, debit:montant, credit:0});
+      ecritures.push({date, compte:compteMouvement.code, intitule:compteMouvement.libelle, libelle, debit:0, credit:montant});
+    } else {
+      ecritures.push({date, compte:compteMouvement.code, intitule:compteMouvement.libelle, libelle, debit:montant, credit:0});
+      ecritures.push({date, compte:compteTreso.code, intitule:compteTreso.libelle, libelle, debit:0, credit:montant});
+    }
+  };
+  DB.paiementsScolarite.forEach(p=>ajouter(p.date, 'recette', 'Scolarité', p.modePaiement, `Scolarité — ${p.tranche} — ${eleveFullName(eleveById(p.eleveId)||{prenom:'—',nom:''})}`, p.montant));
+  DB.paiementsCotisations.forEach(p=>{
+    const act = DB.activites.find(a=>a.id===p.activiteId);
+    ajouter(p.date, 'recette', 'Activités extra-scolaires', p.modePaiement, `Cotisation ${act?act.nom:'—'} — ${eleveFullName(eleveById(p.eleveId)||{prenom:'—',nom:''})}`, p.montant);
+  });
+  DB.ventesGadgets.forEach(v=>{
+    const g = DB.gadgets.find(x=>x.id===v.gadgetId);
+    ajouter(v.date, 'recette', 'Boutique scolaire', v.modePaiement, `Vente ${g?g.nom:'—'} ×${v.quantite}`, v.montantTotal);
+  });
+  DB.paiementsSalaires.forEach(p=>ajouter(p.datePaiement, 'depense', 'Salaires', p.modePaiement, `Salaire — ${personnelNomById(p.personnelId,p.personnelType)} — ${moisLabel(p.mois)}`, p.montant));
+  DB.depenses.forEach(d=>ajouter(d.date, 'depense', d.categorie, d.modePaiement, d.libelle, d.montant));
+  ecritures.sort((a,b)=>a.date.localeCompare(b.date));
+
+  const echapperCSV = v => {
+    const s = String(v==null?'':v);
+    return /[",;\n]/.test(s) ? '"' + s.replace(/"/g,'""') + '"' : s;
+  };
+  const entetes = ['Date','Compte','Intitulé du compte','Libellé','Débit (FCFA)','Crédit (FCFA)'];
+  const corps = ecritures.map(l=>[l.date,l.compte,l.intitule,l.libelle,l.debit||'',l.credit||''].map(echapperCSV).join(';'));
+  const csv = '﻿' + [entetes.join(';'), ...corps].join('\r\n');
+  const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `ecomaz-grand-livre-syscohada-${todayISO()}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+  toast(`Export démarré — ${ecritures.length} lignes d'écriture (à faire valider par un comptable)`);
 }
 
 /* --- 12.2 Scolarité --- */

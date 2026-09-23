@@ -782,3 +782,29 @@ create policy "gestion budgets_comptables" on budgets_comptables for all
   with check (est_admin() and ecole_id = mon_ecole_id());
 
 create policy "acces support developpeur" on budgets_comptables for select using (developpeur_a_acces(ecole_id));
+
+-- =====================================================================
+-- 26. PLAN COMPTABLE SYSCOHADA (ROADMAP COMPTABILITÉ — ÉTAPE 7)
+-- Associe un code SYSCOHADA à chaque catégorie déjà existante (recette,
+-- dépense, mode de paiement/trésorerie). L'app propose des codes
+-- standards par défaut (voir CODES_SYSCOHADA_DEFAUT dans app.js), mais
+-- RIEN n'est présenté comme validé par un comptable — chaque école peut
+-- ajuster ici. Réservé à Direction/Fondation.
+-- =====================================================================
+create table if not exists comptes_syscohada (
+  id uuid primary key default gen_random_uuid(),
+  ecole_id uuid not null references ecoles(id) on delete cascade default mon_ecole_id(),
+  type text not null check (type in ('recette','depense','tresorerie')),
+  categorie text not null,
+  code text not null,
+  libelle text not null default '',
+  created_at timestamptz default now(),
+  unique (ecole_id, type, categorie)
+);
+alter table comptes_syscohada enable row level security;
+
+create policy "gestion comptes_syscohada" on comptes_syscohada for all
+  using (est_admin() and ecole_id = mon_ecole_id())
+  with check (est_admin() and ecole_id = mon_ecole_id());
+
+create policy "acces support developpeur" on comptes_syscohada for select using (developpeur_a_acces(ecole_id));
