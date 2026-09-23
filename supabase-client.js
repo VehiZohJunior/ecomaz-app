@@ -283,6 +283,11 @@ async function dbSelectAll(table, orderBy){
   if(error) throw error;
   return rowsToCamel(data);
 }
+async function dbSelectUne(table){
+  const { data, error } = await sb.from(table).select('*').eq('ecole_id', session.ecoleId).maybeSingle();
+  if(error) throw error;
+  return data ? rowToCamel(data) : null;
+}
 // NOTE : l'id est désormais TOUJOURS généré côté client (crypto.randomUUID),
 // y compris en ligne — nécessaire pour pouvoir rendre immédiatement une
 // ligne "optimiste" avec un vrai id quand l'insertion est mise en file
@@ -357,7 +362,7 @@ async function loadAllFromSupabase(){
     presencesEnseignants, emploiTemps, programmes, bulletinsRows,
     paiementsScolarite, activites, inscriptionsActivites, paiementsCotisations,
     gadgets, ventesGadgets, personnelAutre, paiementsSalaires, depenses, messages,
-    alertesPointage, echeancesScolarite, profiles
+    alertesPointage, echeancesScolarite, profiles, fneConfigRow
   ] = await Promise.all([
     sb.from('ecoles').select('*').eq('id', session.ecoleId).single(),
     dbSelectAll('classes'),
@@ -387,6 +392,10 @@ async function loadAllFromSupabase(){
     dbSelectAll('alertes_pointage').catch(()=>[]),
     dbSelectAll('echeances_scolarite').catch(()=>[]),
     dbSelectAll('profiles').catch(()=>[]),
+    // fne_config_lecture : vue SANS la clé API (voir schema.sql section 27) —
+    // 0 ou 1 ligne par école, tolérant à l'absence de la vue (migration pas
+    // encore appliquée).
+    dbSelectUne('fne_config_lecture').catch(()=>null),
   ]);
 
   if(ecoleRow.error) throw ecoleRow.error;
@@ -421,6 +430,7 @@ async function loadAllFromSupabase(){
     paiementsSalaires, depenses, messages, alertesPointage,
     echeancesScolarite: echeancesScolarite.slice().sort((a,b)=> (a.ordre-b.ordre) || (a.dateEcheance||'').localeCompare(b.dateEcheance||'')),
     profiles,
+    fneConfig: fneConfigRow || {regime:'recus', prestataire:'', cleConfiguree:false},
   };
 }
 

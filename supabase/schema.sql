@@ -808,3 +808,40 @@ create policy "gestion comptes_syscohada" on comptes_syscohada for all
   with check (est_admin() and ecole_id = mon_ecole_id());
 
 create policy "acces support developpeur" on comptes_syscohada for select using (developpeur_a_acces(ecole_id));
+
+-- =====================================================================
+-- 27. RÉGIME DE FACTURATION — REÇUS SIMPLES ou FNE (Facture Normalisée
+-- Électronique, obligatoire DGI Côte d'Ivoire pour les reçus de
+-- scolarité — voir échange avec l'école du 2026-09-24). Chaque école
+-- choisit son régime ; la clé API du prestataire de certification n'est
+-- JAMAIS exposée au navigateur, même pour Direction/Fondation — seule la
+-- vue fne_config_lecture (sans la clé) est utilisée par l'application.
+-- La certification réelle (appel au prestataire) n'est PAS encore
+-- câblée : tant qu'aucun prestataire n'a d'intégration codée côté
+-- Edge Function, le reçu affiche honnêtement "non certifié", jamais une
+-- fausse certification.
+-- =====================================================================
+create table if not exists fne_config (
+  ecole_id uuid primary key references ecoles(id) on delete cascade default mon_ecole_id(),
+  regime text not null default 'recus' check (regime in ('recus','fne')),
+  prestataire text not null default '',
+  api_key text not null default '',
+  updated_at timestamptz default now()
+);
+alter table fne_config enable row level security;
+
+-- Direction/Fondation uniquement : choix du régime, prestataire, clé API.
+create policy "gestion fne_config" on fne_config for all
+  using (est_admin() and ecole_id = mon_ecole_id())
+  with check (est_admin() and ecole_id = mon_ecole_id());
+
+create policy "acces support developpeur" on fne_config for select using (developpeur_a_acces(ecole_id));
+
+-- Vue SANS api_key — lue par tout le personnel (y compris Secrétariat,
+-- qui imprime des reçus) pour savoir quel régime afficher.
+create or replace view fne_config_lecture as
+select ecole_id, regime, prestataire, (api_key <> '') as cle_configuree, updated_at
+from fne_config
+where ecole_id = mon_ecole_id() or developpeur_a_acces(ecole_id);
+
+grant select on fne_config_lecture to authenticated;

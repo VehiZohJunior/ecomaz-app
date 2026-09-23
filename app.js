@@ -2500,6 +2500,18 @@ let recuSeq = 0;
 function genRecuNumero(type, refId){
   return `REC-${type==='entree'?'E':'S'}-${(refId||uid()).toUpperCase()}`;
 }
+function statutFneRecu(r){
+  // La FNE ne concerne (pour l'instant, confirmé 2026-09-24) que les reçus
+  // de scolarité — pas les salaires/dépenses. Voir schema.sql section 27 :
+  // aucune certification réelle n'est câblée tant qu'un prestataire n'a
+  // pas d'intégration codée, donc jamais de fausse certification affichée.
+  const concerne = r.objet && r.objet.startsWith('Scolarité');
+  if(!concerne) return '';
+  const c = DB.fneConfig || {regime:'recus'};
+  if(c.regime!=='fne') return '';
+  if(!c.cleConfiguree) return `<div class="recu-row" style="color:var(--red);"><span>⚠️ FNE</span><strong>Régime activé, prestataire non configuré — reçu NON certifié</strong></div>`;
+  return `<div class="recu-row" style="color:var(--amber);"><span>🟡 FNE</span><strong>En attente de connexion à ${escapeHtml(c.prestataire)} — reçu NON encore certifié</strong></div>`;
+}
 function buildRecuHtml(r){
   const m = DB.meta;
   const numero = genRecuNumero(r.type, r.refId);
@@ -2515,6 +2527,7 @@ function buildRecuHtml(r){
         </div>
       </div>
       <div class="recu-title" style="color:${couleur};border-color:${couleur};">${libType}</div>
+      ${statutFneRecu(r)}
       <div class="recu-row"><span>N° Reçu</span><strong>${numero}</strong></div>
       <div class="recu-row"><span>Date</span><strong>${fmtDate(r.date)}</strong></div>
       <div class="recu-row"><span>${r.type==='entree'?'Reçu de':'Payé à'}</span><strong>${escapeHtml(r.personne||'—')}</strong></div>
@@ -3927,6 +3940,11 @@ function renderParametres(){
     </div>
 
     <div class="panel">
+      <div class="panel-head"><div><h2>Régime de facturation — reçus de scolarité</h2><div class="sub">Reçus simples, ou Facture Normalisée Électronique (FNE) — obligation DGI Côte d'Ivoire pour les reçus de scolarité</div></div></div>
+      ${renderRegimeFacturation()}
+    </div>
+
+    <div class="panel">
       <div class="panel-head"><div><h2>Accès &amp; Interfaces</h2><div class="sub">4 profils, avec des droits différents — chacun se connecte avec son propre email et mot de passe</div></div></div>
       <div class="grid-2" style="margin-bottom:14px;">
         <div class="hint">👩‍🏫 <strong>Enseignant(e)</strong> — Notes, présences élèves, emploi du temps, programmes. Pas d'accès aux élèves, à la comptabilité ni aux paramètres. Un compte enseignant peut être relié à une fiche précise (page Enseignants) pour ne voir que ses propres classes.</div>
@@ -4037,6 +4055,52 @@ async function handleSaveNiveaux(ev){
 /* ---------------------------------------------------------------------
    ÉCHÉANCES DE SCOLARITÉ CONFIGURABLES
    --------------------------------------------------------------------- */
+const PRESTATAIRES_FNE = ['fne.ci', 'ESARTH', 'Faclibr', 'Tidy', 'myOctogone', 'Autre'];
+function renderRegimeFacturation(){
+  const c = DB.fneConfig || {regime:'recus', prestataire:'', cleConfiguree:false};
+  return `
+    <div class="section-note" style="background:var(--amber-bg);color:var(--amber);">⚠️ La certification réelle auprès du prestataire n'est pas encore branchée techniquement — activer le régime FNE ici prépare la configuration, mais les reçus resteront marqués "non certifié" tant que l'intégration au prestataire choisi n'est pas terminée.</div>
+    <form onsubmit="return handleSaveRegimeFacturation(event)">
+      <div class="form-grid">
+        <div class="field span2">
+          <label>Régime</label>
+          <select name="regime" id="selectRegimeFacturation" onchange="document.getElementById('blocPrestataireFne').style.display = this.value==='fne' ? '' : 'none';">
+            <option value="recus" ${c.regime==='recus'?'selected':''}>Reçus simples (actuel)</option>
+            <option value="fne" ${c.regime==='fne'?'selected':''}>FNE (Facture Normalisée Électronique)</option>
+          </select>
+        </div>
+        <div id="blocPrestataireFne" style="display:${c.regime==='fne'?'':'none'};" class="field span2">
+          <div class="form-grid">
+            <div class="field"><label>Prestataire de certification</label>
+              <select name="prestataire">${PRESTATAIRES_FNE.map(p=>`<option ${c.prestataire===p?'selected':''}>${p}</option>`).join('')}</select>
+            </div>
+            <div class="field"><label>Clé API ${c.cleConfiguree ? '(✅ déjà enregistrée)' : ''}</label>
+              <input type="password" name="apiKey" placeholder="${c.cleConfiguree ? 'Laisser vide pour ne pas changer' : 'Coller la clé API du prestataire'}" autocomplete="new-password">
+            </div>
+          </div>
+          <div class="hint">La clé API n'est jamais réaffichée une fois enregistrée, ni visible par le Secrétariat ou les enseignants — seule Direction/Fondation peut la modifier.</div>
+        </div>
+      </div>
+      <div class="form-actions"><button type="submit" class="btn">Enregistrer</button></div>
+    </form>`;
+}
+async function handleSaveRegimeFacturation(ev){
+  ev.preventDefault();
+  const fd = new FormData(ev.target);
+  const regime = fd.get('regime');
+  const prestataire = regime==='fne' ? fd.get('prestataire') : '';
+  const apiKey = (fd.get('apiKey')||'').trim();
+  try{
+    const patch = {ecole_id: session.ecoleId, regime, prestataire};
+    if(apiKey) patch.api_key = apiKey;
+    const { error } = await sb.from('fne_config').upsert(patch, {onConflict:'ecole_id'});
+    if(error) throw error;
+    DB.fneConfig = {regime, prestataire, cleConfiguree: DB.fneConfig?.cleConfiguree || !!apiKey};
+    toast('Régime de facturation enregistré');
+    renderView('parametres');
+  }catch(e){ alert('Erreur : ' + e.message); }
+  return false;
+}
 function renderEcheancesScolarite(){
   const list = (DB.echeancesScolarite||[]).slice().sort((a,b)=> (a.ordre-b.ordre) || (a.dateEcheance||'').localeCompare(b.dateEcheance||''));
   const rows = list.map(e=>`
