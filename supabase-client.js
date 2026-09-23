@@ -288,6 +288,13 @@ async function dbSelectUne(table){
   if(error) throw error;
   return data ? rowToCamel(data) : null;
 }
+// Pour une vue qui filtre déjà par école dans sa propre définition SQL
+// (pas de colonne ecole_id exposée) — voir tva_categories_lecture.
+async function dbSelectVue(vue){
+  const { data, error } = await sb.from(vue).select('*');
+  if(error) throw error;
+  return rowsToCamel(data);
+}
 // NOTE : l'id est désormais TOUJOURS généré côté client (crypto.randomUUID),
 // y compris en ligne — nécessaire pour pouvoir rendre immédiatement une
 // ligne "optimiste" avec un vrai id quand l'insertion est mise en file
@@ -362,7 +369,7 @@ async function loadAllFromSupabase(){
     presencesEnseignants, emploiTemps, programmes, bulletinsRows,
     paiementsScolarite, activites, inscriptionsActivites, paiementsCotisations,
     gadgets, ventesGadgets, personnelAutre, paiementsSalaires, depenses, messages,
-    alertesPointage, echeancesScolarite, profiles, fneConfigRow
+    alertesPointage, echeancesScolarite, profiles, fneConfigRow, tvaCategories
   ] = await Promise.all([
     sb.from('ecoles').select('*').eq('id', session.ecoleId).single(),
     dbSelectAll('classes'),
@@ -396,6 +403,9 @@ async function loadAllFromSupabase(){
     // 0 ou 1 ligne par école, tolérant à l'absence de la vue (migration pas
     // encore appliquée).
     dbSelectUne('fne_config_lecture').catch(()=>null),
+    // tva_categories_lecture : vue école-filtrée sans besoin d'ecole_id côté
+    // client (voir schema.sql section 28), tolérante à son absence.
+    dbSelectVue('tva_categories_lecture').catch(()=>[]),
   ]);
 
   if(ecoleRow.error) throw ecoleRow.error;
@@ -421,7 +431,10 @@ async function loadAllFromSupabase(){
       heureArriveeAttendue: (ecole.heureArriveeAttendue || '07:30:00').slice(0,5),
       actif: ecole.actif !== false,
       accesSupportDeveloppeur: ecole.accesSupportDeveloppeur === true,
+      assujettiTva: ecole.assujettiTva === true,
+      tauxTva: ecole.tauxTva != null ? ecole.tauxTva : 18,
     },
+    tvaCategories,
     classes: classesRows,
     eleves, enseignants, notes, presencesEleves, presencesEnseignants,
     emploiTemps, programmes, bulletinsComments,

@@ -2513,11 +2513,23 @@ function statutFneRecu(r){
   if(!c.cleConfiguree) return `<div class="recu-row" style="color:var(--red);"><span>⚠️ FNE</span><strong>Régime activé, prestataire non configuré — reçu NON certifié</strong></div>`;
   return `<div class="recu-row" style="color:var(--amber);"><span>🟡 FNE</span><strong>En attente de connexion à ${escapeHtml(c.prestataire)} — reçu NON encore certifié</strong></div>`;
 }
+function detailTvaRecu(r){
+  if(r.type!=='entree') return '';
+  const categorie = categorieRecetteDeObjet(r.objet);
+  if(!categorie || !DB.meta.assujettiTva || !tvaApplicablePour(categorie)) return '';
+  const taux = DB.meta.tauxTva || 0;
+  const montantHT = Math.round(r.montant / (1 + taux/100));
+  const montantTva = r.montant - montantHT;
+  return `
+    <div class="recu-row"><span>Montant HT</span><strong>${fmtFCFA(montantHT)}</strong></div>
+    <div class="recu-row"><span>TVA (${taux}%)</span><strong>${fmtFCFA(montantTva)}</strong></div>`;
+}
 function buildRecuHtml(r){
   const m = DB.meta;
   const numero = genRecuNumero(r.type, r.refId);
   const libType = r.type==='entree' ? "REÇU D'ENTRÉE DE CAISSE" : 'REÇU DE SORTIE DE CAISSE';
   const couleur = r.type==='entree' ? 'var(--green)' : 'var(--red)';
+  const tvaConcerne = r.type==='entree' && categorieRecetteDeObjet(r.objet) && DB.meta.assujettiTva && tvaApplicablePour(categorieRecetteDeObjet(r.objet));
   return `
     <div class="recu">
       <div class="recu-head">
@@ -2535,7 +2547,8 @@ function buildRecuHtml(r){
       <div class="recu-row"><span>Objet</span><strong>${escapeHtml(r.objet)}</strong></div>
       ${r.sousInfo ? `<div class="recu-row"><span>Détail</span><strong>${escapeHtml(r.sousInfo)}</strong></div>` : ''}
       <div class="recu-row"><span>Mode de paiement</span><strong>${escapeHtml(r.modePaiement||'—')}</strong></div>
-      <div class="recu-montant" style="color:${couleur};">${r.type==='entree'?'+':'−'} ${fmtFCFA(r.montant)}</div>
+      ${detailTvaRecu(r)}
+      <div class="recu-montant" style="color:${couleur};">${r.type==='entree'?'+':'−'} ${fmtFCFA(r.montant)}${tvaConcerne?' TTC':''}</div>
       <div class="recu-lettres">Arrêtée la présente somme à : <em>${capitalize(nombreEnLettres(r.montant))} francs CFA</em></div>
       <div class="signatures">
         <div class="sign-box"><div class="sign-role">Le/La Caissier(ère)</div><div class="sign-line">${escapeHtml(m.directeurNom||'—')}</div></div>
@@ -2588,6 +2601,15 @@ function renderComptaApercu(){
   const recCotisations = DB.paiementsCotisations.filter(p=>inPeriod(p.date)).reduce((s,p)=>s+p.montant,0);
   const recVentes = DB.ventesGadgets.filter(v=>inPeriod(v.date)).reduce((s,v)=>s+v.montantTotal,0);
   const totalRecettes = recScolarite + recCotisations + recVentes;
+
+  // TVA collectée (aide de calcul, voir renderPanneauTva) : les montants
+  // ci-dessus sont TTC, on en extrait la part TVA pour les catégories où
+  // elle a été activée dans Paramètres.
+  const tauxTva = DB.meta.tauxTva || 0;
+  const extraireTva = montant => DB.meta.assujettiTva && tauxTva>0 ? Math.round(montant - montant/(1+tauxTva/100)) : 0;
+  const tvaCollectee = (tvaApplicablePour('Scolarité')?extraireTva(recScolarite):0)
+    + (tvaApplicablePour('Activités extra-scolaires')?extraireTva(recCotisations):0)
+    + (tvaApplicablePour('Boutique scolaire')?extraireTva(recVentes):0);
 
   const depSalaires = DB.paiementsSalaires.filter(p=>inPeriod(p.datePaiement)).reduce((s,p)=>s+p.montant,0);
   const depParCategorie = {};
@@ -2678,6 +2700,7 @@ function renderComptaApercu(){
       <div class="card"><div class="card-top"><div class="icon-badge" style="background:var(--red-bg);">📤</div></div>${secret ? maskNum : `<div class="num amount out">${fmtFCFA(totalDepenses)}</div>`}<div class="label">Dépenses</div></div>
       <div class="card"><div class="card-top"><div class="icon-badge" style="background:${resultat>=0?'var(--green-bg)':'var(--red-bg)'};">${resultat>=0?'📈':'📉'}</div></div>${secret ? maskNum : `<div class="num" style="color:${resultat>=0?'var(--green)':'var(--red)'};">${fmtFCFA(resultat)}</div>`}<div class="label">Résultat net</div></div>
       <div class="card"><div class="card-top"><div class="icon-badge" style="background:var(--blue-bg);">🎓</div></div><div class="num">${tauxRecouvrement}%</div><div class="label">Taux de recouvrement scolarité</div></div>
+      ${DB.meta.assujettiTva ? `<div class="card"><div class="card-top"><div class="icon-badge" style="background:var(--amber-bg);">🧾</div></div>${secret ? maskNum : `<div class="num" style="color:var(--amber);">${fmtFCFA(tvaCollectee)}</div>`}<div class="label">TVA collectée (aide de calcul)</div></div>` : ''}
     </div>
     <div class="grid-2">
       <div class="panel"><div class="panel-head"><div><h2>Recettes par source</h2></div></div>${secret ? maskPanel : recBars}</div>
@@ -2924,7 +2947,14 @@ function exporterGrandLivreSyscohadaCSV(){
     const compteTreso = compteSyscohada('tresorerie', tresorerie);
     if(type==='recette'){
       ecritures.push({date, compte:compteTreso.code, intitule:compteTreso.libelle, libelle, debit:montant, credit:0});
-      ecritures.push({date, compte:compteMouvement.code, intitule:compteMouvement.libelle, libelle, debit:0, credit:montant});
+      if(DB.meta.assujettiTva && tvaApplicablePour(categorie) && DB.meta.tauxTva>0){
+        const montantHT = Math.round(montant / (1 + DB.meta.tauxTva/100));
+        const montantTva = montant - montantHT;
+        ecritures.push({date, compte:compteMouvement.code, intitule:compteMouvement.libelle, libelle, debit:0, credit:montantHT});
+        ecritures.push({date, compte:'4431', intitule:'État, TVA facturée', libelle, debit:0, credit:montantTva});
+      } else {
+        ecritures.push({date, compte:compteMouvement.code, intitule:compteMouvement.libelle, libelle, debit:0, credit:montant});
+      }
     } else {
       ecritures.push({date, compte:compteMouvement.code, intitule:compteMouvement.libelle, libelle, debit:montant, credit:0});
       ecritures.push({date, compte:compteTreso.code, intitule:compteTreso.libelle, libelle, debit:0, credit:montant});
@@ -4052,6 +4082,11 @@ function renderParametres(){
     </div>
 
     <div class="panel">
+      <div class="panel-head"><div><h2>TVA</h2><div class="sub">Aide de calcul si l'école est assujettie — à valider avec un comptable</div></div></div>
+      ${renderPanneauTva()}
+    </div>
+
+    <div class="panel">
       <div class="panel-head"><div><h2>Accès &amp; Interfaces</h2><div class="sub">4 profils, avec des droits différents — chacun se connecte avec son propre email et mot de passe</div></div></div>
       <div class="grid-2" style="margin-bottom:14px;">
         <div class="hint">👩‍🏫 <strong>Enseignant(e)</strong> — Notes, présences élèves, emploi du temps, programmes. Pas d'accès aux élèves, à la comptabilité ni aux paramètres. Un compte enseignant peut être relié à une fiche précise (page Enseignants) pour ne voir que ses propres classes.</div>
@@ -4207,6 +4242,85 @@ async function handleSaveRegimeFacturation(ev){
     renderView('parametres');
   }catch(e){ alert('Erreur : ' + e.message); }
   return false;
+}
+
+/* ---------------------------------------------------------------------
+   TVA (ROADMAP COMPTABILITÉ — ÉTAPE 9, DERNIÈRE)
+   Voir schema.sql section 28 : par défaut assujetti_tva = false, donc
+   rien ne change tant que Direction/Fondation ne l'active pas. Aide de
+   calcul uniquement — l'école doit valider son assujettissement réel et
+   quelles catégories sont concernées avec son comptable.
+   --------------------------------------------------------------------- */
+function categorieRecetteDeObjet(objet){
+  if(!objet) return null;
+  if(objet.startsWith('Scolarité')) return 'Scolarité';
+  if(objet.startsWith('Cotisation')) return 'Activités extra-scolaires';
+  if(objet.startsWith('Vente')) return 'Boutique scolaire';
+  return null;
+}
+function tvaApplicablePour(categorie){
+  const c = (DB.tvaCategories||[]).find(x=>x.categorie===categorie);
+  return c ? c.tvaApplicable===true : false;
+}
+function renderPanneauTva(){
+  const m = DB.meta;
+  return `
+    <div class="section-note" style="background:var(--amber-bg);color:var(--amber);">⚠️ L'enseignement est en principe exonéré de TVA en Côte d'Ivoire, mais l'assujettissement dépend du régime fiscal de l'école, et certaines recettes (boutique scolaire notamment) peuvent rester taxables même si la scolarité est exonérée. Ceci est une aide de calcul, pas une validation fiscale — à confirmer avec ton comptable avant toute déclaration.</div>
+    <form onsubmit="return handleSaveTva(event)">
+      <div class="form-grid">
+        <div class="field"><label>École assujettie à la TVA ?</label>
+          <select name="assujetti">
+            <option value="non" ${!m.assujettiTva?'selected':''}>Non</option>
+            <option value="oui" ${m.assujettiTva?'selected':''}>Oui</option>
+          </select>
+        </div>
+        <div class="field"><label>Taux de TVA (%)</label><input type="number" name="taux" min="0" max="100" step="0.5" value="${m.tauxTva}"></div>
+      </div>
+      <div class="form-actions"><button type="submit" class="btn">Enregistrer</button></div>
+    </form>
+    ${m.assujettiTva ? `
+    <div class="hint" style="margin-top:14px;">Catégories de recettes concernées par la TVA (cochées = TVA appliquée sur les reçus et dans les exports) :</div>
+    <div class="table-wrap" style="margin-top:10px;"><table><thead><tr><th>Catégorie</th><th>TVA applicable</th></tr></thead><tbody>
+      ${CATEGORIES_RECETTES_BUDGET.map(c=>`<tr><td>${c}</td><td><input type="checkbox" ${tvaApplicablePour(c)?'checked':''} onchange="handleSaveTvaCategorie('${c}', this.checked)"></td></tr>`).join('')}
+    </tbody></table></div>` : ''}`;
+}
+async function handleSaveTva(ev){
+  ev.preventDefault();
+  const fd = new FormData(ev.target);
+  const assujettiTva = fd.get('assujetti')==='oui';
+  const tauxTva = Math.max(0, parseFloat(fd.get('taux'))||0);
+  try{
+    const { error } = await sb.from('ecoles').update({assujetti_tva: assujettiTva, taux_tva: tauxTva}).eq('id', session.ecoleId);
+    if(error) throw error;
+    DB.meta.assujettiTva = assujettiTva;
+    DB.meta.tauxTva = tauxTva;
+    toast('TVA enregistrée');
+    renderView('parametres');
+  }catch(e){ alert('Erreur : ' + e.message); }
+  return false;
+}
+async function handleSaveTvaCategorie(categorie, checked){
+  // "existant" (trouvé via la vue tva_categories_lecture) veut dire
+  // qu'une ligne comptes_syscohada existe déjà pour cette catégorie —
+  // on ne touche alors QUE tva_applicable, jamais code/libellé (qui ont
+  // pu être personnalisés dans l'onglet Plan SYSCOHADA, étape 7).
+  const existant = (DB.tvaCategories||[]).find(x=>x.categorie===categorie);
+  try{
+    if(existant){
+      const { error } = await sb.from('comptes_syscohada')
+        .update({tva_applicable: checked})
+        .eq('ecole_id', session.ecoleId).eq('type','recette').eq('categorie', categorie);
+      if(error) throw error;
+      existant.tvaApplicable = checked;
+    } else {
+      const defaut = CODES_SYSCOHADA_DEFAUT[`recette|${categorie}`] || {code:'', libelle:''};
+      const { error } = await sb.from('comptes_syscohada')
+        .insert({ecole_id: session.ecoleId, type:'recette', categorie, tva_applicable: checked, code: defaut.code, libelle: defaut.libelle});
+      if(error) throw error;
+      DB.tvaCategories = [...(DB.tvaCategories||[]), {categorie, tvaApplicable: checked}];
+    }
+    toast('TVA mise à jour pour ' + categorie);
+  }catch(e){ alert('Erreur : ' + e.message); }
 }
 function renderEcheancesScolarite(){
   const list = (DB.echeancesScolarite||[]).slice().sort((a,b)=> (a.ordre-b.ordre) || (a.dateEcheance||'').localeCompare(b.dateEcheance||''));
