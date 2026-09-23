@@ -2649,6 +2649,7 @@ function renderComptaApercu(){
         <option value="all" ${periode==='all'?'selected':''}>Toute la période</option>
         ${lastNMonths(6).map(m=>`<option value="${m}" ${periode===m?'selected':''}>${moisLabel(m)}</option>`).join('')}
       </select>
+      ${secret ? '' : `<button class="btn secondary" onclick="exporterComptabiliteCSV()">⬇️ Exporter (CSV)</button>`}
     </div>
     <div class="cards">
       <div class="card"><div class="card-top"><div class="icon-badge" style="background:var(--green-bg);">📥</div></div>${secret ? maskNum : `<div class="num amount in">${fmtFCFA(totalRecettes)}</div>`}<div class="label">Recettes</div></div>
@@ -3870,6 +3871,52 @@ function exportData(){
   a.click();
   URL.revokeObjectURL(url);
   toast('Export démarré');
+}
+
+/* ---------------------------------------------------------------------
+   12.9 EXPORT COMPTABLE (ROADMAP COMPTABILITÉ — ÉTAPE 4) — un tableau
+   CSV de tous les mouvements financiers (respecte le filtre de période
+   déjà sélectionné dans Aperçu), au format attendu par Excel en français
+   (séparateur ; et BOM UTF-8 pour les accents), pour transmission à un
+   comptable externe.
+   --------------------------------------------------------------------- */
+function exporterComptabiliteCSV(){
+  const periode = ui.filters.comptaPeriode || 'all';
+  const inPeriod = iso => periode==='all' || iso.slice(0,7)===periode;
+  const lignes = [];
+  DB.paiementsScolarite.filter(p=>inPeriod(p.date)).forEach(p=>{
+    lignes.push({date:p.date, type:'Entrée', categorie:'Scolarité', libelle:`${p.tranche} — ${eleveFullName(eleveById(p.eleveId)||{prenom:'—',nom:''})}`, montant:p.montant, mode:p.modePaiement});
+  });
+  DB.paiementsCotisations.filter(p=>inPeriod(p.date)).forEach(p=>{
+    const act = DB.activites.find(a=>a.id===p.activiteId);
+    lignes.push({date:p.date, type:'Entrée', categorie:'Activité extra-scolaire', libelle:`${act?act.nom:'—'} — ${eleveFullName(eleveById(p.eleveId)||{prenom:'—',nom:''})}`, montant:p.montant, mode:p.modePaiement});
+  });
+  DB.ventesGadgets.filter(v=>inPeriod(v.date)).forEach(v=>{
+    const g = DB.gadgets.find(x=>x.id===v.gadgetId);
+    lignes.push({date:v.date, type:'Entrée', categorie:'Boutique scolaire', libelle:`${g?g.nom:'—'} ×${v.quantite}`, montant:v.montantTotal, mode:v.modePaiement});
+  });
+  DB.paiementsSalaires.filter(p=>inPeriod(p.datePaiement)).forEach(p=>{
+    lignes.push({date:p.datePaiement, type:'Sortie', categorie:'Salaire', libelle:`${personnelNomById(p.personnelId,p.personnelType)} — ${moisLabel(p.mois)}`, montant:p.montant, mode:p.modePaiement});
+  });
+  DB.depenses.filter(d=>inPeriod(d.date)).forEach(d=>{
+    lignes.push({date:d.date, type:'Sortie', categorie:d.categorie, libelle:d.libelle, montant:d.montant, mode:d.modePaiement});
+  });
+  lignes.sort((a,b)=>a.date.localeCompare(b.date));
+
+  const echapperCSV = v => {
+    const s = String(v==null?'':v);
+    return /[",;\n]/.test(s) ? '"' + s.replace(/"/g,'""') + '"' : s;
+  };
+  const entetes = ['Date','Type','Catégorie','Libellé','Montant (FCFA)','Mode de paiement'];
+  const corps = lignes.map(l=>[l.date,l.type,l.categorie,l.libelle,l.montant,l.mode].map(echapperCSV).join(';'));
+  const csv = '﻿' + [entetes.join(';'), ...corps].join('\r\n');
+  const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `ecomaz-comptabilite-${periode==='all'?'toute-periode':periode}-${todayISO()}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+  toast(`Export CSV démarré — ${lignes.length} mouvement(s)`);
 }
 
 /* ---------------------------------------------------------------------
