@@ -208,6 +208,7 @@ const COMPTA_TABS = [
   {id:'depenses', label:'Charges & Dépenses', icon:'🏠'},
   {id:'journal', label:"Journal d'audit", icon:'📜'},
   {id:'annees', label:'Comparaison annuelle', icon:'📅'},
+  {id:'budget', label:'Budget prévisionnel', icon:'🎯'},
 ];
 
 /* --- Rôles / Interfaces --- */
@@ -2542,17 +2543,20 @@ function renderComptabilite(){
   const renderers = {
     apercu: renderComptaApercu, scolarite: renderComptaScolarite, activites: renderComptaActivites,
     ventes: renderComptaVentes, salaires: renderComptaSalaires, depenses: renderComptaDepenses,
-    journal: renderComptaJournal, annees: renderComptaAnnees,
+    journal: renderComptaJournal, annees: renderComptaAnnees, budget: renderComptaBudget,
   };
-  // Le journal d'audit et la comparaison annuelle (totaux globaux) sont
-  // réservés à Direction/Fondation, comme les totaux globaux ailleurs dans
-  // ce module — le Secrétariat saisit les paiements mais ne voit pas ça.
+  // Le journal d'audit, la comparaison annuelle et le budget (totaux
+  // globaux) sont réservés à Direction/Fondation, comme les totaux
+  // globaux ailleurs dans ce module — le Secrétariat saisit les paiements
+  // mais ne voit pas ça.
   const estAdmin = ui.role==='direction' || ui.role==='fondation';
-  const tabsVisibles = COMPTA_TABS.filter(t => (t.id!=='journal' && t.id!=='annees') || estAdmin);
+  const ongletsReserves = ['journal','annees','budget'];
+  const tabsVisibles = COMPTA_TABS.filter(t => !ongletsReserves.includes(t.id) || estAdmin);
+  const cacheAReinitialiser = {journal:'__journalComptaCache', budget:'__budgetsComptaCache'};
   return `
   <div class="view active">
     <div class="subtabs">
-      ${tabsVisibles.map(t=>`<button class="subtab ${tab===t.id?'active':''}" onclick="ui.filters.comptaTab='${t.id}'; ${t.id==='journal'?'__journalComptaCache=null; ':''}renderView('comptabilite')">${t.icon} ${t.label}</button>`).join('')}
+      ${tabsVisibles.map(t=>`<button class="subtab ${tab===t.id?'active':''}" onclick="ui.filters.comptaTab='${t.id}'; ${cacheAReinitialiser[t.id]?cacheAReinitialiser[t.id]+'=null; ':''}renderView('comptabilite')">${t.icon} ${t.label}</button>`).join('')}
     </div>
     ${(renderers[tab] || renderComptaApercu)()}
   </div>`;
@@ -2719,6 +2723,90 @@ function renderComptaAnnees(){
       ${annees.length===0 ? `<div class="empty-state"><div class="em-ic">📅</div>Aucun mouvement enregistré pour l'instant.</div>` : `
       <div class="table-wrap"><table><thead><tr><th>Année scolaire</th><th>Recettes</th><th>Dépenses</th><th>Résultat net</th></tr></thead><tbody>${rows}</tbody></table></div>`}
     </div>`;
+}
+
+/* ---------------------------------------------------------------------
+   12.1ter BUDGET PRÉVISIONNEL (ROADMAP COMPTABILITÉ — ÉTAPE 6)
+   Un montant "prévu" par catégorie et par mois (table budgets_comptables,
+   voir schema.sql section 25), comparé au "réalisé" déjà calculable à
+   partir des tables existantes — rien n'est dupliqué. Chargé à la demande
+   comme le Journal d'audit.
+   --------------------------------------------------------------------- */
+const CATEGORIES_RECETTES_BUDGET = ['Scolarité','Activités extra-scolaires','Boutique scolaire'];
+let __budgetsComptaCache = null;
+let __budgetsComptaMoisCache = null;
+async function chargerBudgetsCompta(mois){
+  try{
+    const { data, error } = await sb.from('budgets_comptables').select('*').eq('mois', mois);
+    if(error) throw error;
+    __budgetsComptaCache = data;
+  }catch(e){
+    __budgetsComptaCache = [];
+  }
+  __budgetsComptaMoisCache = mois;
+  if(ui.currentView==='comptabilite' && ui.filters.comptaTab==='budget') renderView('comptabilite');
+}
+function realiseCategorieBudget(type, categorie, mois){
+  const dansLeMois = iso => iso && iso.slice(0,7)===mois;
+  if(type==='recette'){
+    if(categorie==='Scolarité') return DB.paiementsScolarite.filter(p=>dansLeMois(p.date)).reduce((s,p)=>s+p.montant,0);
+    if(categorie==='Activités extra-scolaires') return DB.paiementsCotisations.filter(p=>dansLeMois(p.date)).reduce((s,p)=>s+p.montant,0);
+    if(categorie==='Boutique scolaire') return DB.ventesGadgets.filter(v=>dansLeMois(v.date)).reduce((s,v)=>s+v.montantTotal,0);
+    return 0;
+  }
+  if(categorie==='Salaires') return DB.paiementsSalaires.filter(p=>dansLeMois(p.datePaiement)).reduce((s,p)=>s+p.montant,0);
+  return DB.depenses.filter(d=>d.categorie===categorie && dansLeMois(d.date)).reduce((s,d)=>s+d.montant,0);
+}
+function renderComptaBudget(){
+  const mois = ui.filters.comptaMois || thisMonthISO();
+  ui.filters.comptaMois = mois;
+  if(__budgetsComptaCache===null || __budgetsComptaMoisCache!==mois){
+    chargerBudgetsCompta(mois);
+    return `<div class="panel"><div class="hint" style="text-align:center;padding:40px 10px;">Chargement…</div></div>`;
+  }
+  const ligne = (type, categorie) => {
+    const b = __budgetsComptaCache.find(x=>x.type===type && x.categorie===categorie);
+    const prevu = b ? b.montant : 0;
+    const realise = realiseCategorieBudget(type, categorie, mois);
+    const ecart = realise - prevu;
+    const bon = type==='recette' ? ecart>=0 : ecart<=0;
+    return `<tr>
+      <td>${categorie}</td>
+      <td><input type="number" min="0" step="1000" value="${prevu}" onchange="handleSaveBudget('${type}','${categorie}','${mois}',this.value)" style="width:110px;"></td>
+      <td>${fmtFCFA(realise)}</td>
+      <td style="font-weight:700;color:${bon?'var(--green)':'var(--red)'};">${ecart>=0?'+':''}${fmtFCFA(ecart)}</td>
+    </tr>`;
+  };
+  const rowsRecettes = CATEGORIES_RECETTES_BUDGET.map(c=>ligne('recette', c)).join('');
+  const rowsDepenses = ['Salaires', ...CATEGORIES_DEPENSES].map(c=>ligne('depense', c)).join('');
+
+  return `
+    <div class="section-note">🎯 Fixe un montant prévu par catégorie pour le mois choisi — comparé automatiquement au réalisé. Modifie le champ "Prévu" : ça s'enregistre aussitôt.</div>
+    <div class="filters">
+      <select onchange="ui.filters.comptaMois=this.value; __budgetsComptaCache=null; renderView('comptabilite')">${lastNMonths(6).map(m=>`<option value="${m}" ${mois===m?'selected':''}>${moisLabel(m)}</option>`).join('')}</select>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><div><h2>Recettes — ${moisLabel(mois)}</h2></div></div>
+      <div class="table-wrap"><table><thead><tr><th>Catégorie</th><th>Prévu</th><th>Réalisé</th><th>Écart</th></tr></thead><tbody>${rowsRecettes}</tbody></table></div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><div><h2>Dépenses — ${moisLabel(mois)}</h2></div></div>
+      <div class="table-wrap"><table><thead><tr><th>Catégorie</th><th>Prévu</th><th>Réalisé</th><th>Écart</th></tr></thead><tbody>${rowsDepenses}</tbody></table></div>
+    </div>`;
+}
+async function handleSaveBudget(type, categorie, mois, valeurStr){
+  const montant = Math.max(0, parseInt(valeurStr)||0);
+  try{
+    const existant = __budgetsComptaCache.find(x=>x.type===type && x.categorie===categorie);
+    if(existant){
+      await dbUpdate('budgets_comptables', existant.id, {montant});
+      existant.montant = montant;
+    } else {
+      const rec = await dbInsert('budgets_comptables', {type, categorie, mois, montant});
+      __budgetsComptaCache.push(rec);
+    }
+    toast('Budget enregistré');
+  }catch(e){ alert('Erreur : ' + e.message); }
 }
 
 /* --- 12.2 Scolarité --- */

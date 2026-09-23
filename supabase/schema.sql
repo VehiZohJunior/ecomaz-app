@@ -757,3 +757,28 @@ create policy "lecture journal_compta" on journal_compta for select
   using (est_admin() and ecole_id = mon_ecole_id());
 
 create policy "acces support developpeur" on journal_compta for select using (developpeur_a_acces(ecole_id));
+
+-- =====================================================================
+-- 25. BUDGET PRÉVISIONNEL (ROADMAP COMPTABILITÉ — ÉTAPE 6)
+-- Permet à Direction/Fondation de fixer, mois par mois et catégorie par
+-- catégorie, un montant prévu — comparé ensuite au réalisé (déjà calculé
+-- à partir des tables existantes, aucune donnée dupliquée ici). Réservé
+-- à Direction/Fondation, comme les autres totaux globaux du module.
+-- =====================================================================
+create table if not exists budgets_comptables (
+  id uuid primary key default gen_random_uuid(),
+  ecole_id uuid not null references ecoles(id) on delete cascade default mon_ecole_id(),
+  type text not null check (type in ('recette','depense')),
+  categorie text not null,
+  mois text not null,
+  montant numeric not null default 0,
+  created_at timestamptz default now(),
+  unique (ecole_id, type, categorie, mois)
+);
+alter table budgets_comptables enable row level security;
+
+create policy "gestion budgets_comptables" on budgets_comptables for all
+  using (est_admin() and ecole_id = mon_ecole_id())
+  with check (est_admin() and ecole_id = mon_ecole_id());
+
+create policy "acces support developpeur" on budgets_comptables for select using (developpeur_a_acces(ecole_id));
