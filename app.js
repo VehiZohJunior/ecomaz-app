@@ -1485,6 +1485,9 @@ async function saveBulletinComment(eleveId, trimestre){
    --------------------------------------------------------------------- */
 function renderNotes(){
   const mesClasses = classesVisibles();
+  if(mesClasses.length === 0){
+    return `<div class="view active"><div class="panel"><div class="empty-state"><div class="em-ic">📝</div>Aucune classe configurée pour le moment. Activez au moins un niveau scolaire dans Paramètres pour commencer à saisir des notes.</div></div></div>`;
+  }
   const f = ui.filters.notes || {classeId: mesClasses[0].id, matiere:'', trimestre:'Trimestre 1'};
   if(!mesClasses.some(c=>c.id===f.classeId)) f.classeId = mesClasses[0].id;
   if(!f.matiere) f.matiere = MATIERES_BY_CYCLE[classeCycle(f.classeId)][0];
@@ -1559,6 +1562,9 @@ async function saveNotesTable(){
    --------------------------------------------------------------------- */
 function renderPresencesEleves(){
   const mesClasses = classesVisibles();
+  if(mesClasses.length === 0){
+    return `<div class="view active"><div class="panel"><div class="empty-state"><div class="em-ic">✅</div>Aucune classe configurée pour le moment. Activez au moins un niveau scolaire dans Paramètres pour commencer à faire l'appel.</div></div></div>`;
+  }
   const f = ui.filters.presEleves || {classeId: mesClasses[0].id, date: todayISO()};
   if(!mesClasses.some(c=>c.id===f.classeId)) f.classeId = mesClasses[0].id;
   ui.filters.presEleves = f;
@@ -2173,6 +2179,9 @@ function ouvrirBadgesQR(){
    --------------------------------------------------------------------- */
 function renderEmploiTemps(){
   const mesClasses = classesVisibles();
+  if(mesClasses.length === 0){
+    return `<div class="view active"><div class="panel"><div class="empty-state"><div class="em-ic">🗓️</div>Aucune classe configurée pour le moment. Activez au moins un niveau scolaire dans Paramètres pour commencer à préparer un emploi du temps.</div></div></div>`;
+  }
   let classeId = ui.filters.ttClasse || mesClasses[0].id;
   if(!mesClasses.some(c=>c.id===classeId)) classeId = mesClasses[0].id;
   ui.filters.ttClasse = classeId;
@@ -2343,6 +2352,10 @@ function renderProgrammes(){
 function openProgrammeForm(id){
   const p = id ? DB.programmes.find(x=>x.id===id) : null;
   const mesClasses = classesVisibles();
+  if(!p && mesClasses.length === 0){
+    toast("Aucune classe configurée — activez d'abord un niveau scolaire dans Paramètres.");
+    return;
+  }
   const classeId = p ? p.classeId : mesClasses[0].id;
   const cycle = classeCycle(classeId);
   openModal(p ? 'Modifier le programme' : 'Nouveau programme', `
@@ -2626,6 +2639,9 @@ function renderComptaApercu(){
 
 /* --- 12.2 Scolarité --- */
 function renderComptaScolarite(){
+  if(DB.classes.length === 0){
+    return `<div class="panel"><div class="empty-state"><div class="em-ic">🎓</div>Aucune classe configurée pour le moment. Activez au moins un niveau scolaire dans <strong>Paramètres</strong> pour commencer à suivre la scolarité.</div></div>`;
+  }
   const classeId = ui.filters.comptaClasse || DB.classes[0].id;
   ui.filters.comptaClasse = classeId;
   const du = DB.fraisScolarite[classeId] || 0;
