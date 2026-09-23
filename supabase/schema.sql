@@ -845,3 +845,36 @@ from fne_config
 where ecole_id = mon_ecole_id() or developpeur_a_acces(ecole_id);
 
 grant select on fne_config_lecture to authenticated;
+
+-- =====================================================================
+-- 28. TVA (ROADMAP COMPTABILITÉ — ÉTAPE 9, DERNIÈRE)
+-- IMPORTANT (voir échange du 2026-09-24) : l'activité d'enseignement est
+-- exonérée de TVA dans le CGI ivoirien, mais l'assujettissement dépend
+-- du régime fiscal de l'école (forfaitaire/RSI/réel selon le chiffre
+-- d'affaires) et certaines recettes (boutique scolaire notamment) ne
+-- sont probablement PAS exonérées même quand la scolarité l'est. Rien
+-- ici n'est un calcul certifié — seulement une aide de calcul que
+-- l'école doit valider avec son comptable. Par défaut : assujetti_tva =
+-- false, donc AUCUN comportement existant ne change tant que l'école ne
+-- l'active pas explicitement.
+-- =====================================================================
+alter table ecoles add column if not exists assujetti_tva boolean not null default false;
+alter table ecoles add column if not exists taux_tva numeric not null default 18;
+
+-- Réutilise comptes_syscohada (section 26) : chaque catégorie de recette
+-- porte déjà un code SYSCOHADA, on lui ajoute juste si la TVA s'y
+-- applique. Par défaut (colonne absente sur les lignes déjà créées) :
+-- false, donc rien ne change tant que Direction/Fondation ne l'active
+-- pas ligne par ligne dans Paramètres.
+alter table comptes_syscohada add column if not exists tva_applicable boolean not null default false;
+
+-- comptes_syscohada est réservé à Direction/Fondation en lecture directe
+-- (section 26) — mais TOUT LE PERSONNEL doit savoir si la TVA s'applique
+-- à une catégorie pour imprimer un reçu juste (Secrétariat compris). Vue
+-- minimale, comme fne_config_lecture/enseignants_lecture.
+create or replace view tva_categories_lecture as
+select categorie, tva_applicable
+from comptes_syscohada
+where type = 'recette' and (ecole_id = mon_ecole_id() or developpeur_a_acces(ecole_id));
+
+grant select on tva_categories_lecture to authenticated;
