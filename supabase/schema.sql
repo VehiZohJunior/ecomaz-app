@@ -627,3 +627,133 @@ create policy "acces bulletins" on bulletins_commentaires for all using (
 alter table notes drop constraint if exists notes_valeur_coherente;
 alter table notes add constraint notes_valeur_coherente
   check (note is null or (note >= 0 and note <= note_sur));
+
+-- =====================================================================
+-- 21. CORRECTIF AUDIT SÉCURITÉ — fuite de colonnes sensibles sur
+-- "enseignants" : la policy "lecture enseignants tous" laissait N'IMPORTE
+-- QUEL compte de l'école (y compris un simple enseignant) lire le
+-- téléphone, l'email, le SALAIRE et le jeton QR de pointage de TOUS ses
+-- collègues via un appel direct à l'API — alors que l'interface ne montre
+-- jamais ces champs à un enseignant. Le jeton QR est particulièrement
+-- sensible : c'est l'équivalent d'un "mot de passe" de pointage, le lire
+-- permettrait de recréer le badge d'un collègue et de pointer à sa place.
+--
+-- Correctif en deux temps :
+-- 1) La table de base "enseignants" n'est plus lisible directement que
+--    par le personnel administratif (secretariat/direction/fondation).
+-- 2) Une VUE "enseignants_lecture" est créée pour l'usage courant de
+--    l'application (afficher un nom de titulaire, une liste d'ensei-
+--    gnants dans l'emploi du temps, etc.) : elle masque automatiquement
+--    (renvoie null) téléphone/email/salaire/jeton QR pour tout le monde
+--    SAUF le personnel administratif — la même requête renvoie donc les
+--    vraies valeurs pour Direction/Fondation/Secrétariat, et des valeurs
+--    masquées pour un compte enseignant, sans qu'aucun changement ne
+--    soit nécessaire dans le reste de l'application.
+-- =====================================================================
+drop policy if exists "lecture enseignants tous" on enseignants;
+create policy "lecture enseignants tous" on enseignants for select using (ecole_id = mon_ecole_id() and est_perso_admin());
+
+create or replace view enseignants_lecture as
+select
+  id, ecole_id, matricule, nom, prenom, sexe,
+  case when est_perso_admin() then telephone else null end as telephone,
+  case when est_perso_admin() then email else null end as email,
+  classes_assignees, matieres, date_embauche, statut,
+  case when est_perso_admin() then salaire_mensuel else null end as salaire_mensuel,
+  case when est_perso_admin() then qr_token else null end as qr_token
+from enseignants
+where ecole_id = mon_ecole_id() or developpeur_a_acces(ecole_id);
+
+grant select on enseignants_lecture to authenticated;
+
+-- =====================================================================
+-- 22. CORRECTIF AUDIT SÉCURITÉ — le numéro de téléphone du parent
+-- (eleves.parent_tel) devait auparavant transiter par le navigateur pour
+-- que l'appel d'un élève absent déclenche le SMS : n'importe quel compte
+-- pouvant marquer une présence gardait donc ce numéro en mémoire côté
+-- client (accessible via la console du navigateur), même s'il n'était
+-- jamais affiché à l'écran pour un enseignant.
+--
+-- Corrigé en déplaçant TOUTE la logique de notification d'absence côté
+-- serveur : voir supabase/functions/notifier-absence-eleve/index.ts.
+-- Le client n'envoie plus que { eleveId, date, motif } ; la fonction lit
+-- le numéro du parent avec la clé service_role, compose le message,
+-- journalise les destinataires et envoie le SMS réel — sans jamais
+-- renvoyer le numéro au navigateur. Elle vérifie aussi qu'un compte
+-- enseignant relié à une fiche précise ne peut notifier que pour SES
+-- classes assignées (même garde-fou que pour la lecture des notes).
+--
+-- Aucune modification de policy RLS nécessaire ici : la fonction utilise
+-- la clé service_role (qui contourne volontairement RLS, comme pour la
+-- création/suppression d'école), après avoir vérifié elle-même les
+-- droits de l'appelant.
+-- =====================================================================
+
+-- =====================================================================
+-- 23. SURVEILLANCE TECHNIQUE (PHASE 1 — DIAGNOSTIC 2026-09-22)
+-- Jusqu'ici, une erreur technique chez un client n'était connue que si
+-- le client la signalait lui-même. Cette table enregistre automatique-
+-- ment chaque erreur JavaScript rencontrée dans l'appli, consultable par
+-- le développeur (SQL Editor, ou une future page dans la Console).
+-- =====================================================================
+create table if not exists erreurs_client (
+  id uuid primary key default gen_random_uuid(),
+  ecole_id uuid references ecoles(id) on delete cascade,
+  user_id uuid references auth.users(id) on delete set null,
+  role text,
+  message text not null,
+  pile text,
+  page text,
+  user_agent text,
+  created_at timestamptz default now()
+);
+alter table erreurs_client enable row level security;
+
+-- N'importe quel compte connecté peut journaliser UNE erreur (nécessaire
+-- puisque l'erreur peut survenir avant que l'école soit chargée), mais
+-- seulement pour sa propre école si elle est renseignée — impossible de
+-- polluer le journal d'une autre école.
+create policy "creation erreurs_client" on erreurs_client for insert
+  with check (auth.uid() is not null and (ecole_id is null or ecole_id = mon_ecole_id()));
+
+-- Seul le développeur consulte ce journal (diagnostic technique global,
+-- pas une donnée métier d'une école).
+create policy "lecture erreurs_client" on erreurs_client for select using (est_developpeur());
+
+-- =====================================================================
+-- 24. PISTE D'AUDIT COMPTABLE (ROADMAP COMPTABILITÉ — ÉTAPE 1)
+-- Jusqu'ici, supprimer un paiement/une dépense ne laissait aucune trace :
+-- impossible de savoir qui a supprimé quoi, quand, ni ce qu'il y avait
+-- avant. Cette table enregistre chaque création/modification/suppression
+-- des mouvements financiers (scolarité, activités, boutique, salaires,
+-- dépenses). Elle est volontairement IMMUABLE : aucune policy update/
+-- delete n'existe ci-dessous, donc même la Direction ne peut jamais
+-- altérer ou effacer une ligne du journal une fois écrite.
+-- =====================================================================
+create table if not exists journal_compta (
+  id uuid primary key default gen_random_uuid(),
+  ecole_id uuid not null references ecoles(id) on delete cascade default mon_ecole_id(),
+  table_cible text not null,
+  enregistrement_id uuid not null,
+  action text not null check (action in ('creation','modification','suppression')),
+  donnees_avant jsonb,
+  donnees_apres jsonb,
+  auteur_id uuid references auth.users(id) on delete set null default auth.uid(),
+  auteur_nom text default '',
+  auteur_role text default '',
+  created_at timestamptz default now()
+);
+alter table journal_compta enable row level security;
+
+-- Le personnel administratif (secrétariat/direction/fondation) peut écrire
+-- une entrée dans le journal, uniquement pour sa propre école — jamais
+-- au nom d'une autre école.
+create policy "creation journal_compta" on journal_compta for insert
+  with check (est_perso_admin() and ecole_id = mon_ecole_id());
+
+-- Seuls Direction/Fondation consultent le journal (comme les totaux
+-- financiers globaux, déjà masqués au Secrétariat ailleurs dans l'appli).
+create policy "lecture journal_compta" on journal_compta for select
+  using (est_admin() and ecole_id = mon_ecole_id());
+
+create policy "acces support developpeur" on journal_compta for select using (developpeur_a_acces(ecole_id));

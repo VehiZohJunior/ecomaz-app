@@ -206,6 +206,7 @@ const COMPTA_TABS = [
   {id:'ventes', label:'Boutique scolaire', icon:'🛍️'},
   {id:'salaires', label:'Salaires', icon:'💵'},
   {id:'depenses', label:'Charges & Dépenses', icon:'🏠'},
+  {id:'journal', label:"Journal d'audit", icon:'📜'},
 ];
 
 /* --- Rôles / Interfaces --- */
@@ -2540,11 +2541,16 @@ function renderComptabilite(){
   const renderers = {
     apercu: renderComptaApercu, scolarite: renderComptaScolarite, activites: renderComptaActivites,
     ventes: renderComptaVentes, salaires: renderComptaSalaires, depenses: renderComptaDepenses,
+    journal: renderComptaJournal,
   };
+  // Le journal d'audit financier (qui a créé/modifié/supprimé quoi) est
+  // réservé à Direction/Fondation, comme les totaux globaux ailleurs dans
+  // ce module — le Secrétariat saisit les paiements mais ne voit pas ça.
+  const tabsVisibles = COMPTA_TABS.filter(t => t.id!=='journal' || ui.role==='direction' || ui.role==='fondation');
   return `
   <div class="view active">
     <div class="subtabs">
-      ${COMPTA_TABS.map(t=>`<button class="subtab ${tab===t.id?'active':''}" onclick="ui.filters.comptaTab='${t.id}'; renderView('comptabilite')">${t.icon} ${t.label}</button>`).join('')}
+      ${tabsVisibles.map(t=>`<button class="subtab ${tab===t.id?'active':''}" onclick="ui.filters.comptaTab='${t.id}'; ${t.id==='journal'?'__journalComptaCache=null; ':''}renderView('comptabilite')">${t.icon} ${t.label}</button>`).join('')}
     </div>
     ${(renderers[tab] || renderComptaApercu)()}
   </div>`;
@@ -2754,6 +2760,7 @@ async function handleSavePaiementScolarite(ev, eleveId){
   try{
     const rec = await dbInsert('paiements_scolarite', patch);
     DB.paiementsScolarite.push(rec);
+    journaliserCompta('paiements_scolarite', rec.id, 'creation', null, rec);
     toast('Paiement enregistré');
     renderView('comptabilite');
     const e = eleveById(eleveId);
@@ -2774,8 +2781,10 @@ function voirHistoriqueScolarite(eleveId){
 async function deletePaiementScolarite(id, eleveId){
   if(!confirm('Supprimer ce paiement ?')) return;
   try{
+    const avant = DB.paiementsScolarite.find(p=>p.id===id) || null;
     await dbDelete('paiements_scolarite', id);
     DB.paiementsScolarite = DB.paiementsScolarite.filter(p=>p.id!==id);
+    journaliserCompta('paiements_scolarite', id, 'suppression', avant, null);
     toast('Paiement supprimé');
     voirHistoriqueScolarite(eleveId);
     renderView('comptabilite');
@@ -3186,6 +3195,7 @@ async function payerSalaire(personnelId, personnelType, mois, montant){
   try{
     const rec = await dbInsert('paiements_salaires', {personnelId, personnelType, mois, montant:parseFloat(montant), datePaiement: todayISO(), modePaiement:'Virement bancaire'});
     DB.paiementsSalaires.push(rec);
+    journaliserCompta('paiements_salaires', rec.id, 'creation', null, rec);
     toast('Salaire payé');
     renderView('comptabilite');
     openRecu({type:'sortie', refId:rec.id, montant:rec.montant, date:rec.datePaiement, modePaiement:rec.modePaiement, objet:`Salaire — ${moisLabel(mois)}`, personne: personnelNomById(personnelId, personnelType)});
@@ -3199,8 +3209,10 @@ function reimprimerRecuSalaire(paiementId){
 async function annulerPaiementSalaire(id){
   if(!confirm('Annuler ce paiement de salaire ?')) return;
   try{
+    const avant = DB.paiementsSalaires.find(p=>p.id===id) || null;
     await dbDelete('paiements_salaires', id);
     DB.paiementsSalaires = DB.paiementsSalaires.filter(p=>p.id!==id);
+    journaliserCompta('paiements_salaires', id, 'suppression', avant, null);
     toast('Paiement annulé');
     renderView('comptabilite');
   }catch(e){ alert('Erreur : ' + e.message); }
@@ -3215,7 +3227,9 @@ async function payerToutLePersonnel(mois){
   if(!confirm(`Payer ${restants.length} employé(s) pour ${moisLabel(mois)} — total ${fmtFCFA(restants.reduce((s,p)=>s+p.salaire,0))} ?`)) return;
   try{
     const rows = restants.map(p=>({personnelId:p.id, personnelType:p.type, mois, montant:p.salaire, datePaiement: todayISO(), modePaiement:'Virement bancaire'}));
-    DB.paiementsSalaires.push(...await dbInsertMany('paiements_salaires', rows));
+    const inseres = await dbInsertMany('paiements_salaires', rows);
+    DB.paiementsSalaires.push(...inseres);
+    inseres.forEach(rec => journaliserCompta('paiements_salaires', rec.id, 'creation', null, rec));
     toast('Salaires payés');
     renderView('comptabilite');
   }catch(e){ alert('Erreur : ' + e.message); }
@@ -3283,13 +3297,16 @@ async function handleSaveDepense(ev, id){
   try{
     let obj;
     if(id){
+      const avant = DB.depenses.find(x=>x.id===id) || null;
       await dbUpdate('depenses', id, patch);
       obj = {id, ...patch};
       const idx = DB.depenses.findIndex(x=>x.id===id);
       DB.depenses[idx] = obj;
+      journaliserCompta('depenses', id, 'modification', avant, obj);
     } else {
       obj = await dbInsert('depenses', patch);
       DB.depenses.push(obj);
+      journaliserCompta('depenses', obj.id, 'creation', null, obj);
     }
     toast('Dépense enregistrée');
     renderView('comptabilite');
@@ -3301,8 +3318,10 @@ async function handleSaveDepense(ev, id){
 async function deleteDepense(id){
   if(!confirm('Supprimer cette dépense ?')) return;
   try{
+    const avant = DB.depenses.find(d=>d.id===id) || null;
     await dbDelete('depenses', id);
     DB.depenses = DB.depenses.filter(d=>d.id!==id);
+    journaliserCompta('depenses', id, 'suppression', avant, null);
     toast('Dépense supprimée');
     renderView('comptabilite');
   }catch(e){ alert('Erreur : ' + e.message); }
@@ -3316,6 +3335,7 @@ async function payerLoyerDuMois(){
   try{
     const rec = await dbInsert('depenses', {categorie:'Loyer', libelle:`Loyer mensuel — ${moisLabel(thisMonthISO())}`, montant: DB.meta.loyerMensuel, date: todayISO(), modePaiement:'Virement bancaire'});
     DB.depenses.push(rec);
+    journaliserCompta('depenses', rec.id, 'creation', null, rec);
     toast('Loyer enregistré');
     renderView('comptabilite');
     openRecu({type:'sortie', refId:rec.id, montant:rec.montant, date:rec.date, modePaiement:rec.modePaiement, objet:rec.libelle, personne:'—', sousInfo:'Loyer'});
@@ -3343,7 +3363,59 @@ async function handleSaveLoyerConfig(ev){
 }
 
 /* ---------------------------------------------------------------------
-   12.7 MESSAGERIE (notifications automatiques d'absence/retard)
+   12.7 JOURNAL D'AUDIT COMPTABLE (voir journaliserCompta plus haut et
+   schema.sql section 24) — qui a créé/modifié/supprimé un mouvement
+   financier, et quand. Chargé à la demande (pas au démarrage) car ce
+   n'est pas une donnée nécessaire au fonctionnement quotidien.
+   --------------------------------------------------------------------- */
+let __journalComptaCache = null;
+let __journalComptaChargement = false;
+async function chargerJournalCompta(){
+  if(__journalComptaChargement) return;
+  __journalComptaChargement = true;
+  try{
+    const { data, error } = await sb.from('journal_compta').select('*').order('created_at', {ascending:false}).limit(200);
+    if(error) throw error;
+    __journalComptaCache = data;
+  }catch(e){
+    __journalComptaCache = [];
+  }finally{
+    __journalComptaChargement = false;
+    if(ui.currentView==='comptabilite' && ui.filters.comptaTab==='journal') renderView('comptabilite');
+  }
+}
+const LABELS_ACTION_JOURNAL = {creation:'Création', modification:'Modification', suppression:'Suppression'};
+const LABELS_TABLE_JOURNAL = {
+  paiements_scolarite:'Paiement scolarité', paiements_cotisations:'Cotisation activité',
+  ventes_gadgets:'Vente boutique', paiements_salaires:'Salaire', depenses:'Dépense',
+};
+function renderComptaJournal(){
+  if(__journalComptaCache===null){
+    chargerJournalCompta();
+    return `<div class="panel"><div class="hint" style="text-align:center;padding:40px 10px;">Chargement du journal…</div></div>`;
+  }
+  const rows = __journalComptaCache.map(j=>{
+    const montantAvant = j.donnees_avant?.montant, montantApres = j.donnees_apres?.montant;
+    const badgeColor = j.action==='creation' ? 'green' : j.action==='suppression' ? 'red' : 'amber';
+    return `<tr>
+      <td>${fmtDate(j.created_at.slice(0,10))} <span class="hint">${j.created_at.slice(11,16)}</span></td>
+      <td><span class="badge ${badgeColor}">${LABELS_ACTION_JOURNAL[j.action]||j.action}</span></td>
+      <td>${LABELS_TABLE_JOURNAL[j.table_cible]||j.table_cible}</td>
+      <td>${j.action==='modification' ? `${fmtFCFA(montantAvant||0)} → ${fmtFCFA(montantApres||0)}` : fmtFCFA(montantApres!=null?montantApres:(montantAvant||0))}</td>
+      <td>${escapeHtml(j.auteur_nom||'—')} <span class="hint">(${j.auteur_role||'—'})</span></td>
+    </tr>`;
+  }).join('');
+  return `
+    <div class="section-note">📜 Historique en lecture seule, immuable : chaque création, modification ou suppression d'un mouvement financier (scolarité, salaires, dépenses) est enregistrée ici automatiquement, avec l'auteur et l'horodatage. Rien ici ne peut être modifié ou effacé.</div>
+    <div class="panel">
+      <div class="panel-head"><div><h2>Journal d'audit</h2><div class="sub">${__journalComptaCache.length} entrée(s) — 200 plus récentes</div></div></div>
+      ${__journalComptaCache.length===0 ? `<div class="empty-state"><div class="em-ic">📜</div>Aucune opération enregistrée pour l'instant.</div>` : `
+      <div class="table-wrap"><table><thead><tr><th>Date</th><th>Action</th><th>Mouvement</th><th>Montant</th><th>Par</th></tr></thead><tbody>${rows}</tbody></table></div>`}
+    </div>`;
+}
+
+/* ---------------------------------------------------------------------
+   12.8 MESSAGERIE (notifications automatiques d'absence/retard)
    --------------------------------------------------------------------- */
 function renderMessagerie(){
   const typeFilter = ui.filters.msgType || '';
@@ -3740,6 +3812,27 @@ window.addEventListener('error', (ev) => {
 window.addEventListener('unhandledrejection', (ev) => {
   journaliserErreurClient('Promise rejetée : ' + (ev.reason?.message || ev.reason), ev.reason?.stack);
 });
+
+/* ---------------------------------------------------------------------
+   12ter. PISTE D'AUDIT COMPTABLE — journalise chaque création/modification/
+   suppression d'un mouvement financier dans "journal_compta" (voir
+   schema.sql section 24), pour qu'on sache toujours qui a fait quoi et
+   quand. Best-effort comme la surveillance technique : ne doit jamais
+   empêcher l'action comptable elle-même de réussir.
+   --------------------------------------------------------------------- */
+async function journaliserCompta(tableCible, enregistrementId, action, donneesAvant, donneesApres){
+  try{
+    await sb.from('journal_compta').insert({
+      table_cible: tableCible,
+      enregistrement_id: enregistrementId,
+      action,
+      donnees_avant: donneesAvant || null,
+      donnees_apres: donneesApres || null,
+      auteur_nom: session?.nomComplet || '',
+      auteur_role: session?.role || '',
+    });
+  }catch(_e){ /* piste d'audit best-effort : ne jamais bloquer une opération comptable pour ça */ }
+}
 
 /* ---------------------------------------------------------------------
    13. INITIALISATION
