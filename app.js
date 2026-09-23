@@ -2773,10 +2773,44 @@ function voirHistoriqueScolarite(eleveId){
   const paiements = DB.paiementsScolarite.filter(p=>p.eleveId===eleveId).sort((a,b)=>b.date.localeCompare(a.date));
   const rows = paiements.map(p=>`<tr><td>${fmtDate(p.date)}</td><td>${p.tranche}</td><td class="amount in">${fmtFCFA(p.montant)}</td><td>${p.modePaiement}</td>
     <td style="white-space:nowrap;"><button class="icon-btn" title="Reçu" onclick="openRecu({type:'entree', refId:'${p.id}', montant:${p.montant}, date:'${p.date}', modePaiement:'${p.modePaiement}', objet:'Scolarité — ${p.tranche}', personne:'${escapeHtml(eleveFullName(e))}', sousInfo:'${escapeHtml(classeName(e.classeId))}'})">🧾</button>
-    <button class="icon-btn danger" onclick="deletePaiementScolarite('${p.id}','${eleveId}')">🗑️</button></td></tr>`).join('');
+    <button class="icon-btn" title="Modifier" onclick="openModifierPaiementScolariteForm('${p.id}')">✏️</button>
+    <button class="icon-btn danger" title="Supprimer" onclick="deletePaiementScolarite('${p.id}','${eleveId}')">🗑️</button></td></tr>`).join('');
   openModal(`Historique scolarité — ${eleveFullName(e)}`, `
     <div class="table-wrap"><table><thead><tr><th>Date</th><th>Tranche</th><th>Montant</th><th>Mode</th><th></th></tr></thead>
     <tbody>${rows || '<tr><td colspan="5" class="hint">Aucun paiement enregistré</td></tr>'}</tbody></table></div>`);
+}
+function openModifierPaiementScolariteForm(paiementId){
+  const p = DB.paiementsScolarite.find(x=>x.id===paiementId);
+  if(!p) return;
+  openModal('Modifier le paiement', `
+    <div class="section-note">✏️ La correction sera enregistrée dans le Journal d'audit, avec le montant avant/après.</div>
+    <form onsubmit="return handleModifierPaiementScolarite(event,'${paiementId}')">
+      <div class="form-grid">
+        <div class="field"><label>Montant (${DEVISE})</label><input type="number" name="montant" min="500" step="500" required value="${p.montant}"></div>
+        <div class="field"><label>Échéance / Tranche</label><select name="tranche">${optionsEcheancesScolarite(p.tranche)}</select></div>
+        <div class="field"><label>Date</label><input type="date" name="date" value="${p.date}"></div>
+        <div class="field"><label>Mode de paiement</label><select name="modePaiement">${MODES_PAIEMENT.map(m=>`<option ${p.modePaiement===m?'selected':''}>${m}</option>`).join('')}</select></div>
+      </div>
+      <div class="form-actions"><button type="button" class="btn secondary" onclick="closeModal()">Annuler</button><button type="submit" class="btn">Enregistrer la correction</button></div>
+    </form>`);
+}
+async function handleModifierPaiementScolarite(ev, paiementId){
+  ev.preventDefault();
+  const fd = new FormData(ev.target);
+  const eleveId = DB.paiementsScolarite.find(x=>x.id===paiementId)?.eleveId;
+  const patch = {montant: Math.max(0, parseInt(fd.get('montant'))||0), tranche: fd.get('tranche'), date: fd.get('date')||todayISO(), modePaiement: fd.get('modePaiement')};
+  try{
+    const avant = DB.paiementsScolarite.find(x=>x.id===paiementId);
+    await dbUpdate('paiements_scolarite', paiementId, patch);
+    const idx = DB.paiementsScolarite.findIndex(x=>x.id===paiementId);
+    const apres = {...avant, ...patch};
+    DB.paiementsScolarite[idx] = apres;
+    journaliserCompta('paiements_scolarite', paiementId, 'modification', avant, apres);
+    toast('Paiement corrigé');
+    voirHistoriqueScolarite(eleveId);
+    renderView('comptabilite');
+  }catch(e){ alert('Erreur : ' + e.message); }
+  return false;
 }
 async function deletePaiementScolarite(id, eleveId){
   if(!confirm('Supprimer ce paiement ?')) return;
@@ -3117,7 +3151,7 @@ function renderComptaSalaires(){
       <td>${escapeHtml(p.nom)}</td><td>${escapeHtml(p.poste)}</td><td>${fmtFCFA(p.salaire)}</td>
       <td>${paiement ? `<span class="badge green">Payé le ${fmtDate(paiement.datePaiement)}</span>` : `<span class="badge red">En attente</span>`}</td>
       <td style="white-space:nowrap;">
-        ${paiement ? `<button class="icon-btn" title="Reçu" onclick="reimprimerRecuSalaire('${paiement.id}')">🧾</button><button class="icon-btn danger" title="Annuler le paiement" onclick="annulerPaiementSalaire('${paiement.id}')">✕</button>`
+        ${paiement ? `<button class="icon-btn" title="Reçu" onclick="reimprimerRecuSalaire('${paiement.id}')">🧾</button><button class="icon-btn" title="Modifier" onclick="openModifierPaiementSalaireForm('${paiement.id}')">✏️</button><button class="icon-btn danger" title="Annuler le paiement" onclick="annulerPaiementSalaire('${paiement.id}')">✕</button>`
                     : `<button class="btn sm" onclick="payerSalaire('${p.id}','${p.type}','${mois}',${p.salaire})">Payer</button>`}
         ${p.type==='autre' ? `<button class="icon-btn" title="Modifier" onclick="openPersonnelForm('${p.id}')">✏️</button><button class="icon-btn danger" title="Supprimer" onclick="deletePersonnel('${p.id}')">🗑️</button>` : ''}
       </td>
@@ -3216,6 +3250,36 @@ async function annulerPaiementSalaire(id){
     toast('Paiement annulé');
     renderView('comptabilite');
   }catch(e){ alert('Erreur : ' + e.message); }
+}
+function openModifierPaiementSalaireForm(paiementId){
+  const p = DB.paiementsSalaires.find(x=>x.id===paiementId);
+  if(!p) return;
+  openModal('Modifier le paiement de salaire', `
+    <div class="section-note">✏️ La correction sera enregistrée dans le Journal d'audit, avec le montant avant/après.</div>
+    <form onsubmit="return handleModifierPaiementSalaire(event,'${paiementId}')">
+      <div class="form-grid">
+        <div class="field"><label>Montant (${DEVISE})</label><input type="number" name="montant" min="0" step="1000" required value="${p.montant}"></div>
+        <div class="field"><label>Date de paiement</label><input type="date" name="datePaiement" value="${p.datePaiement}"></div>
+        <div class="field"><label>Mode de paiement</label><select name="modePaiement">${MODES_PAIEMENT.map(m=>`<option ${p.modePaiement===m?'selected':''}>${m}</option>`).join('')}</select></div>
+      </div>
+      <div class="form-actions"><button type="button" class="btn secondary" onclick="closeModal()">Annuler</button><button type="submit" class="btn">Enregistrer la correction</button></div>
+    </form>`);
+}
+async function handleModifierPaiementSalaire(ev, paiementId){
+  ev.preventDefault();
+  const fd = new FormData(ev.target);
+  const patch = {montant: Math.max(0, parseInt(fd.get('montant'))||0), datePaiement: fd.get('datePaiement')||todayISO(), modePaiement: fd.get('modePaiement')};
+  try{
+    const avant = DB.paiementsSalaires.find(x=>x.id===paiementId);
+    await dbUpdate('paiements_salaires', paiementId, patch);
+    const idx = DB.paiementsSalaires.findIndex(x=>x.id===paiementId);
+    const apres = {...avant, ...patch};
+    DB.paiementsSalaires[idx] = apres;
+    journaliserCompta('paiements_salaires', paiementId, 'modification', avant, apres);
+    closeModal(); toast('Paiement corrigé');
+    renderView('comptabilite');
+  }catch(e){ alert('Erreur : ' + e.message); }
+  return false;
 }
 async function payerToutLePersonnel(mois){
   const personnel = [
