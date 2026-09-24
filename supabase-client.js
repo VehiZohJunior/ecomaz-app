@@ -369,7 +369,7 @@ async function loadAllFromSupabase(){
     presencesEnseignants, emploiTemps, programmes, bulletinsRows,
     paiementsScolarite, activites, inscriptionsActivites, paiementsCotisations,
     gadgets, ventesGadgets, personnelAutre, paiementsSalaires, depenses, messages,
-    alertesPointage, echeancesScolarite, profiles, fneConfigRow, tvaCategories
+    alertesPointage, echeancesScolarite, profiles, fneConfigRow, tvaCategories, paiementEnLigneRow
   ] = await Promise.all([
     sb.from('ecoles').select('*').eq('id', session.ecoleId).single(),
     dbSelectAll('classes'),
@@ -406,6 +406,9 @@ async function loadAllFromSupabase(){
     // tva_categories_lecture : vue école-filtrée sans besoin d'ecole_id côté
     // client (voir schema.sql section 28), tolérante à son absence.
     dbSelectVue('tva_categories_lecture').catch(()=>[]),
+    // paiement_en_ligne_config_lecture : vue SANS les identifiants (voir
+    // schema.sql section 29), tolérante à son absence.
+    dbSelectUne('paiement_en_ligne_config_lecture').catch(()=>null),
   ]);
 
   if(ecoleRow.error) throw ecoleRow.error;
@@ -435,6 +438,7 @@ async function loadAllFromSupabase(){
       tauxTva: ecole.tauxTva != null ? ecole.tauxTva : 18,
     },
     tvaCategories,
+    paiementEnLigne: paiementEnLigneRow || {actif:false, prestataire:''},
     classes: classesRows,
     eleves, enseignants, notes, presencesEleves, presencesEnseignants,
     emploiTemps, programmes, bulletinsComments,

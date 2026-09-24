@@ -878,3 +878,63 @@ from comptes_syscohada
 where type = 'recette' and (ecole_id = mon_ecole_id() or developpeur_a_acces(ecole_id));
 
 grant select on tva_categories_lecture to authenticated;
+
+-- =====================================================================
+-- 29. PAIEMENT EN LIGNE MOBILE MONEY (préparation technique 2026-09-24)
+-- Objectif : un parent paie directement via un lien Mobile Money
+-- (CinetPay/PayDunya), sans passer par le personnel de l'école. Ceci ne
+-- câble PAS encore un vrai appel à un prestataire — voir app.js, la
+-- fonction genererLienPaiement affiche honnêtement "en attente de
+-- vérification finale de l'API" tant qu'aucune clé réelle n'a permis de
+-- tester contre le vrai prestataire. Les identifiants (clé API,
+-- site_id...) varient selon le prestataire choisi, donc stockés en JSON
+-- libre plutôt qu'en colonnes fixes.
+-- =====================================================================
+create table if not exists paiement_en_ligne_config (
+  ecole_id uuid primary key references ecoles(id) on delete cascade default mon_ecole_id(),
+  actif boolean not null default false,
+  prestataire text not null default '' check (prestataire in ('', 'cinetpay', 'paydunya')),
+  identifiants jsonb not null default '{}'::jsonb,
+  updated_at timestamptz default now()
+);
+alter table paiement_en_ligne_config enable row level security;
+
+create policy "gestion paiement_en_ligne_config" on paiement_en_ligne_config for all
+  using (est_admin() and ecole_id = mon_ecole_id())
+  with check (est_admin() and ecole_id = mon_ecole_id());
+
+create policy "acces support developpeur" on paiement_en_ligne_config for select using (developpeur_a_acces(ecole_id));
+
+-- Vue SANS les identifiants (comme fne_config_lecture) — tout le
+-- personnel doit savoir si le paiement en ligne est actif pour proposer
+-- le lien au parent, sans jamais voir la clé API.
+create or replace view paiement_en_ligne_config_lecture as
+select ecole_id, actif, prestataire, updated_at
+from paiement_en_ligne_config
+where ecole_id = mon_ecole_id() or developpeur_a_acces(ecole_id);
+
+grant select on paiement_en_ligne_config_lecture to authenticated;
+
+-- Historique des tentatives de paiement en ligne — statut mis à jour par
+-- le webhook du prestataire (futur Edge Function, pas encore déployé).
+-- Une fois "reussi", une ligne paiements_scolarite normale est créée
+-- automatiquement (même piste d'audit que les paiements saisis à la main).
+create table if not exists paiements_en_ligne (
+  id uuid primary key default gen_random_uuid(),
+  ecole_id uuid not null references ecoles(id) on delete cascade default mon_ecole_id(),
+  eleve_id uuid not null references eleves(id) on delete cascade,
+  tranche text not null,
+  montant numeric not null,
+  statut text not null default 'en_attente' check (statut in ('en_attente','reussi','echoue','expire')),
+  reference_prestataire text default '',
+  paiement_scolarite_id uuid references paiements_scolarite(id) on delete set null,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+alter table paiements_en_ligne enable row level security;
+
+create policy "creation paiements_en_ligne" on paiements_en_ligne for insert
+  with check (est_perso_admin() and ecole_id = mon_ecole_id());
+create policy "lecture paiements_en_ligne" on paiements_en_ligne for select
+  using (est_perso_admin() and ecole_id = mon_ecole_id());
+create policy "acces support developpeur" on paiements_en_ligne for select using (developpeur_a_acces(ecole_id));

@@ -3129,6 +3129,7 @@ function renderComptaScolarite(){
         <td class="amount ${info.reste>0?'out':''}" style="font-weight:800;">${fmtFCFA(info.reste)}</td>
         <td style="white-space:nowrap;">
           <button class="icon-btn" title="Historique" onclick="voirHistoriqueScolarite('${e.id}')">🧾</button>
+          ${info.reste>0 ? `<button class="icon-btn" title="Générer un lien de paiement pour le parent" onclick="genererLienPaiement('${e.id}', null, ${info.reste})">🔗</button>` : ''}
         </td>
       </tr>`;
     }
@@ -4087,6 +4088,11 @@ function renderParametres(){
     </div>
 
     <div class="panel">
+      <div class="panel-head"><div><h2>Paiement en ligne (Mobile Money)</h2><div class="sub">Permet à un parent de payer directement via un lien, sans passer par le personnel</div></div></div>
+      ${renderPaiementEnLigne()}
+    </div>
+
+    <div class="panel">
       <div class="panel-head"><div><h2>Accès &amp; Interfaces</h2><div class="sub">4 profils, avec des droits différents — chacun se connecte avec son propre email et mot de passe</div></div></div>
       <div class="grid-2" style="margin-bottom:14px;">
         <div class="hint">👩‍🏫 <strong>Enseignant(e)</strong> — Notes, présences élèves, emploi du temps, programmes. Pas d'accès aux élèves, à la comptabilité ni aux paramètres. Un compte enseignant peut être relié à une fiche précise (page Enseignants) pour ne voir que ses propres classes.</div>
@@ -4321,6 +4327,94 @@ async function handleSaveTvaCategorie(categorie, checked){
     }
     toast('TVA mise à jour pour ' + categorie);
   }catch(e){ alert('Erreur : ' + e.message); }
+}
+
+/* ---------------------------------------------------------------------
+   PAIEMENT EN LIGNE MOBILE MONEY (préparation technique — voir
+   schema.sql section 29). Les champs d'identifiants affichés changent
+   selon le prestataire, stockés en JSON libre (identifiants). L'appel
+   réel au prestataire n'est PAS câblé tant que son API n'a pas été
+   vérifiée avec de vraies clés — voir genererLienPaiement plus bas.
+   --------------------------------------------------------------------- */
+const CHAMPS_IDENTIFIANTS_PRESTATAIRE = {
+  cinetpay: [{cle:'apiKey', label:'API Key'}, {cle:'siteId', label:'Site ID'}],
+  paydunya: [{cle:'masterKey', label:'Master Key'}, {cle:'privateKey', label:'Private Key'}, {cle:'token', label:'Token'}],
+};
+let __identifiantsPaiementEnLigneCache = null;
+async function chargerIdentifiantsPaiementEnLigne(){
+  try{
+    const { data } = await sb.from('paiement_en_ligne_config').select('identifiants').eq('ecole_id', session.ecoleId).maybeSingle();
+    __identifiantsPaiementEnLigneCache = data?.identifiants || {};
+  }catch(e){ __identifiantsPaiementEnLigneCache = {}; }
+  if(ui.currentView==='parametres') renderView('parametres');
+}
+function renderPaiementEnLigne(){
+  const c = DB.paiementEnLigne || {actif:false, prestataire:''};
+  if(__identifiantsPaiementEnLigneCache===null){ chargerIdentifiantsPaiementEnLigne(); }
+  const ident = __identifiantsPaiementEnLigneCache || {};
+  return `
+    <div class="section-note" style="background:var(--amber-bg);color:var(--amber);">🚧 Préparation technique — la connexion réelle au prestataire n'est pas encore branchée (elle le sera une fois testée avec de vraies clés). Configurer ici ne déclenche aucun encaissement pour l'instant.</div>
+    <form onsubmit="return handleSavePaiementEnLigne(event)">
+      <div class="form-grid">
+        <div class="field"><label>Activer le paiement en ligne ?</label>
+          <select name="actif">
+            <option value="non" ${!c.actif?'selected':''}>Non</option>
+            <option value="oui" ${c.actif?'selected':''}>Oui</option>
+          </select>
+        </div>
+        <div class="field"><label>Prestataire</label>
+          <select name="prestataire" id="selectPrestatairePaiement" onchange="renderChampsIdentifiants(this.value)">
+            <option value="" ${!c.prestataire?'selected':''}>— Choisir —</option>
+            <option value="cinetpay" ${c.prestataire==='cinetpay'?'selected':''}>CinetPay</option>
+            <option value="paydunya" ${c.prestataire==='paydunya'?'selected':''}>PayDunya</option>
+          </select>
+        </div>
+        <div id="champsIdentifiantsPaiement" class="field span2">
+          <div class="form-grid">
+            ${(CHAMPS_IDENTIFIANTS_PRESTATAIRE[c.prestataire]||[]).map(f=>`
+              <div class="field"><label>${f.label}</label><input type="password" name="ident_${f.cle}" placeholder="${ident[f.cle]?'••••••• (déjà enregistré)':'Coller la valeur'}" autocomplete="new-password"></div>
+            `).join('')}
+          </div>
+        </div>
+      </div>
+      <div class="hint">Les identifiants ne sont jamais réaffichés ni visibles par le Secrétariat/enseignants — seule Direction/Fondation peut les modifier.</div>
+      <div class="form-actions"><button type="submit" class="btn">Enregistrer</button></div>
+    </form>`;
+}
+function renderChampsIdentifiants(prestataire){
+  const champs = CHAMPS_IDENTIFIANTS_PRESTATAIRE[prestataire] || [];
+  document.getElementById('champsIdentifiantsPaiement').innerHTML = `
+    <div class="form-grid">
+      ${champs.map(f=>`<div class="field"><label>${f.label}</label><input type="password" name="ident_${f.cle}" placeholder="Coller la valeur" autocomplete="new-password"></div>`).join('')}
+    </div>`;
+}
+async function handleSavePaiementEnLigne(ev){
+  ev.preventDefault();
+  const fd = new FormData(ev.target);
+  const actif = fd.get('actif')==='oui';
+  const prestataire = fd.get('prestataire') || '';
+  const champs = CHAMPS_IDENTIFIANTS_PRESTATAIRE[prestataire] || [];
+  const nouveaux = {};
+  champs.forEach(f=>{ const v = (fd.get(`ident_${f.cle}`)||'').trim(); if(v) nouveaux[f.cle] = v; });
+  try{
+    const identifiants = {...(__identifiantsPaiementEnLigneCache||{}), ...nouveaux};
+    const { error } = await sb.from('paiement_en_ligne_config').upsert(
+      {ecole_id: session.ecoleId, actif, prestataire, identifiants}, {onConflict:'ecole_id'});
+    if(error) throw error;
+    DB.paiementEnLigne = {actif, prestataire};
+    __identifiantsPaiementEnLigneCache = identifiants;
+    toast('Paiement en ligne enregistré');
+    renderView('parametres');
+  }catch(e){ alert('Erreur : ' + e.message); }
+  return false;
+}
+function genererLienPaiement(eleveId, trancheLabel, montant){
+  const c = DB.paiementEnLigne || {actif:false, prestataire:''};
+  if(!c.actif || !c.prestataire){
+    toast('Paiement en ligne non activé — configure-le dans Paramètres');
+    return;
+  }
+  alert(`🚧 Connexion à ${c.prestataire === 'cinetpay' ? 'CinetPay' : 'PayDunya'} pas encore branchée techniquement.\n\nDès que tu as testé et confirmé tes identifiants réels, je terminerai cette dernière étape pour générer un vrai lien de paiement envoyable au parent.`);
 }
 function renderEcheancesScolarite(){
   const list = (DB.echeancesScolarite||[]).slice().sort((a,b)=> (a.ordre-b.ordre) || (a.dateEcheance||'').localeCompare(b.dateEcheance||''));
