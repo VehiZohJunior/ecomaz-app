@@ -4089,7 +4089,7 @@ function renderParametres(){
 
     <div class="panel">
       <div class="panel-head"><div><h2>Paiement en ligne (Mobile Money)</h2><div class="sub">Permet à un parent de payer directement via un lien, sans passer par le personnel</div></div></div>
-      ${renderPaiementEnLigne()}
+      <div class="hint">${(DB.paiementEnLigne||{}).actif ? `✅ Activé (${(DB.paiementEnLigne||{}).prestataire==='cinetpay'?'CinetPay':'PayDunya'})` : '⏳ Pas encore activé'} — la configuration technique (identifiants, prestataire) se fait désormais uniquement depuis la Console Développeur, pour éviter toute erreur de manipulation.</div>
     </div>
 
     <div class="panel">
@@ -4330,84 +4330,15 @@ async function handleSaveTvaCategorie(categorie, checked){
 }
 
 /* ---------------------------------------------------------------------
-   PAIEMENT EN LIGNE MOBILE MONEY (préparation technique — voir
-   schema.sql section 29). Les champs d'identifiants affichés changent
-   selon le prestataire, stockés en JSON libre (identifiants). L'appel
-   réel au prestataire n'est PAS câblé tant que son API n'a pas été
-   vérifiée avec de vraies clés — voir genererLienPaiement plus bas.
+   PAIEMENT EN LIGNE MOBILE MONEY — la configuration (prestataire,
+   identifiants API) se fait désormais exclusivement depuis la Console
+   Développeur (décision du 2026-09-24, jugée trop technique pour
+   Direction/Fondation) — voir EcoMaZ-dev-console/app-dev.js et la
+   fonction serveur configurer-paiement-en-ligne. Ici, l'appli cliente ne
+   fait que LIRE le statut (DB.paiementEnLigne, chargé via
+   paiement_en_ligne_config_lecture) pour savoir si un lien peut être
+   généré — voir genererLienPaiement plus bas.
    --------------------------------------------------------------------- */
-const CHAMPS_IDENTIFIANTS_PRESTATAIRE = {
-  cinetpay: [{cle:'apiKey', label:'API Key'}, {cle:'siteId', label:'Site ID'}],
-  paydunya: [{cle:'masterKey', label:'Master Key'}, {cle:'privateKey', label:'Private Key'}, {cle:'token', label:'Token'}],
-};
-let __identifiantsPaiementEnLigneCache = null;
-async function chargerIdentifiantsPaiementEnLigne(){
-  try{
-    const { data } = await sb.from('paiement_en_ligne_config').select('identifiants').eq('ecole_id', session.ecoleId).maybeSingle();
-    __identifiantsPaiementEnLigneCache = data?.identifiants || {};
-  }catch(e){ __identifiantsPaiementEnLigneCache = {}; }
-  if(ui.currentView==='parametres') renderView('parametres');
-}
-function renderPaiementEnLigne(){
-  const c = DB.paiementEnLigne || {actif:false, prestataire:''};
-  if(__identifiantsPaiementEnLigneCache===null){ chargerIdentifiantsPaiementEnLigne(); }
-  const ident = __identifiantsPaiementEnLigneCache || {};
-  return `
-    <div class="section-note" style="background:var(--amber-bg);color:var(--amber);">🚧 Préparation technique — la connexion réelle au prestataire n'est pas encore branchée (elle le sera une fois testée avec de vraies clés). Configurer ici ne déclenche aucun encaissement pour l'instant.</div>
-    <form onsubmit="return handleSavePaiementEnLigne(event)">
-      <div class="form-grid">
-        <div class="field"><label>Activer le paiement en ligne ?</label>
-          <select name="actif">
-            <option value="non" ${!c.actif?'selected':''}>Non</option>
-            <option value="oui" ${c.actif?'selected':''}>Oui</option>
-          </select>
-        </div>
-        <div class="field"><label>Prestataire</label>
-          <select name="prestataire" id="selectPrestatairePaiement" onchange="renderChampsIdentifiants(this.value)">
-            <option value="" ${!c.prestataire?'selected':''}>— Choisir —</option>
-            <option value="cinetpay" ${c.prestataire==='cinetpay'?'selected':''}>CinetPay</option>
-            <option value="paydunya" ${c.prestataire==='paydunya'?'selected':''}>PayDunya</option>
-          </select>
-        </div>
-        <div id="champsIdentifiantsPaiement" class="field span2">
-          <div class="form-grid">
-            ${(CHAMPS_IDENTIFIANTS_PRESTATAIRE[c.prestataire]||[]).map(f=>`
-              <div class="field"><label>${f.label}</label><input type="text" name="ident_${f.cle}" placeholder="${ident[f.cle]?'••••••• (déjà enregistré)':'Coller la valeur'}" autocomplete="off" spellcheck="false"></div>
-            `).join('')}
-          </div>
-        </div>
-      </div>
-      <div class="hint">Les identifiants ne sont jamais réaffichés ni visibles par le Secrétariat/enseignants — seule Direction/Fondation peut les modifier.</div>
-      <div class="form-actions"><button type="submit" class="btn">Enregistrer</button></div>
-    </form>`;
-}
-function renderChampsIdentifiants(prestataire){
-  const champs = CHAMPS_IDENTIFIANTS_PRESTATAIRE[prestataire] || [];
-  document.getElementById('champsIdentifiantsPaiement').innerHTML = `
-    <div class="form-grid">
-      ${champs.map(f=>`<div class="field"><label>${f.label}</label><input type="text" name="ident_${f.cle}" placeholder="Coller la valeur" autocomplete="off" spellcheck="false"></div>`).join('')}
-    </div>`;
-}
-async function handleSavePaiementEnLigne(ev){
-  ev.preventDefault();
-  const fd = new FormData(ev.target);
-  const actif = fd.get('actif')==='oui';
-  const prestataire = fd.get('prestataire') || '';
-  const champs = CHAMPS_IDENTIFIANTS_PRESTATAIRE[prestataire] || [];
-  const nouveaux = {};
-  champs.forEach(f=>{ const v = (fd.get(`ident_${f.cle}`)||'').trim(); if(v) nouveaux[f.cle] = v; });
-  try{
-    const identifiants = {...(__identifiantsPaiementEnLigneCache||{}), ...nouveaux};
-    const { error } = await sb.from('paiement_en_ligne_config').upsert(
-      {ecole_id: session.ecoleId, actif, prestataire, identifiants}, {onConflict:'ecole_id'});
-    if(error) throw error;
-    DB.paiementEnLigne = {actif, prestataire};
-    __identifiantsPaiementEnLigneCache = identifiants;
-    toast('Paiement en ligne enregistré');
-    renderView('parametres');
-  }catch(e){ alert('Erreur : ' + e.message); }
-  return false;
-}
 async function genererLienPaiement(eleveId, trancheLabel, montant){
   const c = DB.paiementEnLigne || {actif:false, prestataire:''};
   if(!c.actif || !c.prestataire){
