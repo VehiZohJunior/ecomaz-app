@@ -4223,7 +4223,7 @@ function renderRegimeFacturation(){
               <select name="prestataire">${PRESTATAIRES_FNE.map(p=>`<option ${c.prestataire===p?'selected':''}>${p}</option>`).join('')}</select>
             </div>
             <div class="field"><label>Clé API ${c.cleConfiguree ? '(✅ déjà enregistrée)' : ''}</label>
-              <input type="password" name="apiKey" placeholder="${c.cleConfiguree ? 'Laisser vide pour ne pas changer' : 'Coller la clé API du prestataire'}" autocomplete="new-password">
+              <input type="text" name="apiKey" placeholder="${c.cleConfiguree ? 'Laisser vide pour ne pas changer' : 'Coller la clé API du prestataire'}" autocomplete="off" spellcheck="false">
             </div>
           </div>
           <div class="hint">La clé API n'est jamais réaffichée une fois enregistrée, ni visible par le Secrétariat ou les enseignants — seule Direction/Fondation peut la modifier.</div>
@@ -4372,7 +4372,7 @@ function renderPaiementEnLigne(){
         <div id="champsIdentifiantsPaiement" class="field span2">
           <div class="form-grid">
             ${(CHAMPS_IDENTIFIANTS_PRESTATAIRE[c.prestataire]||[]).map(f=>`
-              <div class="field"><label>${f.label}</label><input type="password" name="ident_${f.cle}" placeholder="${ident[f.cle]?'••••••• (déjà enregistré)':'Coller la valeur'}" autocomplete="new-password"></div>
+              <div class="field"><label>${f.label}</label><input type="text" name="ident_${f.cle}" placeholder="${ident[f.cle]?'••••••• (déjà enregistré)':'Coller la valeur'}" autocomplete="off" spellcheck="false"></div>
             `).join('')}
           </div>
         </div>
@@ -4385,7 +4385,7 @@ function renderChampsIdentifiants(prestataire){
   const champs = CHAMPS_IDENTIFIANTS_PRESTATAIRE[prestataire] || [];
   document.getElementById('champsIdentifiantsPaiement').innerHTML = `
     <div class="form-grid">
-      ${champs.map(f=>`<div class="field"><label>${f.label}</label><input type="password" name="ident_${f.cle}" placeholder="Coller la valeur" autocomplete="new-password"></div>`).join('')}
+      ${champs.map(f=>`<div class="field"><label>${f.label}</label><input type="text" name="ident_${f.cle}" placeholder="Coller la valeur" autocomplete="off" spellcheck="false"></div>`).join('')}
     </div>`;
 }
 async function handleSavePaiementEnLigne(ev){
@@ -4408,13 +4408,37 @@ async function handleSavePaiementEnLigne(ev){
   }catch(e){ alert('Erreur : ' + e.message); }
   return false;
 }
-function genererLienPaiement(eleveId, trancheLabel, montant){
+async function genererLienPaiement(eleveId, trancheLabel, montant){
   const c = DB.paiementEnLigne || {actif:false, prestataire:''};
   if(!c.actif || !c.prestataire){
     toast('Paiement en ligne non activé — configure-le dans Paramètres');
     return;
   }
-  alert(`🚧 Connexion à ${c.prestataire === 'cinetpay' ? 'CinetPay' : 'PayDunya'} pas encore branchée techniquement.\n\nDès que tu as testé et confirmé tes identifiants réels, je terminerai cette dernière étape pour générer un vrai lien de paiement envoyable au parent.`);
+  const tranche = trancheLabel || 'Solde restant';
+  toast('Génération du lien de paiement…');
+  try{
+    const { data, error } = await sb.functions.invoke('initier-paiement-en-ligne', { body: { eleveId, tranche, montant } });
+    if(error) throw error;
+    if(!data?.ok) throw new Error(data?.error || 'Échec de la génération du lien');
+    const eleve = eleveById(eleveId);
+    openModal('Lien de paiement généré', `
+      <div class="section-note">${data.mode==='test' ? '🧪 Mode TEST — clique dessus pour simuler, aucun vrai argent ne bouge.' : '✅ Mode production — un vrai paiement peut être effectué avec ce lien.'}</div>
+      <div class="field"><label>Lien à envoyer à ${escapeHtml(eleveFullName(eleve))} / son parent</label>
+        <input type="text" id="lienPaiementGenere" readonly value="${escapeHtml(data.url)}" onclick="this.select()" style="width:100%;">
+      </div>
+      <div class="hint">Copie ce lien et envoie-le au parent par WhatsApp, SMS ou autre — il paiera directement sur la page sécurisée PayDunya (Orange Money, MTN, Moov, Wave, carte).</div>
+      <div class="form-actions">
+        <button type="button" class="btn secondary" onclick="closeModal()">Fermer</button>
+        <button type="button" class="btn" onclick="copierLienPaiement('${data.url}')">📋 Copier le lien</button>
+      </div>`);
+  }catch(e){ alert('Erreur : ' + e.message); }
+}
+async function copierLienPaiement(url){
+  try{ await navigator.clipboard.writeText(url); toast('Lien copié'); }
+  catch(_e){
+    const input = document.getElementById('lienPaiementGenere');
+    if(input){ input.select(); document.execCommand('copy'); toast('Lien copié'); }
+  }
 }
 function renderEcheancesScolarite(){
   const list = (DB.echeancesScolarite||[]).slice().sort((a,b)=> (a.ordre-b.ordre) || (a.dateEcheance||'').localeCompare(b.dateEcheance||''));
