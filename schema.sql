@@ -688,3 +688,387 @@ grant select on enseignants_lecture to authenticated;
 -- création/suppression d'école), après avoir vérifié elle-même les
 -- droits de l'appelant.
 -- =====================================================================
+
+-- =====================================================================
+-- 23. SURVEILLANCE TECHNIQUE (PHASE 1 — DIAGNOSTIC 2026-09-22)
+-- Jusqu'ici, une erreur technique chez un client n'était connue que si
+-- le client la signalait lui-même. Cette table enregistre automatique-
+-- ment chaque erreur JavaScript rencontrée dans l'appli, consultable par
+-- le développeur (SQL Editor, ou une future page dans la Console).
+-- =====================================================================
+create table if not exists erreurs_client (
+  id uuid primary key default gen_random_uuid(),
+  ecole_id uuid references ecoles(id) on delete cascade,
+  user_id uuid references auth.users(id) on delete set null,
+  role text,
+  message text not null,
+  pile text,
+  page text,
+  user_agent text,
+  created_at timestamptz default now()
+);
+alter table erreurs_client enable row level security;
+
+-- N'importe quel compte connecté peut journaliser UNE erreur (nécessaire
+-- puisque l'erreur peut survenir avant que l'école soit chargée), mais
+-- seulement pour sa propre école si elle est renseignée — impossible de
+-- polluer le journal d'une autre école.
+create policy "creation erreurs_client" on erreurs_client for insert
+  with check (auth.uid() is not null and (ecole_id is null or ecole_id = mon_ecole_id()));
+
+-- Seul le développeur consulte ce journal (diagnostic technique global,
+-- pas une donnée métier d'une école).
+create policy "lecture erreurs_client" on erreurs_client for select using (est_developpeur());
+
+-- =====================================================================
+-- 24. PISTE D'AUDIT COMPTABLE (ROADMAP COMPTABILITÉ — ÉTAPE 1)
+-- Jusqu'ici, supprimer un paiement/une dépense ne laissait aucune trace :
+-- impossible de savoir qui a supprimé quoi, quand, ni ce qu'il y avait
+-- avant. Cette table enregistre chaque création/modification/suppression
+-- des mouvements financiers (scolarité, activités, boutique, salaires,
+-- dépenses). Elle est volontairement IMMUABLE : aucune policy update/
+-- delete n'existe ci-dessous, donc même la Direction ne peut jamais
+-- altérer ou effacer une ligne du journal une fois écrite.
+-- =====================================================================
+create table if not exists journal_compta (
+  id uuid primary key default gen_random_uuid(),
+  ecole_id uuid not null references ecoles(id) on delete cascade default mon_ecole_id(),
+  table_cible text not null,
+  enregistrement_id uuid not null,
+  action text not null check (action in ('creation','modification','suppression')),
+  donnees_avant jsonb,
+  donnees_apres jsonb,
+  auteur_id uuid references auth.users(id) on delete set null default auth.uid(),
+  auteur_nom text default '',
+  auteur_role text default '',
+  created_at timestamptz default now()
+);
+alter table journal_compta enable row level security;
+
+-- Le personnel administratif (secrétariat/direction/fondation) peut écrire
+-- une entrée dans le journal, uniquement pour sa propre école — jamais
+-- au nom d'une autre école.
+create policy "creation journal_compta" on journal_compta for insert
+  with check (est_perso_admin() and ecole_id = mon_ecole_id());
+
+-- Seuls Direction/Fondation consultent le journal (comme les totaux
+-- financiers globaux, déjà masqués au Secrétariat ailleurs dans l'appli).
+create policy "lecture journal_compta" on journal_compta for select
+  using (est_admin() and ecole_id = mon_ecole_id());
+
+create policy "acces support developpeur" on journal_compta for select using (developpeur_a_acces(ecole_id));
+
+-- =====================================================================
+-- 25. BUDGET PRÉVISIONNEL (ROADMAP COMPTABILITÉ — ÉTAPE 6)
+-- Permet à Direction/Fondation de fixer, mois par mois et catégorie par
+-- catégorie, un montant prévu — comparé ensuite au réalisé (déjà calculé
+-- à partir des tables existantes, aucune donnée dupliquée ici). Réservé
+-- à Direction/Fondation, comme les autres totaux globaux du module.
+-- =====================================================================
+create table if not exists budgets_comptables (
+  id uuid primary key default gen_random_uuid(),
+  ecole_id uuid not null references ecoles(id) on delete cascade default mon_ecole_id(),
+  type text not null check (type in ('recette','depense')),
+  categorie text not null,
+  mois text not null,
+  montant numeric not null default 0,
+  created_at timestamptz default now(),
+  unique (ecole_id, type, categorie, mois)
+);
+alter table budgets_comptables enable row level security;
+
+create policy "gestion budgets_comptables" on budgets_comptables for all
+  using (est_admin() and ecole_id = mon_ecole_id())
+  with check (est_admin() and ecole_id = mon_ecole_id());
+
+create policy "acces support developpeur" on budgets_comptables for select using (developpeur_a_acces(ecole_id));
+
+-- =====================================================================
+-- 26. PLAN COMPTABLE SYSCOHADA (ROADMAP COMPTABILITÉ — ÉTAPE 7)
+-- Associe un code SYSCOHADA à chaque catégorie déjà existante (recette,
+-- dépense, mode de paiement/trésorerie). L'app propose des codes
+-- standards par défaut (voir CODES_SYSCOHADA_DEFAUT dans app.js), mais
+-- RIEN n'est présenté comme validé par un comptable — chaque école peut
+-- ajuster ici. Réservé à Direction/Fondation.
+-- =====================================================================
+create table if not exists comptes_syscohada (
+  id uuid primary key default gen_random_uuid(),
+  ecole_id uuid not null references ecoles(id) on delete cascade default mon_ecole_id(),
+  type text not null check (type in ('recette','depense','tresorerie')),
+  categorie text not null,
+  code text not null,
+  libelle text not null default '',
+  created_at timestamptz default now(),
+  unique (ecole_id, type, categorie)
+);
+alter table comptes_syscohada enable row level security;
+
+create policy "gestion comptes_syscohada" on comptes_syscohada for all
+  using (est_admin() and ecole_id = mon_ecole_id())
+  with check (est_admin() and ecole_id = mon_ecole_id());
+
+create policy "acces support developpeur" on comptes_syscohada for select using (developpeur_a_acces(ecole_id));
+
+-- =====================================================================
+-- 27. RÉGIME DE FACTURATION — REÇUS SIMPLES ou FNE (Facture Normalisée
+-- Électronique, obligatoire DGI Côte d'Ivoire pour les reçus de
+-- scolarité — voir échange avec l'école du 2026-09-24). Chaque école
+-- choisit son régime ; la clé API du prestataire de certification n'est
+-- JAMAIS exposée au navigateur, même pour Direction/Fondation — seule la
+-- vue fne_config_lecture (sans la clé) est utilisée par l'application.
+-- La certification réelle (appel au prestataire) n'est PAS encore
+-- câblée : tant qu'aucun prestataire n'a d'intégration codée côté
+-- Edge Function, le reçu affiche honnêtement "non certifié", jamais une
+-- fausse certification.
+-- =====================================================================
+create table if not exists fne_config (
+  ecole_id uuid primary key references ecoles(id) on delete cascade default mon_ecole_id(),
+  regime text not null default 'recus' check (regime in ('recus','fne')),
+  prestataire text not null default '',
+  api_key text not null default '',
+  updated_at timestamptz default now()
+);
+alter table fne_config enable row level security;
+
+-- Direction/Fondation uniquement : choix du régime, prestataire, clé API.
+create policy "gestion fne_config" on fne_config for all
+  using (est_admin() and ecole_id = mon_ecole_id())
+  with check (est_admin() and ecole_id = mon_ecole_id());
+
+create policy "acces support developpeur" on fne_config for select using (developpeur_a_acces(ecole_id));
+
+-- Vue SANS api_key — lue par tout le personnel (y compris Secrétariat,
+-- qui imprime des reçus) pour savoir quel régime afficher.
+create or replace view fne_config_lecture as
+select ecole_id, regime, prestataire, (api_key <> '') as cle_configuree, updated_at
+from fne_config
+where ecole_id = mon_ecole_id() or developpeur_a_acces(ecole_id);
+
+grant select on fne_config_lecture to authenticated;
+
+-- =====================================================================
+-- 28. TVA (ROADMAP COMPTABILITÉ — ÉTAPE 9, DERNIÈRE)
+-- IMPORTANT (voir échange du 2026-09-24) : l'activité d'enseignement est
+-- exonérée de TVA dans le CGI ivoirien, mais l'assujettissement dépend
+-- du régime fiscal de l'école (forfaitaire/RSI/réel selon le chiffre
+-- d'affaires) et certaines recettes (boutique scolaire notamment) ne
+-- sont probablement PAS exonérées même quand la scolarité l'est. Rien
+-- ici n'est un calcul certifié — seulement une aide de calcul que
+-- l'école doit valider avec son comptable. Par défaut : assujetti_tva =
+-- false, donc AUCUN comportement existant ne change tant que l'école ne
+-- l'active pas explicitement.
+-- =====================================================================
+alter table ecoles add column if not exists assujetti_tva boolean not null default false;
+alter table ecoles add column if not exists taux_tva numeric not null default 18;
+
+-- Réutilise comptes_syscohada (section 26) : chaque catégorie de recette
+-- porte déjà un code SYSCOHADA, on lui ajoute juste si la TVA s'y
+-- applique. Par défaut (colonne absente sur les lignes déjà créées) :
+-- false, donc rien ne change tant que Direction/Fondation ne l'active
+-- pas ligne par ligne dans Paramètres.
+alter table comptes_syscohada add column if not exists tva_applicable boolean not null default false;
+
+-- comptes_syscohada est réservé à Direction/Fondation en lecture directe
+-- (section 26) — mais TOUT LE PERSONNEL doit savoir si la TVA s'applique
+-- à une catégorie pour imprimer un reçu juste (Secrétariat compris). Vue
+-- minimale, comme fne_config_lecture/enseignants_lecture.
+create or replace view tva_categories_lecture as
+select categorie, tva_applicable
+from comptes_syscohada
+where type = 'recette' and (ecole_id = mon_ecole_id() or developpeur_a_acces(ecole_id));
+
+grant select on tva_categories_lecture to authenticated;
+
+-- =====================================================================
+-- 29. PAIEMENT EN LIGNE MOBILE MONEY (préparation technique 2026-09-24)
+-- Objectif : un parent paie directement via un lien Mobile Money
+-- (CinetPay/PayDunya), sans passer par le personnel de l'école. Ceci ne
+-- câble PAS encore un vrai appel à un prestataire — voir app.js, la
+-- fonction genererLienPaiement affiche honnêtement "en attente de
+-- vérification finale de l'API" tant qu'aucune clé réelle n'a permis de
+-- tester contre le vrai prestataire. Les identifiants (clé API,
+-- site_id...) varient selon le prestataire choisi, donc stockés en JSON
+-- libre plutôt qu'en colonnes fixes.
+-- =====================================================================
+create table if not exists paiement_en_ligne_config (
+  ecole_id uuid primary key references ecoles(id) on delete cascade default mon_ecole_id(),
+  actif boolean not null default false,
+  prestataire text not null default '' check (prestataire in ('', 'cinetpay', 'paydunya')),
+  identifiants jsonb not null default '{}'::jsonb,
+  updated_at timestamptz default now()
+);
+alter table paiement_en_ligne_config enable row level security;
+
+create policy "gestion paiement_en_ligne_config" on paiement_en_ligne_config for all
+  using (est_admin() and ecole_id = mon_ecole_id())
+  with check (est_admin() and ecole_id = mon_ecole_id());
+
+create policy "acces support developpeur" on paiement_en_ligne_config for select using (developpeur_a_acces(ecole_id));
+
+-- Vue SANS les identifiants (comme fne_config_lecture) — tout le
+-- personnel doit savoir si le paiement en ligne est actif pour proposer
+-- le lien au parent, sans jamais voir la clé API.
+create or replace view paiement_en_ligne_config_lecture as
+select ecole_id, actif, prestataire, updated_at
+from paiement_en_ligne_config
+where ecole_id = mon_ecole_id() or developpeur_a_acces(ecole_id);
+
+grant select on paiement_en_ligne_config_lecture to authenticated;
+
+-- Historique des tentatives de paiement en ligne — statut mis à jour par
+-- le webhook du prestataire (futur Edge Function, pas encore déployé).
+-- Une fois "reussi", une ligne paiements_scolarite normale est créée
+-- automatiquement (même piste d'audit que les paiements saisis à la main).
+create table if not exists paiements_en_ligne (
+  id uuid primary key default gen_random_uuid(),
+  ecole_id uuid not null references ecoles(id) on delete cascade default mon_ecole_id(),
+  eleve_id uuid not null references eleves(id) on delete cascade,
+  tranche text not null,
+  montant numeric not null,
+  statut text not null default 'en_attente' check (statut in ('en_attente','reussi','echoue','expire')),
+  reference_prestataire text default '',
+  paiement_scolarite_id uuid references paiements_scolarite(id) on delete set null,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+alter table paiements_en_ligne enable row level security;
+
+create policy "creation paiements_en_ligne" on paiements_en_ligne for insert
+  with check (est_perso_admin() and ecole_id = mon_ecole_id());
+create policy "lecture paiements_en_ligne" on paiements_en_ligne for select
+  using (est_perso_admin() and ecole_id = mon_ecole_id());
+create policy "acces support developpeur" on paiements_en_ligne for select using (developpeur_a_acces(ecole_id));
+
+-- =====================================================================
+-- 30. JOURNAL D'AUDIT — CONSOLE DÉVELOPPEUR (élévation du niveau
+-- technique de la console, 2026-09-24)
+-- Trace chaque action du développeur qui affecte une école cliente :
+-- création, suspension, réactivation, suppression, configuration du
+-- paiement en ligne. Immuable (aucune policy update/delete, même le
+-- développeur ne peut pas l'altérer après coup) — même principe que
+-- journal_compta côté appli cliente. "ecole_id" passe à NULL si l'école
+-- est supprimée (on delete set null, PAS cascade) : la suppression
+-- elle-même doit rester dans le journal même après coup, donc
+-- "ecole_nom" capture le nom au moment de l'action, indépendamment.
+-- =====================================================================
+create table if not exists journal_console_dev (
+  id uuid primary key default gen_random_uuid(),
+  action text not null,
+  ecole_id uuid references ecoles(id) on delete set null,
+  ecole_nom text not null default '',
+  details jsonb default '{}'::jsonb,
+  auteur_id uuid references auth.users(id) on delete set null default auth.uid(),
+  auteur_nom text default '',
+  created_at timestamptz default now()
+);
+alter table journal_console_dev enable row level security;
+
+create policy "creation journal_console_dev" on journal_console_dev for insert
+  with check (est_developpeur());
+
+create policy "lecture journal_console_dev" on journal_console_dev for select
+  using (est_developpeur());
+
+-- =====================================================================
+-- 31. COMPTE PARENT — ÉTAPE 1 : FONDATIONS (2026-09-30)
+-- Nouveau rôle "parent", volontairement TRÈS limité : contrairement au
+-- personnel, un compte parent n'a accès à absolument rien via le
+-- chargeur générique chargerDB()/loadAllFromSupabase() (aucune policy
+-- "parent" n'est ajoutée sur les tables existantes ici) — il passe par
+-- un chemin de chargement dédié, minimal, construit à part (voir
+-- app.js). Un parent peut avoir plusieurs enfants ; un élève peut avoir
+-- plusieurs comptes parents (père/mère) — d'où une table de liaison.
+-- =====================================================================
+alter type role_utilisateur add value if not exists 'parent';
+
+create or replace function est_parent() returns boolean
+language sql stable security definer set search_path = public as
+$$ select mon_role() = 'parent' $$;
+
+create table if not exists parents_eleves (
+  id uuid primary key default gen_random_uuid(),
+  ecole_id uuid not null references ecoles(id) on delete cascade default mon_ecole_id(),
+  parent_profile_id uuid not null references profiles(id) on delete cascade,
+  eleve_id uuid not null references eleves(id) on delete cascade,
+  created_at timestamptz default now(),
+  unique (parent_profile_id, eleve_id)
+);
+alter table parents_eleves enable row level security;
+
+-- Le parent voit ses propres liens (pour savoir quels enfants il a).
+create policy "lecture parents_eleves parent" on parents_eleves for select
+  using (parent_profile_id = auth.uid());
+-- Le personnel administratif gère les liens (création/suppression depuis
+-- la fiche élève) — jamais le parent lui-même (pas d'auto-inscription).
+create policy "gestion parents_eleves staff" on parents_eleves for all
+  using (est_perso_admin() and ecole_id = mon_ecole_id())
+  with check (est_perso_admin() and ecole_id = mon_ecole_id());
+
+-- Un parent peut lire UNIQUEMENT la fiche du/des enfant(s) auquel il est
+-- lié — jamais les autres élèves de l'école.
+create policy "lecture eleves par parent" on eleves for select
+  using (est_parent() and exists (
+    select 1 from parents_eleves pe where pe.eleve_id = eleves.id and pe.parent_profile_id = auth.uid()
+  ));
+
+-- =====================================================================
+-- 32. CORRECTIF SÉCURITÉ — faille découverte en testant le compte parent
+-- (2026-09-30) : les policies "lecture eleves"/"acces notes"/"acces
+-- presences_eleves"/"acces programmes"/"lecture emploi_temps"/"acces
+-- bulletins" (sections 13/19) utilisaient toutes le même raccourci
+-- "mon_enseignant_id() is null => accès total à l'école", pensé pour un
+-- compte enseignant mal configuré (profil sans fiche enseignant liée).
+-- Un compte parent a LUI AUSSI enseignant_id = null (il n'en a jamais eu
+-- un), donc ce raccourci lui donnait accès à TOUS les élèves/notes/
+-- présences/programmes/emploi du temps de l'école, pas seulement ceux de
+-- son enfant — confirmé par un test bout-en-bout avant mise en service.
+-- Corrigé en réservant ce raccourci au SEUL rôle "enseignant" : tout
+-- futur rôle avec enseignant_id = null n'en bénéficiera plus jamais par
+-- accident.
+-- =====================================================================
+drop policy if exists "lecture eleves" on eleves;
+create policy "lecture eleves" on eleves for select using (
+  ecole_id = mon_ecole_id() and (
+    est_perso_admin() or (mon_role() = 'enseignant' and mon_enseignant_id() is null) or classe_id = any(mes_classes())
+  )
+);
+
+drop policy if exists "acces notes" on notes;
+create policy "acces notes" on notes for all using (
+  ecole_id = mon_ecole_id() and (
+    est_perso_admin() or (mon_role() = 'enseignant' and mon_enseignant_id() is null) or
+    exists (select 1 from eleves e where e.id = notes.eleve_id and e.classe_id = any(mes_classes()))
+  )
+);
+
+drop policy if exists "acces presences_eleves" on presences_eleves;
+create policy "acces presences_eleves" on presences_eleves for all using (
+  ecole_id = mon_ecole_id() and (
+    est_perso_admin() or (mon_role() = 'enseignant' and mon_enseignant_id() is null) or
+    presences_eleves.classe_id = any(mes_classes())
+  )
+);
+
+drop policy if exists "acces programmes" on programmes;
+create policy "acces programmes" on programmes for all using (
+  ecole_id = mon_ecole_id() and (
+    est_perso_admin() or (mon_role() = 'enseignant' and mon_enseignant_id() is null) or
+    programmes.classe_id = any(mes_classes())
+  )
+);
+
+drop policy if exists "lecture emploi_temps" on emploi_temps;
+create policy "lecture emploi_temps" on emploi_temps for select using (
+  ecole_id = mon_ecole_id() and (
+    est_perso_admin() or (mon_role() = 'enseignant' and mon_enseignant_id() is null) or
+    emploi_temps.classe_id = any(mes_classes())
+  )
+);
+
+drop policy if exists "acces bulletins" on bulletins_commentaires;
+create policy "acces bulletins" on bulletins_commentaires for all using (
+  ecole_id = mon_ecole_id() and (
+    est_perso_admin() or (mon_role() = 'enseignant' and mon_enseignant_id() is null) or
+    exists (select 1 from eleves e where e.id = bulletins_commentaires.eleve_id and e.classe_id = any(mes_classes()))
+  )
+);
