@@ -1326,3 +1326,82 @@ create table if not exists usage_remplissage_intelligent (
 alter table usage_remplissage_intelligent enable row level security;
 create policy "lecture usage_remplissage" on usage_remplissage_intelligent for select
   using (ecole_id = mon_ecole_id() and est_admin());
+
+-- =====================================================================
+-- 38. BULLES — Notifications / Messages / Suggestions (2026-09-30)
+-- 3 icônes dans la barre du haut (personnel ET parent) :
+--   - Notifications : tout ce qui est généré AUTOMATIQUEMENT (déjà
+--     existant : messages/annonces_horaires_envoyees/notifications_portier,
+--     simplement regroupés dans un seul menu au lieu de panneaux séparés).
+--   - Messages : écrits par une PERSONNE (le personnel administratif
+--     écrit à un parent ou à un enseignant) — nouvelle table.
+--   - Suggestions : n'importe qui (parent, enseignant, personnel) peut
+--     en envoyer une ; seuls Direction/Fondation les consultent.
+-- =====================================================================
+create table if not exists messages_internes (
+  id uuid primary key default gen_random_uuid(),
+  ecole_id uuid not null references ecoles(id) on delete cascade default mon_ecole_id(),
+  auteur_id uuid references auth.users(id) on delete set null default auth.uid(),
+  auteur_nom text default '',
+  destinataire_type text not null check (destinataire_type in ('parent','enseignant')),
+  eleve_id uuid references eleves(id) on delete cascade,
+  enseignant_id uuid references enseignants(id) on delete cascade,
+  contenu text not null,
+  lu boolean not null default false,
+  created_at timestamptz default now()
+);
+alter table messages_internes enable row level security;
+create policy "creation messages_internes" on messages_internes for insert
+  with check (ecole_id = mon_ecole_id() and est_perso_admin());
+create policy "lecture messages_internes personnel" on messages_internes for select
+  using (ecole_id = mon_ecole_id() and est_perso_admin());
+create policy "lecture messages_internes parent" on messages_internes for select
+  using (
+    destinataire_type = 'parent' and est_parent() and exists (
+      select 1 from parents_eleves pe where pe.eleve_id = messages_internes.eleve_id and pe.parent_profile_id = auth.uid()
+    )
+  );
+create policy "maj messages_internes parent" on messages_internes for update
+  using (
+    destinataire_type = 'parent' and est_parent() and exists (
+      select 1 from parents_eleves pe where pe.eleve_id = messages_internes.eleve_id and pe.parent_profile_id = auth.uid()
+    )
+  )
+  with check (
+    destinataire_type = 'parent' and est_parent() and exists (
+      select 1 from parents_eleves pe where pe.eleve_id = messages_internes.eleve_id and pe.parent_profile_id = auth.uid()
+    )
+  );
+create policy "lecture messages_internes enseignant" on messages_internes for select
+  using (
+    destinataire_type = 'enseignant' and mon_role() = 'enseignant'
+    and (mon_enseignant_id() is null or enseignant_id = mon_enseignant_id())
+  );
+create policy "maj messages_internes enseignant" on messages_internes for update
+  using (
+    destinataire_type = 'enseignant' and mon_role() = 'enseignant'
+    and (mon_enseignant_id() is null or enseignant_id = mon_enseignant_id())
+  )
+  with check (
+    destinataire_type = 'enseignant' and mon_role() = 'enseignant'
+    and (mon_enseignant_id() is null or enseignant_id = mon_enseignant_id())
+  );
+
+create table if not exists suggestions (
+  id uuid primary key default gen_random_uuid(),
+  ecole_id uuid not null references ecoles(id) on delete cascade default mon_ecole_id(),
+  auteur_id uuid references auth.users(id) on delete set null default auth.uid(),
+  auteur_nom text default '',
+  auteur_role text default '',
+  contenu text not null,
+  lu boolean not null default false,
+  created_at timestamptz default now()
+);
+alter table suggestions enable row level security;
+create policy "creation suggestions" on suggestions for insert
+  with check (ecole_id = mon_ecole_id());
+create policy "lecture suggestions" on suggestions for select
+  using (ecole_id = mon_ecole_id() and est_admin());
+create policy "maj suggestions" on suggestions for update
+  using (ecole_id = mon_ecole_id() and est_admin())
+  with check (ecole_id = mon_ecole_id() and est_admin());

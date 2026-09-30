@@ -371,7 +371,7 @@ async function loadAllFromSupabase(){
     gadgets, ventesGadgets, personnelAutre, paiementsSalaires, depenses, messages,
     alertesPointage, echeancesScolarite, profiles, fneConfigRow, tvaCategories, paiementEnLigneRow,
     parentsEleves, tableauHonneur, actualitesAffichage, horairesAnnoncesRow, annoncesHoraires,
-    notificationsPortier
+    notificationsPortier, messagesInternes, suggestions
   ] = await Promise.all([
     sb.from('ecoles').select('*').eq('id', session.ecoleId).single(),
     dbSelectAll('classes'),
@@ -423,6 +423,9 @@ async function loadAllFromSupabase(){
     // Notifications "portier" (parent arrivé) — RLS restreint déjà un
     // compte enseignant à celles de SES classes (schema.sql section 36).
     dbSelectAll('notifications_portier', 'created_at').catch(()=>[]),
+    // Bulles Messages / Suggestions (schema.sql section 38).
+    dbSelectAll('messages_internes', 'created_at').catch(()=>[]),
+    dbSelectAll('suggestions', 'created_at').catch(()=>[]),
   ]);
 
   if(ecoleRow.error) throw ecoleRow.error;
@@ -462,6 +465,7 @@ async function loadAllFromSupabase(){
     echeancesScolarite: echeancesScolarite.slice().sort((a,b)=> (a.ordre-b.ordre) || (a.dateEcheance||'').localeCompare(b.dateEcheance||'')),
     profiles, parentsEleves, tableauHonneur, actualitesAffichage,
     horairesAnnonces: horairesAnnoncesRow, annoncesHoraires, notificationsPortier,
+    messagesInternes, suggestions,
     fneConfig: fneConfigRow || {regime:'recus', prestataire:'', cleConfiguree:false},
   };
 }
@@ -477,7 +481,7 @@ async function loadAllFromSupabase(){
    pas quand elle a été écrite.
    --------------------------------------------------------------------- */
 async function chargerDBParent(){
-  const [ecoleRow, eleves, classesRows, messages, annoncesHoraires] = await Promise.all([
+  const [ecoleRow, eleves, classesRows, messages, annoncesHoraires, messagesInternes] = await Promise.all([
     sb.from('ecoles').select('*').eq('id', session.ecoleId).single(),
     // RLS restreint déjà aux enfants liés à ce parent (voir policy
     // "lecture eleves par parent", schema.sql section 31) — pas besoin de
@@ -490,12 +494,15 @@ async function chargerDBParent(){
     // Annonces horaires (RLS restreint déjà au cycle de son/ses enfant(s) —
     // voir policy "lecture annonces_horaires parent", schema.sql section 35).
     sb.from('annonces_horaires_envoyees').select('*').eq('ecole_id', session.ecoleId).order('created_at', {ascending:false}),
+    // Messages écrits par le personnel (RLS — schema.sql section 38).
+    sb.from('messages_internes').select('*').eq('ecole_id', session.ecoleId).order('created_at', {ascending:false}),
   ]);
   if(ecoleRow.error) throw ecoleRow.error;
   if(eleves.error) throw eleves.error;
   if(classesRows.error) throw classesRows.error;
   if(messages.error) throw messages.error;
   if(annoncesHoraires.error) throw annoncesHoraires.error;
+  if(messagesInternes.error) throw messagesInternes.error;
   const ecole = rowToCamel(ecoleRow.data);
   return {
     meta: {
@@ -507,6 +514,7 @@ async function chargerDBParent(){
     classes: rowsToCamel(classesRows.data),
     messages: rowsToCamel(messages.data),
     annoncesHoraires: rowsToCamel(annoncesHoraires.data),
+    messagesInternes: rowsToCamel(messagesInternes.data),
   };
 }
 

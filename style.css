@@ -208,6 +208,28 @@ tbody tr:hover{ background:var(--surface-2); }
 .btn-recording{ background:var(--red-bg) !important; border-color:var(--red) !important; color:var(--red) !important; animation:pulse-rec 1.2s infinite; }
 @keyframes pulse-rec{ 0%,100%{opacity:1;} 50%{opacity:.6;} }
 
+/* BULLES (notifications / messages / suggestions) */
+.bulles{ display:flex; gap:6px; }
+.bulle-wrap{ position:relative; }
+.bulle-btn{
+  position:relative; width:36px; height:36px; border-radius:50%; border:1px solid var(--border);
+  background:var(--surface-2); font-size:16px; cursor:pointer; display:flex; align-items:center; justify-content:center;
+}
+.bulle-btn:hover{ background:var(--primary-dim); }
+.bulle-badge{
+  position:absolute; top:-4px; right:-4px; min-width:16px; height:16px; padding:0 3px; border-radius:999px;
+  background:var(--red); color:#fff; font-size:10px; font-weight:800; display:flex; align-items:center; justify-content:center; line-height:1;
+}
+.bulle-dropdown{
+  position:absolute; top:44px; right:0; width:320px; max-width:90vw; max-height:420px; overflow-y:auto;
+  background:var(--surface); border:1px solid var(--border); border-radius:12px; box-shadow:0 12px 32px rgba(0,0,0,.18);
+  z-index:90; padding:12px;
+}
+.bulle-dropdown h4{ margin:0 0 10px; font-size:13px; }
+.bulle-item{ padding:9px 10px; border-radius:8px; background:var(--surface-2); margin-bottom:6px; font-size:12.5px; line-height:1.4; }
+.bulle-item.non-lu{ background:var(--primary-dim); border-left:3px solid var(--primary); }
+.bulle-item .bulle-meta{ color:var(--text-dim); font-size:11px; margin-top:3px; }
+
 /* MODAL */
 .modal-backdrop{ display:none; position:fixed; inset:0; background:rgba(15,18,30,.5); z-index:100; align-items:flex-start; justify-content:center; padding:40px 16px; overflow-y:auto; }
 .modal-backdrop.open{ display:flex; }

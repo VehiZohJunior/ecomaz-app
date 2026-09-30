@@ -975,6 +975,7 @@ function enterAppParent(){
   $('#viewTitle').textContent = 'Espace Parent';
   const pill = $('#topbarPill');
   pill.innerHTML = `${escapeHtml(session.nomComplet||'')} <button class="btn secondary sm" style="margin-left:10px;" onclick="logoutRole()">🔒 Déconnexion</button>`;
+  rafraichirBulles();
   $('#viewContainer').innerHTML = renderParentDashboard();
   startIdleWatcher();
 }
@@ -1003,69 +1004,213 @@ function renderParentDashboard(){
           </div>
         </div>`).join('')}
     </div>
-
-    <div class="panel" style="margin-top:16px;">
-      <div class="panel-head">
-        <div><h2>📢 Annonces du jour</h2><div class="sub">Début/fin des cours, pause de midi</div></div>
-      </div>
-      ${renderAnnoncesDuJour()}
-    </div>
-
-    <div class="panel" style="margin-top:16px;">
-      <div class="panel-head">
-        <div><h2>🔔 Notifications</h2><div class="sub">Messages de l'établissement concernant votre/vos enfant(s)</div></div>
-      </div>
-      ${renderNotificationsParent()}
-    </div>
   </div>`;
 }
-function renderNotificationsPortier(){
-  const notifs = (DB.notificationsPortier||[]).filter(n=>!n.vue);
-  if(!notifs.length) return '';
-  return `<div style="display:flex;flex-direction:column;gap:8px;">
-    ${notifs.map(n=>`
-      <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:var(--red-bg);border-radius:10px;">
-        <span>👪 Le parent de <strong>${escapeHtml(n.eleveNom)}</strong> est à la porte <span class="hint">· ${n.createdAt?new Date(n.createdAt).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}):''}</span></span>
-        ${ui.role==='enseignant' ? `<button class="btn secondary sm" onclick="handleMarquerVuPortier('${n.id}')">✅ J'ai vu</button>` : ''}
-      </div>`).join('')}
-  </div>`;
+
+/* ---------------------------------------------------------------------
+   BULLES — Notifications / Messages / Suggestions. 3 icônes dans la
+   barre du haut, visibles sur toutes les vues (personnel ET parent).
+   Regroupe ce qui était auparavant éparpillé en panneaux séparés sur
+   les tableaux de bord (schema.sql section 38).
+   --------------------------------------------------------------------- */
+function rafraichirBulles(){
+  const c = $('#bullesContainer');
+  if(c) c.innerHTML = renderBulles();
+}
+function renderBulles(){
+  const estAdmin = ui.role==='direction' || ui.role==='fondation';
+  const nbNotif = calculerNotificationsBulle().filter(it=>it.nonLu).length;
+  const nbMsg = (ui.role==='parent'||ui.role==='enseignant') ? (DB.messagesInternes||[]).filter(m=>!m.lu).length : 0;
+  const nbSugg = estAdmin ? (DB.suggestions||[]).filter(s=>!s.lu).length : 0;
+  const badge = n => n ? `<span class="bulle-badge">${n>9?'9+':n}</span>` : '';
+  return `
+    <div class="bulle-wrap">
+      <button class="bulle-btn" onclick="toggleBulle('notif')" title="Notifications">🔔${badge(nbNotif)}</button>
+      <div class="bulle-dropdown" id="dropdownNotif" style="display:none;">${renderDropdownNotifications()}</div>
+    </div>
+    <div class="bulle-wrap">
+      <button class="bulle-btn" onclick="toggleBulle('msg')" title="Messages">✉️${badge(nbMsg)}</button>
+      <div class="bulle-dropdown" id="dropdownMsg" style="display:none;">${renderDropdownMessages()}</div>
+    </div>
+    <div class="bulle-wrap">
+      <button class="bulle-btn" onclick="toggleBulle('sugg')" title="Suggestions">💡${badge(nbSugg)}</button>
+      <div class="bulle-dropdown" id="dropdownSugg" style="display:none;">${renderDropdownSuggestions()}</div>
+    </div>
+  `;
+}
+function toggleBulle(nom){
+  const ids = {notif:'dropdownNotif', msg:'dropdownMsg', sugg:'dropdownSugg'};
+  Object.entries(ids).forEach(([k,id])=>{
+    const el = $('#'+id);
+    if(!el) return;
+    el.style.display = (k===nom && el.style.display==='none') ? 'block' : 'none';
+  });
+}
+document.addEventListener('click', (e)=>{
+  if(!e.target.closest('.bulles')) $$('.bulle-dropdown').forEach(el=>el.style.display='none');
+});
+function calculerNotificationsBulle(){
+  const items = [];
+  const aujourdhui = todayISO();
+  (DB.annoncesHoraires||[]).filter(a=>a.date===aujourdhui).forEach(a=>{
+    items.push({ texte: a.contenu, temps: a.createdAt, nonLu: true, type:'annonce' });
+  });
+  if(['enseignant','secretariat','direction','fondation'].includes(ui.role)){
+    (DB.notificationsPortier||[]).forEach(n=>{
+      items.push({ id:n.id, texte: `👪 Le parent de ${n.eleveNom} est à la porte`, temps: n.createdAt, nonLu: !n.vue, type:'portier' });
+    });
+  }
+  (DB.messages||[]).slice(0,20).forEach(m=>{
+    items.push({ texte: m.contenu, temps: `${m.date}T${(m.heure||'00:00').slice(0,5)}`, nonLu: m.date===aujourdhui, type:'message' });
+  });
+  items.sort((a,b)=> String(b.temps||'').localeCompare(String(a.temps||'')));
+  return items.slice(0,25);
+}
+function renderDropdownNotifications(){
+  const items = calculerNotificationsBulle();
+  if(!items.length) return `<h4>🔔 Notifications</h4><div class="empty">Rien pour l'instant.</div>`;
+  return `<h4>🔔 Notifications</h4>${items.map(it=>`
+    <div class="bulle-item ${it.nonLu?'non-lu':''}">
+      ${escapeHtml(it.texte)}
+      ${it.type==='portier' && it.nonLu && ui.role==='enseignant' ? `<div style="margin-top:6px;"><button class="btn secondary sm" onclick="handleMarquerVuPortier('${it.id}')">✅ J'ai vu</button></div>` : ''}
+      <div class="bulle-meta">${it.temps ? new Date(it.temps).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}) : ''}</div>
+    </div>`).join('')}`;
 }
 async function handleMarquerVuPortier(id){
   try{
     const { error } = await sb.from('notifications_portier').update({ vue: true }).eq('id', id);
     if(error) throw error;
     DB.notificationsPortier = (DB.notificationsPortier||[]).map(n=>n.id===id?{...n,vue:true}:n);
-    renderView(ui.currentView);
+    rafraichirBulles();
   }catch(e){ alert('Erreur : ' + e.message); }
 }
-function renderAnnoncesDuJour(){
-  const aujourdhui = todayISO();
-  const annonces = (DB.annoncesHoraires||[]).filter(a=>a.date===aujourdhui);
-  if(!annonces.length) return `<div class="empty">Aucune annonce pour aujourd'hui.</div>`;
-  return `<ul style="margin:0;padding-left:0;list-style:none;display:flex;flex-direction:column;gap:8px;">
-    ${annonces.map(a=>`<li style="padding:10px 14px;background:var(--surface-2);border-radius:10px;">
-      <span class="hint" style="white-space:nowrap;">${a.createdAt?new Date(a.createdAt).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}):''}</span>
-      &nbsp;${escapeHtml(a.contenu)}
-    </li>`).join('')}
-  </ul>`;
+function renderDropdownMessages(){
+  const estStaff = ['secretariat','direction','fondation'].includes(ui.role);
+  const liste = (DB.messagesInternes||[]).slice(0,20);
+  return `<h4>✉️ Messages</h4>
+    ${estStaff ? `<button class="btn sm" style="width:100%;margin-bottom:10px;" onclick="ouvrirComposerMessage()">+ Nouveau message</button>` : ''}
+    ${!liste.length ? `<div class="empty">Aucun message.</div>` : liste.map(m=>{
+      const dest = m.destinataireType==='parent'
+        ? 'À : parent de ' + (eleveById(m.eleveId) ? eleveFullName(eleveById(m.eleveId)) : '—')
+        : 'À : enseignant(e)';
+      return `<div class="bulle-item ${!estStaff && !m.lu ?'non-lu':''}">
+        ${estStaff ? `<div class="hint">${escapeHtml(dest)}</div>` : ''}
+        ${escapeHtml(m.contenu)}
+        <div class="bulle-meta">${m.createdAt?new Date(m.createdAt).toLocaleString('fr-FR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):''}</div>
+        ${!estStaff && !m.lu ? `<div style="margin-top:6px;"><button class="btn secondary sm" onclick="handleMarquerMessageLu('${m.id}')">Marquer comme lu</button></div>`:''}
+      </div>`;
+    }).join('')}`;
 }
-function renderNotificationsParent(){
-  const messages = DB.messages || [];
-  if(!messages.length) return `<div class="empty">Aucune notification pour l'instant.</div>`;
-  const plusieursEnfants = (DB.eleves||[]).length > 1;
-  return `<table class="table">
-    <thead><tr><th>Date</th>${plusieursEnfants?'<th>Enfant</th>':''}<th>Message</th></tr></thead>
-    <tbody>
-      ${messages.map(m=>{
-        const enfant = eleveById(m.eleveId);
-        return `<tr>
-          <td style="white-space:nowrap;">${fmtDate(m.date)}${m.heure?' '+m.heure.slice(0,5):''}</td>
-          ${plusieursEnfants?`<td>${enfant?escapeHtml(eleveFullName(enfant)):'—'}</td>`:''}
-          <td>${escapeHtml(m.contenu||'')}</td>
-        </tr>`;
-      }).join('')}
-    </tbody>
-  </table>`;
+function renderSelectEleveMessage(){
+  return `<div class="field"><label>Élève (le message ira à son/ses parent(s))</label>
+    <select name="eleveId" required>${DB.eleves.slice().sort((a,b)=>eleveFullName(a).localeCompare(eleveFullName(b))).map(e=>`<option value="${e.id}">${escapeHtml(eleveFullName(e))} — ${escapeHtml(classeName(e.classeId))}</option>`).join('')}</select>
+  </div>`;
+}
+function renderSelectEnseignantMessage(){
+  return `<div class="field"><label>Enseignant(e)</label>
+    <select name="enseignantId" required>${(DB.enseignants||[]).slice().sort((a,b)=>ensFullName(a).localeCompare(ensFullName(b))).map(en=>`<option value="${en.id}">${escapeHtml(ensFullName(en))}</option>`).join('')}</select>
+  </div>`;
+}
+function majChampsDestinataireMessage(type){
+  $('#champDestinataireMessage').innerHTML = type==='parent' ? renderSelectEleveMessage() : renderSelectEnseignantMessage();
+}
+function ouvrirComposerMessage(){
+  openModal('✉️ Nouveau message', `
+    <form onsubmit="return handleEnvoyerMessage(event)">
+      <div class="field">
+        <label>Destinataire</label>
+        <select name="destinataireType" onchange="majChampsDestinataireMessage(this.value)">
+          <option value="parent">Parent d'un élève</option>
+          <option value="enseignant">Enseignant(e)</option>
+        </select>
+      </div>
+      <div id="champDestinataireMessage">${renderSelectEleveMessage()}</div>
+      <div class="field">
+        <label>Message</label>
+        <textarea name="contenu" rows="4" required></textarea>
+      </div>
+      <button class="btn" type="submit" style="width:100%;margin-top:10px;">Envoyer</button>
+    </form>
+  `);
+}
+async function handleEnvoyerMessage(ev){
+  ev.preventDefault();
+  const fd = new FormData(ev.target);
+  const destinataireType = fd.get('destinataireType');
+  const payload = {
+    destinataire_type: destinataireType,
+    contenu: fd.get('contenu').trim(),
+    auteur_nom: session.nomComplet || '',
+  };
+  if(destinataireType==='parent') payload.eleve_id = fd.get('eleveId');
+  else payload.enseignant_id = fd.get('enseignantId');
+  try{
+    const { data, error } = await sb.from('messages_internes').insert(payload).select().single();
+    if(error) throw error;
+    DB.messagesInternes = DB.messagesInternes || [];
+    DB.messagesInternes.unshift(rowToCamel(data));
+    closeModal();
+    toast('Message envoyé');
+    rafraichirBulles();
+  }catch(e){ alert('Erreur : ' + e.message); }
+  return false;
+}
+async function handleMarquerMessageLu(id){
+  try{
+    const { error } = await sb.from('messages_internes').update({ lu:true }).eq('id', id);
+    if(error) throw error;
+    DB.messagesInternes = (DB.messagesInternes||[]).map(m=>m.id===id?{...m,lu:true}:m);
+    rafraichirBulles();
+  }catch(e){ alert('Erreur : ' + e.message); }
+}
+function renderDropdownSuggestions(){
+  const estAdmin = ui.role==='direction' || ui.role==='fondation';
+  if(!estAdmin){
+    return `<h4>💡 Suggestions</h4>
+      <div class="hint" style="margin-bottom:10px;">Une idée, une remarque pour l'établissement ? Elle sera lue par la Direction.</div>
+      <button class="btn sm" style="width:100%;" onclick="ouvrirComposerSuggestion()">+ Envoyer une suggestion</button>`;
+  }
+  const liste = (DB.suggestions||[]).slice(0,20);
+  return `<h4>💡 Suggestions reçues</h4>
+    ${!liste.length ? `<div class="empty">Aucune suggestion pour l'instant.</div>` : liste.map(s=>`
+      <div class="bulle-item ${!s.lu?'non-lu':''}">
+        <div class="hint">${escapeHtml(s.auteurNom||'Anonyme')} · ${escapeHtml(s.auteurRole||'')}</div>
+        ${escapeHtml(s.contenu)}
+        <div class="bulle-meta">${s.createdAt?new Date(s.createdAt).toLocaleString('fr-FR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):''}</div>
+        ${!s.lu ? `<div style="margin-top:6px;"><button class="btn secondary sm" onclick="handleMarquerSuggestionLue('${s.id}')">Marquer comme lue</button></div>`:''}
+      </div>`).join('')}`;
+}
+function ouvrirComposerSuggestion(){
+  openModal('💡 Envoyer une suggestion', `
+    <form onsubmit="return handleEnvoyerSuggestion(event)">
+      <div class="field">
+        <label>Votre suggestion</label>
+        <textarea name="contenu" rows="5" required placeholder="Ex : Prévoir un abri pour les vélos..."></textarea>
+      </div>
+      <button class="btn" type="submit" style="width:100%;margin-top:10px;">Envoyer</button>
+    </form>
+  `);
+}
+async function handleEnvoyerSuggestion(ev){
+  ev.preventDefault();
+  const contenu = new FormData(ev.target).get('contenu').trim();
+  try{
+    const { error } = await sb.from('suggestions').insert({
+      contenu, auteur_nom: session.nomComplet || '', auteur_role: ui.role || '',
+    });
+    if(error) throw error;
+    closeModal();
+    toast('Suggestion envoyée, merci !');
+  }catch(e){ alert('Erreur : ' + e.message); }
+  return false;
+}
+async function handleMarquerSuggestionLue(id){
+  try{
+    const { error } = await sb.from('suggestions').update({ lu:true }).eq('id', id);
+    if(error) throw error;
+    DB.suggestions = (DB.suggestions||[]).map(s=>s.id===id?{...s,lu:true}:s);
+    rafraichirBulles();
+  }catch(e){ alert('Erreur : ' + e.message); }
 }
 /* ---------------------------------------------------------------------
    ESPACE PORTIER — recherche un élève, signale que son parent est arrivé.
@@ -1173,6 +1318,7 @@ function enterApp(){
   $('#burger').style.display = '';
   applyBranding();
   applyRoleVisibility();
+  rafraichirBulles();
   go('dashboard');
   startIdleWatcher();
   majBanniereHorsLigne();
@@ -1313,7 +1459,7 @@ function startPollingPortier(){
       const avaitDejaNonVues = (DB.notificationsPortier||[]).some(n=>!n.vue);
       const aMaintenantNonVues = nouvelles.some(n=>!n.vue);
       DB.notificationsPortier = nouvelles;
-      if(ui.currentView === 'dashboard') renderView('dashboard');
+      rafraichirBulles();
       if(aMaintenantNonVues && !avaitDejaNonVues) toast('🚪 Un parent est à la porte');
     }catch(_e){ /* échec silencieux : on retentera au prochain sondage */ }
   }, 20000);
@@ -1415,18 +1561,6 @@ function renderDashboard(){
         <div class="label">Présence enseignants aujourd'hui</div>
       </div>
     </div>
-
-    ${(DB.notificationsPortier||[]).some(n=>!n.vue) ? `
-    <div class="panel" style="border:2px solid var(--red);">
-      <div class="panel-head"><div><h2>🚪 Parent(s) à la porte</h2><div class="sub">${ui.role==='enseignant' ? 'Cliquez « J\'ai vu » une fois pris en compte' : 'Vue d\'ensemble — seul(e) l\'enseignant(e) concerné(e) peut acquitter'}</div></div></div>
-      ${renderNotificationsPortier()}
-    </div>` : ''}
-
-    ${(DB.annoncesHoraires||[]).some(a=>a.date===today) ? `
-    <div class="panel">
-      <div class="panel-head"><div><h2>📢 Annonces du jour</h2><div class="sub">Début/fin des cours, pause de midi</div></div></div>
-      ${renderAnnoncesDuJour()}
-    </div>` : ''}
 
     <div class="grid-2">
       <div class="panel">
