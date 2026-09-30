@@ -82,6 +82,7 @@ const TRADUCTIONS = {
     nav_comptabilite: 'Comptabilité',
     nav_group_communication: 'Communication',
     nav_messagerie: 'Messagerie',
+    nav_tableau_affichage: "Tableau d'affichage",
     nav_group_systeme: 'Système',
     nav_parametres: 'Paramètres',
 
@@ -152,6 +153,7 @@ const TRADUCTIONS = {
     nav_comptabilite: 'Accounting',
     nav_group_communication: 'Communication',
     nav_messagerie: 'Messages',
+    nav_tableau_affichage: 'Honor Board',
     nav_group_systeme: 'System',
     nav_parametres: 'Settings',
 
