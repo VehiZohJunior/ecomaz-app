@@ -1146,3 +1146,81 @@ grant select on tableau_honneur_public to anon, authenticated;
 create or replace view actualites_affichage_public as
 select ecole_id, id, texte, created_at from actualites_affichage;
 grant select on actualites_affichage_public to anon, authenticated;
+
+-- =====================================================================
+-- 35. ANNONCES HORAIRES AUTOMATIQUES — ÉTAPE 4 (2026-09-30)
+-- 4 annonces quotidiennes (début de matinée, pause de midi, début et fin
+-- d'après-midi), avec un horaire propre à chaque école ET à chaque cycle
+-- (maternelle/primaire) — configurable depuis Paramètres (Direction/
+-- Fondation). Un job pg_cron appelle, CHAQUE MINUTE, la fonction Edge
+-- "annoncer-horaires" (clé service_role, jamais exposée au client) qui
+-- compare l'heure actuelle aux horaires configurés de chaque école et
+-- insère UNE annonce par (école, fonction, cycle, jour) — la contrainte
+-- unique empêche tout doublon même si le job tournait deux fois de suite.
+--
+-- Choix voulu : ces annonces routinières passent par l'application
+-- (lues dans l'espace Parent / l'espace Enseignant), PAS par SMS — le SMS
+-- reste réservé aux alertes réellement urgentes (absence, portier), pour
+-- ne jamais spammer ni facturer 4 SMS/jour/famille.
+-- =====================================================================
+create table if not exists horaires_annonces (
+  ecole_id uuid primary key references ecoles(id) on delete cascade default mon_ecole_id(),
+  matin_debut_primaire time default '07:15',
+  matin_debut_maternelle time default '07:45',
+  midi_pause_primaire time default '11:45',
+  midi_pause_maternelle time default '10:45',
+  apresmidi_debut_primaire time default '13:45',
+  apresmidi_debut_maternelle time default '13:45',
+  apresmidi_fin_primaire time default '16:45',
+  apresmidi_fin_maternelle time default '15:45',
+  actif boolean not null default true
+);
+alter table horaires_annonces enable row level security;
+create policy "lecture horaires_annonces" on horaires_annonces for select
+  using (ecole_id = mon_ecole_id());
+create policy "gestion horaires_annonces" on horaires_annonces for all
+  using (ecole_id = mon_ecole_id() and est_admin())
+  with check (ecole_id = mon_ecole_id() and est_admin());
+
+create table if not exists annonces_horaires_envoyees (
+  id uuid primary key default gen_random_uuid(),
+  ecole_id uuid not null references ecoles(id) on delete cascade,
+  fonction text not null check (fonction in ('matin_debut','midi_pause','apresmidi_debut','apresmidi_fin')),
+  cycle text not null check (cycle in ('primaire','maternelle')),
+  date date not null,
+  contenu text not null,
+  created_at timestamptz default now(),
+  unique (ecole_id, fonction, cycle, date)
+);
+alter table annonces_horaires_envoyees enable row level security;
+-- Le parent voit une annonce si au moins un de ses enfants est dans le
+-- cycle concerné (Garderie/Maternelle → "maternelle", Primaire → "primaire").
+create policy "lecture annonces_horaires parent" on annonces_horaires_envoyees for select using (
+  est_parent() and exists (
+    select 1 from parents_eleves pe
+    join eleves e on e.id = pe.eleve_id
+    join classes c on c.id = e.classe_id
+    where pe.parent_profile_id = auth.uid()
+      and pe.ecole_id = annonces_horaires_envoyees.ecole_id
+      and (
+        (annonces_horaires_envoyees.cycle = 'maternelle' and c.cycle in ('Garderie','Maternelle')) or
+        (annonces_horaires_envoyees.cycle = 'primaire' and c.cycle = 'Primaire')
+      )
+  )
+);
+-- Tout le personnel de l'école voit toutes les annonces (contenu non
+-- sensible, purement informatif sur les horaires de la journée).
+create policy "lecture annonces_horaires personnel" on annonces_horaires_envoyees for select using (
+  ecole_id = mon_ecole_id() and mon_role() in ('enseignant','secretariat','direction','fondation')
+);
+-- Aucune policy insert/update/delete : uniquement la fonction Edge
+-- "annoncer-horaires" (clé service_role) peut y écrire.
+
+create extension if not exists pg_cron with schema extensions;
+create extension if not exists pg_net with schema extensions;
+
+-- Le job pg_cron lui-même (cron.schedule(...)) N'EST PAS dans ce fichier :
+-- il doit inclure un secret partagé (pour authentifier l'appel à la
+-- fonction Edge) qui ne doit jamais se retrouver sur GitHub (dépôt
+-- public). Il est appliqué une seule fois directement en base — voir la
+-- note dans supabase/functions/annoncer-horaires/index.ts.
