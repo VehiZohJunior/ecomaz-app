@@ -1711,6 +1711,14 @@ const SCHEMA_ELEVE = [
   {name:'parentTel', label:'Téléphone du parent', type:'tel', format:"10 chiffres, Côte d'Ivoire"},
   {name:'parentAdresse', label:'Adresse', type:'text'},
 ];
+const SCHEMA_ENSEIGNANT = [
+  {name:'prenom', label:'Prénom', type:'text'},
+  {name:'nom', label:'Nom', type:'text'},
+  {name:'sexe', label:'Sexe', type:'text', format:'M ou F'},
+  {name:'telephone', label:'Téléphone', type:'tel', format:"10 chiffres, Côte d'Ivoire"},
+  {name:'email', label:'Email', type:'text'},
+  {name:'dateEmbauche', label:"Date d'embauche", type:'date', format:'AAAA-MM-JJ'},
+];
 
 let smartFillRecorder = null;
 let smartFillChunks = [];
@@ -2382,6 +2390,7 @@ function openEnseignantForm(id){
   openModal(t ? "Modifier l'enseignant" : 'Nouvel enseignant', `
     <form id="formEns" onsubmit="return handleSaveEnseignant(event)">
       <input type="hidden" name="id" value="${t?t.id:''}">
+      <button type="button" class="btn secondary sm" style="margin-bottom:14px;" onclick="ouvrirRemplissageIntelligent('enseignant', SCHEMA_ENSEIGNANT, (r)=>appliquerRemplissage('formEns', r))">✨ Remplir automatiquement</button>
       <div class="form-grid">
         <div class="field"><label>Prénom</label><input name="prenom" required value="${t?escapeHtml(t.prenom):''}"></div>
         <div class="field"><label>Nom</label><input name="nom" required value="${t?escapeHtml(t.nom):''}"></div>
