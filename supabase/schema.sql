@@ -1088,3 +1088,61 @@ create policy "lecture messages par parent" on messages for select using (
     select 1 from parents_eleves pe where pe.eleve_id = messages.eleve_id and pe.parent_profile_id = auth.uid()
   )
 );
+
+-- =====================================================================
+-- 34. TABLEAU D'AFFICHAGE PUBLIC — ÉTAPE 3 (2026-09-30)
+-- Tableaux d'honneur (Élève/Enseignant du mois, du trimestre, de l'année)
+-- et bannière d'actualités, pensés pour être projetés sur un écran dans
+-- le hall de l'école (TV/tablette), SANS connexion — d'où des vues
+-- publiques dédiées, jamais les tables de base ni eleves/enseignants
+-- directement. Gestion réservée à Direction/Fondation (est_admin()).
+--
+-- Les noms des lauréats sont VOLONTAIREMENT dupliqués en clair dans
+-- "nom_affiche" (jamais une clé étrangère exposée publiquement vers
+-- eleves/enseignants) : l'écran public n'a ainsi jamais besoin d'accès,
+-- même en lecture, aux fiches élèves/enseignants complètes.
+-- =====================================================================
+create table if not exists tableau_honneur (
+  id uuid primary key default gen_random_uuid(),
+  ecole_id uuid not null references ecoles(id) on delete cascade default mon_ecole_id(),
+  categorie text not null check (categorie in ('eleve','enseignant')),
+  periode text not null check (periode in ('mois','trimestre','annee')),
+  nom_affiche text not null default '',
+  classe_ou_matiere text default '',
+  libelle_periode text default '',
+  commentaire text default '',
+  updated_at timestamptz default now(),
+  unique (ecole_id, categorie, periode)
+);
+alter table tableau_honneur enable row level security;
+create policy "gestion tableau_honneur" on tableau_honneur for all
+  using (ecole_id = mon_ecole_id() and est_admin())
+  with check (ecole_id = mon_ecole_id() and est_admin());
+
+create table if not exists actualites_affichage (
+  id uuid primary key default gen_random_uuid(),
+  ecole_id uuid not null references ecoles(id) on delete cascade default mon_ecole_id(),
+  texte text not null,
+  created_at timestamptz default now()
+);
+alter table actualites_affichage enable row level security;
+create policy "gestion actualites_affichage" on actualites_affichage for all
+  using (ecole_id = mon_ecole_id() and est_admin())
+  with check (ecole_id = mon_ecole_id() and est_admin());
+
+-- Vues PUBLIQUES (accès accordé à "anon", pas seulement "authenticated") —
+-- c'est la SEULE porte d'entrée pour un visiteur non connecté (l'écran du
+-- hall). Aucune donnée sensible : noms déjà destinés à un affichage public,
+-- et uniquement pour une école active.
+create or replace view ecoles_vitrine as
+select id, nom_ecole, logo_url from ecoles where actif = true;
+grant select on ecoles_vitrine to anon, authenticated;
+
+create or replace view tableau_honneur_public as
+select ecole_id, categorie, periode, nom_affiche, classe_ou_matiere, libelle_periode, commentaire, updated_at
+from tableau_honneur;
+grant select on tableau_honneur_public to anon, authenticated;
+
+create or replace view actualites_affichage_public as
+select ecole_id, id, texte, created_at from actualites_affichage;
+grant select on actualites_affichage_public to anon, authenticated;
