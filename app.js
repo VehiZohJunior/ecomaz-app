@@ -180,6 +180,7 @@ const VIEW_TITLES = {
   programmes: 'Programmes pédagogiques',
   comptabilite: 'Comptabilité',
   messagerie: 'Messagerie',
+  'tableau-affichage': "Tableau d'affichage",
   parametres: 'Paramètres',
 };
 
@@ -737,6 +738,7 @@ function renderView(view){
     programmes: renderProgrammes,
     comptabilite: renderComptabilite,
     messagerie: renderMessagerie,
+    'tableau-affichage': renderTableauAffichage,
     parametres: renderParametres,
   };
   $('#viewContainer').innerHTML = (map[view] || renderDashboard)();
@@ -4173,6 +4175,159 @@ function renderMessagerie(){
     </div>
   </div>`;
 }
+/* ---------------------------------------------------------------------
+   TABLEAU D'AFFICHAGE — tableaux d'honneur + bannière d'actualités,
+   gérés ici par Direction/Fondation, affichés publiquement sur
+   affichage.html (voir ce fichier — écran de hall, sans connexion).
+   --------------------------------------------------------------------- */
+const HONNEUR_PERIODES = [
+  {id:'mois', label:'Du mois'},
+  {id:'trimestre', label:'Du trimestre'},
+  {id:'annee', label:"De l'année"},
+];
+const HONNEUR_CATEGORIES = [
+  {id:'eleve', label:'Élève', icon:'🧒'},
+  {id:'enseignant', label:'Enseignant(e)', icon:'👩‍🏫'},
+];
+function honneurActuel(categorie, periode){
+  return (DB.tableauHonneur||[]).find(h=>h.categorie===categorie && h.periode===periode);
+}
+function renderTableauAffichage(){
+  const base = location.href.replace(/[^/]*$/, '');
+  const lienPublic = `${base}affichage.html?ecole=${session.ecoleId}`;
+  return `<div class="view active">
+    <div class="panel">
+      <div class="panel-head">
+        <div><h2>🖥️ Écran d'affichage public</h2><div class="sub">Lien à ouvrir sur la TV/tablette du hall — aucune connexion nécessaire</div></div>
+        <button class="btn secondary sm" onclick="copierLienAffichage('${lienPublic}')">🔗 Copier le lien</button>
+      </div>
+      <div class="hint" style="word-break:break-all;">${escapeHtml(lienPublic)}</div>
+    </div>
+
+    ${HONNEUR_CATEGORIES.map(cat=>`
+      <div class="panel">
+        <div class="panel-head"><div><h2>${cat.icon} ${escapeHtml(cat.label)} à l'honneur</h2></div></div>
+        <div class="grid-3">
+          ${HONNEUR_PERIODES.map(per=>{
+            const h = honneurActuel(cat.id, per.id);
+            return `<div class="panel" style="background:var(--surface-2);">
+              <div class="hint">${per.label}</div>
+              ${h ? `
+                <strong style="font-size:16px;">${escapeHtml(h.nomAffiche)}</strong>
+                <div class="meta">${escapeHtml(h.classeOuMatiere||'')}</div>
+                <div class="hint" style="margin-top:4px;">${escapeHtml(h.libellePeriode||'')}</div>
+              ` : `<div class="empty" style="padding:8px 0;">Non défini</div>`}
+              <button class="btn secondary sm" style="width:100%;margin-top:10px;" onclick="ouvrirModifierHonneur('${cat.id}','${per.id}')">✏️ Modifier</button>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>
+    `).join('')}
+
+    <div class="panel">
+      <div class="panel-head">
+        <div><h2>📰 Bannière d'actualités</h2><div class="sub">Défile sur l'écran d'affichage</div></div>
+      </div>
+      <form onsubmit="return handleAjouterActualite(event)" style="display:flex;gap:8px;margin-bottom:14px;">
+        <input type="text" id="nouvelleActualite" placeholder="Ex : Réunion de parents le 15 octobre à 17h" style="flex:1;" required>
+        <button class="btn sm" type="submit">+ Ajouter</button>
+      </form>
+      ${renderListeActualites()}
+    </div>
+  </div>`;
+}
+function renderListeActualites(){
+  const actus = (DB.actualitesAffichage||[]).slice().sort((a,b)=> (b.createdAt||'').localeCompare(a.createdAt||''));
+  if(!actus.length) return `<div class="empty">Aucune actualité pour l'instant.</div>`;
+  return `<table class="table">
+    <tbody>
+      ${actus.map(a=>`<tr>
+        <td>${escapeHtml(a.texte)}</td>
+        <td style="text-align:right;white-space:nowrap;"><button class="btn secondary sm" onclick="handleSupprimerActualite('${a.id}')">Supprimer</button></td>
+      </tr>`).join('')}
+    </tbody>
+  </table>`;
+}
+function copierLienAffichage(lien){
+  navigator.clipboard?.writeText(lien).then(()=>toast('Lien copié')).catch(()=>toast('Impossible de copier — sélectionnez le lien manuellement'));
+}
+function ouvrirModifierHonneur(categorie, periode){
+  const h = honneurActuel(categorie, periode) || {};
+  const estEleve = categorie === 'eleve';
+  const options = estEleve
+    ? DB.eleves.slice().sort((a,b)=>eleveFullName(a).localeCompare(eleveFullName(b))).map(e=>`<option value="${e.id}" ${h.nomAffiche===eleveFullName(e)?'selected':''}>${escapeHtml(eleveFullName(e))} — ${escapeHtml(classeName(e.classeId))}</option>`).join('')
+    : (DB.enseignants||[]).slice().sort((a,b)=>ensFullName(a).localeCompare(ensFullName(b))).map(en=>`<option value="${en.id}" ${h.nomAffiche===ensFullName(en)?'selected':''}>${escapeHtml(ensFullName(en))}</option>`).join('');
+  const labelPeriode = periode==='mois'?'du mois':periode==='trimestre'?'du trimestre':"de l'année";
+  openModal(`Modifier — ${estEleve?'Élève':'Enseignant(e)'} ${labelPeriode}`, `
+    <form onsubmit="return handleSaveHonneur(event,'${categorie}','${periode}')">
+      <div class="field">
+        <label>${estEleve?'Élève':'Enseignant(e)'}</label>
+        <select id="honneurPersonneId" required>
+          <option value="">— Choisir —</option>
+          ${options}
+        </select>
+      </div>
+      <div class="field">
+        <label>Période affichée (ex : "Septembre 2026")</label>
+        <input type="text" id="honneurLibellePeriode" value="${escapeHtml(h.libellePeriode||'')}">
+      </div>
+      <div class="field">
+        <label>Commentaire (optionnel)</label>
+        <textarea id="honneurCommentaire" rows="3">${escapeHtml(h.commentaire||'')}</textarea>
+      </div>
+      <button class="btn" type="submit" style="width:100%;margin-top:10px;">Enregistrer</button>
+    </form>
+  `);
+}
+async function handleSaveHonneur(ev, categorie, periode){
+  ev.preventDefault();
+  const personneId = $('#honneurPersonneId').value;
+  const libellePeriode = $('#honneurLibellePeriode').value.trim();
+  const commentaire = $('#honneurCommentaire').value.trim();
+  const estEleve = categorie === 'eleve';
+  const personne = estEleve ? eleveById(personneId) : (DB.enseignants||[]).find(en=>en.id===personneId);
+  if(!personne){ alert('Choisissez une personne'); return false; }
+  const nomAffiche = estEleve ? eleveFullName(personne) : ensFullName(personne);
+  const classeOuMatiere = estEleve ? classeName(personne.classeId) : (personne.matieres||[]).join(', ');
+  try{
+    const { data, error } = await sb.from('tableau_honneur')
+      .upsert({ ecole_id: session.ecoleId, categorie, periode, nom_affiche: nomAffiche, classe_ou_matiere: classeOuMatiere, libelle_periode: libellePeriode, commentaire, updated_at: new Date().toISOString() }, { onConflict: 'ecole_id,categorie,periode' })
+      .select().single();
+    if(error) throw error;
+    const row = rowToCamel(data);
+    DB.tableauHonneur = (DB.tableauHonneur||[]).filter(h=>!(h.categorie===categorie && h.periode===periode));
+    DB.tableauHonneur.push(row);
+    closeModal();
+    toast('Mis à jour');
+    renderView('tableau-affichage');
+  }catch(e){ alert('Erreur : ' + e.message); }
+  return false;
+}
+async function handleAjouterActualite(ev){
+  ev.preventDefault();
+  const texte = $('#nouvelleActualite').value.trim();
+  if(!texte) return false;
+  try{
+    const { data, error } = await sb.from('actualites_affichage').insert({ ecole_id: session.ecoleId, texte }).select().single();
+    if(error) throw error;
+    DB.actualitesAffichage = DB.actualitesAffichage || [];
+    DB.actualitesAffichage.push(rowToCamel(data));
+    toast('Actualité ajoutée');
+    renderView('tableau-affichage');
+  }catch(e){ alert('Erreur : ' + e.message); }
+  return false;
+}
+async function handleSupprimerActualite(id){
+  if(!confirm('Supprimer cette actualité ?')) return;
+  try{
+    const { error } = await sb.from('actualites_affichage').delete().eq('id', id);
+    if(error) throw error;
+    DB.actualitesAffichage = (DB.actualitesAffichage||[]).filter(a=>a.id!==id);
+    toast('Actualité supprimée');
+    renderView('tableau-affichage');
+  }catch(e){ alert('Erreur : ' + e.message); }
+}
+
 function voirMessage(id){
   const m = DB.messages.find(x=>x.id===id);
   if(!m) return;
