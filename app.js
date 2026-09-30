@@ -1090,30 +1090,71 @@ function refreshPortierDashboard(){
   const input = $('#portierRecherche');
   if(input){ input.focus(); const pos = input.value.length; input.setSelectionRange(pos, pos); }
 }
+function renderBoutonEleve(e){
+  return `<button class="btn secondary" style="text-align:left;padding:14px 18px;display:flex;justify-content:space-between;align-items:center;" onclick="handleNotifierPortier('${e.id}')">
+    <span><strong>${escapeHtml(eleveFullName(e))}</strong> <span class="hint">· ${escapeHtml(classeName(e.classeId))}</span></span>
+    <span>🚪 Prévenir</span>
+  </button>`;
+}
 function renderPortierDashboard(){
   const q = (ui.filters.portierRecherche || '').toLowerCase().trim();
-  const resultats = !q ? [] : DB.eleves.filter(e =>
-    `${e.prenom} ${e.nom}`.toLowerCase().includes(q)
-  ).slice(0, 30);
+
+  // Mode recherche : prioritaire dès qu'on tape quelque chose, quelle que
+  // soit la classe sélectionnée par ailleurs.
+  if(q){
+    const resultats = DB.eleves.filter(e => `${e.prenom} ${e.nom}`.toLowerCase().includes(q)).slice(0, 30);
+    return `<div class="view active">
+      <div class="panel">
+        <div class="panel-head"><div><h2>🚪 Le parent d'un élève est arrivé</h2><div class="sub">Tapez le nom de l'élève, ou parcourez par classe</div></div></div>
+        ${renderPortierBarreRecherche()}
+        ${!resultats.length ? `<div class="empty">Aucun élève trouvé.</div>` :
+          `<div style="display:flex;flex-direction:column;gap:8px;">${resultats.map(renderBoutonEleve).join('')}</div>`}
+      </div>
+    </div>`;
+  }
+
+  // Mode "classe sélectionnée" : liste des élèves de cette classe.
+  const classeId = ui.filters.portierClasse;
+  if(classeId){
+    const c = DB.classes.find(c=>c.id===classeId);
+    const elevesClasse = DB.eleves.filter(e=>e.classeId===classeId)
+      .sort((a,b)=>eleveFullName(a).localeCompare(eleveFullName(b)));
+    return `<div class="view active">
+      <div class="panel">
+        <button class="btn secondary sm" style="margin-bottom:14px;" onclick="ui.filters.portierClasse=null; refreshPortierDashboard()">← Toutes les classes</button>
+        <div class="panel-head"><div><h2>🚪 ${escapeHtml(c?c.nom:'Classe')}</h2><div class="sub">Cliquez sur un nom pour prévenir l'enseignant(e)</div></div></div>
+        ${renderPortierBarreRecherche()}
+        ${!elevesClasse.length ? `<div class="empty">Aucun élève actif dans cette classe.</div>` :
+          `<div style="display:flex;flex-direction:column;gap:8px;">${elevesClasse.map(renderBoutonEleve).join('')}</div>`}
+      </div>
+    </div>`;
+  }
+
+  // Mode par défaut : liste des classes, groupées par cycle.
+  const cycles = [...new Set(DB.classes.map(c=>c.cycle))];
   return `<div class="view active">
     <div class="panel">
       <div class="panel-head">
-        <div><h2>🚪 Le parent d'un élève est arrivé</h2><div class="sub">Tapez le nom de l'élève, puis cliquez sur son nom pour prévenir son enseignant(e)</div></div>
+        <div><h2>🚪 Le parent d'un élève est arrivé</h2><div class="sub">Choisissez une classe, ou tapez directement le nom de l'élève</div></div>
       </div>
-      <input type="text" id="portierRecherche" placeholder="Nom ou prénom de l'élève…" value="${escapeHtml(ui.filters.portierRecherche||'')}"
-        oninput="ui.filters.portierRecherche=this.value; refreshPortierDashboard()" autofocus
-        style="width:100%;padding:14px;font-size:16px;border:1px solid var(--border);border-radius:10px;margin-bottom:16px;">
-      ${!q ? `<div class="empty">Commencez à taper un nom ci-dessus.</div>` :
-        !resultats.length ? `<div class="empty">Aucun élève trouvé.</div>` :
-        `<div style="display:flex;flex-direction:column;gap:8px;">
-          ${resultats.map(e=>`
-            <button class="btn secondary" style="text-align:left;padding:14px 18px;display:flex;justify-content:space-between;align-items:center;" onclick="handleNotifierPortier('${e.id}')">
-              <span><strong>${escapeHtml(eleveFullName(e))}</strong> <span class="hint">· ${escapeHtml(classeName(e.classeId))}</span></span>
-              <span>🚪 Prévenir</span>
-            </button>`).join('')}
-        </div>`}
+      ${renderPortierBarreRecherche()}
+      ${cycles.map(cycle=>`
+        <div class="hint" style="font-weight:700;margin:14px 0 8px;">${escapeHtml(cycle)}</div>
+        <div class="grid-3">
+          ${DB.classes.filter(c=>c.cycle===cycle).map(c=>{
+            const effectif = DB.eleves.filter(e=>e.classeId===c.id).length;
+            return `<button class="btn secondary" style="padding:16px;text-align:left;" onclick="ui.filters.portierClasse='${c.id}'; refreshPortierDashboard()">
+              <strong>${escapeHtml(c.nom)}</strong><div class="hint">${effectif} élève(s)</div>
+            </button>`;
+          }).join('')}
+        </div>`).join('') || `<div class="empty">Aucune classe active.</div>`}
     </div>
   </div>`;
+}
+function renderPortierBarreRecherche(){
+  return `<input type="text" id="portierRecherche" placeholder="Ou tapez un nom pour chercher dans toutes les classes…" value="${escapeHtml(ui.filters.portierRecherche||'')}"
+    oninput="ui.filters.portierRecherche=this.value; refreshPortierDashboard()"
+    style="width:100%;padding:14px;font-size:16px;border:1px solid var(--border);border-radius:10px;margin-bottom:16px;">`;
 }
 async function handleNotifierPortier(eleveId){
   try{
