@@ -1562,11 +1562,164 @@ function renderEleveListe(){
   </div>`;
 }
 
+/* ---------------------------------------------------------------------
+   REMPLISSAGE INTELLIGENT — photo ou vocal → pré-remplissage IA d'un
+   formulaire (voir supabase/functions/smart-fill/index.ts). Générique :
+   n'importe quel formulaire peut s'y brancher en lui passant un schéma
+   de champs et une fonction "onResultat".
+   --------------------------------------------------------------------- */
+const SCHEMA_ELEVE = [
+  {name:'prenom', label:'Prénom', type:'text'},
+  {name:'nom', label:'Nom', type:'text'},
+  {name:'sexe', label:'Sexe', type:'text', format:'M ou F'},
+  {name:'dateNaissance', label:'Date de naissance', type:'date', format:'AAAA-MM-JJ'},
+  {name:'parentNom', label:'Nom du parent ou tuteur', type:'text'},
+  {name:'parentTel', label:'Téléphone du parent', type:'tel', format:"10 chiffres, Côte d'Ivoire"},
+  {name:'parentAdresse', label:'Adresse', type:'text'},
+];
+
+let smartFillRecorder = null;
+let smartFillChunks = [];
+
+function ouvrirRemplissageIntelligent(formulaire, schema, onResultat){
+  window.__smartFillOnResultat = onResultat;
+  window.__smartFillFormulaire = formulaire;
+  window.__smartFillSchema = schema;
+  openModal('✨ Remplissage intelligent', renderSmartFillModal());
+}
+function renderSmartFillModal(etat, message){
+  if(etat==='chargement'){
+    return `<div style="text-align:center;padding:30px 10px;">
+      <div class="hint">⏳ Analyse en cours… (ça peut prendre quelques secondes)</div>
+    </div>`;
+  }
+  return `
+    <div class="hint" style="margin-bottom:14px;">Prenez en photo un document (ex : acte de naissance), ou enregistrez/importez un message vocal décrivant les informations. Vous pourrez tout relire et corriger avant d'enregistrer.</div>
+    ${message ? `<div class="pin-error" style="margin-bottom:12px;">${escapeHtml(message)}</div>` : ''}
+    <div class="grid-2" style="margin-bottom:14px;">
+      <div class="panel" style="background:var(--surface-2);text-align:center;padding:18px;">
+        <div style="font-size:32px;">📷</div>
+        <div class="hint" style="margin:8px 0 12px;">Photo d'un document</div>
+        <label class="btn secondary sm" style="cursor:pointer;">Choisir une photo
+          <input type="file" accept="image/*" capture="environment" style="display:none;" onchange="handleSmartFillPhoto(event)">
+        </label>
+      </div>
+      <div class="panel" style="background:var(--surface-2);text-align:center;padding:18px;">
+        <div style="font-size:32px;">🎤</div>
+        <div class="hint" style="margin:8px 0 12px;">Message vocal</div>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <button type="button" class="btn secondary sm" id="btnSmartFillRec" onclick="handleSmartFillToggleRecord()">⏺️ Enregistrer</button>
+          <label class="btn secondary sm" style="cursor:pointer;">Importer un fichier (dont .opus WhatsApp)
+            <input type="file" accept="audio/*" style="display:none;" onchange="handleSmartFillAudioFichier(event)">
+          </label>
+        </div>
+      </div>
+    </div>
+    <div class="form-actions"><button type="button" class="btn secondary" onclick="closeModal()">Annuler</button></div>
+  `;
+}
+function smartFillFichierEnBase64(fichier){
+  return new Promise((resolve, reject) => {
+    const lecteur = new FileReader();
+    lecteur.onload = () => resolve(String(lecteur.result).split(',')[1]);
+    lecteur.onerror = reject;
+    lecteur.readAsDataURL(fichier);
+  });
+}
+function smartFillCompresserImage(fichier){
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(fichier);
+    img.onload = () => {
+      const maxLargeur = 1600;
+      const ratio = Math.min(1, maxLargeur / img.width);
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(img.width * ratio);
+      canvas.height = Math.round(img.height * ratio);
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(url);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+      resolve({ base64: dataUrl.split(',')[1], mimeType: 'image/jpeg' });
+    };
+    img.onerror = reject;
+    img.src = url;
+  });
+}
+async function handleSmartFillPhoto(ev){
+  const fichier = ev.target.files[0];
+  if(!fichier) return;
+  try{
+    const { base64, mimeType } = await smartFillCompresserImage(fichier);
+    await smartFillEnvoyer('photo', base64, mimeType);
+  }catch(e){ $('#modalBody').innerHTML = renderSmartFillModal(null, 'Erreur : ' + e.message); }
+}
+async function handleSmartFillAudioFichier(ev){
+  const fichier = ev.target.files[0];
+  if(!fichier) return;
+  try{
+    const base64 = await smartFillFichierEnBase64(fichier);
+    await smartFillEnvoyer('audio', base64, fichier.type || 'audio/ogg');
+  }catch(e){ $('#modalBody').innerHTML = renderSmartFillModal(null, 'Erreur : ' + e.message); }
+}
+async function handleSmartFillToggleRecord(){
+  const btn = $('#btnSmartFillRec');
+  if(smartFillRecorder && smartFillRecorder.state === 'recording'){
+    smartFillRecorder.stop();
+    return;
+  }
+  try{
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    smartFillChunks = [];
+    smartFillRecorder = new MediaRecorder(stream);
+    smartFillRecorder.ondataavailable = (e) => smartFillChunks.push(e.data);
+    smartFillRecorder.onstop = async () => {
+      stream.getTracks().forEach(t => t.stop());
+      const blob = new Blob(smartFillChunks, { type: smartFillRecorder.mimeType || 'audio/webm' });
+      const base64 = await smartFillFichierEnBase64(blob);
+      await smartFillEnvoyer('audio', base64, blob.type);
+    };
+    smartFillRecorder.start();
+    if(btn){ btn.textContent = '⏹️ Arrêter'; btn.classList.add('btn-recording'); }
+  }catch(e){ $('#modalBody').innerHTML = renderSmartFillModal(null, "Impossible d'accéder au microphone : " + e.message); }
+}
+async function smartFillEnvoyer(typeSource, fichierBase64, mimeType){
+  $('#modalBody').innerHTML = renderSmartFillModal('chargement');
+  try{
+    const { data, error } = await sb.functions.invoke('smart-fill', {
+      body: { formulaire: window.__smartFillFormulaire, schema: window.__smartFillSchema, typeSource, fichierBase64, mimeType },
+    });
+    if(error) throw new Error(await messageErreurFonction(error));
+    if(!data?.ok) throw new Error(data?.error || 'Échec du remplissage automatique');
+    closeModal();
+    window.__smartFillOnResultat(data.resultat);
+  }catch(e){ $('#modalBody').innerHTML = renderSmartFillModal(null, e.message); }
+}
+function appliquerRemplissage(formId, resultat){
+  const form = document.getElementById(formId);
+  if(!form) return;
+  let nbRemplis = 0, nbAVerifier = 0;
+  for(const champ in resultat){
+    const { valeur, confiance } = resultat[champ];
+    const input = form.elements[champ];
+    if(!input || valeur == null || valeur === '') continue;
+    input.value = valeur;
+    input.classList.add('champ-pre-rempli');
+    nbRemplis++;
+    if(confiance === 'faible'){
+      input.classList.add('champ-a-verifier');
+      nbAVerifier++;
+    }
+  }
+  toast(nbRemplis ? `${nbRemplis} champ(s) pré-rempli(s)${nbAVerifier?', '+nbAVerifier+' à vérifier':''}` : "Aucune information n'a pu être extraite");
+}
+
 function openEleveForm(id){
   const e = id ? eleveById(id) : null;
   openModal(e ? "Modifier l'élève" : 'Nouvel élève', `
     <form id="formEleve" onsubmit="return handleSaveEleve(event)">
       <input type="hidden" name="id" value="${e?e.id:''}">
+      <button type="button" class="btn secondary sm" style="margin-bottom:14px;" onclick="ouvrirRemplissageIntelligent('eleve', SCHEMA_ELEVE, (r)=>appliquerRemplissage('formEleve', r))">✨ Remplir automatiquement</button>
       <div class="form-grid">
         <div class="field"><label>Prénom</label><input name="prenom" required value="${e?escapeHtml(e.prenom):''}"></div>
         <div class="field"><label>Nom</label><input name="nom" required value="${e?escapeHtml(e.nom):''}"></div>

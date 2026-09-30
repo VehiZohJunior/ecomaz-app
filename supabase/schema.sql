@@ -1305,3 +1305,24 @@ create policy "maj notifications_portier enseignant" on notifications_portier fo
   with check (mon_role() = 'enseignant' and (mon_enseignant_id() is null or classe_id = any(mes_classes())));
 create policy "lecture notifications_portier personnel" on notifications_portier for select
   using (ecole_id = mon_ecole_id() and est_perso_admin());
+
+-- =====================================================================
+-- 37. REMPLISSAGE INTELLIGENT DES FORMULAIRES — photo/vocal → pré-
+-- remplissage IA (2026-09-30). Voir supabase/functions/smart-fill/
+-- index.ts pour la logique (jamais de stockage de l'image/audio, jamais
+-- de policy insert cliente sur la table de journalisation — uniquement
+-- la fonction Edge, clé service_role).
+-- =====================================================================
+alter table ecoles add column if not exists limite_remplissage_mensuelle integer not null default 100;
+
+create table if not exists usage_remplissage_intelligent (
+  id uuid primary key default gen_random_uuid(),
+  ecole_id uuid not null references ecoles(id) on delete cascade,
+  utilisateur_id uuid references auth.users(id) on delete set null default auth.uid(),
+  formulaire text not null,
+  type_source text not null check (type_source in ('photo','audio')),
+  created_at timestamptz default now()
+);
+alter table usage_remplissage_intelligent enable row level security;
+create policy "lecture usage_remplissage" on usage_remplissage_intelligent for select
+  using (ecole_id = mon_ecole_id() and est_admin());

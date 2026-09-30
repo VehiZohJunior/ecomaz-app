@@ -43,7 +43,7 @@ Deno.serve(async (req) => {
     if (!user) throw new Error('Non authentifié');
 
     const { data: profil } = await supabaseCaller
-      .from('profiles').select('role').eq('id', user.id).single();
+      .from('profiles').select('role, nom_complet').eq('id', user.id).single();
     if (!profil || profil.role !== 'developpeur') {
       throw new Error("Réservé au rôle développeur");
     }
@@ -53,8 +53,8 @@ Deno.serve(async (req) => {
     if (!nomEcole || !directeurNom || !directeurEmail || !directeurMotDePasse) {
       throw new Error('Paramètres manquants (nom école, nom/email/mot de passe du directeur)');
     }
-    if (directeurMotDePasse.length < 6) {
-      throw new Error('Le mot de passe doit contenir au moins 6 caractères');
+    if (directeurMotDePasse.length < 8) {
+      throw new Error('Le mot de passe doit contenir au moins 8 caractères');
     }
 
     // 2) À partir d'ici seulement : clé service_role, jamais transmise au
@@ -91,6 +91,15 @@ Deno.serve(async (req) => {
       await supabaseAdmin.from('ecoles').delete().eq('id', ecole.id);
       throw errProfil;
     }
+
+    await supabaseAdmin.from('journal_console_dev').insert({
+      action: 'creation_ecole',
+      ecole_id: ecole.id,
+      ecole_nom: nomEcole,
+      details: { directeurEmail, directeurNom },
+      auteur_id: user.id,
+      auteur_nom: profil.nom_complet || '',
+    });
 
     return new Response(JSON.stringify({ ok: true, ecoleId: ecole.id }), {
       headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },

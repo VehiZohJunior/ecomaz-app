@@ -198,6 +198,16 @@ tbody tr:hover{ background:var(--surface-2); }
 .field textarea{ resize:vertical; min-height:70px; }
 .form-actions{ display:flex; justify-content:flex-end; gap:10px; margin-top:18px; padding-top:14px; border-top:1px solid var(--border); }
 
+/* REMPLISSAGE INTELLIGENT */
+.field input.champ-pre-rempli, .field select.champ-pre-rempli, .field textarea.champ-pre-rempli{
+  background:var(--green-bg); border-color:var(--green);
+}
+.field input.champ-a-verifier, .field select.champ-a-verifier, .field textarea.champ-a-verifier{
+  background:var(--amber-bg); border-color:var(--amber);
+}
+.btn-recording{ background:var(--red-bg) !important; border-color:var(--red) !important; color:var(--red) !important; animation:pulse-rec 1.2s infinite; }
+@keyframes pulse-rec{ 0%,100%{opacity:1;} 50%{opacity:.6;} }
+
 /* MODAL */
 .modal-backdrop{ display:none; position:fixed; inset:0; background:rgba(15,18,30,.5); z-index:100; align-items:flex-start; justify-content:center; padding:40px 16px; overflow-y:auto; }
 .modal-backdrop.open{ display:flex; }

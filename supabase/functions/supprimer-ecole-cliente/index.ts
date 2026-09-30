@@ -22,7 +22,7 @@ Deno.serve(async (req) => {
     const { data: { user } } = await supabaseCaller.auth.getUser();
     if (!user) throw new Error('Non authentifié');
 
-    const { data: profil } = await supabaseCaller.from('profiles').select('role').eq('id', user.id).single();
+    const { data: profil } = await supabaseCaller.from('profiles').select('role, nom_complet').eq('id', user.id).single();
     if (!profil || profil.role !== 'developpeur') throw new Error('Réservé au rôle développeur');
 
     const { ecoleId } = await req.json();
@@ -30,12 +30,30 @@ Deno.serve(async (req) => {
 
     const supabaseAdmin = createClient(supabaseUrl, serviceKey);
 
+    // 0) Capturer le nom AVANT suppression — le journal doit rester lisible
+    //    même après coup (ecole_id passera à NULL par la suite).
+    const { data: ecoleAvant } = await supabaseAdmin.from('ecoles').select('nom_ecole').eq('id', ecoleId).single();
+    const nomEcole = ecoleAvant?.nom_ecole || '(école inconnue)';
+
     // 1) Récupérer tous les comptes de connexion (Auth) liés à cette école
     //    AVANT de supprimer quoi que ce soit (la suppression de l'école
     //    effacera ces lignes profiles par cascade).
     const { data: profilsEcole, error: errProfils } = await supabaseAdmin
       .from('profiles').select('id').eq('ecole_id', ecoleId);
     if (errProfils) throw errProfils;
+
+    // 1bis) Journaliser AVANT la suppression, pendant que ecoleId est
+    //    encore une référence valide — la contrainte "on delete set null"
+    //    videra automatiquement ecole_id ici une fois l'école supprimée
+    //    juste après, sans jamais perdre la trace de l'action elle-même.
+    await supabaseAdmin.from('journal_console_dev').insert({
+      action: 'suppression_ecole',
+      ecole_id: ecoleId,
+      ecole_nom: nomEcole,
+      details: { nbComptesLies: (profilsEcole || []).length },
+      auteur_id: user.id,
+      auteur_nom: profil.nom_complet || '',
+    });
 
     // 2) Supprimer l'école : cascade automatique sur toutes les tables
     //    opérationnelles (élèves, notes, comptabilité...) et sur profiles.
