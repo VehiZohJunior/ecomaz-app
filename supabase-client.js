@@ -370,7 +370,7 @@ async function loadAllFromSupabase(){
     paiementsScolarite, activites, inscriptionsActivites, paiementsCotisations,
     gadgets, ventesGadgets, personnelAutre, paiementsSalaires, depenses, messages,
     alertesPointage, echeancesScolarite, profiles, fneConfigRow, tvaCategories, paiementEnLigneRow,
-    parentsEleves
+    parentsEleves, tableauHonneur, actualitesAffichage
   ] = await Promise.all([
     sb.from('ecoles').select('*').eq('id', session.ecoleId).single(),
     dbSelectAll('classes'),
@@ -413,6 +413,10 @@ async function loadAllFromSupabase(){
     // Liens parent↔élève : tolérant à l'absence de la table (migration pas
     // encore appliquée).
     dbSelectAll('parents_eleves').catch(()=>[]),
+    // Tableau d'affichage (tableaux d'honneur + actualités) : tolérant à
+    // l'absence des tables (migration pas encore appliquée).
+    dbSelectAll('tableau_honneur').catch(()=>[]),
+    dbSelectAll('actualites_affichage', 'created_at').catch(()=>[]),
   ]);
 
   if(ecoleRow.error) throw ecoleRow.error;
@@ -450,7 +454,7 @@ async function loadAllFromSupabase(){
     paiementsCotisations, gadgets, ventesGadgets, personnelAutre,
     paiementsSalaires, depenses, messages, alertesPointage,
     echeancesScolarite: echeancesScolarite.slice().sort((a,b)=> (a.ordre-b.ordre) || (a.dateEcheance||'').localeCompare(b.dateEcheance||'')),
-    profiles, parentsEleves,
+    profiles, parentsEleves, tableauHonneur, actualitesAffichage,
     fneConfig: fneConfigRow || {regime:'recus', prestataire:'', cleConfiguree:false},
   };
 }
