@@ -466,17 +466,21 @@ async function loadAllFromSupabase(){
    pas quand elle a été écrite.
    --------------------------------------------------------------------- */
 async function chargerDBParent(){
-  const [ecoleRow, eleves, classesRows] = await Promise.all([
+  const [ecoleRow, eleves, classesRows, messages] = await Promise.all([
     sb.from('ecoles').select('*').eq('id', session.ecoleId).single(),
     // RLS restreint déjà aux enfants liés à ce parent (voir policy
     // "lecture eleves par parent", schema.sql section 31) — pas besoin de
     // filtrer côté client.
     sb.from('eleves').select('*').eq('ecole_id', session.ecoleId),
     sb.from('classes').select('*').eq('ecole_id', session.ecoleId),
+    // Notifications concernant son/ses enfant(s) uniquement (RLS — voir
+    // policy "lecture messages par parent", schema.sql section 33).
+    sb.from('messages').select('*').eq('ecole_id', session.ecoleId).order('date', {ascending:false}).order('heure', {ascending:false}),
   ]);
   if(ecoleRow.error) throw ecoleRow.error;
   if(eleves.error) throw eleves.error;
   if(classesRows.error) throw classesRows.error;
+  if(messages.error) throw messages.error;
   const ecole = rowToCamel(ecoleRow.data);
   return {
     meta: {
@@ -486,6 +490,7 @@ async function chargerDBParent(){
     },
     eleves: rowsToCamel(eleves.data),
     classes: rowsToCamel(classesRows.data),
+    messages: rowsToCamel(messages.data),
   };
 }
 
