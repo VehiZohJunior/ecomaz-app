@@ -1004,11 +1004,29 @@ function renderParentDashboard(){
 
     <div class="panel" style="margin-top:16px;">
       <div class="panel-head">
+        <div><h2>📢 Annonces du jour</h2><div class="sub">Début/fin des cours, pause de midi</div></div>
+      </div>
+      ${renderAnnoncesDuJour()}
+    </div>
+
+    <div class="panel" style="margin-top:16px;">
+      <div class="panel-head">
         <div><h2>🔔 Notifications</h2><div class="sub">Messages de l'établissement concernant votre/vos enfant(s)</div></div>
       </div>
       ${renderNotificationsParent()}
     </div>
   </div>`;
+}
+function renderAnnoncesDuJour(){
+  const aujourdhui = todayISO();
+  const annonces = (DB.annoncesHoraires||[]).filter(a=>a.date===aujourdhui);
+  if(!annonces.length) return `<div class="empty">Aucune annonce pour aujourd'hui.</div>`;
+  return `<ul style="margin:0;padding-left:0;list-style:none;display:flex;flex-direction:column;gap:8px;">
+    ${annonces.map(a=>`<li style="padding:10px 14px;background:var(--surface-2);border-radius:10px;">
+      <span class="hint" style="white-space:nowrap;">${a.createdAt?new Date(a.createdAt).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}):''}</span>
+      &nbsp;${escapeHtml(a.contenu)}
+    </li>`).join('')}
+  </ul>`;
 }
 function renderNotificationsParent(){
   const messages = DB.messages || [];
@@ -1232,6 +1250,12 @@ function renderDashboard(){
         <div class="label">Présence enseignants aujourd'hui</div>
       </div>
     </div>
+
+    ${(DB.annoncesHoraires||[]).some(a=>a.date===today) ? `
+    <div class="panel">
+      <div class="panel-head"><div><h2>📢 Annonces du jour</h2><div class="sub">Début/fin des cours, pause de midi</div></div></div>
+      ${renderAnnoncesDuJour()}
+    </div>` : ''}
 
     <div class="grid-2">
       <div class="panel">
@@ -4328,6 +4352,65 @@ async function handleSupprimerActualite(id){
   }catch(e){ alert('Erreur : ' + e.message); }
 }
 
+/* ---------------------------------------------------------------------
+   ANNONCES HORAIRES AUTOMATIQUES — configuration (Paramètres, Direction/
+   Fondation). L'envoi lui-même est géré côté serveur (pg_cron + fonction
+   Edge "annoncer-horaires", chaque minute) — voir schema.sql section 35.
+   --------------------------------------------------------------------- */
+const HORAIRES_CHAMPS = [
+  {fonction:'matin_debut', label:'Début des cours — matin', champPrimaire:'matinDebutPrimaire', champMaternelle:'matinDebutMaternelle'},
+  {fonction:'midi_pause', label:'Pause de midi', champPrimaire:'midiPausePrimaire', champMaternelle:'midiPauseMaternelle'},
+  {fonction:'apresmidi_debut', label:'Début des cours — après-midi', champPrimaire:'apresmidiDebutPrimaire', champMaternelle:'apresmidiDebutMaternelle'},
+  {fonction:'apresmidi_fin', label:'Fin des cours — après-midi', champPrimaire:'apresmidiFinPrimaire', champMaternelle:'apresmidiFinMaternelle'},
+];
+const HORAIRES_DEFAUTS = {
+  matinDebutPrimaire:'07:15', matinDebutMaternelle:'07:45',
+  midiPausePrimaire:'11:45', midiPauseMaternelle:'10:45',
+  apresmidiDebutPrimaire:'13:45', apresmidiDebutMaternelle:'13:45',
+  apresmidiFinPrimaire:'16:45', apresmidiFinMaternelle:'15:45',
+};
+function renderHorairesAnnonces(){
+  const h = DB.horairesAnnonces || {};
+  return `
+    <form onsubmit="return handleSaveHoraires(event)">
+      <label style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
+        <input type="checkbox" name="actif" ${h.actif!==false?'checked':''}>
+        <strong>Activer les annonces automatiques</strong>
+      </label>
+      <table class="table">
+        <thead><tr><th>Annonce</th><th>Primaire</th><th>Maternelle</th></tr></thead>
+        <tbody>
+          ${HORAIRES_CHAMPS.map(c=>`
+            <tr>
+              <td>${c.label}</td>
+              <td><input type="time" name="${c.champPrimaire}" value="${(h[c.champPrimaire]||HORAIRES_DEFAUTS[c.champPrimaire]).slice(0,5)}"></td>
+              <td><input type="time" name="${c.champMaternelle}" value="${(h[c.champMaternelle]||HORAIRES_DEFAUTS[c.champMaternelle]).slice(0,5)}"></td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+      <div class="hint" style="margin-top:10px;">Ces annonces apparaissent automatiquement dans l'espace Parent (selon le cycle de l'enfant) et dans le tableau de bord du personnel — jamais par SMS.</div>
+      <div class="form-actions"><button class="btn" type="submit">Enregistrer les horaires</button></div>
+    </form>
+  `;
+}
+async function handleSaveHoraires(ev){
+  ev.preventDefault();
+  const fd = new FormData(ev.target);
+  const payload = { ecole_id: session.ecoleId, actif: fd.get('actif') === 'on' };
+  HORAIRES_CHAMPS.forEach(c=>{
+    payload[camelToSnake(c.champPrimaire)] = fd.get(c.champPrimaire) || HORAIRES_DEFAUTS[c.champPrimaire];
+    payload[camelToSnake(c.champMaternelle)] = fd.get(c.champMaternelle) || HORAIRES_DEFAUTS[c.champMaternelle];
+  });
+  try{
+    const { data, error } = await sb.from('horaires_annonces').upsert(payload, { onConflict: 'ecole_id' }).select().single();
+    if(error) throw error;
+    DB.horairesAnnonces = rowToCamel(data);
+    toast('Horaires enregistrés');
+    renderView('parametres');
+  }catch(e){ alert('Erreur : ' + e.message); }
+  return false;
+}
+
 function voirMessage(id){
   const m = DB.messages.find(x=>x.id===id);
   if(!m) return;
@@ -4432,6 +4515,11 @@ function renderParametres(){
         <div class="hint">🏛️ <strong>Fondation</strong> — Accès complet, identique à la Direction.</div>
       </div>
       <div class="section-note">🔐 La création et la suppression des comptes du personnel se font depuis le tableau de bord Supabase (Authentication → Users), puis en associant le compte à un rôle. C'est une opération d'administration technique, volontairement séparée de l'application pour éviter toute création de compte non maîtrisée.</div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><div><h2>⏰ Annonces horaires automatiques</h2><div class="sub">Notification automatique (dans l'appli, pas par SMS) au début/fin des cours — visible par les parents et le personnel</div></div></div>
+      ${renderHorairesAnnonces()}
     </div>
 
     <div class="panel">

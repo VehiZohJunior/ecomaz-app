@@ -370,7 +370,7 @@ async function loadAllFromSupabase(){
     paiementsScolarite, activites, inscriptionsActivites, paiementsCotisations,
     gadgets, ventesGadgets, personnelAutre, paiementsSalaires, depenses, messages,
     alertesPointage, echeancesScolarite, profiles, fneConfigRow, tvaCategories, paiementEnLigneRow,
-    parentsEleves, tableauHonneur, actualitesAffichage
+    parentsEleves, tableauHonneur, actualitesAffichage, horairesAnnoncesRow, annoncesHoraires
   ] = await Promise.all([
     sb.from('ecoles').select('*').eq('id', session.ecoleId).single(),
     dbSelectAll('classes'),
@@ -417,6 +417,8 @@ async function loadAllFromSupabase(){
     // l'absence des tables (migration pas encore appliquée).
     dbSelectAll('tableau_honneur').catch(()=>[]),
     dbSelectAll('actualites_affichage', 'created_at').catch(()=>[]),
+    dbSelectUne('horaires_annonces').catch(()=>null),
+    dbSelectAll('annonces_horaires_envoyees').catch(()=>[]),
   ]);
 
   if(ecoleRow.error) throw ecoleRow.error;
@@ -455,6 +457,7 @@ async function loadAllFromSupabase(){
     paiementsSalaires, depenses, messages, alertesPointage,
     echeancesScolarite: echeancesScolarite.slice().sort((a,b)=> (a.ordre-b.ordre) || (a.dateEcheance||'').localeCompare(b.dateEcheance||'')),
     profiles, parentsEleves, tableauHonneur, actualitesAffichage,
+    horairesAnnonces: horairesAnnoncesRow, annoncesHoraires,
     fneConfig: fneConfigRow || {regime:'recus', prestataire:'', cleConfiguree:false},
   };
 }
@@ -470,7 +473,7 @@ async function loadAllFromSupabase(){
    pas quand elle a été écrite.
    --------------------------------------------------------------------- */
 async function chargerDBParent(){
-  const [ecoleRow, eleves, classesRows, messages] = await Promise.all([
+  const [ecoleRow, eleves, classesRows, messages, annoncesHoraires] = await Promise.all([
     sb.from('ecoles').select('*').eq('id', session.ecoleId).single(),
     // RLS restreint déjà aux enfants liés à ce parent (voir policy
     // "lecture eleves par parent", schema.sql section 31) — pas besoin de
@@ -480,11 +483,15 @@ async function chargerDBParent(){
     // Notifications concernant son/ses enfant(s) uniquement (RLS — voir
     // policy "lecture messages par parent", schema.sql section 33).
     sb.from('messages').select('*').eq('ecole_id', session.ecoleId).order('date', {ascending:false}).order('heure', {ascending:false}),
+    // Annonces horaires (RLS restreint déjà au cycle de son/ses enfant(s) —
+    // voir policy "lecture annonces_horaires parent", schema.sql section 35).
+    sb.from('annonces_horaires_envoyees').select('*').eq('ecole_id', session.ecoleId).order('created_at', {ascending:false}),
   ]);
   if(ecoleRow.error) throw ecoleRow.error;
   if(eleves.error) throw eleves.error;
   if(classesRows.error) throw classesRows.error;
   if(messages.error) throw messages.error;
+  if(annoncesHoraires.error) throw annoncesHoraires.error;
   const ecole = rowToCamel(ecoleRow.data);
   return {
     meta: {
@@ -495,6 +502,7 @@ async function chargerDBParent(){
     eleves: rowsToCamel(eleves.data),
     classes: rowsToCamel(classesRows.data),
     messages: rowsToCamel(messages.data),
+    annoncesHoraires: rowsToCamel(annoncesHoraires.data),
   };
 }
 
