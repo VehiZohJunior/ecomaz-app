@@ -219,6 +219,7 @@ const ROLES = {
   secretariat: {label:'Secrétariat', icon:'🗂️', desc:'Gestion administrative & scolarité', nav:['dashboard','eleves','notes','presences-eleves','emploi-temps','programmes','pointage-scan','enseignants','presences-enseignants','comptabilite','messagerie']},
   direction:   {label:'Direction', icon:'🎩', desc:'Accès complet', nav:'all'},
   fondation:   {label:'Fondation', icon:'🏛️', desc:'Accès complet', nav:'all'},
+  parent:      {label:'Parent', icon:'👪', desc:"Suivi de l'enfant", nav:[]},
 };
 const IDLE_TIMEOUT_MS = 10*60*1000; // auto-déconnexion après 10 min d'inactivité
 
@@ -782,6 +783,7 @@ const ESPACES_DEF = [
   { key:'secretariat', ic:'🗂️' },
   { key:'direction',   ic:'🎩' },
   { key:'fondation',   ic:'🏛️' },
+  { key:'parent',      ic:'👪' },
 ];
 function langSwitcherHtml(){
   return `<div class="lang-switch">${LANGUES_DISPONIBLES.map(l=>`
@@ -940,10 +942,55 @@ async function handleLoginSubmit(ev){
   }
   return false;
 }
+/* ---------------------------------------------------------------------
+   ESPACE PARENT — écran dédié, séparé du tableau de bord/menu du
+   personnel (voir chargerDBParent() dans supabase-client.js : le parent
+   n'a accès, via RLS, qu'à son/ses propre(s) enfant(s)).
+   --------------------------------------------------------------------- */
+function enterAppParent(){
+  $('#loginGate').classList.remove('open');
+  $('#appRoot').style.display = '';
+  $('#sidebar').style.display = 'none';
+  $('#burger').style.display = 'none';
+  applyBranding();
+  $('#viewTitle').textContent = 'Espace Parent';
+  const pill = $('#topbarPill');
+  pill.innerHTML = `${escapeHtml(session.nomComplet||'')} <button class="btn secondary sm" style="margin-left:10px;" onclick="logoutRole()">🔒 Déconnexion</button>`;
+  $('#viewContainer').innerHTML = renderParentDashboard();
+  startIdleWatcher();
+}
+function renderParentDashboard(){
+  const mesEnfants = DB.eleves || [];
+  if(!mesEnfants.length){
+    return `<div class="view active">
+      <div class="panel"><div class="empty">Aucun enfant n'est encore relié à votre compte. Contactez le secrétariat de l'établissement.</div></div>
+    </div>`;
+  }
+  return `<div class="view active">
+    <div class="grid-2">
+      ${mesEnfants.map(e=>`
+        <div class="panel">
+          <div class="profile-head">
+            <span class="avatar">${initials(e.prenom,e.nom)}</span>
+            <div>
+              <h2>${escapeHtml(eleveFullName(e))}</h2>
+              <div class="meta">${classeName(e.classeId)} · <span class="badge ${e.statut==='Actif'?'green':'gray'}">${e.statut}</span></div>
+            </div>
+          </div>
+          <div class="grid-3">
+            <div><div class="hint">Matricule</div><strong>${escapeHtml(e.matricule)}</strong></div>
+            <div><div class="hint">Date de naissance</div><strong>${fmtDate(e.dateNaissance)}</strong></div>
+            <div><div class="hint">Date d'inscription</div><strong>${fmtDate(e.dateInscription)}</strong></div>
+          </div>
+        </div>`).join('')}
+    </div>
+  </div>`;
+}
 function enterApp(){
   $('#loginGate').classList.remove('open');
   $('#appRoot').style.display = '';
   $('#sidebar').style.display = '';
+  $('#burger').style.display = '';
   applyBranding();
   applyRoleVisibility();
   go('dashboard');
@@ -996,6 +1043,21 @@ async function entrerSelonRole(){
     const err = new Error("Ce compte est un compte technique : connectez-vous sur la console développeur, pas ici.");
     err.suspendu = true;
     throw err;
+  }
+  // Un compte parent a son propre chemin de chargement (minimal, jamais le
+  // chargeur générique du personnel — voir chargerDBParent()) et son propre
+  // écran, sans le tableau de bord/menu du personnel.
+  if(session.role === 'parent'){
+    DB = await chargerDBParent();
+    if(DB.meta.actif === false){
+      await deconnexion();
+      ui.role = null; DB = null;
+      const err = new Error("Cet établissement a été suspendu. Contactez l'administrateur.");
+      err.suspendu = true;
+      throw err;
+    }
+    enterAppParent();
+    return;
   }
   DB = await chargerDB();
   if(DB.meta.actif === false){
@@ -1337,6 +1399,72 @@ async function deleteEleve(id){
 
 function viewEleveProfile(id){ ui.eleveProfileId = id; renderView('eleves'); }
 
+/* ---------------------------------------------------------------------
+   Comptes parent liés à un élève (fiche élève)
+   --------------------------------------------------------------------- */
+function renderComptesParentEleve(eleveId){
+  const liens = (DB.parentsEleves||[]).filter(pe=>pe.eleveId===eleveId);
+  if(!liens.length) return `<div class="empty">Aucun compte parent créé pour l'instant.</div>`;
+  return `<table class="table">
+    <thead><tr><th>Nom</th><th></th></tr></thead>
+    <tbody>
+      ${liens.map(pe=>{
+        const profil = (DB.profiles||[]).find(p=>p.id===pe.parentProfileId);
+        return `<tr>
+          <td>${escapeHtml(profil?profil.nomComplet:'—')}</td>
+          <td style="text-align:right;"><button class="btn secondary sm" onclick="retirerAccesParent('${pe.id}','${eleveId}')">Retirer l'accès</button></td>
+        </tr>`;
+      }).join('')}
+    </tbody>
+  </table>`;
+}
+function ouvrirCreerCompteParent(eleveId){
+  openModal('Créer un compte parent', `
+    <form onsubmit="return handleCreerCompteParent(event, '${eleveId}')">
+      <div class="field">
+        <label>Nom complet du parent</label>
+        <input type="text" id="parentCompteNom" required autofocus>
+      </div>
+      <div class="field">
+        <label>Email du parent</label>
+        <input type="email" id="parentCompteEmail" required>
+      </div>
+      <div class="hint" style="margin-top:6px;">Le parent recevra un accès sans mot de passe défini ici : indiquez-lui de cliquer sur « Mot de passe oublié ? » sur l'écran de connexion (espace Parent) pour choisir le sien. Si un compte existe déjà pour cet email (ex. l'autre parent), il sera simplement relié à cet élève.</div>
+      <button class="btn" type="submit" style="width:100%;margin-top:14px;">Créer / relier le compte</button>
+    </form>
+  `);
+}
+async function handleCreerCompteParent(ev, eleveId){
+  ev.preventDefault();
+  const parentNom = $('#parentCompteNom').value.trim();
+  const parentEmail = $('#parentCompteEmail').value.trim();
+  try{
+    const { data, error } = await sb.functions.invoke('creer-compte-parent', { body: { eleveId, parentNom, parentEmail } });
+    if(error) throw error;
+    if(!data?.ok) throw new Error(data?.error || 'Échec de la création du compte parent');
+    DB.parentsEleves = DB.parentsEleves || [];
+    DB.parentsEleves.push({ id: crypto.randomUUID(), ecoleId: session.ecoleId, parentProfileId: data.parentUserId, eleveId });
+    if(data.nouveauCompte){
+      DB.profiles = DB.profiles || [];
+      DB.profiles.push({ id: data.parentUserId, ecoleId: session.ecoleId, role:'parent', nomComplet: parentNom });
+    }
+    closeModal();
+    toast(data.nouveauCompte ? 'Compte parent créé' : 'Compte parent existant relié à cet élève');
+    renderView('eleves');
+  }catch(e){ alert('Erreur : ' + e.message); }
+  return false;
+}
+async function retirerAccesParent(peId, eleveId){
+  if(!confirm("Retirer l'accès de ce parent à cet élève ?")) return;
+  try{
+    const { error } = await sb.from('parents_eleves').delete().eq('id', peId);
+    if(error) throw error;
+    DB.parentsEleves = (DB.parentsEleves||[]).filter(pe=>pe.id!==peId);
+    toast('Accès retiré');
+    renderView('eleves');
+  }catch(e){ alert('Erreur : ' + e.message); }
+}
+
 function renderEleveProfile(id){
   const e = eleveById(id);
   if(!e){ ui.eleveProfileId=null; return renderEleveListe(); }
@@ -1400,6 +1528,14 @@ function renderEleveProfile(id){
         <div><div class="hint">Date d'inscription</div><strong>${fmtDate(e.dateInscription)}</strong></div>
         <div><div class="hint">Taux de présence global</div><strong>${tauxPresence===null?'—':tauxPresence+'%'}</strong></div>
       </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">
+        <div><h2>👪 Compte(s) parent</h2><div class="sub">Accès à l'espace parent (messagerie, notifications) pour cet élève</div></div>
+        <button class="btn sm" onclick="ouvrirCreerCompteParent('${id}')">+ Créer un compte parent</button>
+      </div>
+      ${renderComptesParentEleve(id)}
     </div>
 
     <div class="grid-2">

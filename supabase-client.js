@@ -369,7 +369,8 @@ async function loadAllFromSupabase(){
     presencesEnseignants, emploiTemps, programmes, bulletinsRows,
     paiementsScolarite, activites, inscriptionsActivites, paiementsCotisations,
     gadgets, ventesGadgets, personnelAutre, paiementsSalaires, depenses, messages,
-    alertesPointage, echeancesScolarite, profiles, fneConfigRow, tvaCategories, paiementEnLigneRow
+    alertesPointage, echeancesScolarite, profiles, fneConfigRow, tvaCategories, paiementEnLigneRow,
+    parentsEleves
   ] = await Promise.all([
     sb.from('ecoles').select('*').eq('id', session.ecoleId).single(),
     dbSelectAll('classes'),
@@ -409,6 +410,9 @@ async function loadAllFromSupabase(){
     // paiement_en_ligne_config_lecture : vue SANS les identifiants (voir
     // schema.sql section 29), tolérante à son absence.
     dbSelectUne('paiement_en_ligne_config_lecture').catch(()=>null),
+    // Liens parent↔élève : tolérant à l'absence de la table (migration pas
+    // encore appliquée).
+    dbSelectAll('parents_eleves').catch(()=>[]),
   ]);
 
   if(ecoleRow.error) throw ecoleRow.error;
@@ -446,8 +450,42 @@ async function loadAllFromSupabase(){
     paiementsCotisations, gadgets, ventesGadgets, personnelAutre,
     paiementsSalaires, depenses, messages, alertesPointage,
     echeancesScolarite: echeancesScolarite.slice().sort((a,b)=> (a.ordre-b.ordre) || (a.dateEcheance||'').localeCompare(b.dateEcheance||'')),
-    profiles,
+    profiles, parentsEleves,
     fneConfig: fneConfigRow || {regime:'recus', prestataire:'', cleConfiguree:false},
+  };
+}
+
+/* ---------------------------------------------------------------------
+   Chargement dédié pour un compte PARENT — volontairement séparé de
+   loadAllFromSupabase() ci-dessus : un parent n'a besoin (et n'a le
+   droit via RLS) de voir que son/ses propre(s) enfant(s), jamais les
+   ~20 tables opérationnelles du personnel. Réutiliser le chargeur
+   générique risquerait soit de casser (tables sans policy "parent",
+   donc résultats vides) soit, pire, d'exposer trop de données si une
+   policy existante s'avérait trop permissive pour ce rôle qui n'existait
+   pas quand elle a été écrite.
+   --------------------------------------------------------------------- */
+async function chargerDBParent(){
+  const [ecoleRow, eleves, classesRows] = await Promise.all([
+    sb.from('ecoles').select('*').eq('id', session.ecoleId).single(),
+    // RLS restreint déjà aux enfants liés à ce parent (voir policy
+    // "lecture eleves par parent", schema.sql section 31) — pas besoin de
+    // filtrer côté client.
+    sb.from('eleves').select('*').eq('ecole_id', session.ecoleId),
+    sb.from('classes').select('*').eq('ecole_id', session.ecoleId),
+  ]);
+  if(ecoleRow.error) throw ecoleRow.error;
+  if(eleves.error) throw eleves.error;
+  if(classesRows.error) throw classesRows.error;
+  const ecole = rowToCamel(ecoleRow.data);
+  return {
+    meta: {
+      nomEcole: ecole.nomEcole, adresse: ecole.adresse, telephone: ecole.telephone,
+      anneeScolaire: ecole.anneeScolaire, logo: ecole.logoUrl || '',
+      actif: ecole.actif !== false,
+    },
+    eleves: rowsToCamel(eleves.data),
+    classes: rowsToCamel(classesRows.data),
   };
 }
 

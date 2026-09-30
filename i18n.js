@@ -37,6 +37,8 @@ const TRADUCTIONS = {
     espace_direction_desc: 'Accès complet, y compris finances et paramètres.',
     espace_fondation_label: 'Fondation',
     espace_fondation_desc: 'Accès complet, identique à la Direction.',
+    espace_parent_label: 'Parent',
+    espace_parent_desc: "Suivi de votre/vos enfant(s), messagerie et notifications.",
 
     login_espace_prefix: 'Espace ',
     login_sub: 'Connectez-vous avec le compte fourni par votre établissement',
@@ -105,6 +107,8 @@ const TRADUCTIONS = {
     espace_direction_desc: 'Full access, including finances and settings.',
     espace_fondation_label: 'Board / Foundation',
     espace_fondation_desc: 'Full access, same as Head of School.',
+    espace_parent_label: 'Parent',
+    espace_parent_desc: "Follow your child(ren), messaging and notifications.",
 
     login_espace_prefix: '',
     login_sub: 'Sign in with the account provided by your school',
