@@ -938,3 +938,137 @@ create policy "creation paiements_en_ligne" on paiements_en_ligne for insert
 create policy "lecture paiements_en_ligne" on paiements_en_ligne for select
   using (est_perso_admin() and ecole_id = mon_ecole_id());
 create policy "acces support developpeur" on paiements_en_ligne for select using (developpeur_a_acces(ecole_id));
+
+-- =====================================================================
+-- 30. JOURNAL D'AUDIT — CONSOLE DÉVELOPPEUR (élévation du niveau
+-- technique de la console, 2026-09-24)
+-- Trace chaque action du développeur qui affecte une école cliente :
+-- création, suspension, réactivation, suppression, configuration du
+-- paiement en ligne. Immuable (aucune policy update/delete, même le
+-- développeur ne peut pas l'altérer après coup) — même principe que
+-- journal_compta côté appli cliente. "ecole_id" passe à NULL si l'école
+-- est supprimée (on delete set null, PAS cascade) : la suppression
+-- elle-même doit rester dans le journal même après coup, donc
+-- "ecole_nom" capture le nom au moment de l'action, indépendamment.
+-- =====================================================================
+create table if not exists journal_console_dev (
+  id uuid primary key default gen_random_uuid(),
+  action text not null,
+  ecole_id uuid references ecoles(id) on delete set null,
+  ecole_nom text not null default '',
+  details jsonb default '{}'::jsonb,
+  auteur_id uuid references auth.users(id) on delete set null default auth.uid(),
+  auteur_nom text default '',
+  created_at timestamptz default now()
+);
+alter table journal_console_dev enable row level security;
+
+create policy "creation journal_console_dev" on journal_console_dev for insert
+  with check (est_developpeur());
+
+create policy "lecture journal_console_dev" on journal_console_dev for select
+  using (est_developpeur());
+
+-- =====================================================================
+-- 31. COMPTE PARENT — ÉTAPE 1 : FONDATIONS (2026-09-30)
+-- Nouveau rôle "parent", volontairement TRÈS limité : contrairement au
+-- personnel, un compte parent n'a accès à absolument rien via le
+-- chargeur générique chargerDB()/loadAllFromSupabase() (aucune policy
+-- "parent" n'est ajoutée sur les tables existantes ici) — il passe par
+-- un chemin de chargement dédié, minimal, construit à part (voir
+-- app.js). Un parent peut avoir plusieurs enfants ; un élève peut avoir
+-- plusieurs comptes parents (père/mère) — d'où une table de liaison.
+-- =====================================================================
+alter type role_utilisateur add value if not exists 'parent';
+
+create or replace function est_parent() returns boolean
+language sql stable security definer set search_path = public as
+$$ select mon_role() = 'parent' $$;
+
+create table if not exists parents_eleves (
+  id uuid primary key default gen_random_uuid(),
+  ecole_id uuid not null references ecoles(id) on delete cascade default mon_ecole_id(),
+  parent_profile_id uuid not null references profiles(id) on delete cascade,
+  eleve_id uuid not null references eleves(id) on delete cascade,
+  created_at timestamptz default now(),
+  unique (parent_profile_id, eleve_id)
+);
+alter table parents_eleves enable row level security;
+
+-- Le parent voit ses propres liens (pour savoir quels enfants il a).
+create policy "lecture parents_eleves parent" on parents_eleves for select
+  using (parent_profile_id = auth.uid());
+-- Le personnel administratif gère les liens (création/suppression depuis
+-- la fiche élève) — jamais le parent lui-même (pas d'auto-inscription).
+create policy "gestion parents_eleves staff" on parents_eleves for all
+  using (est_perso_admin() and ecole_id = mon_ecole_id())
+  with check (est_perso_admin() and ecole_id = mon_ecole_id());
+
+-- Un parent peut lire UNIQUEMENT la fiche du/des enfant(s) auquel il est
+-- lié — jamais les autres élèves de l'école.
+create policy "lecture eleves par parent" on eleves for select
+  using (est_parent() and exists (
+    select 1 from parents_eleves pe where pe.eleve_id = eleves.id and pe.parent_profile_id = auth.uid()
+  ));
+
+-- =====================================================================
+-- 32. CORRECTIF SÉCURITÉ — faille découverte en testant le compte parent
+-- (2026-09-30) : les policies "lecture eleves"/"acces notes"/"acces
+-- presences_eleves"/"acces programmes"/"lecture emploi_temps"/"acces
+-- bulletins" (sections 13/19) utilisaient toutes le même raccourci
+-- "mon_enseignant_id() is null => accès total à l'école", pensé pour un
+-- compte enseignant mal configuré (profil sans fiche enseignant liée).
+-- Un compte parent a LUI AUSSI enseignant_id = null (il n'en a jamais eu
+-- un), donc ce raccourci lui donnait accès à TOUS les élèves/notes/
+-- présences/programmes/emploi du temps de l'école, pas seulement ceux de
+-- son enfant — confirmé par un test bout-en-bout avant mise en service.
+-- Corrigé en réservant ce raccourci au SEUL rôle "enseignant" : tout
+-- futur rôle avec enseignant_id = null n'en bénéficiera plus jamais par
+-- accident.
+-- =====================================================================
+drop policy if exists "lecture eleves" on eleves;
+create policy "lecture eleves" on eleves for select using (
+  ecole_id = mon_ecole_id() and (
+    est_perso_admin() or (mon_role() = 'enseignant' and mon_enseignant_id() is null) or classe_id = any(mes_classes())
+  )
+);
+
+drop policy if exists "acces notes" on notes;
+create policy "acces notes" on notes for all using (
+  ecole_id = mon_ecole_id() and (
+    est_perso_admin() or (mon_role() = 'enseignant' and mon_enseignant_id() is null) or
+    exists (select 1 from eleves e where e.id = notes.eleve_id and e.classe_id = any(mes_classes()))
+  )
+);
+
+drop policy if exists "acces presences_eleves" on presences_eleves;
+create policy "acces presences_eleves" on presences_eleves for all using (
+  ecole_id = mon_ecole_id() and (
+    est_perso_admin() or (mon_role() = 'enseignant' and mon_enseignant_id() is null) or
+    presences_eleves.classe_id = any(mes_classes())
+  )
+);
+
+drop policy if exists "acces programmes" on programmes;
+create policy "acces programmes" on programmes for all using (
+  ecole_id = mon_ecole_id() and (
+    est_perso_admin() or (mon_role() = 'enseignant' and mon_enseignant_id() is null) or
+    programmes.classe_id = any(mes_classes())
+  )
+);
+
+drop policy if exists "lecture emploi_temps" on emploi_temps;
+create policy "lecture emploi_temps" on emploi_temps for select using (
+  ecole_id = mon_ecole_id() and (
+    est_perso_admin() or (mon_role() = 'enseignant' and mon_enseignant_id() is null) or
+    emploi_temps.classe_id = any(mes_classes())
+  )
+);
+
+drop policy if exists "acces bulletins" on bulletins_commentaires;
+create policy "acces bulletins" on bulletins_commentaires for all using (
+  ecole_id = mon_ecole_id() and (
+    est_perso_admin() or (mon_role() = 'enseignant' and mon_enseignant_id() is null) or
+    exists (select 1 from eleves e where e.id = bulletins_commentaires.eleve_id and e.classe_id = any(mes_classes()))
+  )
+);
