@@ -371,7 +371,7 @@ async function loadAllFromSupabase(){
     gadgets, ventesGadgets, personnelAutre, paiementsSalaires, depenses, messages,
     alertesPointage, echeancesScolarite, profiles, fneConfigRow, tvaCategories, paiementEnLigneRow,
     parentsEleves, tableauHonneur, actualitesAffichage, horairesAnnoncesRow, annoncesHoraires,
-    notificationsPortier, messagesInternes, suggestions
+    notificationsPortier, messagesInternes, suggestions, pointagesGps
   ] = await Promise.all([
     sb.from('ecoles').select('*').eq('id', session.ecoleId).single(),
     dbSelectAll('classes'),
@@ -426,6 +426,8 @@ async function loadAllFromSupabase(){
     // Bulles Messages / Suggestions (schema.sql section 38).
     dbSelectAll('messages_internes', 'created_at').catch(()=>[]),
     dbSelectAll('suggestions', 'created_at').catch(()=>[]),
+    // Pointage GPS (schema.sql section 39).
+    dbSelectAll('pointages_gps', 'created_at').catch(()=>[]),
   ]);
 
   if(ecoleRow.error) throw ecoleRow.error;
@@ -449,6 +451,9 @@ async function loadAllFromSupabase(){
       loyerMensuel: ecole.loyerMensuel || 0,
       niveaux: ecole.niveaux != null ? ecole.niveaux : ['prescolaire','primaire'], // [] explicite (nouvelle école vidée) ≠ null (colonne jamais définie)
       heureArriveeAttendue: (ecole.heureArriveeAttendue || '07:30:00').slice(0,5),
+      geofenceLatitude: ecole.geofenceLatitude ?? null,
+      geofenceLongitude: ecole.geofenceLongitude ?? null,
+      geofenceRayonMetres: ecole.geofenceRayonMetres ?? 100,
       actif: ecole.actif !== false,
       accesSupportDeveloppeur: ecole.accesSupportDeveloppeur === true,
       assujettiTva: ecole.assujettiTva === true,
@@ -465,7 +470,7 @@ async function loadAllFromSupabase(){
     echeancesScolarite: echeancesScolarite.slice().sort((a,b)=> (a.ordre-b.ordre) || (a.dateEcheance||'').localeCompare(b.dateEcheance||'')),
     profiles, parentsEleves, tableauHonneur, actualitesAffichage,
     horairesAnnonces: horairesAnnoncesRow, annoncesHoraires, notificationsPortier,
-    messagesInternes, suggestions,
+    messagesInternes, suggestions, pointagesGps,
     fneConfig: fneConfigRow || {regime:'recus', prestataire:'', cleConfiguree:false},
   };
 }

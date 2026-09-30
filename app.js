@@ -2485,7 +2485,7 @@ function renderPresencesEnseignants(){
       </td>
       <td>${rec?.heureArrivee || '—'}</td>
       <td>${rec?.heureDepart || '—'}</td>
-      <td><span class="badge ${rec?.methode==='QR'?'blue':'gray'}">${rec?.methode || 'Manuel'}</span></td>
+      <td><span class="badge ${rec?.methode==='QR'?'blue':rec?.methode==='GPS'?'purple':'gray'}">${rec?.methode || 'Manuel'}</span></td>
       <td><input type="text" data-motif-ens="${t.id}" placeholder="Motif (optionnel)" value="${escapeHtml(rec?rec.motif:'')}" style="width:100%;padding:7px 9px;border:1px solid var(--border);border-radius:7px;"></td>
     </tr>`;
   }).join('');
@@ -2498,7 +2498,7 @@ function renderPresencesEnseignants(){
       <td><span class="badge ${p.statut==='Présent'?'green':p.statut==='Absent'?'red':'amber'}">${p.statut}</span></td>
       <td>${p.heureArrivee || '—'}</td><td>${p.heureDepart || '—'}</td>
       <td>${p.minutesRetard ? p.minutesRetard+' min' : '—'}</td>
-      <td><span class="badge ${p.methode==='QR'?'blue':'gray'}">${p.methode || 'Manuel'}</span></td>
+      <td><span class="badge ${p.methode==='QR'?'blue':p.methode==='GPS'?'purple':'gray'}">${p.methode || 'Manuel'}</span></td>
       <td>${escapeHtml(p.motif||'—')}</td></tr>`;
   }).join('');
 
@@ -2527,6 +2527,24 @@ function renderPresencesEnseignants(){
     </div>
 
     <div class="panel">
+      <div class="panel-head">
+        <div><h2>📍 Pointage GPS</h2><div class="sub">L'enseignant clique un lien reçu par SMS et valide sa position, sans se connecter à l'appli</div></div>
+        ${(DB.pointagesGps||[]).some(p=>p.date===date) ? `<button class="btn secondary sm no-print" onclick="exporterPointagesGpsCSV()">⬇️ Exporter (CSV)</button>` : ''}
+      </div>
+      ${!DB.meta.geofenceLatitude ? `<div class="hint">⚠️ La zone de l'établissement n'est pas encore configurée — allez dans <strong>Paramètres → Zone de l'établissement</strong> avant d'envoyer des liens.</div>` : `
+        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;">
+          ${list.map(t=>`
+            <div style="display:flex;align-items:center;gap:6px;background:var(--surface-2);border:1px solid var(--border);border-radius:10px;padding:6px 10px;">
+              <span style="font-size:12.5px;">${escapeHtml(ensFullName(t))}</span>
+              <button class="btn secondary sm" onclick="handleEnvoyerLienPointage('${t.id}','arrivee')">Arrivée</button>
+              <button class="btn secondary sm" onclick="handleEnvoyerLienPointage('${t.id}','depart')">Départ</button>
+            </div>`).join('') || '<div class="hint">Aucun enseignant actif.</div>'}
+        </div>
+        ${renderPointagesGpsDuJour(date)}
+      `}
+    </div>
+
+    <div class="panel">
       <div class="panel-head"><div><h2>Historique récent</h2><div class="sub">20 derniers enregistrements</div></div></div>
       <div class="table-wrap"><table>
         <thead><tr><th>Date</th><th>Enseignant</th><th>Statut</th><th>Arrivée</th><th>Départ</th><th>Retard</th><th>Méthode</th><th>Motif</th></tr></thead>
@@ -2541,6 +2559,51 @@ function renderPresencesEnseignants(){
   </div>`;
 }
 
+function renderPointagesGpsDuJour(date){
+  const liste = (DB.pointagesGps||[]).filter(p=>p.date===date).sort((a,b)=>b.heure.localeCompare(a.heure));
+  if(!liste.length) return `<div class="hint">Aucun pointage GPS aujourd'hui.</div>`;
+  const labelsStatut = { dans_etablissement:{txt:'Dans l\'établissement', cls:'green'}, hors_etablissement:{txt:'Hors établissement', cls:'red'}, a_verifier:{txt:'À vérifier', cls:'amber'} };
+  return `<div class="table-wrap"><table>
+    <thead><tr><th>Enseignant</th><th>Heure</th><th>Action</th><th>Statut</th><th>Distance</th><th>Lieu</th></tr></thead>
+    <tbody>
+      ${liste.map(p=>{
+        const t = enseignantById(p.enseignantId);
+        const st = labelsStatut[p.statut] || {txt:p.statut, cls:'gray'};
+        return `<tr>
+          <td>${t?escapeHtml(ensFullName(t)):'—'}</td>
+          <td>${p.heure?.slice(0,5)||''}</td>
+          <td>${p.action==='arrivee'?'Arrivée':'Départ'}</td>
+          <td><span class="badge ${st.cls}">${st.txt}</span></td>
+          <td>${p.distanceMetres!=null?p.distanceMetres+' m':'—'}</td>
+          <td><a href="https://maps.google.com/?q=${p.latitude},${p.longitude}" target="_blank" rel="noopener" style="font-size:12px;">${p.adresseApprox?escapeHtml(p.adresseApprox.slice(0,40))+'…':'Voir sur la carte'}</a></td>
+        </tr>`;
+      }).join('')}
+    </tbody>
+  </table></div>`;
+}
+async function handleEnvoyerLienPointage(enseignantId, action){
+  try{
+    const { data, error } = await sb.functions.invoke('generer-lien-pointage', {
+      body: { enseignantId, action, origine: location.origin + location.pathname.replace(/[^/]*$/, '') },
+    });
+    if(error) throw new Error(await messageErreurFonction(error));
+    if(!data?.ok) throw new Error(data?.error || "Échec de l'envoi du lien");
+    toast(data.smsEnvoye ? 'Lien envoyé par SMS' : 'Lien créé, mais le SMS a échoué — vérifiez le numéro');
+  }catch(e){ alert('Erreur : ' + e.message); }
+}
+function exporterPointagesGpsCSV(){
+  const lignes = [['Date','Enseignant','Heure','Action','Statut','Distance (m)','Adresse approximative']];
+  (DB.pointagesGps||[]).slice().sort((a,b)=>b.date.localeCompare(a.date)||b.heure.localeCompare(a.heure)).forEach(p=>{
+    const t = enseignantById(p.enseignantId);
+    lignes.push([fmtDate(p.date), t?ensFullName(t):'—', p.heure?.slice(0,5)||'', p.action, p.statut, p.distanceMetres??'', p.adresseApprox||'']);
+  });
+  const csv = lignes.map(l=>l.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const blob = new Blob(['﻿'+csv], {type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `ecomaz-pointage-gps-${todayISO()}.csv`;
+  a.click(); URL.revokeObjectURL(url);
+}
 function renderAlertesPointage(){
   const alertes = (DB.alertesPointage||[]).slice().sort((a,b)=> (b.date+b.heure).localeCompare(a.date+a.heure)).slice(0,15);
   if(alertes.length===0) return `<div class="hint">Aucune alerte — rien à signaler.</div>`;
@@ -4869,6 +4932,57 @@ async function handleSaveHoraires(ev){
   return false;
 }
 
+/* ---------------------------------------------------------------------
+   ZONE DE L'ÉTABLISSEMENT (géofence) — utilisée par le pointage GPS.
+   --------------------------------------------------------------------- */
+function renderGeofence(){
+  const m = DB.meta;
+  const configuree = m.geofenceLatitude != null && m.geofenceLongitude != null;
+  return `
+    <form onsubmit="return handleSaveGeofence(event)">
+      <div class="form-grid">
+        <div class="field"><label>Latitude</label><input type="number" step="any" name="latitude" id="geofenceLat" required value="${configuree?m.geofenceLatitude:''}"></div>
+        <div class="field"><label>Longitude</label><input type="number" step="any" name="longitude" id="geofenceLon" required value="${configuree?m.geofenceLongitude:''}"></div>
+        <div class="field"><label>Rayon toléré (mètres)</label><input type="number" min="10" step="10" name="rayon" value="${m.geofenceRayonMetres||100}"></div>
+      </div>
+      <div class="hint" style="margin:8px 0;">Le plus simple : ouvrez cette page depuis un téléphone, en vous tenant physiquement dans la cour de l'école, puis cliquez sur le bouton ci-dessous.</div>
+      <button type="button" class="btn secondary sm" onclick="utiliserPositionActuelle()">📍 Utiliser ma position actuelle</button>
+      <div class="form-actions"><button class="btn" type="submit">Enregistrer la zone</button></div>
+    </form>
+  `;
+}
+function utiliserPositionActuelle(){
+  if(!navigator.geolocation){ alert("Votre navigateur ne permet pas la géolocalisation."); return; }
+  navigator.geolocation.getCurrentPosition(
+    (pos)=>{
+      $('#geofenceLat').value = pos.coords.latitude;
+      $('#geofenceLon').value = pos.coords.longitude;
+      toast('Position actuelle récupérée — vérifiez puis enregistrez');
+    },
+    (err)=> alert("Impossible d'obtenir votre position : " + err.message),
+    { enableHighAccuracy: true, timeout: 15000 }
+  );
+}
+async function handleSaveGeofence(ev){
+  ev.preventDefault();
+  const fd = new FormData(ev.target);
+  const patch = {
+    geofence_latitude: parseFloat(fd.get('latitude')),
+    geofence_longitude: parseFloat(fd.get('longitude')),
+    geofence_rayon_metres: Math.max(10, parseInt(fd.get('rayon'))||100),
+  };
+  try{
+    const { error } = await sb.from('ecoles').update(patch).eq('id', session.ecoleId);
+    if(error) throw error;
+    DB.meta.geofenceLatitude = patch.geofence_latitude;
+    DB.meta.geofenceLongitude = patch.geofence_longitude;
+    DB.meta.geofenceRayonMetres = patch.geofence_rayon_metres;
+    toast('Zone enregistrée');
+    renderView('parametres');
+  }catch(e){ alert('Erreur : ' + e.message); }
+  return false;
+}
+
 function voirMessage(id){
   const m = DB.messages.find(x=>x.id===id);
   if(!m) return;
@@ -4980,6 +5094,11 @@ function renderParametres(){
     <div class="panel">
       <div class="panel-head"><div><h2>⏰ Annonces horaires automatiques</h2><div class="sub">Notification automatique (dans l'appli, pas par SMS) au début/fin des cours — visible par les parents et le personnel</div></div></div>
       ${renderHorairesAnnonces()}
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><div><h2>📍 Zone de l'établissement</h2><div class="sub">Utilisée pour valider les pointages GPS des enseignants (à quelle distance de l'école ils se trouvent)</div></div></div>
+      ${renderGeofence()}
     </div>
 
     <div class="panel">

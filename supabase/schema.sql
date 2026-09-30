@@ -1405,3 +1405,51 @@ create policy "lecture suggestions" on suggestions for select
 create policy "maj suggestions" on suggestions for update
   using (ecole_id = mon_ecole_id() and est_admin())
   with check (ecole_id = mon_ecole_id() and est_admin());
+
+-- =====================================================================
+-- 39. POINTAGE ENSEIGNANT PAR LIEN GPS (2026-09-30)
+-- Complément au pointage par badge QR existant (enregistrer-pointage) :
+-- l'enseignant clique un lien personnel reçu par SMS (pas de connexion à
+-- l'appli), autorise sa position, et son arrivée/départ est validé selon
+-- la distance à l'école. Voir supabase/functions/generer-lien-pointage/
+-- et supabase/functions/valider-pointage-gps/.
+-- =====================================================================
+alter table ecoles add column if not exists geofence_latitude double precision;
+alter table ecoles add column if not exists geofence_longitude double precision;
+alter table ecoles add column if not exists geofence_rayon_metres integer not null default 100;
+
+create table if not exists liens_pointage_gps (
+  id uuid primary key default gen_random_uuid(),
+  ecole_id uuid not null references ecoles(id) on delete cascade default mon_ecole_id(),
+  enseignant_id uuid not null references enseignants(id) on delete cascade,
+  token text not null unique default encode(gen_random_bytes(24), 'hex'),
+  action text not null check (action in ('arrivee','depart')),
+  expire_at timestamptz not null,
+  utilise_at timestamptz,
+  created_at timestamptz default now(),
+  created_by uuid references auth.users(id) on delete set null default auth.uid()
+);
+alter table liens_pointage_gps enable row level security;
+create policy "gestion liens_pointage_gps" on liens_pointage_gps for all
+  using (ecole_id = mon_ecole_id() and est_perso_admin())
+  with check (ecole_id = mon_ecole_id() and est_perso_admin());
+-- Aucune policy publique : la validation se fait uniquement via la
+-- fonction Edge "valider-pointage-gps" (service_role) — l'enseignant qui
+-- clique le lien n'est jamais connecté à l'application.
+
+create table if not exists pointages_gps (
+  id uuid primary key default gen_random_uuid(),
+  ecole_id uuid not null references ecoles(id) on delete cascade,
+  enseignant_id uuid not null references enseignants(id) on delete cascade,
+  lien_id uuid references liens_pointage_gps(id) on delete set null,
+  action text not null check (action in ('arrivee','depart')),
+  date date not null, heure time not null,
+  latitude double precision not null, longitude double precision not null,
+  precision_metres numeric, distance_metres numeric,
+  adresse_approx text,
+  statut text not null check (statut in ('dans_etablissement','hors_etablissement','a_verifier')),
+  created_at timestamptz default now()
+);
+alter table pointages_gps enable row level security;
+create policy "lecture pointages_gps" on pointages_gps for select
+  using (ecole_id = mon_ecole_id() and est_perso_admin());
