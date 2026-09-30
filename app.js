@@ -999,7 +999,32 @@ function renderParentDashboard(){
           </div>
         </div>`).join('')}
     </div>
+
+    <div class="panel" style="margin-top:16px;">
+      <div class="panel-head">
+        <div><h2>🔔 Notifications</h2><div class="sub">Messages de l'établissement concernant votre/vos enfant(s)</div></div>
+      </div>
+      ${renderNotificationsParent()}
+    </div>
   </div>`;
+}
+function renderNotificationsParent(){
+  const messages = DB.messages || [];
+  if(!messages.length) return `<div class="empty">Aucune notification pour l'instant.</div>`;
+  const plusieursEnfants = (DB.eleves||[]).length > 1;
+  return `<table class="table">
+    <thead><tr><th>Date</th>${plusieursEnfants?'<th>Enfant</th>':''}<th>Message</th></tr></thead>
+    <tbody>
+      ${messages.map(m=>{
+        const enfant = eleveById(m.eleveId);
+        return `<tr>
+          <td style="white-space:nowrap;">${fmtDate(m.date)}${m.heure?' '+m.heure.slice(0,5):''}</td>
+          ${plusieursEnfants?`<td>${enfant?escapeHtml(eleveFullName(enfant)):'—'}</td>`:''}
+          <td>${escapeHtml(m.contenu||'')}</td>
+        </tr>`;
+      }).join('')}
+    </tbody>
+  </table>`;
 }
 function enterApp(){
   $('#loginGate').classList.remove('open');
