@@ -305,6 +305,21 @@ function weekdayFR(iso){
   return map[idx];
 }
 
+// Quand une fonction Edge répond avec un code d'erreur (ex : validation
+// refusée), supabase-js met "data" à null et "error" à un message générique
+// et inexploitable ("Edge Function returned a non-2xx status code") — le
+// vrai message ({ok:false, error:"..."}) est dans le corps de la réponse,
+// accessible via error.context (l'objet Response brut).
+async function messageErreurFonction(error){
+  try{
+    if(error?.context?.json){
+      const corps = await error.context.json();
+      if(corps?.error) return corps.error;
+    }
+  }catch(_e){ /* corps non-JSON ou déjà consommé : on retombe sur error.message */ }
+  return error?.message || 'Erreur inconnue';
+}
+
 function toast(msg){
   const t = $('#toast');
   t.textContent = msg;
@@ -1440,7 +1455,7 @@ async function handleCreerCompteParent(ev, eleveId){
   const parentEmail = $('#parentCompteEmail').value.trim();
   try{
     const { data, error } = await sb.functions.invoke('creer-compte-parent', { body: { eleveId, parentNom, parentEmail } });
-    if(error) throw error;
+    if(error) throw new Error(await messageErreurFonction(error));
     if(!data?.ok) throw new Error(data?.error || 'Échec de la création du compte parent');
     DB.parentsEleves = DB.parentsEleves || [];
     DB.parentsEleves.push({ id: crypto.randomUUID(), ecoleId: session.ecoleId, parentProfileId: data.parentUserId, eleveId });
@@ -1780,7 +1795,7 @@ async function savePresencesEleves(){
 async function envoyerNotificationAbsenceEleve(eleveId, date, motif){
   try{
     const { data, error } = await sb.functions.invoke('notifier-absence-eleve', { body: { eleveId, date, motif } });
-    if(error) throw error;
+    if(error) throw new Error(await messageErreurFonction(error));
     if(!data?.ok) throw new Error(data?.error || "Échec de la notification");
   }catch(e){
     console.warn('Échec notification absence élève :', e.message);
@@ -2236,7 +2251,7 @@ async function enregistrerPointageEnseignant(t){
 
   try{
     const { data, error } = await sb.functions.invoke('enregistrer-pointage', { body: { enseignantId: t.id, action } });
-    if(error) throw error;
+    if(error) throw new Error(await messageErreurFonction(error));
     if(!data?.ok) throw new Error(data?.error || "Échec de l'enregistrement");
 
     if(data.deja){
@@ -4485,7 +4500,7 @@ async function genererLienPaiement(eleveId, trancheLabel, montant){
   toast('Génération du lien de paiement…');
   try{
     const { data, error } = await sb.functions.invoke('initier-paiement-en-ligne', { body: { eleveId, tranche, montant } });
-    if(error) throw error;
+    if(error) throw new Error(await messageErreurFonction(error));
     if(!data?.ok) throw new Error(data?.error || 'Échec de la génération du lien');
     const eleve = eleveById(eleveId);
     openModal('Lien de paiement généré', `
