@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tableau d'affichage — EcoMaZ</title>
+<link rel="icon" href="icon-192.png">
+<style>
+  :root{
+    --bg:#0f1226;
+    --surface:#171b3a;
+    --surface-2:#1f2450;
+    --border:#2c3266;
+    --text:#f4f5fb;
+    --text-dim:#a7acd6;
+    --primary:#6f7bff;
+    --primary-dim:#252b5e;
+    --gold:#f0b429;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;margin:0;}
+  body{
+    background:radial-gradient(circle at top, #1a1f44, var(--bg) 60%);
+    color:var(--text);
+    font-family:'Segoe UI', system-ui, -apple-system, Roboto, Arial, sans-serif;
+    overflow:hidden;
+  }
+  #racine{ display:flex; flex-direction:column; height:100vh; }
+  header{
+    display:flex; align-items:center; gap:18px; padding:28px 40px 18px;
+  }
+  header img{ width:64px; height:64px; border-radius:14px; object-fit:cover; background:#fff; }
+  header .logo-ph{ width:64px; height:64px; border-radius:14px; background:var(--primary-dim); display:flex; align-items:center; justify-content:center; font-size:30px; }
+  header h1{ margin:0; font-size:32px; font-weight:800; letter-spacing:.5px; }
+  header .sub{ color:var(--text-dim); font-size:15px; margin-top:2px; }
+  header .horloge{ margin-left:auto; text-align:right; font-size:22px; font-weight:700; color:var(--gold); }
+
+  main{ flex:1; padding:10px 40px 0; overflow:hidden; }
+  .categories{ display:grid; grid-template-columns:1fr 1fr; gap:28px; height:100%; }
+  .categorie h2{ font-size:22px; margin:0 0 14px; display:flex; align-items:center; gap:10px; color:var(--gold); }
+  .periodes{ display:grid; grid-template-columns:1fr; gap:16px; }
+  .carte{
+    background:linear-gradient(145deg, var(--surface), var(--surface-2));
+    border:1px solid var(--border); border-radius:20px; padding:18px 22px;
+    display:flex; align-items:center; gap:18px;
+  }
+  .carte .badge-periode{
+    flex:0 0 auto; width:78px; height:78px; border-radius:50%;
+    background:var(--primary); color:#fff; display:flex; align-items:center; justify-content:center;
+    font-size:13px; font-weight:800; text-align:center; line-height:1.2; padding:6px;
+  }
+  .carte .infos{ flex:1; min-width:0; }
+  .carte .nom{ font-size:22px; font-weight:800; }
+  .carte .meta{ color:var(--text-dim); font-size:14.5px; margin-top:2px; }
+  .carte .commentaire{ color:var(--text-dim); font-size:13.5px; margin-top:6px; font-style:italic; }
+  .carte.vide{ opacity:.4; justify-content:center; }
+  .carte.vide .infos{ text-align:center; font-style:italic; color:var(--text-dim); }
+
+  footer{
+    background:var(--primary-dim); border-top:1px solid var(--border);
+    padding:16px 0; margin-top:20px; overflow:hidden; white-space:nowrap; position:relative;
+  }
+  footer .defilement{ display:inline-block; padding-left:100%; animation:defiler 30s linear infinite; font-size:19px; font-weight:600; }
+  footer .item{ margin-right:80px; }
+  footer .item::before{ content:'📰 '; }
+  @keyframes defiler{ from{ transform:translateX(0);} to{ transform:translateX(-100%);} }
+
+  .ecran-vide{ display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; text-align:center; padding:40px; }
+  .ecran-vide h1{ font-size:26px; }
+  .ecran-vide p{ color:var(--text-dim); max-width:420px; }
+</style>
+</head>
+<body>
+
+<div id="racine"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="config.js"></script>
+<script>
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const params = new URLSearchParams(location.search);
+const ecoleId = params.get('ecole');
+
+const HONNEUR_PERIODES = [
+  {id:'mois', label:'DU MOIS'},
+  {id:'trimestre', label:'DU\nTRIMESTRE'},
+  {id:'annee', label:"DE\nL'ANNÉE"},
+];
+const HONNEUR_CATEGORIES = [
+  {id:'eleve', label:'Élève à l\'honneur', icon:'🧒'},
+  {id:'enseignant', label:'Enseignant(e) à l\'honneur', icon:'👩‍🏫'},
+];
+
+function escapeHtml(str){
+  return String(str ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function ecranMessage(titre, texte){
+  document.getElementById('racine').innerHTML = `
+    <div class="ecran-vide">
+      <div style="font-size:48px;margin-bottom:10px;">🎓</div>
+      <h1>${escapeHtml(titre)}</h1>
+      <p>${escapeHtml(texte)}</p>
+    </div>`;
+}
+
+if(!ecoleId){
+  ecranMessage("Lien incomplet", "Ce lien d'affichage doit être ouvert depuis EcoMaZ (menu «Tableau d'affichage»), qui génère l'adresse complète avec l'identifiant de l'école.");
+} else {
+  charger();
+  setInterval(charger, 60000);
+}
+
+async function charger(){
+  const [{ data: ecoles }, { data: honneurs }, { data: actus }] = await Promise.all([
+    sb.from('ecoles_vitrine').select('*').eq('id', ecoleId),
+    sb.from('tableau_honneur_public').select('*').eq('ecole_id', ecoleId),
+    sb.from('actualites_affichage_public').select('*').eq('ecole_id', ecoleId).order('created_at', {ascending:false}),
+  ]);
+  const ecole = ecoles && ecoles[0];
+  if(!ecole){
+    ecranMessage("École introuvable", "Aucune école active ne correspond à ce lien. Vérifiez le lien généré depuis EcoMaZ, ou contactez le secrétariat.");
+    return;
+  }
+  render(ecole, honneurs || [], actus || []);
+}
+
+function render(ecole, honneurs, actus){
+  const heure = new Date().toLocaleString('fr-FR', {weekday:'long', day:'2-digit', month:'long', hour:'2-digit', minute:'2-digit'});
+  document.getElementById('racine').innerHTML = `
+    <header>
+      ${ecole.logo_url ? `<img src="${escapeHtml(ecole.logo_url)}" alt="Logo">` : `<div class="logo-ph">🎓</div>`}
+      <div>
+        <h1>${escapeHtml(ecole.nom_ecole)}</h1>
+        <div class="sub">Tableau d'honneur & actualités</div>
+      </div>
+      <div class="horloge">${heure}</div>
+    </header>
+    <main>
+      <div class="categories">
+        ${HONNEUR_CATEGORIES.map(cat => `
+          <div class="categorie">
+            <h2>${cat.icon} ${escapeHtml(cat.label)}</h2>
+            <div class="periodes">
+              ${HONNEUR_PERIODES.map(per => {
+                const h = honneurs.find(x => x.categorie === cat.id && x.periode === per.id);
+                if(!h || !h.nom_affiche) return `
+                  <div class="carte vide">
+                    <div class="badge-periode">${per.label.replace('\n','<br>')}</div>
+                    <div class="infos">Non défini</div>
+                  </div>`;
+                return `
+                  <div class="carte">
+                    <div class="badge-periode">${per.label.replace('\n','<br>')}</div>
+                    <div class="infos">
+                      <div class="nom">${escapeHtml(h.nom_affiche)}</div>
+                      ${h.classe_ou_matiere ? `<div class="meta">${escapeHtml(h.classe_ou_matiere)}</div>` : ''}
+                      ${h.libelle_periode ? `<div class="meta">${escapeHtml(h.libelle_periode)}</div>` : ''}
+                      ${h.commentaire ? `<div class="commentaire">« ${escapeHtml(h.commentaire)} »</div>` : ''}
+                    </div>
+                  </div>`;
+              }).join('')}
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    </main>
+    <footer>
+      <div class="defilement">
+        ${actus.length
+          ? actus.map(a => `<span class="item">${escapeHtml(a.texte)}</span>`).join('')
+          : `<span class="item">Bienvenue sur le tableau d'affichage de ${escapeHtml(ecole.nom_ecole)} !</span>`}
+      </div>
+    </footer>
+  `;
+}
+</script>
+</body>
+</html>
