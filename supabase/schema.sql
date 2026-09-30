@@ -1072,3 +1072,19 @@ create policy "acces bulletins" on bulletins_commentaires for all using (
     exists (select 1 from eleves e where e.id = bulletins_commentaires.eleve_id and e.classe_id = any(mes_classes()))
   )
 );
+
+-- =====================================================================
+-- 33. COMPTE PARENT — ÉTAPE 2 : NOTIFICATIONS (lecture seule, 2026-09-30)
+-- Le parent peut désormais lire (jamais écrire/modifier) les messages qui
+-- concernent SON enfant (ex : notification d'absence, et plus tard les
+-- annonces horaires et notifications du portier — voir "messages" section
+-- 5/8, alimentée par notifier-absence-eleve). Filtré à la fois sur le
+-- lien parent↔élève ET sur destinataire_role='Parent', pour ne jamais lui
+-- montrer les messages internes adressés à la Direction/Fondation pour ce
+-- même élève.
+-- =====================================================================
+create policy "lecture messages par parent" on messages for select using (
+  est_parent() and destinataire_role = 'Parent' and eleve_id is not null and exists (
+    select 1 from parents_eleves pe where pe.eleve_id = messages.eleve_id and pe.parent_profile_id = auth.uid()
+  )
+);
