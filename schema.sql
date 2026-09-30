@@ -1224,3 +1224,84 @@ create extension if not exists pg_net with schema extensions;
 -- fonction Edge) qui ne doit jamais se retrouver sur GitHub (dépôt
 -- public). Il est appliqué une seule fois directement en base — voir la
 -- note dans supabase/functions/annoncer-horaires/index.ts.
+
+-- =====================================================================
+-- 36. "PORTIER" — ÉTAPE 5 (2026-09-30)
+-- Un compte "portier" a UNE seule capacité : chercher un élève par nom et
+-- signaler que son parent est arrivé — rien d'autre (pas de notes, pas de
+-- présences, pas de comptabilité). Le compte est créé manuellement comme
+-- les autres comptes du personnel (Supabase Dashboard → profiles, voir
+-- section 15), avec role='portier'.
+--
+-- Sécurité pensée pour donner au portier le MINIMUM de droits possible :
+-- il ne lit jamais "eleves" ni "classes.titulaire_id" ni "enseignants" —
+-- seulement une vue "eleves_portier_lecture" (nom/prénom/classe, rien de
+-- plus : pas de téléphone parent, pas de date de naissance...). Résoudre
+-- "quel enseignant prévenir" se fait uniquement CÔTÉ SERVEUR, via un
+-- trigger "security definer" — jamais le client portier n'a besoin de
+-- savoir qui est le titulaire d'une classe.
+-- =====================================================================
+alter type role_utilisateur add value if not exists 'portier';
+
+create or replace function est_portier() returns boolean
+language sql stable security definer set search_path = public as
+$$ select mon_role() = 'portier' $$;
+
+create or replace view eleves_portier_lecture as
+select id, prenom, nom, classe_id, matricule, statut
+from eleves
+where ecole_id = mon_ecole_id() and statut = 'Actif';
+grant select on eleves_portier_lecture to authenticated;
+
+create table if not exists notifications_portier (
+  id uuid primary key default gen_random_uuid(),
+  ecole_id uuid not null references ecoles(id) on delete cascade,
+  eleve_id uuid references eleves(id) on delete set null,
+  eleve_nom text not null default '',
+  classe_id text references classes(id) on delete set null,
+  vue boolean not null default false,
+  created_at timestamptz default now(),
+  created_by uuid references auth.users(id) on delete set null default auth.uid()
+);
+alter table notifications_portier enable row level security;
+
+-- Rempli ecole_id/eleve_nom/classe_id CÔTÉ SERVEUR à partir du seul
+-- eleve_id fourni par le portier — celui-ci n'a donc jamais accès en
+-- lecture à la fiche élève complète ni à la table classes/enseignants
+-- pour accomplir sa tâche.
+--
+-- Le "bon" enseignant à prévenir n'est PAS résolu à l'écriture (pas de
+-- colonne enseignant_id) : "classes.titulaire_id" n'étant pas toujours
+-- renseigné en pratique, la notification est plutôt visible par TOUT
+-- enseignant dont classes_assignees contient la classe de l'élève — même
+-- mécanisme déjà utilisé partout ailleurs (notes, présences, mes_classes()).
+create or replace function remplir_notification_portier() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare
+  v_eleve record;
+begin
+  select id, nom, prenom, classe_id, ecole_id into v_eleve from eleves where id = new.eleve_id;
+  if v_eleve is null or v_eleve.ecole_id <> mon_ecole_id() then
+    raise exception 'Élève introuvable dans votre école';
+  end if;
+  new.ecole_id := v_eleve.ecole_id;
+  new.eleve_nom := v_eleve.prenom || ' ' || v_eleve.nom;
+  new.classe_id := v_eleve.classe_id;
+  new.vue := false;
+  return new;
+end;
+$$;
+drop trigger if exists avant_insertion_notification_portier on notifications_portier;
+create trigger avant_insertion_notification_portier
+  before insert on notifications_portier
+  for each row execute function remplir_notification_portier();
+
+create policy "creation notifications_portier" on notifications_portier for insert
+  with check (est_portier());
+create policy "lecture notifications_portier enseignant" on notifications_portier for select
+  using (mon_role() = 'enseignant' and (mon_enseignant_id() is null or classe_id = any(mes_classes())));
+create policy "maj notifications_portier enseignant" on notifications_portier for update
+  using (mon_role() = 'enseignant' and (mon_enseignant_id() is null or classe_id = any(mes_classes())))
+  with check (mon_role() = 'enseignant' and (mon_enseignant_id() is null or classe_id = any(mes_classes())));
+create policy "lecture notifications_portier personnel" on notifications_portier for select
+  using (ecole_id = mon_ecole_id() and est_perso_admin());

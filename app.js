@@ -221,6 +221,7 @@ const ROLES = {
   direction:   {label:'Direction', icon:'🎩', desc:'Accès complet', nav:'all'},
   fondation:   {label:'Fondation', icon:'🏛️', desc:'Accès complet', nav:'all'},
   parent:      {label:'Parent', icon:'👪', desc:"Suivi de l'enfant", nav:[]},
+  portier:     {label:'Portier', icon:'🚪', desc:"Signaler l'arrivée d'un parent", nav:[]},
 };
 const IDLE_TIMEOUT_MS = 10*60*1000; // auto-déconnexion après 10 min d'inactivité
 
@@ -801,6 +802,7 @@ const ESPACES_DEF = [
   { key:'direction',   ic:'🎩' },
   { key:'fondation',   ic:'🏛️' },
   { key:'parent',      ic:'👪' },
+  { key:'portier',     ic:'🚪' },
 ];
 function langSwitcherHtml(){
   return `<div class="lang-switch">${LANGUES_DISPONIBLES.map(l=>`
@@ -1017,6 +1019,25 @@ function renderParentDashboard(){
     </div>
   </div>`;
 }
+function renderNotificationsPortier(){
+  const notifs = (DB.notificationsPortier||[]).filter(n=>!n.vue);
+  if(!notifs.length) return '';
+  return `<div style="display:flex;flex-direction:column;gap:8px;">
+    ${notifs.map(n=>`
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:var(--red-bg);border-radius:10px;">
+        <span>👪 Le parent de <strong>${escapeHtml(n.eleveNom)}</strong> est à la porte <span class="hint">· ${n.createdAt?new Date(n.createdAt).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}):''}</span></span>
+        ${ui.role==='enseignant' ? `<button class="btn secondary sm" onclick="handleMarquerVuPortier('${n.id}')">✅ J'ai vu</button>` : ''}
+      </div>`).join('')}
+  </div>`;
+}
+async function handleMarquerVuPortier(id){
+  try{
+    const { error } = await sb.from('notifications_portier').update({ vue: true }).eq('id', id);
+    if(error) throw error;
+    DB.notificationsPortier = (DB.notificationsPortier||[]).map(n=>n.id===id?{...n,vue:true}:n);
+    renderView(ui.currentView);
+  }catch(e){ alert('Erreur : ' + e.message); }
+}
 function renderAnnoncesDuJour(){
   const aujourdhui = todayISO();
   const annonces = (DB.annoncesHoraires||[]).filter(a=>a.date===aujourdhui);
@@ -1046,6 +1067,64 @@ function renderNotificationsParent(){
     </tbody>
   </table>`;
 }
+/* ---------------------------------------------------------------------
+   ESPACE PORTIER — recherche un élève, signale que son parent est arrivé.
+   Aucune autre donnée que nom/prénom/classe n'est jamais chargée (voir
+   chargerDBPortier() dans supabase-client.js).
+   --------------------------------------------------------------------- */
+function enterAppPortier(){
+  $('#loginGate').classList.remove('open');
+  $('#appRoot').style.display = '';
+  $('#sidebar').style.display = 'none';
+  $('#burger').style.display = 'none';
+  applyBranding();
+  $('#viewTitle').textContent = 'Espace Portier';
+  const pill = $('#topbarPill');
+  pill.innerHTML = `<button class="btn secondary sm" onclick="logoutRole()">🔒 Déconnexion</button>`;
+  ui.filters.portierRecherche = '';
+  refreshPortierDashboard();
+  startIdleWatcher();
+}
+function refreshPortierDashboard(){
+  $('#viewContainer').innerHTML = renderPortierDashboard();
+  const input = $('#portierRecherche');
+  if(input){ input.focus(); const pos = input.value.length; input.setSelectionRange(pos, pos); }
+}
+function renderPortierDashboard(){
+  const q = (ui.filters.portierRecherche || '').toLowerCase().trim();
+  const resultats = !q ? [] : DB.eleves.filter(e =>
+    `${e.prenom} ${e.nom}`.toLowerCase().includes(q)
+  ).slice(0, 30);
+  return `<div class="view active">
+    <div class="panel">
+      <div class="panel-head">
+        <div><h2>🚪 Le parent d'un élève est arrivé</h2><div class="sub">Tapez le nom de l'élève, puis cliquez sur son nom pour prévenir son enseignant(e)</div></div>
+      </div>
+      <input type="text" id="portierRecherche" placeholder="Nom ou prénom de l'élève…" value="${escapeHtml(ui.filters.portierRecherche||'')}"
+        oninput="ui.filters.portierRecherche=this.value; refreshPortierDashboard()" autofocus
+        style="width:100%;padding:14px;font-size:16px;border:1px solid var(--border);border-radius:10px;margin-bottom:16px;">
+      ${!q ? `<div class="empty">Commencez à taper un nom ci-dessus.</div>` :
+        !resultats.length ? `<div class="empty">Aucun élève trouvé.</div>` :
+        `<div style="display:flex;flex-direction:column;gap:8px;">
+          ${resultats.map(e=>`
+            <button class="btn secondary" style="text-align:left;padding:14px 18px;display:flex;justify-content:space-between;align-items:center;" onclick="handleNotifierPortier('${e.id}')">
+              <span><strong>${escapeHtml(eleveFullName(e))}</strong> <span class="hint">· ${escapeHtml(classeName(e.classeId))}</span></span>
+              <span>🚪 Prévenir</span>
+            </button>`).join('')}
+        </div>`}
+    </div>
+  </div>`;
+}
+async function handleNotifierPortier(eleveId){
+  try{
+    const { error } = await sb.from('notifications_portier').insert({ eleve_id: eleveId });
+    if(error) throw error;
+    toast('Notification envoyée à l\'enseignant(e)');
+    ui.filters.portierRecherche = '';
+    refreshPortierDashboard();
+  }catch(e){ alert('Erreur : ' + e.message); }
+}
+
 function enterApp(){
   $('#loginGate').classList.remove('open');
   $('#appRoot').style.display = '';
@@ -1057,6 +1136,7 @@ function enterApp(){
   startIdleWatcher();
   majBanniereHorsLigne();
   synchroniserFileAttente();
+  if(ui.role === 'enseignant') startPollingPortier();
 }
 
 /* ---------------------------------------------------------------------
@@ -1119,6 +1199,21 @@ async function entrerSelonRole(){
     enterAppParent();
     return;
   }
+  // Un compte portier a lui aussi son propre chemin de chargement minimal
+  // (uniquement la liste des élèves actifs, noms/classes — jamais les
+  // coordonnées des parents ni aucune autre donnée).
+  if(session.role === 'portier'){
+    DB = await chargerDBPortier();
+    if(DB.meta.actif === false){
+      await deconnexion();
+      ui.role = null; DB = null;
+      const err = new Error("Cet établissement a été suspendu. Contactez l'administrateur.");
+      err.suspendu = true;
+      throw err;
+    }
+    enterAppPortier();
+    return;
+  }
   DB = await chargerDB();
   if(DB.meta.actif === false){
     await deconnexion();
@@ -1131,6 +1226,7 @@ async function entrerSelonRole(){
 }
 async function logoutRole(){
   stopIdleWatcher();
+  stopPollingPortier();
   if(typeof arreterScanPointage === 'function') arreterScanPointage();
   await deconnexion();
   ui.role = null;
@@ -1156,6 +1252,34 @@ function startIdleWatcher(){
 function stopIdleWatcher(){
   clearTimeout(idleTimer);
   ['mousemove','mousedown','keydown','touchstart','scroll'].forEach(ev=>document.removeEventListener(ev, resetIdleTimer));
+}
+
+/* ---------------------------------------------------------------------
+   "Parent à la porte" — un compte enseignant vérifie toutes les 20 sec.
+   s'il y a une nouvelle notification du portier (voir schema.sql section
+   36). Pas de websocket/Realtime ici : un simple sondage périodique
+   suffit largement pour ce cas d'usage (portier au portail, enseignant
+   en classe) et reste plus simple à garder fiable.
+   --------------------------------------------------------------------- */
+let portierPollTimer = null;
+function startPollingPortier(){
+  stopPollingPortier();
+  portierPollTimer = setInterval(async () => {
+    try{
+      const { data, error } = await sb.from('notifications_portier').select('*').order('created_at', {ascending:false});
+      if(error) throw error;
+      const nouvelles = rowsToCamel(data);
+      const avaitDejaNonVues = (DB.notificationsPortier||[]).some(n=>!n.vue);
+      const aMaintenantNonVues = nouvelles.some(n=>!n.vue);
+      DB.notificationsPortier = nouvelles;
+      if(ui.currentView === 'dashboard') renderView('dashboard');
+      if(aMaintenantNonVues && !avaitDejaNonVues) toast('🚪 Un parent est à la porte');
+    }catch(_e){ /* échec silencieux : on retentera au prochain sondage */ }
+  }, 20000);
+}
+function stopPollingPortier(){
+  clearInterval(portierPollTimer);
+  portierPollTimer = null;
 }
 
 async function clearEcoleData(){
@@ -1250,6 +1374,12 @@ function renderDashboard(){
         <div class="label">Présence enseignants aujourd'hui</div>
       </div>
     </div>
+
+    ${(DB.notificationsPortier||[]).some(n=>!n.vue) ? `
+    <div class="panel" style="border:2px solid var(--red);">
+      <div class="panel-head"><div><h2>🚪 Parent(s) à la porte</h2><div class="sub">${ui.role==='enseignant' ? 'Cliquez « J\'ai vu » une fois pris en compte' : 'Vue d\'ensemble — seul(e) l\'enseignant(e) concerné(e) peut acquitter'}</div></div></div>
+      ${renderNotificationsPortier()}
+    </div>` : ''}
 
     ${(DB.annoncesHoraires||[]).some(a=>a.date===today) ? `
     <div class="panel">
@@ -4507,14 +4637,16 @@ function renderParametres(){
     </div>
 
     <div class="panel">
-      <div class="panel-head"><div><h2>Accès &amp; Interfaces</h2><div class="sub">4 profils, avec des droits différents — chacun se connecte avec son propre email et mot de passe</div></div></div>
+      <div class="panel-head"><div><h2>Accès &amp; Interfaces</h2><div class="sub">Chaque profil se connecte avec son propre email et mot de passe, et ne voit que ce qui le concerne</div></div></div>
       <div class="grid-2" style="margin-bottom:14px;">
         <div class="hint">👩‍🏫 <strong>Enseignant(e)</strong> — Notes, présences élèves, emploi du temps, programmes. Pas d'accès aux élèves, à la comptabilité ni aux paramètres. Un compte enseignant peut être relié à une fiche précise (page Enseignants) pour ne voir que ses propres classes.</div>
         <div class="hint">🗂️ <strong>Secrétariat</strong> — Tout ce que voit l'enseignant + élèves, enseignants, comptabilité (chiffres globaux masqués). Pas d'accès aux paramètres.</div>
         <div class="hint">🎩 <strong>Direction</strong> — Accès complet, y compris les chiffres financiers et les paramètres.</div>
         <div class="hint">🏛️ <strong>Fondation</strong> — Accès complet, identique à la Direction.</div>
+        <div class="hint">👪 <strong>Parent</strong> — Créé depuis la fiche d'un élève (page Élèves), pas depuis Supabase. Voit uniquement son/ses enfant(s), leurs notifications et annonces.</div>
+        <div class="hint">🚪 <strong>Portier</strong> — Recherche un élève et signale l'arrivée de son parent à l'enseignant(e) titulaire. Ne voit aucune autre donnée (pas de coordonnées, pas de notes...).</div>
       </div>
-      <div class="section-note">🔐 La création et la suppression des comptes du personnel se font depuis le tableau de bord Supabase (Authentication → Users), puis en associant le compte à un rôle. C'est une opération d'administration technique, volontairement séparée de l'application pour éviter toute création de compte non maîtrisée.</div>
+      <div class="section-note">🔐 La création et la suppression des comptes Enseignant/Secrétariat/Direction/Fondation/Portier se font depuis le tableau de bord Supabase (Authentication → Users), puis en associant le compte à un rôle. C'est une opération d'administration technique, volontairement séparée de l'application pour éviter toute création de compte non maîtrisée. Seul le compte Parent se crée directement dans l'application (fiche élève).</div>
     </div>
 
     <div class="panel">

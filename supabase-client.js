@@ -370,7 +370,8 @@ async function loadAllFromSupabase(){
     paiementsScolarite, activites, inscriptionsActivites, paiementsCotisations,
     gadgets, ventesGadgets, personnelAutre, paiementsSalaires, depenses, messages,
     alertesPointage, echeancesScolarite, profiles, fneConfigRow, tvaCategories, paiementEnLigneRow,
-    parentsEleves, tableauHonneur, actualitesAffichage, horairesAnnoncesRow, annoncesHoraires
+    parentsEleves, tableauHonneur, actualitesAffichage, horairesAnnoncesRow, annoncesHoraires,
+    notificationsPortier
   ] = await Promise.all([
     sb.from('ecoles').select('*').eq('id', session.ecoleId).single(),
     dbSelectAll('classes'),
@@ -419,6 +420,9 @@ async function loadAllFromSupabase(){
     dbSelectAll('actualites_affichage', 'created_at').catch(()=>[]),
     dbSelectUne('horaires_annonces').catch(()=>null),
     dbSelectAll('annonces_horaires_envoyees').catch(()=>[]),
+    // Notifications "portier" (parent arrivé) — RLS restreint déjà un
+    // compte enseignant à celles de SES classes (schema.sql section 36).
+    dbSelectAll('notifications_portier', 'created_at').catch(()=>[]),
   ]);
 
   if(ecoleRow.error) throw ecoleRow.error;
@@ -457,7 +461,7 @@ async function loadAllFromSupabase(){
     paiementsSalaires, depenses, messages, alertesPointage,
     echeancesScolarite: echeancesScolarite.slice().sort((a,b)=> (a.ordre-b.ordre) || (a.dateEcheance||'').localeCompare(b.dateEcheance||'')),
     profiles, parentsEleves, tableauHonneur, actualitesAffichage,
-    horairesAnnonces: horairesAnnoncesRow, annoncesHoraires,
+    horairesAnnonces: horairesAnnoncesRow, annoncesHoraires, notificationsPortier,
     fneConfig: fneConfigRow || {regime:'recus', prestataire:'', cleConfiguree:false},
   };
 }
@@ -503,6 +507,33 @@ async function chargerDBParent(){
     classes: rowsToCamel(classesRows.data),
     messages: rowsToCamel(messages.data),
     annoncesHoraires: rowsToCamel(annoncesHoraires.data),
+  };
+}
+
+/* ---------------------------------------------------------------------
+   Chargement dédié pour un compte PORTIER — le minimum absolu : la liste
+   des élèves actifs (nom/prénom/classe uniquement, via la vue
+   "eleves_portier_lecture", schema.sql section 36). Jamais les
+   coordonnées des parents, jamais les notes/présences/comptabilité.
+   --------------------------------------------------------------------- */
+async function chargerDBPortier(){
+  const [ecoleRow, eleves, classesRows] = await Promise.all([
+    sb.from('ecoles').select('*').eq('id', session.ecoleId).single(),
+    sb.from('eleves_portier_lecture').select('*'),
+    sb.from('classes').select('id, nom, cycle').eq('ecole_id', session.ecoleId),
+  ]);
+  if(ecoleRow.error) throw ecoleRow.error;
+  if(eleves.error) throw eleves.error;
+  if(classesRows.error) throw classesRows.error;
+  const ecole = rowToCamel(ecoleRow.data);
+  return {
+    meta: {
+      nomEcole: ecole.nomEcole, adresse: ecole.adresse, telephone: ecole.telephone,
+      anneeScolaire: ecole.anneeScolaire, logo: ecole.logoUrl || '',
+      actif: ecole.actif !== false,
+    },
+    eleves: rowsToCamel(eleves.data),
+    classes: rowsToCamel(classesRows.data),
   };
 }
 

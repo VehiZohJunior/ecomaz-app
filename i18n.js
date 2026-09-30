@@ -39,6 +39,8 @@ const TRADUCTIONS = {
     espace_fondation_desc: 'Accès complet, identique à la Direction.',
     espace_parent_label: 'Parent',
     espace_parent_desc: "Suivi de votre/vos enfant(s), messagerie et notifications.",
+    espace_portier_label: 'Portier',
+    espace_portier_desc: "Signaler l'arrivée d'un parent à l'enseignant(e).",
 
     login_espace_prefix: 'Espace ',
     login_sub: 'Connectez-vous avec le compte fourni par votre établissement',
@@ -110,6 +112,8 @@ const TRADUCTIONS = {
     espace_fondation_desc: 'Full access, same as Head of School.',
     espace_parent_label: 'Parent',
     espace_parent_desc: "Follow your child(ren), messaging and notifications.",
+    espace_portier_label: 'Gatekeeper',
+    espace_portier_desc: "Let a teacher know a parent has arrived.",
 
     login_espace_prefix: '',
     login_sub: 'Sign in with the account provided by your school',
