@@ -1733,6 +1733,12 @@ const SCHEMA_ENSEIGNANT = [
   {name:'email', label:'Email', type:'text'},
   {name:'dateEmbauche', label:"Date d'embauche", type:'date', format:'AAAA-MM-JJ'},
 ];
+const SCHEMA_PERSONNEL = [
+  {name:'prenom', label:'Prénom', type:'text'},
+  {name:'nom', label:'Nom', type:'text'},
+  {name:'poste', label:'Poste / Fonction', type:'text'},
+  {name:'telephone', label:'Téléphone', type:'tel', format:"10 chiffres, Côte d'Ivoire"},
+];
 
 let smartFillRecorder = null;
 let smartFillChunks = [];
@@ -4382,7 +4388,8 @@ function renderComptaSalaires(){
 function openPersonnelForm(id){
   const p = id ? DB.personnelAutre.find(x=>x.id===id) : null;
   openModal(p ? 'Modifier le personnel' : 'Nouveau membre du personnel', `
-    <form onsubmit="return handleSavePersonnel(event,'${id||''}')">
+    <form id="formPersonnel" onsubmit="return handleSavePersonnel(event,'${id||''}')">
+      <button type="button" class="btn secondary sm" style="margin-bottom:14px;" onclick="ouvrirRemplissageIntelligent('personnel', SCHEMA_PERSONNEL, (r)=>appliquerRemplissage('formPersonnel', r))">✨ Remplir automatiquement</button>
       <div class="form-grid">
         <div class="field"><label>Prénom</label><input name="prenom" required value="${p?escapeHtml(p.prenom):''}"></div>
         <div class="field"><label>Nom</label><input name="nom" required value="${p?escapeHtml(p.nom):''}"></div>
