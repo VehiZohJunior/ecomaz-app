@@ -1609,6 +1609,8 @@ function renderDashboard(){
       </div>
     </div>
 
+    ${ui.role==='enseignant' ? renderActualitesParent() + renderTableauHonneurParent() : ''}
+
     <div class="grid-2">
       <div class="panel">
         <div class="panel-head"><div><h2>Répartition des élèves par classe</h2><div class="sub">Effectifs actifs par niveau</div></div></div>

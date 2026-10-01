@@ -393,10 +393,14 @@ async function loadAllFromSupabase(){
     // Liens parent↔élève : tolérant à l'absence de la table (migration pas
     // encore appliquée).
     dbSelectAll('parents_eleves').catch(()=>[]),
-    // Tableau d'affichage (tableaux d'honneur + actualités) : tolérant à
-    // l'absence des tables (migration pas encore appliquée).
-    dbSelectAll('tableau_honneur').catch(()=>[]),
-    dbSelectAll('actualites_affichage', 'created_at').catch(()=>[]),
+    // Tableau d'affichage (tableaux d'honneur + actualités) : lu via les
+    // vues publiques (mêmes que l'écran du hall et l'espace Parent), pour
+    // que secrétariat/enseignant les voient aussi — seule Direction/
+    // Fondation peut écrire sur les tables de base (RLS, schema.sql
+    // section 34). Tolérant à l'absence des vues (migration pas encore
+    // appliquée).
+    dbSelectAll('tableau_honneur_public').catch(()=>[]),
+    dbSelectAll('actualites_affichage_public', 'created_at').catch(()=>[]),
     dbSelectUne('horaires_annonces').catch(()=>null),
     dbSelectAll('annonces_horaires_envoyees').catch(()=>[]),
     // Notifications "portier" (parent arrivé) — RLS restreint déjà un
