@@ -99,6 +99,19 @@
   </div>
 </div>
 
+<!-- Remplissage intelligent : overlay séparé du modal générique ci-dessus,
+     pour ne jamais détruire le formulaire en cours de remplissage (ex :
+     fiche élève/enseignant) qui reste ouvert derrière. -->
+<div class="modal-backdrop" id="smartFillBackdrop">
+  <div class="modal" id="smartFillModal">
+    <div class="modal-header">
+      <h3 id="smartFillTitle">✨ Remplissage intelligent</h3>
+      <button class="modal-close" id="smartFillClose">✕</button>
+    </div>
+    <div class="modal-body" id="smartFillBody"></div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>

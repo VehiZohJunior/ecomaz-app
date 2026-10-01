@@ -1727,8 +1727,15 @@ function ouvrirRemplissageIntelligent(formulaire, schema, onResultat){
   window.__smartFillOnResultat = onResultat;
   window.__smartFillFormulaire = formulaire;
   window.__smartFillSchema = schema;
-  openModal('✨ Remplissage intelligent', renderSmartFillModal());
+  $('#smartFillBody').innerHTML = renderSmartFillModal();
+  $('#smartFillBackdrop').classList.add('open');
 }
+function closeSmartFillModal(){
+  $('#smartFillBackdrop').classList.remove('open');
+  $('#smartFillBody').innerHTML = '';
+}
+$('#smartFillClose').addEventListener('click', closeSmartFillModal);
+$('#smartFillBackdrop').addEventListener('click', e=>{ if(e.target.id==='smartFillBackdrop') closeSmartFillModal(); });
 function renderSmartFillModal(etat, message){
   if(etat==='chargement'){
     return `<div style="text-align:center;padding:30px 10px;">
@@ -1757,7 +1764,7 @@ function renderSmartFillModal(etat, message){
         </div>
       </div>
     </div>
-    <div class="form-actions"><button type="button" class="btn secondary" onclick="closeModal()">Annuler</button></div>
+    <div class="form-actions"><button type="button" class="btn secondary" onclick="closeSmartFillModal()">Annuler</button></div>
   `;
 }
 function smartFillFichierEnBase64(fichier){
@@ -1794,7 +1801,7 @@ async function handleSmartFillPhoto(ev){
   try{
     const { base64, mimeType } = await smartFillCompresserImage(fichier);
     await smartFillEnvoyer('photo', base64, mimeType);
-  }catch(e){ $('#modalBody').innerHTML = renderSmartFillModal(null, 'Erreur : ' + e.message); }
+  }catch(e){ $('#smartFillBody').innerHTML = renderSmartFillModal(null, 'Erreur : ' + e.message); }
 }
 async function handleSmartFillAudioFichier(ev){
   const fichier = ev.target.files[0];
@@ -1802,7 +1809,7 @@ async function handleSmartFillAudioFichier(ev){
   try{
     const base64 = await smartFillFichierEnBase64(fichier);
     await smartFillEnvoyer('audio', base64, fichier.type || 'audio/ogg');
-  }catch(e){ $('#modalBody').innerHTML = renderSmartFillModal(null, 'Erreur : ' + e.message); }
+  }catch(e){ $('#smartFillBody').innerHTML = renderSmartFillModal(null, 'Erreur : ' + e.message); }
 }
 async function handleSmartFillToggleRecord(){
   const btn = $('#btnSmartFillRec');
@@ -1823,19 +1830,19 @@ async function handleSmartFillToggleRecord(){
     };
     smartFillRecorder.start();
     if(btn){ btn.textContent = '⏹️ Arrêter'; btn.classList.add('btn-recording'); }
-  }catch(e){ $('#modalBody').innerHTML = renderSmartFillModal(null, "Impossible d'accéder au microphone : " + e.message); }
+  }catch(e){ $('#smartFillBody').innerHTML = renderSmartFillModal(null, "Impossible d'accéder au microphone : " + e.message); }
 }
 async function smartFillEnvoyer(typeSource, fichierBase64, mimeType){
-  $('#modalBody').innerHTML = renderSmartFillModal('chargement');
+  $('#smartFillBody').innerHTML = renderSmartFillModal('chargement');
   try{
     const { data, error } = await sb.functions.invoke('smart-fill', {
       body: { formulaire: window.__smartFillFormulaire, schema: window.__smartFillSchema, typeSource, fichierBase64, mimeType },
     });
     if(error) throw new Error(await messageErreurFonction(error));
     if(!data?.ok) throw new Error(data?.error || 'Échec du remplissage automatique');
-    closeModal();
+    closeSmartFillModal();
     window.__smartFillOnResultat(data.resultat);
-  }catch(e){ $('#modalBody').innerHTML = renderSmartFillModal(null, e.message); }
+  }catch(e){ $('#smartFillBody').innerHTML = renderSmartFillModal(null, e.message); }
 }
 function appliquerRemplissage(formId, resultat){
   const form = document.getElementById(formId);
