@@ -465,7 +465,7 @@ async function loadAllFromSupabase(){
    pas quand elle a été écrite.
    --------------------------------------------------------------------- */
 async function chargerDBParent(){
-  const [ecoleRow, eleves, classesRows, messages, annoncesHoraires, messagesInternes] = await Promise.all([
+  const [ecoleRow, eleves, classesRows, messages, annoncesHoraires, messagesInternes, tableauHonneur, actualitesAffichage] = await Promise.all([
     sb.from('ecoles').select('*').eq('id', session.ecoleId).single(),
     // RLS restreint déjà aux enfants liés à ce parent (voir policy
     // "lecture eleves par parent", schema.sql section 31) — pas besoin de
@@ -480,6 +480,12 @@ async function chargerDBParent(){
     sb.from('annonces_horaires_envoyees').select('*').eq('ecole_id', session.ecoleId).order('created_at', {ascending:false}),
     // Messages écrits par le personnel (RLS — schema.sql section 38).
     sb.from('messages_internes').select('*').eq('ecole_id', session.ecoleId).order('created_at', {ascending:false}),
+    // Tableaux d'honneur / actualités : mêmes vues publiques que l'écran
+    // du hall (affichage.html, schema.sql section 34) — déjà accessibles
+    // à "authenticated", aucune donnée sensible (noms déjà destinés à un
+    // affichage public).
+    sb.from('tableau_honneur_public').select('*').eq('ecole_id', session.ecoleId),
+    sb.from('actualites_affichage_public').select('*').eq('ecole_id', session.ecoleId).order('created_at', {ascending:false}),
   ]);
   if(ecoleRow.error) throw ecoleRow.error;
   if(eleves.error) throw eleves.error;
@@ -487,6 +493,8 @@ async function chargerDBParent(){
   if(messages.error) throw messages.error;
   if(annoncesHoraires.error) throw annoncesHoraires.error;
   if(messagesInternes.error) throw messagesInternes.error;
+  if(tableauHonneur.error) throw tableauHonneur.error;
+  if(actualitesAffichage.error) throw actualitesAffichage.error;
   const ecole = rowToCamel(ecoleRow.data);
   return {
     meta: {
@@ -499,6 +507,8 @@ async function chargerDBParent(){
     messages: rowsToCamel(messages.data),
     annoncesHoraires: rowsToCamel(annoncesHoraires.data),
     messagesInternes: rowsToCamel(messagesInternes.data),
+    tableauHonneur: rowsToCamel(tableauHonneur.data),
+    actualitesAffichage: rowsToCamel(actualitesAffichage.data),
   };
 }
 

@@ -980,6 +980,37 @@ function enterAppParent(){
   startIdleWatcher();
   startPollingBulles();
 }
+function renderActualitesParent(){
+  const actus = (DB.actualitesAffichage||[]).slice(0, 8);
+  if(!actus.length) return '';
+  return `<div class="panel">
+    <div class="panel-head"><div><h2>📰 Actualités</h2></div></div>
+    ${actus.map(a=>`<div class="bulle-item" style="cursor:default;">${escapeHtml(a.texte)}
+      <div class="bulle-meta">${a.createdAt?new Date(a.createdAt).toLocaleDateString('fr-FR',{day:'2-digit',month:'long'}):''}</div>
+    </div>`).join('')}
+  </div>`;
+}
+function renderTableauHonneurParent(){
+  const auMoinsUn = (DB.tableauHonneur||[]).some(h=>h.nomAffiche);
+  if(!auMoinsUn) return '';
+  return `<div class="panel">
+    <div class="panel-head"><div><h2>🏆 Tableau d'honneur</h2></div></div>
+    ${HONNEUR_CATEGORIES.map(cat=>`
+      <div class="hint" style="margin:10px 0 6px;">${cat.icon} ${escapeHtml(cat.label)} à l'honneur</div>
+      <div class="grid-3">
+        ${HONNEUR_PERIODES.map(per=>{
+          const h = honneurActuel(cat.id, per.id);
+          if(!h || !h.nomAffiche) return '';
+          return `<div class="panel" style="background:var(--surface-2);">
+            <div class="hint">${per.label}</div>
+            <strong style="font-size:16px;">${escapeHtml(h.nomAffiche)}</strong>
+            <div class="meta">${escapeHtml(h.classeOuMatiere||'')}</div>
+          </div>`;
+        }).join('') || `<div class="empty" style="padding:4px 0;">Aucun lauréat pour l'instant.</div>`}
+      </div>
+    `).join('')}
+  </div>`;
+}
 function renderParentDashboard(){
   const mesEnfants = DB.eleves || [];
   if(!mesEnfants.length){
@@ -988,6 +1019,7 @@ function renderParentDashboard(){
     </div>`;
   }
   return `<div class="view active">
+    ${renderActualitesParent()}
     <div class="grid-2">
       ${mesEnfants.map(e=>`
         <div class="panel">
@@ -1005,6 +1037,7 @@ function renderParentDashboard(){
           </div>
         </div>`).join('')}
     </div>
+    ${renderTableauHonneurParent()}
   </div>`;
 }
 
