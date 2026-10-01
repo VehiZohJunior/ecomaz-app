@@ -70,8 +70,6 @@ supabase functions deploy creer-ecole-cliente --no-verify-jwt
 supabase functions deploy supprimer-ecole-cliente --no-verify-jwt
 ```
 
-*(`envoyer-sms` peut aussi être déployée, mais l'envoi réel de SMS ne fonctionnera pas sans internet — voir l'avertissement en haut de ce guide. Les notifications internes à l'appli, elles, continueront de fonctionner.)*
-
 ## Étape 5 — Connecter l'application à ce serveur local
 
 1. Copier tout le dossier de l'application EcoMaZ (`EcoMaZgit`) sur le serveur local

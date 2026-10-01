@@ -1453,3 +1453,34 @@ create table if not exists pointages_gps (
 alter table pointages_gps enable row level security;
 create policy "lecture pointages_gps" on pointages_gps for select
   using (ecole_id = mon_ecole_id() and est_perso_admin());
+
+-- =====================================================================
+-- 40. AUDIT SÉCURITÉ — correctifs RLS (2026-10-01)
+-- Revue générale des policies RLS de toute l'appli. Deux trouvailles
+-- corrigées ici (les autres points de l'audit, plus spécifiques —
+-- restriction de rôle sur la fonction Edge notifier-absence-eleve,
+-- suppression de la fonction envoyer-sms non utilisée — sont décrits
+-- dans leurs fichiers respectifs).
+-- =====================================================================
+
+-- "lecture profils" laissait n'importe quel compte (enseignant, parent,
+-- portier) lire la liste complète des noms/rôles de TOUTE l'école — y
+-- compris les parents et enseignants d'autres classes que les siennes,
+-- contournant le cloisonnement par classe (mes_classes()) appliqué
+-- partout ailleurs dans ce schéma. Seul le personnel administratif
+-- (qui gère les liens compte-parent/compte-enseignant) et le
+-- propriétaire de son propre profil en ont réellement besoin.
+drop policy if exists "lecture profils" on profiles;
+create policy "lecture profils" on profiles for select
+  using (id = auth.uid() or (ecole_id = mon_ecole_id() and est_perso_admin()));
+
+-- "creation messages" ne vérifiait que l'école, pas le rôle — n'importe
+-- quel compte authentifié (y compris un parent) pouvait insérer une
+-- fausse ligne dans le journal de messages de sa propre école. En
+-- pratique seule une fonction Edge (clé service_role, qui contourne déjà
+-- RLS) écrit dans cette table ; on restreint quand même côté RLS, par
+-- cohérence avec "messages_internes" et pour empêcher un usage direct de
+-- l'API par un compte non-admin.
+drop policy if exists "creation messages" on messages;
+create policy "creation messages" on messages for insert
+  with check (ecole_id = mon_ecole_id() and est_perso_admin());

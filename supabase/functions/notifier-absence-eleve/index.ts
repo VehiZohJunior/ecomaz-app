@@ -41,6 +41,9 @@ Deno.serve(async (req) => {
 
     const { data: profil } = await supabaseCaller.from('profiles').select('role, ecole_id, enseignant_id').eq('id', user.id).single();
     if (!profil || !profil.ecole_id) throw new Error('Compte non rattaché à une école');
+    if (!['enseignant', 'secretariat', 'direction', 'fondation'].includes(profil.role)) {
+      throw new Error("Rôle non autorisé à signaler une absence");
+    }
 
     const { eleveId, date, motif } = await req.json();
     if (!eleveId || !date) throw new Error('Paramètres manquants');

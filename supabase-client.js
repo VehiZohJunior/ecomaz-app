@@ -104,27 +104,6 @@ async function definirNouveauMotDePasse(nouveauMotDePasse){
 }
 
 /* ---------------------------------------------------------------------
-   SMS réels (via la fonction Edge "envoyer-sms" — voir supabase/functions/)
-   --------------------------------------------------------------------- */
-function normaliserTelephoneCI(tel){
-  let digits = (tel || '').replace(/\D/g, '');
-  if(digits.startsWith('225')) digits = digits.slice(3);
-  return '+225' + digits;
-}
-async function envoyerSmsReel(telephone, message){
-  try{
-    const { data, error } = await sb.functions.invoke('envoyer-sms', {
-      body: { to: normaliserTelephoneCI(telephone), message },
-    });
-    if(error) throw error;
-    return { ok: data?.ok !== false, data };
-  }catch(e){
-    console.warn('Échec envoi SMS réel (notification interne conservée) :', e.message);
-    return { ok:false, error: e.message };
-  }
-}
-
-/* ---------------------------------------------------------------------
    MODE HORS LIGNE — cache local (IndexedDB) + file d'attente
    ---------------------------------------------------------------------
    L'application doit pouvoir s'ouvrir ET être utilisée (lecture ET
