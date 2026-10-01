@@ -978,6 +978,7 @@ function enterAppParent(){
   rafraichirBulles();
   $('#viewContainer').innerHTML = renderParentDashboard();
   startIdleWatcher();
+  startPollingBulles();
 }
 function renderParentDashboard(){
   const mesEnfants = DB.eleves || [];
@@ -1323,7 +1324,7 @@ function enterApp(){
   startIdleWatcher();
   majBanniereHorsLigne();
   synchroniserFileAttente();
-  if(ui.role === 'enseignant') startPollingPortier();
+  startPollingBulles();
 }
 
 /* ---------------------------------------------------------------------
@@ -1413,7 +1414,7 @@ async function entrerSelonRole(){
 }
 async function logoutRole(){
   stopIdleWatcher();
-  stopPollingPortier();
+  stopPollingBulles();
   if(typeof arreterScanPointage === 'function') arreterScanPointage();
   await deconnexion();
   ui.role = null;
@@ -1448,25 +1449,38 @@ function stopIdleWatcher(){
    suffit largement pour ce cas d'usage (portier au portail, enseignant
    en classe) et reste plus simple à garder fiable.
    --------------------------------------------------------------------- */
-let portierPollTimer = null;
-function startPollingPortier(){
-  stopPollingPortier();
-  portierPollTimer = setInterval(async () => {
+let bullesPollTimer = null;
+function startPollingBulles(){
+  stopPollingBulles();
+  bullesPollTimer = setInterval(async () => {
     try{
-      const { data, error } = await sb.from('notifications_portier').select('*').order('created_at', {ascending:false});
-      if(error) throw error;
-      const nouvelles = rowsToCamel(data);
-      const avaitDejaNonVues = (DB.notificationsPortier||[]).some(n=>!n.vue);
-      const aMaintenantNonVues = nouvelles.some(n=>!n.vue);
-      DB.notificationsPortier = nouvelles;
+      if(['enseignant','secretariat','direction','fondation'].includes(ui.role)){
+        const { data, error } = await sb.from('notifications_portier').select('*').order('created_at', {ascending:false});
+        if(error) throw error;
+        const nouvelles = rowsToCamel(data);
+        const avaitDejaNonVues = (DB.notificationsPortier||[]).some(n=>!n.vue);
+        const aMaintenantNonVues = nouvelles.some(n=>!n.vue);
+        DB.notificationsPortier = nouvelles;
+        if(ui.role==='enseignant' && aMaintenantNonVues && !avaitDejaNonVues) toast('🚪 Un parent est à la porte');
+      }
+      // Messages/suggestions ne sont pas poussés en temps réel (pas de
+      // websocket) : on les re-interroge au même rythme que le sondage
+      // portier, pour les rôles concernés seulement.
+      if(['parent','enseignant'].includes(ui.role)){
+        const { data, error } = await sb.from('messages_internes').select('*').order('created_at', {ascending:false});
+        if(!error) DB.messagesInternes = rowsToCamel(data);
+      }
+      if(['direction','fondation'].includes(ui.role)){
+        const { data, error } = await sb.from('suggestions').select('*').order('created_at', {ascending:false});
+        if(!error) DB.suggestions = rowsToCamel(data);
+      }
       rafraichirBulles();
-      if(aMaintenantNonVues && !avaitDejaNonVues) toast('🚪 Un parent est à la porte');
     }catch(_e){ /* échec silencieux : on retentera au prochain sondage */ }
   }, 20000);
 }
-function stopPollingPortier(){
-  clearInterval(portierPollTimer);
-  portierPollTimer = null;
+function stopPollingBulles(){
+  clearInterval(bullesPollTimer);
+  bullesPollTimer = null;
 }
 
 async function clearEcoleData(){
