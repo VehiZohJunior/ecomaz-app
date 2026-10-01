@@ -981,7 +981,11 @@ function enterAppParent(){
   startPollingBulles();
 }
 function renderActualitesParent(){
-  const actus = (DB.actualitesAffichage||[]).slice(0, 8);
+  // Trié ici (plutôt que de faire confiance à l'ordre déjà renvoyé par le
+  // chargement) : la vue publique est explicitement triée pour l'espace
+  // Parent, mais pas pour le chargement général du personnel — même
+  // logique que renderListeActualites() côté gestion Direction.
+  const actus = (DB.actualitesAffichage||[]).slice().sort((a,b)=> (b.createdAt||'').localeCompare(a.createdAt||'')).slice(0, 8);
   if(!actus.length) return '';
   return `<div class="panel">
     <div class="panel-head"><div><h2>📰 Actualités</h2></div></div>
