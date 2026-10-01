@@ -1,0 +1,15 @@
+# EcoMaZ — Landing "Console Parent"
+# Site 100% statique, aucun build nécessaire.
+# Si ce dossier est déployé comme site Netlify indépendant (dossier de base
+# "landing-parent"), ce fichier n'a rien de plus à faire que publier tel quel.
+
+[build]
+  publish = "."
+  command = ""
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"

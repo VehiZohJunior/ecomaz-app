@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EcoMaZ — Console Parent : toute la scolarité de votre enfant dans votre téléphone</title>
+<meta name="description" content="La Console Parent d'EcoMaZ relie les familles à l'école de leur enfant : alertes d'absence, paiement par Mobile Money, messagerie, tableau d'honneur et actualités de l'établissement.">
+<meta property="og:title" content="EcoMaZ — Console Parent">
+<meta property="og:description" content="Toute la scolarité de votre enfant dans votre téléphone : informé, rassuré, connecté.">
+<meta property="og:type" content="website">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%234f5fea'/%3E%3Cpath d='M20 24h24M20 32h24M20 40h16' stroke='white' stroke-width='5' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700;800&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<a class="skip-link" href="#main">Aller au contenu principal</a>
+
+<!-- =====================================================================
+     EN-TÊTE
+     ===================================================================== -->
+<header class="site-header">
+  <div class="container">
+    <a href="#accueil" class="brand">
+      <svg class="brand-mark" viewBox="0 0 64 64" aria-hidden="true">
+        <rect width="64" height="64" rx="18" fill="#4f5fea"/>
+        <path d="M18 24h28M18 32h28M18 40h18" stroke="#fff" stroke-width="5" stroke-linecap="round"/>
+      </svg>
+      <span>EcoMaZ<small>Espace Parent</small></span>
+    </a>
+
+    <nav class="main-nav" aria-label="Navigation principale">
+      <ul>
+        <li><a href="#demo">La console</a></li>
+        <li><a href="#fonction-absence">Fonctions</a></li>
+        <li><a href="#etapes">Comment ça marche</a></li>
+        <li><a href="#faq">Questions</a></li>
+      </ul>
+    </nav>
+
+    <div class="header-actions">
+      <a href="#cta-final" class="btn btn-primary header-cta">Se connecter à mon espace</a>
+      <button class="menu-toggle" id="menuToggle" aria-expanded="false" aria-controls="mobileNav" aria-label="Ouvrir le menu">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+      </button>
+    </div>
+  </div>
+  <nav class="mobile-nav" id="mobileNav" aria-label="Navigation mobile">
+    <a href="#demo">La console</a>
+    <a href="#fonction-absence">Fonctions</a>
+    <a href="#etapes">Comment ça marche</a>
+    <a href="#faq">Questions</a>
+    <a href="#cta-final">Se connecter à mon espace</a>
+  </nav>
+</header>
+
+<main id="main">
+
+  <!-- ===================================================================
+       1. ACCUEIL
+       =================================================================== -->
+  <section class="hero" id="accueil">
+    <div class="container">
+      <div class="hero-copy reveal">
+        <span class="eyebrow">👨‍👩‍👧 Espace Parent EcoMaZ</span>
+        <h1>Toute la scolarité de votre enfant, dans votre téléphone.</h1>
+        <p class="lead">Informé en cas d'absence, le paiement des frais sans vous déplacer, et un lien direct avec l'école de votre enfant — tout au même endroit.</p>
+        <div class="hero-cta">
+          <a href="#cta-final" class="btn btn-primary btn-lg">Se connecter à mon espace</a>
+          <a href="#demo" class="btn-text">
+            Voir la console en action
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+          </a>
+        </div>
+        <div class="hero-badges">
+          <span class="hero-badge"><span class="ic" style="background:var(--coral-bg);">🔔</span>Alertes automatiques</span>
+          <span class="hero-badge"><span class="ic" style="background:var(--green-bg);">📱</span>Paiement Mobile Money</span>
+          <span class="hero-badge"><span class="ic" style="background:var(--purple-bg);">💬</span>Toujours en contact</span>
+        </div>
+      </div>
+
+      <div class="hero-visual reveal" id="phoneDemo">
+        <!-- la maquette de téléphone est injectée ici par script.js (partagée avec la section Démonstration) -->
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================================================================
+       2/3. DÉMONSTRATION ANIMÉE
+       =================================================================== -->
+  <section class="section" id="demo" aria-labelledby="demo-title">
+    <div class="container">
+      <div class="section-head center reveal">
+        <span class="eyebrow">Démonstration</span>
+        <h2 id="demo-title">La console, telle que vous la verrez</h2>
+        <p>Cinq fonctions, un seul écran. Touchez un onglet pour explorer.</p>
+      </div>
+
+      <div class="hero-visual reveal" id="phoneDemoMain" style="margin-top:20px;">
+        <!-- seconde instance de la maquette, pilotée par le même script -->
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================================================================
+       4. FONCTION 1 — ALERTE D'ABSENCE
+       =================================================================== -->
+  <section class="feature" id="fonction-absence">
+    <div class="container">
+      <div class="feature-copy reveal">
+        <div class="feature-icon" style="background:var(--coral-bg);">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--coral)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+        </div>
+        <h2>Toujours prévenu</h2>
+        <p>Vous êtes prévenu automatiquement si votre enfant est absent de l'école — plus besoin d'attendre le soir pour le savoir, ni d'appeler pour vérifier.</p>
+        <ul class="feature-list">
+          <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg> Dès que l'absence est constatée par l'école</li>
+          <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg> Sans démarche de votre part</li>
+          <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg> Pour chacun de vos enfants inscrits</li>
+        </ul>
+      </div>
+      <div class="feature-media reveal">
+        <div class="media-card alert-demo-card">
+          <div class="ic">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--coral)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+          </div>
+          <div>
+            <strong>Absence signalée</strong>
+            <span>Votre enfant est noté absent aujourd'hui. Contactez l'école pour toute justification.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================================================================
+       5. FONCTION 2 — PAIEMENT MOBILE MONEY
+       =================================================================== -->
+  <section class="feature feature-reverse" id="fonction-paiement">
+    <div class="container">
+      <div class="feature-copy reveal">
+        <div class="feature-icon" style="background:var(--green-bg);">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="2" width="14" height="20" rx="3"/><path d="M12 18h.01"/><path d="M9 7h6"/></svg>
+        </div>
+        <h2>Payer sans se déplacer</h2>
+        <p>Payez les frais de scolarité avec votre Mobile Money, directement depuis votre téléphone — plus besoin de faire la queue au secrétariat.</p>
+        <div class="pay-steps">
+          <div class="pay-step"><span class="num">1</span> Choisissez l'échéance à régler</div>
+          <div class="pay-step"><span class="num">2</span> Confirmez avec votre Mobile Money</div>
+          <div class="pay-step"><span class="num">3</span> Recevez votre reçu dans l'appli</div>
+        </div>
+      </div>
+      <div class="feature-media reveal">
+        <div class="media-card demo-pay-card">
+          <div class="ic" style="width:46px;height:46px;background:var(--green-bg);margin:0 auto;">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="2" width="14" height="20" rx="3"/><path d="M9 7h6"/></svg>
+          </div>
+          <div class="demo-pay-amount">Scolarité — Tranche 2</div>
+          <button class="demo-pay-btn" type="button" tabindex="-1" aria-hidden="true">Payer avec Mobile Money</button>
+          <svg class="demo-pay-check" viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="20"/><path d="M15 24l6 6 12-13"/></svg>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================================================================
+       6. FONCTION 3 — MESSAGERIE / NOTIFICATIONS / SUGGESTIONS
+       =================================================================== -->
+  <section class="feature" id="fonction-contact">
+    <div class="container">
+      <div class="feature-copy reveal">
+        <div class="feature-icon" style="background:var(--purple-bg);">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--purple)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        </div>
+        <h2>Rester en contact</h2>
+        <p>Échangez directement avec l'école, recevez les informations importantes, et proposez vos idées pour la vie de l'établissement.</p>
+        <div class="bubble-trio">
+          <div class="bubble-item"><span class="ic" style="background:var(--amber-bg);">🔔</span><span>Notifications</span></div>
+          <div class="bubble-item"><span class="ic" style="background:var(--purple-bg);">✉️</span><span>Messagerie</span></div>
+          <div class="bubble-item"><span class="ic" style="background:var(--sun-bg);">💡</span><span>Suggestions</span></div>
+        </div>
+      </div>
+      <div class="feature-media reveal">
+        <div class="media-card" style="padding:20px;">
+          <div class="demo-msg from-ecole unread"><b>Secrétariat</b>N'oubliez pas le certificat médical avant vendredi.</div>
+          <div class="demo-msg from-ecole"><b>Direction</b>Merci à tous pour votre participation à la journée culturelle !</div>
+          <div class="demo-msg" style="border-left:4px solid var(--sun);"><b style="color:var(--amber);">Votre suggestion</b>« Prévoir un abri pour les vélos » — bien reçue.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================================================================
+       7. FONCTION 4 — TABLEAU D'HONNEUR
+       =================================================================== -->
+  <section class="section" id="fonction-honneur" style="background:var(--surface-soft);">
+    <div class="container">
+      <div class="section-head center reveal">
+        <span class="eyebrow">Fonction 4</span>
+        <h2>Le tableau d'honneur</h2>
+        <p>L'école met à l'honneur un élève et un(e) enseignant(e) chaque mois, chaque trimestre et chaque année. Touchez une carte pour la retourner.</p>
+      </div>
+
+      <div class="honor-category reveal">
+        <h3><span class="ic" style="background:var(--primary-light);">🧒</span> Élève à l'honneur</h3>
+        <div class="honor-grid" id="honorGridEleve"></div>
+      </div>
+      <div class="honor-category reveal">
+        <h3><span class="ic" style="background:var(--purple-bg);">👩‍🏫</span> Enseignant(e) à l'honneur</h3>
+        <div class="honor-grid" id="honorGridEnseignant"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================================================================
+       8. FONCTION 5 — ACTUALITÉS / VIE DE L'ÉCOLE
+       =================================================================== -->
+  <section class="section" id="fonction-actus">
+    <div class="container">
+      <div class="section-head center reveal">
+        <span class="eyebrow">Fonction 5</span>
+        <h2>La vie de l'école</h2>
+        <p>Événements, sorties, réunions : une bannière d'actualités toujours à jour.</p>
+      </div>
+
+      <div class="news-marquee reveal" tabindex="0" aria-label="Bannière d'actualités de l'école, défilement en pause au survol">
+        <div class="news-track" id="newsTrack"></div>
+      </div>
+
+      <div class="news-examples reveal reveal-stagger">
+        <div class="news-card" style="--i:0;"><span class="ic" style="background:var(--sun-bg);">🎭</span><div><strong>Journée culturelle</strong><span>Exemple — danses, contes et expositions des classes.</span></div></div>
+        <div class="news-card" style="--i:1;"><span class="ic" style="background:var(--green-bg);">🚌</span><div><strong>Sortie pédagogique</strong><span>Exemple — visite au musée avec les classes de CM.</span></div></div>
+        <div class="news-card" style="--i:2;"><span class="ic" style="background:var(--purple-bg);">🗓️</span><div><strong>Réunion de parents</strong><span>Exemple — présentation du programme du trimestre.</span></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================================================================
+       9. FONCTIONNEMENT EN 3 ÉTAPES
+       =================================================================== -->
+  <section class="section" id="etapes" style="background:var(--surface-soft);">
+    <div class="container">
+      <div class="section-head center reveal">
+        <span class="eyebrow">Simple</span>
+        <h2>Trois étapes pour commencer</h2>
+      </div>
+      <div class="steps-grid">
+        <div class="step-card reveal" style="--i:0;">
+          <div class="step-num">1</div>
+          <h3>Recevez l'accès de l'école</h3>
+          <p>L'établissement de votre enfant crée votre accès à l'Espace Parent. <em>[à confirmer — mode exact de remise de l'accès]</em></p>
+          <span class="step-arrow"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+        </div>
+        <div class="step-card reveal" style="--i:1;">
+          <div class="step-num">2</div>
+          <h3>Connectez-vous</h3>
+          <p>Ouvrez votre Espace Parent depuis votre téléphone, où que vous soyez.</p>
+          <span class="step-arrow"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+        </div>
+        <div class="step-card reveal" style="--i:2;">
+          <div class="step-num">3</div>
+          <h3>Soyez informé, payez, échangez</h3>
+          <p>Suivez les absences, réglez les frais de scolarité et restez en contact avec l'école.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================================================================
+       10. RÉASSURANCE
+       =================================================================== -->
+  <section class="section" id="reassurance">
+    <div class="container">
+      <div class="section-head center reveal">
+        <span class="eyebrow">Confiance</span>
+        <h2>Pensé pour les familles</h2>
+      </div>
+      <div class="trust-grid">
+        <div class="placeholder-box reveal" style="--i:0;"><span class="tag">À compléter plus tard</span><br>Témoignages de parents</div>
+        <div class="placeholder-box reveal" style="--i:1;"><span class="tag">À compléter plus tard</span><br>École(s) partenaire(s)</div>
+        <div class="placeholder-box reveal" style="--i:2;"><span class="tag">À compléter plus tard</span><br>Chiffres clés</div>
+      </div>
+      <div class="privacy-note reveal">
+        <span class="ic">🔒</span>
+        <p>Les informations de votre famille restent protégées. <em>[à préciser — politique de confidentialité détaillée]</em></p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================================================================
+       11. ACCÈS / TARIFS
+       =================================================================== -->
+  <section class="section" id="acces" style="background:var(--surface-soft);">
+    <div class="container">
+      <div class="section-head center reveal">
+        <span class="eyebrow">Accès</span>
+        <h2>Comment accéder à votre Espace Parent</h2>
+        <p>L'accès est mis en place par l'école de votre enfant.</p>
+      </div>
+      <div class="access-grid">
+        <div class="access-card reveal" style="--i:0;">
+          <h3>Votre école</h3>
+          <div class="price">[à compléter plus tard]</div>
+          <p>Conditions d'accès propres à votre établissement.</p>
+        </div>
+        <div class="access-card reveal" style="--i:1;">
+          <h3>Mise en place</h3>
+          <div class="price">[à compléter plus tard]</div>
+          <p>Délai et démarche pour activer votre Espace Parent.</p>
+        </div>
+        <div class="access-card reveal" style="--i:2;">
+          <h3>Assistance</h3>
+          <div class="price">[à compléter plus tard]</div>
+          <p>Contact en cas de question sur votre accès.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================================================================
+       12. FAQ
+       =================================================================== -->
+  <section class="section" id="faq">
+    <div class="container">
+      <div class="section-head center reveal">
+        <span class="eyebrow">Questions fréquentes</span>
+        <h2>Tout ce qu'il faut savoir</h2>
+      </div>
+      <div class="faq-list reveal">
+        <details class="faq-item">
+          <summary>Comment obtenir mon accès ? <span class="plus" aria-hidden="true">+</span></summary>
+          <div class="faq-answer">Votre accès est créé par l'école de votre enfant. <em>[à confirmer — démarche exacte]</em></div>
+        </details>
+        <details class="faq-item">
+          <summary>Faut-il installer une application ? <span class="plus" aria-hidden="true">+</span></summary>
+          <div class="faq-answer"><em>[à confirmer]</em></div>
+        </details>
+        <details class="faq-item">
+          <summary>Puis-je suivre plusieurs enfants ? <span class="plus" aria-hidden="true">+</span></summary>
+          <div class="faq-answer"><em>[à confirmer]</em></div>
+        </details>
+        <details class="faq-item">
+          <summary>Comment suis-je prévenu(e) d'une absence ? <span class="plus" aria-hidden="true">+</span></summary>
+          <div class="faq-answer"><em>[à confirmer — canal exact de l'alerte]</em></div>
+        </details>
+        <details class="faq-item">
+          <summary>Quels moyens de paiement Mobile Money sont acceptés ? <span class="plus" aria-hidden="true">+</span></summary>
+          <div class="faq-answer"><em>[à confirmer — opérateurs disponibles]</em></div>
+        </details>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================================================================
+       13. APPEL À L'ACTION FINAL
+       =================================================================== -->
+  <section class="section" id="cta-final-wrap">
+    <div class="container">
+      <div class="cta-final reveal">
+        <div class="blob" style="width:260px;height:260px;top:-120px;left:-80px;"></div>
+        <div class="blob" style="width:200px;height:200px;bottom:-100px;right:-60px;"></div>
+        <h2 id="cta-final">Toute la scolarité de votre enfant, dans votre téléphone.</h2>
+        <p>Informé, rassuré, connecté — rejoignez l'Espace Parent EcoMaZ.</p>
+        <div class="btn-actions">
+          <a href="#" class="btn btn-ghost btn-lg">Se connecter à mon espace</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<!-- =====================================================================
+     PIED DE PAGE
+     ===================================================================== -->
+<footer class="site-footer">
+  <div class="container">
+    <div class="footer-grid">
+      <div class="footer-brand">
+        <a href="#accueil" class="brand">
+          <svg class="brand-mark" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="18" fill="#4f5fea"/><path d="M18 24h28M18 32h28M18 40h18" stroke="#fff" stroke-width="5" stroke-linecap="round"/></svg>
+          <span>EcoMaZ</span>
+        </a>
+        <p>La Console Parent qui relie les familles à l'école de leur enfant.</p>
+        <div class="footer-social">
+          <a href="#" aria-label="EcoMaZ sur Facebook"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--primary-dark)" stroke-width="2" aria-hidden="true"><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/></svg></a>
+          <a href="#" aria-label="EcoMaZ sur Instagram"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--primary-dark)" stroke-width="2" aria-hidden="true"><rect x="2" y="2" width="20" height="20" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1"/></svg></a>
+          <a href="#" aria-label="EcoMaZ sur WhatsApp"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--primary-dark)" stroke-width="2" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></a>
+        </div>
+      </div>
+      <div class="footer-col">
+        <h4>Console Parent</h4>
+        <ul>
+          <li><a href="#fonction-absence">Alerte d'absence</a></li>
+          <li><a href="#fonction-paiement">Paiement Mobile Money</a></li>
+          <li><a href="#fonction-contact">Messagerie</a></li>
+          <li><a href="#fonction-honneur">Tableau d'honneur</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h4>À propos</h4>
+        <ul>
+          <li><a href="#etapes">Comment ça marche</a></li>
+          <li><a href="#faq">Questions fréquentes</a></li>
+          <li><a href="#">[à compléter — contact]</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h4>Informations légales</h4>
+        <ul>
+          <li><a href="#">Mentions légales [à compléter]</a></li>
+          <li><a href="#">Confidentialité [à compléter]</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>© 2026 EcoMaZ. Tous droits réservés.</span>
+      <span>[Coordonnées de contact à compléter plus tard]</span>
+    </div>
+  </div>
+</footer>
+
+<script src="script.js"></script>
+</body>
+</html>
