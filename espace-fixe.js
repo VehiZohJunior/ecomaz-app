@@ -18,14 +18,14 @@
   }catch(_e){}
 
   function appliquerNom(nom){
-    const titre = 'EcoMaZ-' + nom;
+    const titre = espace === 'parent' ? "EcoMaZ-PARENTS D'ELEVES " + nom : 'EcoMaZ-PORTIER ' + nom;
     document.title = titre;
     const m = document.querySelector('meta[name="apple-mobile-web-app-title"]');
     if(m) m.setAttribute('content', titre);
     const manifest = {
       id: abs(page) + '?ecole=' + ecoleId,
       name: titre,
-      short_name: titre.length > 20 ? titre.slice(0, 20) : titre,
+      short_name: titre,
       description: espace === 'parent' ? 'Espace parents — ' + nom : 'Espace portier — ' + nom,
       start_url: abs(page) + '?ecole=' + encodeURIComponent(ecoleId),
       scope: base.href,

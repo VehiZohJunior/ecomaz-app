@@ -380,9 +380,38 @@ function mentionFromAvg(avg){
    --------------------------------------------------------------------- */
 let DB = null;
 
+// Noms officiels des applications :
+//   personnel : EcoMaZ-<école> · parents : EcoMaZ-PARENTS D'ELEVES <école> · portier : EcoMaZ-PORTIER <école>
+function nomApplication(nomEcole){
+  const n = nomEcole || (typeof DB !== 'undefined' && DB && DB.meta && DB.meta.nomEcole) || (window.ECOLE_VITRINE && window.ECOLE_VITRINE.nom_ecole) || '';
+  if(window.ESPACE_FIXE === 'parent') return "EcoMaZ-PARENTS D'ELEVES" + (n ? ' ' + n : '');
+  if(window.ESPACE_FIXE === 'portier') return 'EcoMaZ-PORTIER' + (n ? ' ' + n : '');
+  return n ? 'EcoMaZ-' + n : 'EcoMaZ';
+}
+// Le nom sous l'icône du téléphone vient du manifeste : on le génère à la volée
+// avec le nom de l'école (les applications Parent/Portier le font dans espace-fixe.js).
+function appliquerManifestePersonnel(titre){
+  try{
+    const base = new URL('./', window.location.href);
+    const abs = f => new URL(f, base).href;
+    const m = { name: titre, short_name: titre, description: 'Gestion scolaire : élèves, notes, présences, comptabilité',
+      start_url: base.href, scope: base.href, display: 'standalone', background_color: '#ffffff', theme_color: '#245840', orientation: 'portrait-primary',
+      icons: [
+        { src: abs('icon-192.png'), sizes: '192x192', type: 'image/png', purpose: 'any' },
+        { src: abs('icon-512.png'), sizes: '512x512', type: 'image/png', purpose: 'any' },
+        { src: abs('icon-maskable-512.png'), sizes: '512x512', type: 'image/png', purpose: 'maskable' } ] };
+    const url = URL.createObjectURL(new Blob([JSON.stringify(m)], { type: 'application/manifest+json' }));
+    let link = document.querySelector('link[rel="manifest"]');
+    if(!link){ link = document.createElement('link'); link.rel = 'manifest'; document.head.appendChild(link); }
+    link.href = url;
+    const meta = document.querySelector('meta[name="apple-mobile-web-app-title"]');
+    if(meta) meta.setAttribute('content', titre);
+  }catch(_e){ /* le manifeste statique reste utilisé */ }
+}
 function applyBranding(){
   const m = DB.meta;
-  document.title = `${m.nomEcole} — Gestion Scolaire`;
+  document.title = nomApplication(m.nomEcole);
+  if(!window.ESPACE_FIXE) appliquerManifestePersonnel(nomApplication(m.nomEcole));
   $('#brandSchoolName').textContent = m.nomEcole;
   $('#anneeScolaire').textContent = m.anneeScolaire;
   $('#topbarPill').textContent = `Année scolaire ${m.anneeScolaire}`;
@@ -910,7 +939,7 @@ function renderLoginGate(step, error, loading){
     ? `<img src="${escapeHtml(ecoleV.logo_url)}" alt="" style="width:64px;height:64px;border-radius:var(--r-lg);object-fit:cover;background:#fff;">`
     : (espace ? espace.ic : '🎓');
   const titreLogin = fixe
-    ? (ecoleV ? 'EcoMaZ-' + escapeHtml(ecoleV.nom_ecole) : t('app_name'))
+    ? (ecoleV ? escapeHtml(nomApplication(ecoleV.nom_ecole)) : t('app_name'))
     : (espace ? t('login_espace_prefix') + t('espace_'+espace.key+'_label') : t('app_name'));
   const iosHint = (fixe && /iphone|ipad|ipod/i.test(navigator.userAgent) && !window.navigator.standalone)
     ? `<div class="sub" style="margin-top:12px;">📲 Pour installer sur iPhone : touchez <strong>Partager</strong> puis <strong>Sur l'écran d'accueil</strong>.</div>` : '';
@@ -978,7 +1007,7 @@ async function showDemandeAcces(){
   const { data: demandes } = await sb.from('demandes_acces').select('*').eq('user_id', user.id).eq('ecole_id', ecoleId).eq('role_demande', fixe);
   const dem = demandes && demandes[0];
   const nomEcole = escapeHtml(window.ECOLE_VITRINE.nom_ecole);
-  const carte = (icone, titre, corps) => `<div class="login-card"><div class="login-logo">${icone}</div><h1>EcoMaZ-${nomEcole}</h1><div class="sub" style="font-weight:700;">${titre}</div><div class="sub">${corps}</div>
+  const carte = (icone, titre, corps) => `<div class="login-card"><div class="login-logo">${icone}</div><h1>${escapeHtml(nomApplication(window.ECOLE_VITRINE.nom_ecole))}</h1><div class="sub" style="font-weight:700;">${titre}</div><div class="sub">${corps}</div>
     <button type="button" class="btn secondary" style="width:100%;margin-top:14px;" onclick="logoutDemande()">Changer de compte</button></div>`;
   if(dem && dem.statut === 'en_attente'){
     $('#loginGate').innerHTML = carte('⏳', 'Demande envoyée', `Compte : <strong>${escapeHtml(user.email||'')}</strong><br>L'école doit valider votre accès. Revenez plus tard : vous entrerez automatiquement dès que ce sera fait.<br><button type="button" class="btn sm" style="margin-top:10px;" onclick="location.reload()">🔄 Vérifier maintenant</button>`);
@@ -990,7 +1019,7 @@ async function showDemandeAcces(){
   }
   const nomDefaut = (user.user_metadata && (user.user_metadata.full_name || user.user_metadata.name)) || '';
   const parent = fixe === 'parent';
-  $('#loginGate').innerHTML = `<div class="login-card"><div class="login-logo">${parent?'👪':'🚪'}</div><h1>EcoMaZ-${nomEcole}</h1>
+  $('#loginGate').innerHTML = `<div class="login-card"><div class="login-logo">${parent?'👪':'🚪'}</div><h1>${escapeHtml(nomApplication(window.ECOLE_VITRINE.nom_ecole))}</h1>
     <div class="sub" style="font-weight:700;">Demande d'accès ${parent?'parent':'portier'}</div>
     <div class="sub">Compte Google : <strong>${escapeHtml(user.email||'')}</strong></div>
     <form class="pin-pad" onsubmit="return handleDemandeAcces(event)">
@@ -1074,7 +1103,7 @@ function enterAppParent(){
   $('#sidebar').style.display = 'none';
   $('#burger').style.display = 'none';
   applyBranding();
-  $('#viewTitle').textContent = window.ESPACE_FIXE ? `EcoMaZ-${DB.meta.nomEcole}` : 'Espace Parent';
+  $('#viewTitle').textContent = window.ESPACE_FIXE ? nomApplication() : 'Espace Parent';
   const pill = $('#topbarPill');
   pill.innerHTML = `${escapeHtml(session.nomComplet||'')} <button class="btn secondary sm" style="margin-left:10px;" onclick="logoutRole()">🔒 Déconnexion</button>`;
   rafraichirBulles();
@@ -1380,7 +1409,7 @@ function enterAppPortier(){
   $('#sidebar').style.display = 'none';
   $('#burger').style.display = 'none';
   applyBranding();
-  $('#viewTitle').textContent = window.ESPACE_FIXE ? `EcoMaZ-${DB.meta.nomEcole}` : 'Espace Portier';
+  $('#viewTitle').textContent = window.ESPACE_FIXE ? nomApplication() : 'Espace Portier';
   const pill = $('#topbarPill');
   pill.innerHTML = `<button class="btn secondary sm" onclick="logoutRole()">🔒 Déconnexion</button>`;
   ui.filters.portierRecherche = '';
@@ -5380,7 +5409,7 @@ function renderParametres(){
     </div>
 
     <div class="panel">
-      <div class="panel-head"><div><h2>📲 Applications Parents &amp; Portier</h2><div class="sub">Deux applications séparées, installables sur le téléphone, nommées « EcoMaZ-${escapeHtml(DB.meta.nomEcole)} »</div></div></div>
+      <div class="panel-head"><div><h2>📲 Applications Parents &amp; Portier</h2><div class="sub">Deux applications séparées, installables sur le téléphone, nommées « EcoMaZ-PARENTS D'ELEVES ${escapeHtml(DB.meta.nomEcole)} » et « EcoMaZ-PORTIER ${escapeHtml(DB.meta.nomEcole)} »</div></div></div>
       ${renderLiensApplications()}
     </div>
 
