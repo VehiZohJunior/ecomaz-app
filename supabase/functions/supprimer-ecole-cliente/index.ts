@@ -42,6 +42,15 @@ Deno.serve(async (req) => {
       .from('profiles').select('id').eq('ecole_id', ecoleId);
     if (errProfils) throw errProfils;
 
+    // 1ter) Comptes Google (parents/portier) qui ont seulement DÉPOSÉ une
+    //    demande d'accès : ils n'ont pas de profil, donc pas dans la liste
+    //    ci-dessus, mais leur email et leur nom resteraient dans Auth une fois
+    //    l'école supprimée. On les repère maintenant (la cascade effacera les
+    //    demandes elles-mêmes).
+    const { data: demandesEcole } = await supabaseAdmin
+      .from('demandes_acces').select('user_id').eq('ecole_id', ecoleId);
+    const idsDemandeurs = Array.from(new Set((demandesEcole || []).map((d: { user_id: string }) => d.user_id)));
+
     // 1bis) Journaliser AVANT la suppression, pendant que ecoleId est
     //    encore une référence valide — la contrainte "on delete set null"
     //    videra automatiquement ecole_id ici une fois l'école supprimée
@@ -68,8 +77,21 @@ Deno.serve(async (req) => {
       if (errUser) echecs.push(p.id);
     }
 
+    // 4) Supprimer les demandeurs sans aucun profil ni autre demande restante
+    //    (jamais un compte rattaché à une autre école).
+    let demandeursSupprimes = 0;
+    for (const uid of idsDemandeurs) {
+      if ((profilsEcole || []).some((p: { id: string }) => p.id === uid)) continue;
+      const { data: autreProfil } = await supabaseAdmin.from('profiles').select('id').eq('id', uid).maybeSingle();
+      if (autreProfil) continue;
+      const { data: autresDemandes } = await supabaseAdmin.from('demandes_acces').select('id').eq('user_id', uid).limit(1);
+      if (autresDemandes && autresDemandes.length) continue;
+      const { error: errUser } = await supabaseAdmin.auth.admin.deleteUser(uid);
+      if (!errUser) demandeursSupprimes++;
+    }
+
     return new Response(
-      JSON.stringify({ ok: true, comptesSupprimes: (profilsEcole || []).length - echecs.length, echecs }),
+      JSON.stringify({ ok: true, comptesSupprimes: (profilsEcole || []).length - echecs.length, demandeursSupprimes, echecs }),
       { headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } },
     );
   } catch (e) {
