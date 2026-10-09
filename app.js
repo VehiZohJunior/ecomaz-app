@@ -910,11 +910,14 @@ function renderLoginGate(step, error, loading){
       <form class="pin-pad" onsubmit="return handleLoginSubmit(event)">
         <div class="field" style="text-align:left;margin-bottom:10px;">
           <label>${t('label_email')}</label>
-          <input type="email" id="loginEmail" required autocomplete="username" autofocus>
+          <input type="email" id="loginEmail" required autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false" inputmode="email" value="${escapeHtml(window.__dernierEmail||'')}" ${window.__dernierEmail?'':'autofocus'}>
         </div>
         <div class="field" style="text-align:left;">
           <label>${t('label_password')}</label>
-          <input type="password" id="loginPassword" required autocomplete="current-password">
+          <div style="position:relative;">
+            <input type="password" id="loginPassword" required autocomplete="current-password" autocapitalize="off" autocorrect="off" spellcheck="false" style="padding-right:84px;" ${window.__dernierEmail?'autofocus':''}>
+            <button type="button" class="btn secondary sm" style="position:absolute;right:6px;top:50%;transform:translateY(-50%);" onclick="const i=$('#loginPassword');const v=i.type==='password';i.type=v?'text':'password';this.textContent=v?'Cacher':'Voir';">Voir</button>
+          </div>
         </div>
         <div class="pin-error">${error ? escapeHtml(error) : ''}</div>
         <button class="btn" type="submit" style="width:100%;margin-top:14px;" ${loading?'disabled':''}>${loading?t('btn_login_loading'):t('btn_login')}</button>
@@ -980,8 +983,9 @@ async function handleResetSubmit(ev){
 }
 async function handleLoginSubmit(ev){
   ev.preventDefault();
-  const email = $('#loginEmail').value.trim();
+  const email = $('#loginEmail').value.trim().toLowerCase();
   const password = $('#loginPassword').value;
+  window.__dernierEmail = email; // conservé si le mot de passe est refusé (évite de tout retaper sur téléphone)
   $('#loginGate').innerHTML = renderLoginGate('login', '', true);
   const res = await connexion(email, password);
   if(!res.ok){ showLoginGate(res.message); return false; }
