@@ -361,7 +361,7 @@ tbody tr:hover{ background:var(--surface-2); }
 .role-card .rlabel{ font-family:var(--font-title); font-weight:700; font-size:var(--fs-sm); }
 .role-card .rdesc{ font-size:var(--fs-xs); color:var(--text-dim); margin-top:var(--sp-1); }
 .pin-pad{ margin-top:var(--sp-5); }
-.pin-pad input{ width:100%; text-align:center; font-size:var(--fs-lg); letter-spacing:10px; padding:var(--sp-3); border:1px solid var(--border-strong); border-radius:var(--r-control); background:var(--surface-1); color:var(--text); }
+.pin-pad input{ width:100%; text-align:left; font-size:var(--fs-md); letter-spacing:normal; padding:var(--sp-3); min-height:var(--tap); border:1px solid var(--border-strong); border-radius:var(--r-control); background:var(--surface-1); color:var(--text); }
 .pin-pad input:focus{ outline:none; border-color:var(--focus); box-shadow:0 0 0 3px color-mix(in srgb, var(--focus) 28%, transparent); }
 .pin-error{ color:var(--danger); font-size:var(--fs-xs); margin-top:var(--sp-2); min-height:16px; }
 .pin-back{ background:none; border:none; color:var(--text-dim); font-size:var(--fs-xs); cursor:pointer; margin-top:var(--sp-4); min-height:var(--tap); padding:0 var(--sp-3); border-radius:var(--r-control); }
@@ -511,3 +511,10 @@ body.theme-parent .parent-greeting{
   font-family:'Baloo 2',var(--font-title); font-size:var(--fs-lg); font-weight:700; margin:0 0 var(--sp-1);
 }
 body.theme-parent .parent-greeting-sub{ color:var(--text-dim); margin:0 0 var(--sp-4); font-size:var(--fs-sm); }
+
+/* Pile de notifications (voir toast() dans app.js) */
+#toastStack{ position:fixed; bottom:var(--sp-5); right:var(--sp-5); display:flex; flex-direction:column; gap:var(--sp-2); z-index:200; align-items:flex-end; pointer-events:none; max-width:min(420px, calc(100vw - 2*var(--sp-4))); }
+.toast-item{ background:var(--text); color:var(--surface-0); padding:var(--sp-3) var(--sp-4); border-radius:var(--r-card); font-size:var(--fs-sm); box-shadow:var(--shadow-3); opacity:0; transform:translateY(10px); transition:opacity var(--dur) var(--ease), transform var(--dur) var(--ease); pointer-events:auto; }
+.toast-item.show{ opacity:1; transform:none; }
+.toast-item.error{ background:var(--danger); color:var(--surface-1); }
+@media (max-width:640px){ #toastStack{ left:var(--sp-4); right:var(--sp-4); bottom:var(--sp-4); align-items:stretch; } }

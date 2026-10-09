@@ -323,11 +323,24 @@ async function messageErreurFonction(error){
 }
 
 function toast(msg){
-  const t = $('#toast');
-  t.textContent = msg;
-  t.classList.add('show');
-  clearTimeout(toast._t);
-  toast._t = setTimeout(()=>t.classList.remove('show'), 2200);
+  let pile = $('#toastStack');
+  if(!pile){
+    pile = document.createElement('div');
+    pile.id = 'toastStack';
+    pile.setAttribute('role', 'status');
+    pile.setAttribute('aria-live', 'polite');
+    document.body.appendChild(pile);
+  }
+  const erreur = /^(erreur|impossible|échec|echec)|❌|⚠️/i.test(String(msg).trim());
+  const el = document.createElement('div');
+  el.className = 'toast-item' + (erreur ? ' error' : '');
+  el.textContent = msg;
+  if(erreur) el.setAttribute('role', 'alert');
+  pile.appendChild(el);
+  while(pile.children.length > 4) pile.firstChild.remove();
+  requestAnimationFrame(()=>el.classList.add('show'));
+  const duree = erreur ? 6500 : 2600;
+  setTimeout(()=>{ el.classList.remove('show'); setTimeout(()=>el.remove(), 250); }, duree);
 }
 
 function openModal(title, bodyHtml){
@@ -894,7 +907,7 @@ function renderLoginGate(step, error, loading){
   const fixe = window.ESPACE_FIXE;
   const ecoleV = window.ECOLE_VITRINE;
   const logoHtml = (fixe && ecoleV && ecoleV.logo_url)
-    ? `<img src="${escapeHtml(ecoleV.logo_url)}" alt="" style="width:64px;height:64px;border-radius:16px;object-fit:cover;background:#fff;">`
+    ? `<img src="${escapeHtml(ecoleV.logo_url)}" alt="" style="width:64px;height:64px;border-radius:var(--r-lg);object-fit:cover;background:#fff;">`
     : (espace ? espace.ic : '🎓');
   const titreLogin = fixe
     ? (ecoleV ? 'EcoMaZ-' + escapeHtml(ecoleV.nom_ecole) : t('app_name'))
@@ -926,7 +939,7 @@ function renderLoginGate(step, error, loading){
       </form>
       ${fixe ? `<div class="sub" style="margin:16px 0 8px;">— ou —</div>
         <button type="button" class="btn secondary" style="width:100%;" onclick="handleGoogleLogin()">🔵 Continuer avec Google</button>
-        <div class="sub" style="margin-top:6px;font-size:11px;">Première fois ? Connectez-vous avec Google : l'école validera votre accès.</div>` : ''}
+        <div class="sub" style="margin-top:6px;font-size:var(--fs-xs);">Première fois ? Connectez-vous avec Google : l'école validera votre accès.</div>` : ''}
       ${fixe ? `<button type="button" class="btn secondary btn-install-pwa" style="display:none;width:100%;margin-top:10px;">📲 Installer l'application</button>${iosHint}` : ''}
     </div>`;
 }
@@ -1443,7 +1456,7 @@ function renderPortierDashboard(){
 function renderPortierBarreRecherche(){
   return `<input type="text" id="portierRecherche" placeholder="Ou tapez un nom pour chercher dans toutes les classes…" value="${escapeHtml(ui.filters.portierRecherche||'')}"
     oninput="ui.filters.portierRecherche=this.value; refreshPortierDashboard()"
-    style="width:100%;padding:14px;font-size:16px;border:1px solid var(--border);border-radius:10px;margin-bottom:16px;">`;
+    style="width:100%;padding:14px;font-size:var(--fs-md);border:1px solid var(--border);border-radius:var(--r-card);margin-bottom:16px;">`;
 }
 async function handleNotifierPortier(eleveId){
   try{
@@ -1684,15 +1697,15 @@ function renderDashboard(){
     const n = DB.eleves.filter(e=>e.classeId===c.id && e.statut==='Actif').length;
     const pct = Math.round(100*n/maxEffectif);
     return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:9px;">
-      <div style="width:110px;font-size:12px;color:var(--text-dim);flex-shrink:0;">${c.nom}</div>
+      <div style="width:110px;font-size:var(--fs-xs);color:var(--text-dim);flex-shrink:0;">${c.nom}</div>
       <div class="progress" style="flex:1;"><div style="width:${pct}%;background:var(--primary);"></div></div>
-      <div style="width:26px;text-align:right;font-size:12px;font-weight:700;">${n}</div>
+      <div style="width:26px;text-align:right;font-size:var(--fs-xs);font-weight:700;">${n}</div>
     </div>`;
   }).join('');
 
   const ensAbsents = presEnsToday.filter(p=>p.statut!=='Présent').map(p=>{
     const t = enseignantById(p.enseignantId);
-    return `<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);font-size:12.5px;">
+    return `<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);font-size:var(--fs-xs);">
       <span>${escapeHtml(ensFullName(t))}</span>
       <span class="badge ${p.statut==='Absent'?'red':'amber'}">${p.statut}</span>
     </div>`;
@@ -1750,8 +1763,8 @@ function renderDashboard(){
       <div class="panel">
         <div class="panel-head"><div><h2>Alertes du jour</h2><div class="sub">${fmtDate(today)}</div></div></div>
         <div style="display:flex;gap:10px;margin-bottom:14px;">
-          <div class="badge red" style="font-size:12px;padding:6px 10px;">${elAbsentsCount} élève(s) absent(s)</div>
-          <div class="badge amber" style="font-size:12px;padding:6px 10px;">${elRetardCount} retard(s)</div>
+          <div class="badge red" style="font-size:var(--fs-xs);padding:6px 10px;">${elAbsentsCount} élève(s) absent(s)</div>
+          <div class="badge amber" style="font-size:var(--fs-xs);padding:6px 10px;">${elRetardCount} retard(s)</div>
         </div>
         <div class="sub" style="margin-bottom:6px;font-weight:700;">Enseignants absents</div>
         ${ensAbsents}
@@ -1830,7 +1843,7 @@ function renderEleveListe(){
       return `
         <div class="panel" style="margin:0 0 12px;box-shadow:none;border:1px solid var(--border);">
           <div class="panel-head" style="padding:12px 14px;">
-            <div><h3 style="margin:0;font-size:15px;">${escapeHtml(c.nom)}</h3><div class="sub">${elevesClasse.length} élève(s)</div></div>
+            <div><h3 style="margin:0;font-size:var(--fs-sm);">${escapeHtml(c.nom)}</h3><div class="sub">${elevesClasse.length} élève(s)</div></div>
           </div>
           ${elevesClasse.length===0 ? `<div class="empty-state" style="padding:16px;"><div class="em-ic">🧒</div>Aucun élève dans cette classe.</div>` : `
           <div class="table-wrap"><table>
@@ -1849,7 +1862,7 @@ function renderEleveListe(){
       <div class="panel" style="margin-bottom:14px;">
         <div class="panel-head" style="cursor:pointer;user-select:none;" onclick="toggleEleveNiveau('${key}')">
           <div><h2>${n.icon} ${n.label}</h2><div class="sub">${n.desc} · ${effectifNiveau} élève(s) · ${classesNiveau.length} classe(s)</div></div>
-          <span class="badge blue" style="font-size:16px;">${collapsed ? '▸' : '▾'}</span>
+          <span class="badge blue" style="font-size:var(--fs-md);">${collapsed ? '▸' : '▾'}</span>
         </div>
         ${collapsed ? '' : `<div style="padding-top:4px;">${classesBlocs}</div>`}
       </div>`;
@@ -1933,14 +1946,14 @@ function renderSmartFillModal(etat, message){
     ${message ? `<div class="pin-error" style="margin-bottom:12px;">${escapeHtml(message)}</div>` : ''}
     <div class="grid-2" style="margin-bottom:14px;">
       <div class="panel" style="background:var(--surface-2);text-align:center;padding:18px;">
-        <div style="font-size:32px;">📷</div>
+        <div style="font-size:var(--fs-2xl);">📷</div>
         <div class="hint" style="margin:8px 0 12px;">Photo d'un document</div>
         <label class="btn secondary sm" style="cursor:pointer;">Choisir une photo
           <input type="file" accept="image/*" capture="environment" style="display:none;" onchange="handleSmartFillPhoto(event)">
         </label>
       </div>
       <div class="panel" style="background:var(--surface-2);text-align:center;padding:18px;">
-        <div style="font-size:32px;">🎤</div>
+        <div style="font-size:var(--fs-2xl);">🎤</div>
         <div class="hint" style="margin:8px 0 12px;">Message vocal</div>
         <div style="display:flex;flex-direction:column;gap:8px;">
           <button type="button" class="btn secondary sm" id="btnSmartFillRec" onclick="handleSmartFillToggleRecord()">⏺️ Enregistrer</button>
@@ -2284,7 +2297,7 @@ function renderEleveProfile(id){
           <tbody>${bulletinRows}</tbody>
         </table></div>
         <div style="display:flex;justify-content:space-between;align-items:center;margin-top:14px;padding-top:14px;border-top:1px solid var(--border);">
-          <div>Moyenne générale : <span class="bulletin-grade ${moyGenerale!==null?moyenneClass(moyGenerale):''}" style="font-size:18px;">${moyGenerale!==null?moyGenerale.toFixed(2):'—'}</span> / 20</div>
+          <div>Moyenne générale : <span class="bulletin-grade ${moyGenerale!==null?moyenneClass(moyGenerale):''}" style="font-size:var(--fs-lg);">${moyGenerale!==null?moyGenerale.toFixed(2):'—'}</span> / 20</div>
           <span class="badge ${moyGenerale===null?'gray':moyenneClass(moyGenerale)==='good'?'green':moyenneClass(moyGenerale)==='mid'?'amber':'red'}">${moyGenerale!==null?mentionFromAvg(moyGenerale):'—'}</span>
         </div>
         <div class="field" style="margin-top:14px;">
@@ -2356,8 +2369,8 @@ function renderNotes(){
     const compo = notes.find(n=>n.type==='Composition');
     return `<tr>
       <td><div class="row-name"><span class="avatar">${initials(e.prenom,e.nom)}</span>${escapeHtml(eleveFullName(e))}</div></td>
-      <td><input type="number" min="0" max="20" step="0.5" data-eleve="${e.id}" data-type="Devoir" value="${devoir?devoir.note:''}" style="width:70px;padding:6px 8px;border:1px solid var(--border);border-radius:7px;"></td>
-      <td><input type="number" min="0" max="20" step="0.5" data-eleve="${e.id}" data-type="Composition" value="${compo?compo.note:''}" style="width:70px;padding:6px 8px;border:1px solid var(--border);border-radius:7px;"></td>
+      <td><input type="number" min="0" max="20" step="0.5" data-eleve="${e.id}" data-type="Devoir" value="${devoir?devoir.note:''}" style="width:70px;padding:6px 8px;border:1px solid var(--border);border-radius:var(--r-control);"></td>
+      <td><input type="number" min="0" max="20" step="0.5" data-eleve="${e.id}" data-type="Composition" value="${compo?compo.note:''}" style="width:70px;padding:6px 8px;border:1px solid var(--border);border-radius:var(--r-control);"></td>
     </tr>`;
   }).join('');
 
@@ -2433,7 +2446,7 @@ function renderPresencesEleves(){
           <option ${statut==='Retard'?'selected':''}>Retard</option>
         </select>
       </td>
-      <td><input type="text" data-motif="${e.id}" placeholder="Motif (optionnel)" value="${escapeHtml(rec?rec.motif:'')}" style="width:100%;padding:7px 9px;border:1px solid var(--border);border-radius:7px;"></td>
+      <td><input type="text" data-motif="${e.id}" placeholder="Motif (optionnel)" value="${escapeHtml(rec?rec.motif:'')}" style="width:100%;padding:7px 9px;border:1px solid var(--border);border-radius:var(--r-control);"></td>
     </tr>`;
   }).join('');
 
@@ -2559,18 +2572,18 @@ function ouvrirAccesPersonnel(enseignantId){
     openModal('Accès personnel — ' + ensFullName(t), `
       <div class="section-note">✅ ${escapeHtml(ensFullName(t))} a déjà un accès personnel — ce compte ne voit que ses classes assignées (${t.classesAssignees.map(cid=>classeName(cid)).join(', ') || 'aucune classe assignée'}).</div>
       <div class="hint">Pour retirer cet accès personnel (le compte redevient un compte partagé classique), exécutez dans Supabase SQL Editor :</div>
-      <pre style="background:var(--surface-2);padding:12px;border-radius:8px;font-size:11.5px;overflow-x:auto;white-space:pre-wrap;">update profiles set enseignant_id = null where enseignant_id = '${enseignantId}';</pre>
+      <pre style="background:var(--surface-2);padding:12px;border-radius:var(--r-control);font-size:var(--fs-xs);overflow-x:auto;white-space:pre-wrap;">update profiles set enseignant_id = null where enseignant_id = '${enseignantId}';</pre>
       <div class="form-actions"><button type="button" class="btn secondary" onclick="closeModal()">Fermer</button></div>
     `);
     return;
   }
   openModal('Donner un accès personnel — ' + ensFullName(t), `
     <div class="section-note">📋 Cette opération se fait en 2 étapes, comme pour les autres comptes (Direction, Fondation…) :</div>
-    <ol style="padding-left:20px;line-height:1.8;font-size:13px;">
+    <ol style="padding-left:20px;line-height:1.8;font-size:var(--fs-sm);">
       <li>Supabase Dashboard → <strong>Authentication → Users → Add user</strong> — créez un compte avec l'email et le mot de passe personnels de ${escapeHtml(ensFullName(t))}. Notez l'<strong>UID</strong> généré.</li>
       <li>Dans <strong>SQL Editor</strong>, collez cette requête en remplaçant <code>&lt;UID&gt;</code> par l'UID obtenu :</li>
     </ol>
-    <pre style="background:var(--surface-2);padding:12px;border-radius:8px;font-size:11.5px;overflow-x:auto;white-space:pre-wrap;">insert into profiles (id, ecole_id, role, nom_complet, enseignant_id)
+    <pre style="background:var(--surface-2);padding:12px;border-radius:var(--r-control);font-size:var(--fs-xs);overflow-x:auto;white-space:pre-wrap;">insert into profiles (id, ecole_id, role, nom_complet, enseignant_id)
 values ('&lt;UID&gt;', '${session.ecoleId}', 'enseignant', '${escapeHtml(ensFullName(t)).replace(/'/g,"''")}', '${enseignantId}');</pre>
     <div class="hint">Une fois exécuté, ${escapeHtml(ensFullName(t))} se connectera avec son propre email/mot de passe (espace "Enseignant(e)") et ne verra que ses classes : ${t.classesAssignees.map(cid=>classeName(cid)).join(', ') || 'aucune classe assignée pour le moment — assignez-lui une classe avant de continuer'}.</div>
     <div class="form-actions"><button type="button" class="btn secondary" onclick="closeModal()">Fermer</button></div>
@@ -2599,13 +2612,13 @@ function openEnseignantForm(id){
         </div>
         <div class="field span2"><label>Classes assignées</label>
           <div style="display:flex;flex-wrap:wrap;gap:8px;">
-            ${DB.classes.map(c=>`<label style="display:flex;align-items:center;gap:5px;font-size:12.5px;background:var(--surface-2);padding:5px 9px;border-radius:8px;border:1px solid var(--border);">
+            ${DB.classes.map(c=>`<label style="display:flex;align-items:center;gap:5px;font-size:var(--fs-xs);background:var(--surface-2);padding:5px 9px;border-radius:var(--r-control);border:1px solid var(--border);">
               <input type="checkbox" name="classes" value="${c.id}" ${t?.classesAssignees.includes(c.id)?'checked':''}> ${c.nom}</label>`).join('')}
           </div>
         </div>
         <div class="field span2"><label>Matières enseignées</label>
           <div style="display:flex;flex-wrap:wrap;gap:8px;">
-            ${allMatieres.map(m=>`<label style="display:flex;align-items:center;gap:5px;font-size:12.5px;background:var(--surface-2);padding:5px 9px;border-radius:8px;border:1px solid var(--border);">
+            ${allMatieres.map(m=>`<label style="display:flex;align-items:center;gap:5px;font-size:var(--fs-xs);background:var(--surface-2);padding:5px 9px;border-radius:var(--r-control);border:1px solid var(--border);">
               <input type="checkbox" name="matieres" value="${m}" ${t?.matieres.includes(m)?'checked':''}> ${m}</label>`).join('')}
           </div>
         </div>
@@ -2688,7 +2701,7 @@ function renderPresencesEnseignants(){
       <td>${rec?.heureArrivee || '—'}</td>
       <td>${rec?.heureDepart || '—'}</td>
       <td><span class="badge ${rec?.methode==='QR'?'blue':rec?.methode==='GPS'?'purple':'gray'}">${rec?.methode || 'Manuel'}</span></td>
-      <td><input type="text" data-motif-ens="${t.id}" placeholder="Motif (optionnel)" value="${escapeHtml(rec?rec.motif:'')}" style="width:100%;padding:7px 9px;border:1px solid var(--border);border-radius:7px;"></td>
+      <td><input type="text" data-motif-ens="${t.id}" placeholder="Motif (optionnel)" value="${escapeHtml(rec?rec.motif:'')}" style="width:100%;padding:7px 9px;border:1px solid var(--border);border-radius:var(--r-control);"></td>
     </tr>`;
   }).join('');
 
@@ -2714,8 +2727,8 @@ function renderPresencesEnseignants(){
         <button class="btn secondary no-print" onclick="go('pointage-scan')">📷 Aller au scanner</button>
       </div>
       <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
-        <div class="badge blue" style="font-size:12px;padding:6px 12px;">Heure d'arrivée attendue : ${DB.meta.heureArriveeAttendue}</div>
-        ${taux!=null ? `<div class="badge ${taux>=90?'green':taux>=70?'amber':'red'}" style="font-size:12px;padding:6px 12px;">Ponctualité (30j) : ${taux}%</div>` : ''}
+        <div class="badge blue" style="font-size:var(--fs-xs);padding:6px 12px;">Heure d'arrivée attendue : ${DB.meta.heureArriveeAttendue}</div>
+        ${taux!=null ? `<div class="badge ${taux>=90?'green':taux>=70?'amber':'red'}" style="font-size:var(--fs-xs);padding:6px 12px;">Ponctualité (30j) : ${taux}%</div>` : ''}
       </div>
       <div class="filters">
         <input type="date" value="${date}" onchange="ui.filters.presEnsDate=this.value; renderView('presences-enseignants')">
@@ -2736,8 +2749,8 @@ function renderPresencesEnseignants(){
       ${!DB.meta.geofenceLatitude ? `<div class="hint">⚠️ La zone de l'établissement n'est pas encore configurée — allez dans <strong>Paramètres → Zone de l'établissement</strong> avant d'envoyer des liens.</div>` : `
         <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;">
           ${list.map(t=>`
-            <div style="display:flex;align-items:center;gap:6px;background:var(--surface-2);border:1px solid var(--border);border-radius:10px;padding:6px 10px;">
-              <span style="font-size:12.5px;">${escapeHtml(ensFullName(t))}</span>
+            <div style="display:flex;align-items:center;gap:6px;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r-card);padding:6px 10px;">
+              <span style="font-size:var(--fs-xs);">${escapeHtml(ensFullName(t))}</span>
               <button class="btn secondary sm" onclick="handleEnvoyerLienPointage('${t.id}','arrivee')">Arrivée</button>
               <button class="btn secondary sm" onclick="handleEnvoyerLienPointage('${t.id}','depart')">Départ</button>
             </div>`).join('') || '<div class="hint">Aucun enseignant actif.</div>'}
@@ -2777,7 +2790,7 @@ function renderPointagesGpsDuJour(date){
           <td>${p.action==='arrivee'?'Arrivée':'Départ'}</td>
           <td><span class="badge ${st.cls}">${st.txt}</span></td>
           <td>${p.distanceMetres!=null?p.distanceMetres+' m':'—'}</td>
-          <td><a href="https://maps.google.com/?q=${p.latitude},${p.longitude}" target="_blank" rel="noopener" style="font-size:12px;">${p.adresseApprox?escapeHtml(p.adresseApprox.slice(0,40))+'…':'Voir sur la carte'}</a></td>
+          <td><a href="https://maps.google.com/?q=${p.latitude},${p.longitude}" target="_blank" rel="noopener" style="font-size:var(--fs-xs);">${p.adresseApprox?escapeHtml(p.adresseApprox.slice(0,40))+'…':'Voir sur la carte'}</a></td>
         </tr>`;
       }).join('')}
     </tbody>
@@ -2871,7 +2884,7 @@ function renderPointageScan(){
       </div>
       <div class="section-note">🛡️ Une vérification automatique en temps réel refuse les captures d'écran présentées à la place du badge papier (analyse des reflets et du scintillement de l'écran). C'est une protection sérieuse mais pas infaillible à 100% — en cas de refus avec un vrai badge imprimé, réessayez avec un meilleur éclairage et sans reflet sur le papier.</div>
       <div style="max-width:480px;margin:16px auto 0;">
-        <div style="position:relative;border-radius:14px;overflow:hidden;background:#000;aspect-ratio:4/3;">
+        <div style="position:relative;border-radius:var(--r-card);overflow:hidden;background:#000;aspect-ratio:4/3;">
           <video id="pointageVideo" autoplay playsinline muted style="width:100%;height:100%;object-fit:cover;"></video>
           <div id="pointageOverlay" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:20px;color:#fff;background:rgba(0,0,0,.5);font-weight:700;">Caméra arrêtée</div>
         </div>
@@ -3061,7 +3074,7 @@ function afficherResultatScan(type, nom, message){
     info:    {bg:'var(--surface-2)', color:'var(--text-dim)', icon:'ℹ️'},
   };
   const s = styles[type] || styles.info;
-  el.innerHTML = `<div style="padding:14px 16px;border-radius:12px;background:${s.bg};color:${s.color};font-weight:700;">
+  el.innerHTML = `<div style="padding:14px 16px;border-radius:var(--r-card);background:${s.bg};color:${s.color};font-weight:700;">
     ${s.icon} ${nom ? escapeHtml(nom) + ' — ' : ''}${escapeHtml(message)}
   </div>`;
 }
@@ -3106,7 +3119,7 @@ function renderEmploiTemps(){
   let rowsHtml = '';
   periodes.forEach((p,i)=>{
     if(p.type==='pause'){
-      rowsHtml += `<tr><td class="tt-time">${p.debut}-${p.fin}</td><td colspan="5" style="background:var(--surface-2);color:var(--text-dim);font-weight:700;font-size:11.5px;">${p.label}</td></tr>`;
+      rowsHtml += `<tr><td class="tt-time">${p.debut}-${p.fin}</td><td colspan="5" style="background:var(--surface-2);color:var(--text-dim);font-weight:700;font-size:var(--fs-xs);">${p.label}</td></tr>`;
       return;
     }
     rowsHtml += `<tr><td class="tt-time">${p.debut}-${p.fin}</td>`;
@@ -3119,8 +3132,8 @@ function renderEmploiTemps(){
             <b>${escapeHtml(entry.matiere)}</b>
             <span>${escapeHtml(ensFullName(t))}</span>
             <div style="margin-top:5px;display:flex;gap:4px;">
-              <button class="icon-btn" style="width:22px;height:22px;font-size:10px;" onclick="openSlotForm('${classeId}','${jour}',${i})">✏️</button>
-              <button class="icon-btn danger" style="width:22px;height:22px;font-size:10px;" onclick="clearSlot('${entry.id}')">✕</button>
+              <button class="icon-btn" style="width:22px;height:22px;font-size:var(--fs-xs);" onclick="openSlotForm('${classeId}','${jour}',${i})">✏️</button>
+              <button class="icon-btn danger" style="width:22px;height:22px;font-size:var(--fs-xs);" onclick="clearSlot('${entry.id}')">✕</button>
             </div>
           </div>
         </td>`;
@@ -3223,7 +3236,7 @@ function renderProgrammes(){
       <td style="min-width:140px;">
         <div style="display:flex;align-items:center;gap:8px;">
           <div class="progress" style="flex:1;"><div style="width:${p.progression}%;background:${p.progression>=75?'var(--green)':p.progression>=40?'var(--amber)':'var(--red)'};"></div></div>
-          <span style="font-size:11.5px;font-weight:700;">${p.progression}%</span>
+          <span style="font-size:var(--fs-xs);font-weight:700;">${p.progression}%</span>
         </div>
       </td>
       <td>${fmtDate(p.dateMaj)}</td>
@@ -3552,22 +3565,22 @@ function renderComptaApercu(){
   const recBars = [
     {label:'Scolarité', val:recScolarite}, {label:'Activités extra-scolaires', val:recCotisations}, {label:'Boutique scolaire', val:recVentes},
   ].map(b=>`<div style="display:flex;align-items:center;gap:10px;margin-bottom:9px;">
-    <div style="width:170px;font-size:12px;color:var(--text-dim);flex-shrink:0;">${b.label}</div>
+    <div style="width:170px;font-size:var(--fs-xs);color:var(--text-dim);flex-shrink:0;">${b.label}</div>
     <div class="progress" style="flex:1;"><div style="width:${Math.round(100*b.val/maxRec)}%;background:var(--green);"></div></div>
-    <div style="width:100px;text-align:right;font-size:12px;font-weight:700;">${fmtFCFA(b.val)}</div>
+    <div style="width:100px;text-align:right;font-size:var(--fs-xs);font-weight:700;">${fmtFCFA(b.val)}</div>
   </div>`).join('');
 
   const depEntries = [{label:'Salaires', val:depSalaires}, ...CATEGORIES_DEPENSES.map(c=>({label:c, val:depParCategorie[c]}))].filter(d=>d.val>0);
   const maxDep = Math.max(...depEntries.map(d=>d.val), 1);
   const depBars = (depEntries.length ? depEntries : [{label:'Aucune dépense', val:0}]).map(b=>`<div style="display:flex;align-items:center;gap:10px;margin-bottom:9px;">
-    <div style="width:170px;font-size:12px;color:var(--text-dim);flex-shrink:0;">${b.label}</div>
+    <div style="width:170px;font-size:var(--fs-xs);color:var(--text-dim);flex-shrink:0;">${b.label}</div>
     <div class="progress" style="flex:1;"><div style="width:${Math.round(100*b.val/maxDep)}%;background:var(--red);"></div></div>
-    <div style="width:100px;text-align:right;font-size:12px;font-weight:700;">${fmtFCFA(b.val)}</div>
+    <div style="width:100px;text-align:right;font-size:var(--fs-xs);font-weight:700;">${fmtFCFA(b.val)}</div>
   </div>`).join('');
 
   const impayes = eleveActifs.map(e=>({e, info:scolariteEleveInfo(e.id)})).filter(x=>x.info.solde>0).sort((a,b)=>b.info.solde-a.info.solde).slice(0,8);
   const impayesHtml = impayes.map(x=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);">
-    <div><strong style="font-size:12.5px;cursor:pointer;" onclick="go('eleves'); viewEleveProfile('${x.e.id}')">${escapeHtml(eleveFullName(x.e))}</strong><div class="hint">${classeName(x.e.classeId)} · ${escapeHtml(x.e.parentTel)}</div></div>
+    <div><strong style="font-size:var(--fs-xs);cursor:pointer;" onclick="go('eleves'); viewEleveProfile('${x.e.id}')">${escapeHtml(eleveFullName(x.e))}</strong><div class="hint">${classeName(x.e.classeId)} · ${escapeHtml(x.e.parentTel)}</div></div>
     <span class="amount out">${fmtFCFA(x.info.solde)}</span>
   </div>`).join('') || `<div class="hint">Aucun impayé — bravo ! 🎉</div>`;
 
@@ -3987,7 +4000,7 @@ function renderComptaRapprochement(){
     </div>
     <div class="panel">
       <div class="panel-head"><div><h2>2. Coller le relevé</h2><div class="sub">Une ligne par mouvement : Date;Libellé;Montant — ex : 15/09/2026;Virement Kouassi;25000</div></div></div>
-      <textarea id="texteReleve" rows="6" style="width:100%;font-family:monospace;font-size:12.5px;" placeholder="15/09/2026;Virement reçu — Kouassi;25000
+      <textarea id="texteReleve" rows="6" style="width:100%;font-family:monospace;font-size:var(--fs-xs);" placeholder="15/09/2026;Virement reçu — Kouassi;25000
 18/09/2026;Virement salaire — Aya Kouadio;60000">${escapeHtml(texte)}</textarea>
       <div class="form-actions" style="justify-content:flex-start;border-top:none;padding-top:10px;">
         <button class="btn" onclick="handleComparerReleve()">🔍 Comparer</button>
@@ -4961,7 +4974,7 @@ function renderTableauAffichage(){
             return `<div class="panel" style="background:var(--surface-2);">
               <div class="hint">${per.label}</div>
               ${h ? `
-                <strong style="font-size:16px;">${escapeHtml(h.nomAffiche)}</strong>
+                <strong style="font-size:var(--fs-md);">${escapeHtml(h.nomAffiche)}</strong>
                 <div class="meta">${escapeHtml(h.classeOuMatiere||'')}</div>
                 <div class="hint" style="margin-top:4px;">${escapeHtml(h.libellePeriode||'')}</div>
               ` : `<div class="empty" style="padding:8px 0;">Non défini</div>`}
@@ -5146,7 +5159,7 @@ async function chargerDemandesAcces(){
   box.innerHTML = data.map(d=>{
     const parent = d.role_demande === 'parent';
     const opts = (DB.eleves||[]).filter(e=>e.statut==='Actif').map(e=>`<option value="${e.id}">${escapeHtml(e.nom)} ${escapeHtml(e.prenom)}</option>`).join('');
-    return `<div style="border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:10px;">
+    return `<div style="border:1px solid var(--border);border-radius:var(--r-card);padding:12px;margin-bottom:10px;">
       <strong>${parent?'👪 Parent':'🚪 Portier'} — ${escapeHtml(d.nom)}</strong>
       <div class="hint">${escapeHtml(d.email||'')}${d.message?` · « ${escapeHtml(d.message)} »`:''}</div>
       ${parent ? `<select id="demEleve_${d.id}" style="width:100%;margin:8px 0;"><option value="">— Lier à l'enfant… —</option>${opts}</select>` : ''}
@@ -5248,8 +5261,8 @@ function voirMessage(id){
   openModal('Message envoyé', `
     <div class="hint">${fmtDate(m.date)} à ${m.heure} · Canal : ${m.canal}</div>
     <div class="hint" style="margin-bottom:10px;">À : <strong>${escapeHtml(m.destinataireNom)}</strong> (${m.destinataireRole})${m.destinataireTel?' · '+escapeHtml(m.destinataireTel):''}</div>
-    <div class="txn-item" style="border:1px solid var(--border);border-radius:12px;padding:14px;background:var(--surface-2);">
-      <div class="txn-body"><div style="font-size:13.5px;line-height:1.5;">${escapeHtml(m.contenu)}</div></div>
+    <div class="txn-item" style="border:1px solid var(--border);border-radius:var(--r-card);padding:14px;background:var(--surface-2);">
+      <div class="txn-body"><div style="font-size:var(--fs-sm);line-height:1.5;">${escapeHtml(m.contenu)}</div></div>
     </div>
     <div class="form-actions"><button type="button" class="btn secondary" onclick="closeModal()">Fermer</button></div>`);
 }
@@ -5301,7 +5314,7 @@ function renderParametres(){
         <div class="grid-2" style="margin-bottom:14px;">
           ${Object.entries(NIVEAUX_DEF).map(([key,n])=>{
             const actif = (DB.meta.niveaux||[]).includes(key);
-            return `<label style="display:flex;align-items:center;gap:10px;padding:12px;border:1px solid var(--border);border-radius:10px;background:${actif?'var(--primary-dim)':'var(--surface-2)'};cursor:pointer;">
+            return `<label style="display:flex;align-items:center;gap:10px;padding:12px;border:1px solid var(--border);border-radius:var(--r-card);background:${actif?'var(--primary-dim)':'var(--surface-2)'};cursor:pointer;">
               <input type="checkbox" name="niveau_${key}" ${actif?'checked':''}>
               <div><strong>${n.icon} ${n.label}</strong><div class="hint">${n.desc}</div></div>
               ${actif ? `<span class="badge green" style="margin-left:auto;">Actif</span>` : ''}
@@ -5313,7 +5326,7 @@ function renderParametres(){
       </form>
       <div class="hint" style="margin:16px 0 8px;">Classes actives (${DB.classes.length}) :</div>
       <div style="display:flex;flex-wrap:wrap;gap:8px;">
-        ${DB.classes.map(c=>`<span class="badge blue" style="font-size:12px;padding:6px 12px;">${c.nom} <span style="opacity:.6;">· ${c.cycle}</span></span>`).join('') || `<span class="hint">Aucune classe active pour le moment.</span>`}
+        ${DB.classes.map(c=>`<span class="badge blue" style="font-size:var(--fs-xs);padding:6px 12px;">${c.nom} <span style="opacity:.6;">· ${c.cycle}</span></span>`).join('') || `<span class="hint">Aucune classe active pour le moment.</span>`}
       </div>
     </div>
 
@@ -5386,7 +5399,7 @@ function renderParametres(){
 
     <div class="panel">
       <div class="panel-head"><div><h2>Accès technique développeur</h2><div class="sub">Autorisez ponctuellement l'éditeur de l'application à consulter vos données pour vous dépanner</div></div></div>
-      <label style="display:flex;align-items:center;gap:12px;padding:14px;border:1px solid var(--border);border-radius:10px;background:${m.accesSupportDeveloppeur?'var(--primary-dim)':'var(--surface-2)'};cursor:pointer;max-width:520px;">
+      <label style="display:flex;align-items:center;gap:12px;padding:14px;border:1px solid var(--border);border-radius:var(--r-card);background:${m.accesSupportDeveloppeur?'var(--primary-dim)':'var(--surface-2)'};cursor:pointer;max-width:520px;">
         <input type="checkbox" id="chkAccesSupportDev" ${m.accesSupportDeveloppeur?'checked':''} onchange="handleToggleAccesSupportDev(this.checked)">
         <div>
           <strong>Autoriser l'accès technique du développeur</strong>

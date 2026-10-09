@@ -5,24 +5,29 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Tableau d'affichage — EcoMaZ</title>
 <link rel="icon" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="theme.css">
+<script src="theme.js"></script>
 <style>
   :root{
-    --bg:#0f1226;
-    --surface:#171b3a;
-    --surface-2:#1f2450;
-    --border:#2c3266;
-    --text:#f4f5fb;
-    --text-dim:#a7acd6;
-    --primary:#6f7bff;
-    --primary-dim:#252b5e;
+    --bg:#0f1713;
+    --surface:#16211b;
+    --surface-2:#1c2a23;
+    --border:#2a3b32;
+    --text:#e8f0ea;
+    --text-dim:#a3b6aa;
+    --primary:#4c9b73;
+    --primary-dim:#1d3a2b;
     --gold:#f0b429;
   }
   *{box-sizing:border-box;}
   html,body{height:100%;margin:0;}
   body{
-    background:radial-gradient(circle at top, #1a1f44, var(--bg) 60%);
+    background:radial-gradient(circle at top, #1b2c23, var(--bg) 60%);
     color:var(--text);
-    font-family:'Segoe UI', system-ui, -apple-system, Roboto, Arial, sans-serif;
+    font-family:'Inter','Segoe UI',system-ui,sans-serif;
     overflow:hidden;
   }
   #racine{ display:flex; flex-direction:column; height:100vh; }
@@ -31,7 +36,7 @@
   }
   header img{ width:64px; height:64px; border-radius:14px; object-fit:cover; background:#fff; }
   header .logo-ph{ width:64px; height:64px; border-radius:14px; background:var(--primary-dim); display:flex; align-items:center; justify-content:center; font-size:30px; }
-  header h1{ margin:0; font-size:32px; font-weight:800; letter-spacing:.5px; }
+  header h1{ font-family:'Plus Jakarta Sans','Inter',sans-serif; margin:0; font-size:32px; font-weight:800; letter-spacing:.5px; }
   header .sub{ color:var(--text-dim); font-size:15px; margin-top:2px; }
   header .horloge{ margin-left:auto; text-align:right; font-size:22px; font-weight:700; color:var(--gold); }
 
@@ -46,7 +51,7 @@
   }
   .carte .badge-periode{
     flex:0 0 auto; width:78px; height:78px; border-radius:50%;
-    background:var(--primary); color:#fff; display:flex; align-items:center; justify-content:center;
+    background:var(--primary); color:#07140d; display:flex; align-items:center; justify-content:center;
     font-size:13px; font-weight:800; text-align:center; line-height:1.2; padding:6px;
   }
   .carte .infos{ flex:1; min-width:0; }
