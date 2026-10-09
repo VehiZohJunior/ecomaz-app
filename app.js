@@ -924,6 +924,9 @@ function renderLoginGate(step, error, loading){
         <button type="button" class="pin-back" onclick="showForgotPassword()">${t('btn_forgot')}</button>
         ${fixe ? '' : `<button type="button" class="pin-back" onclick="showEspaces()">${t('btn_change_espace')}</button>`}
       </form>
+      ${fixe ? `<div class="sub" style="margin:16px 0 8px;">— ou —</div>
+        <button type="button" class="btn secondary" style="width:100%;" onclick="handleGoogleLogin()">🔵 Continuer avec Google</button>
+        <div class="sub" style="margin-top:6px;font-size:11px;">Première fois ? Connectez-vous avec Google : l'école validera votre accès.</div>` : ''}
       ${fixe ? `<button type="button" class="btn secondary btn-install-pwa" style="display:none;width:100%;margin-top:10px;">📲 Installer l'application</button>${iosHint}` : ''}
     </div>`;
 }
@@ -947,6 +950,55 @@ function showLoginGate(error){
   $('#loginGate').innerHTML = renderLoginGate('login', error);
   majBoutonsInstall();
 }
+async function handleGoogleLogin(){
+  const r = await connexionGoogle();
+  if(!r.ok) showLoginGate(r.message);
+}
+// Compte Google/réseau social sans profil : demande d'accès à valider par l'école.
+async function showDemandeAcces(){
+  const user = await utilisateurAuthCourant();
+  const ecoleId = window.ECOLE_VITRINE && window.ECOLE_VITRINE.id;
+  $('#appRoot').style.display = 'none';
+  $('#loginGate').classList.add('open');
+  if(!user || !ecoleId){ showLoginGate("Impossible d'identifier l'établissement. Ouvrez le lien fourni par l'école."); return; }
+  const fixe = window.ESPACE_FIXE;
+  const { data: demandes } = await sb.from('demandes_acces').select('*').eq('user_id', user.id).eq('ecole_id', ecoleId).eq('role_demande', fixe);
+  const dem = demandes && demandes[0];
+  const nomEcole = escapeHtml(window.ECOLE_VITRINE.nom_ecole);
+  const carte = (icone, titre, corps) => `<div class="login-card"><div class="login-logo">${icone}</div><h1>EcoMaZ-${nomEcole}</h1><div class="sub" style="font-weight:700;">${titre}</div><div class="sub">${corps}</div>
+    <button type="button" class="btn secondary" style="width:100%;margin-top:14px;" onclick="logoutDemande()">Changer de compte</button></div>`;
+  if(dem && dem.statut === 'en_attente'){
+    $('#loginGate').innerHTML = carte('⏳', 'Demande envoyée', `Compte : <strong>${escapeHtml(user.email||'')}</strong><br>L'école doit valider votre accès. Revenez plus tard : vous entrerez automatiquement dès que ce sera fait.<br><button type="button" class="btn sm" style="margin-top:10px;" onclick="location.reload()">🔄 Vérifier maintenant</button>`);
+    return;
+  }
+  if(dem && dem.statut === 'refusee'){
+    $('#loginGate').innerHTML = carte('🚫', 'Demande refusée', "L'école n'a pas validé cette demande. Contactez l'établissement.");
+    return;
+  }
+  const nomDefaut = (user.user_metadata && (user.user_metadata.full_name || user.user_metadata.name)) || '';
+  const parent = fixe === 'parent';
+  $('#loginGate').innerHTML = `<div class="login-card"><div class="login-logo">${parent?'👪':'🚪'}</div><h1>EcoMaZ-${nomEcole}</h1>
+    <div class="sub" style="font-weight:700;">Demande d'accès ${parent?'parent':'portier'}</div>
+    <div class="sub">Compte Google : <strong>${escapeHtml(user.email||'')}</strong></div>
+    <form class="pin-pad" onsubmit="return handleDemandeAcces(event)">
+      <div class="field" style="text-align:left;margin-bottom:10px;"><label>Votre nom complet</label><input type="text" id="demNom" required value="${escapeHtml(nomDefaut)}"></div>
+      <div class="field" style="text-align:left;"><label>${parent?"Nom de votre enfant (et sa classe)":"Message pour la direction (facultatif)"}</label><input type="text" id="demMsg" ${parent?'required':''} placeholder="${parent?'Ex : Yepri BOKRA, CP1':''}"></div>
+      <div class="pin-error" id="demErr"></div>
+      <button class="btn" type="submit" style="width:100%;margin-top:10px;">Envoyer ma demande</button>
+      <button type="button" class="pin-back" onclick="logoutDemande()">Changer de compte</button>
+    </form></div>`;
+}
+async function handleDemandeAcces(ev){
+  ev.preventDefault();
+  const { error } = await sb.from('demandes_acces').insert({
+    ecole_id: window.ECOLE_VITRINE.id, role_demande: window.ESPACE_FIXE,
+    nom: $('#demNom').value.trim(), message: $('#demMsg').value.trim(),
+  });
+  if(error){ $('#demErr').textContent = "Envoi impossible : " + error.message; return false; }
+  showDemandeAcces();
+  return false;
+}
+async function logoutDemande(){ await deconnexion(); showLoginGate(); }
 function showForgotPassword(){
   $('#loginGate').innerHTML = renderLoginGate('forgot');
 }
@@ -5086,6 +5138,35 @@ async function handleSaveHoraires(ev){
 /* ---------------------------------------------------------------------
    ZONE DE L'ÉTABLISSEMENT (géofence) — utilisée par le pointage GPS.
    --------------------------------------------------------------------- */
+async function chargerDemandesAcces(){
+  const box = $('#demandesAccesBox'); if(!box) return;
+  const { data, error } = await sb.from('demandes_acces').select('*').eq('statut','en_attente').order('created_at');
+  if(error){ box.innerHTML = `<div class="hint">Erreur : ${escapeHtml(error.message)}</div>`; return; }
+  if(!data.length){ box.innerHTML = '<div class="hint">Aucune demande en attente.</div>'; return; }
+  box.innerHTML = data.map(d=>{
+    const parent = d.role_demande === 'parent';
+    const opts = (DB.eleves||[]).filter(e=>e.statut==='Actif').map(e=>`<option value="${e.id}">${escapeHtml(e.nom)} ${escapeHtml(e.prenom)}</option>`).join('');
+    return `<div style="border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:10px;">
+      <strong>${parent?'👪 Parent':'🚪 Portier'} — ${escapeHtml(d.nom)}</strong>
+      <div class="hint">${escapeHtml(d.email||'')}${d.message?` · « ${escapeHtml(d.message)} »`:''}</div>
+      ${parent ? `<select id="demEleve_${d.id}" style="width:100%;margin:8px 0;"><option value="">— Lier à l'enfant… —</option>${opts}</select>` : ''}
+      <button class="btn sm" onclick="traiterDemandeAcces('${d.id}', true, ${parent})">✅ Approuver</button>
+      <button class="btn secondary sm" onclick="traiterDemandeAcces('${d.id}', false, ${parent})">Refuser</button>
+    </div>`;
+  }).join('');
+}
+async function traiterDemandeAcces(id, approuver, parent){
+  let eleves = [];
+  if(approuver && parent){
+    const v = $('#demEleve_'+id).value;
+    if(!v){ toast("Choisissez l'enfant à lier à ce parent."); return; }
+    eleves = [v];
+  }
+  const { error } = await sb.rpc('traiter_demande_acces', { p_id: id, p_approuver: approuver, p_eleve_ids: eleves });
+  if(error){ toast('Erreur : ' + error.message); return; }
+  toast(approuver ? 'Accès accordé ✅' : 'Demande refusée');
+  chargerDemandesAcces();
+}
 function lienApplication(page){
   const base = window.location.href.replace(/[^/]*([?#].*)?$/, '');
   return base + page + '?ecole=' + encodeURIComponent(session.ecoleId);
@@ -5277,6 +5358,12 @@ function renderParametres(){
     <div class="panel">
       <div class="panel-head"><div><h2>📍 Zone de l'établissement</h2><div class="sub">Utilisée pour valider les pointages GPS des enseignants (à quelle distance de l'école ils se trouvent)</div></div></div>
       ${renderGeofence()}
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><div><h2>🔔 Demandes d'accès (Parents &amp; Portier)</h2><div class="sub">Personnes qui se sont connectées avec Google et attendent votre validation</div></div></div>
+      <div id="demandesAccesBox"><div class="hint">Chargement…</div></div>
+      ${(setTimeout(chargerDemandesAcces,0),'')}
     </div>
 
     <div class="panel">
@@ -5779,5 +5866,6 @@ async function journaliserCompta(tableCible, enregistrementId, action, donneesAv
   if(profil){
     try{ await entrerSelonRole(); return; }catch(e){ /* si le chargement échoue, on retombe sur l'écran de connexion */ }
   }
+  if(window.ESPACE_FIXE && await utilisateurAuthCourant()){ showDemandeAcces(); return; }
   showEspaces();
 })();

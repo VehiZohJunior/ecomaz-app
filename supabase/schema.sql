@@ -1484,3 +1484,72 @@ create policy "lecture profils" on profiles for select
 drop policy if exists "creation messages" on messages;
 create policy "creation messages" on messages for insert
   with check (ecole_id = mon_ecole_id() and est_perso_admin());
+
+-- =====================================================================
+-- 41. AUTO-INSCRIPTION PARENT / PORTIER VIA RÉSEAU SOCIAL (2026-10-09)
+-- =====================================================================
+-- Un parent ou un portier se connecte avec Google (applications dédiées
+-- parent.html / portier.html) : Supabase crée un compte SANS profil, donc
+-- sans aucun accès. Il dépose ici une demande ; seul le personnel de son
+-- école peut l'approuver (création du profil + lien avec l'enfant pour un
+-- parent). Jamais d'accès aux données avant cette validation.
+create table if not exists demandes_acces (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade default auth.uid(),
+  ecole_id uuid not null references ecoles(id) on delete cascade,
+  role_demande text not null check (role_demande in ('parent','portier')),
+  nom text not null default '',
+  email text default (auth.jwt() ->> 'email'),
+  message text default '',
+  statut text not null default 'en_attente' check (statut in ('en_attente','approuvee','refusee')),
+  created_at timestamptz default now(),
+  traite_par uuid references auth.users(id) on delete set null,
+  unique (user_id, ecole_id, role_demande)
+);
+alter table demandes_acces enable row level security;
+
+create policy "creation demande acces" on demandes_acces for insert
+  with check (
+    user_id = auth.uid() and statut = 'en_attente'
+    and not exists (select 1 from profiles p where p.id = auth.uid())
+  );
+create policy "lecture demandes acces" on demandes_acces for select
+  using (user_id = auth.uid() or (ecole_id = mon_ecole_id() and est_perso_admin()));
+-- Pas de policy update/delete : tout passe par traiter_demande_acces().
+
+create or replace function traiter_demande_acces(p_id uuid, p_approuver boolean, p_eleve_ids uuid[] default '{}')
+returns void language plpgsql security definer set search_path = public as $$
+declare d demandes_acces%rowtype; e uuid;
+begin
+  select * into d from demandes_acces where id = p_id for update;
+  if not found or d.ecole_id is distinct from mon_ecole_id() or not est_perso_admin() then
+    raise exception 'Demande introuvable ou accès refusé';
+  end if;
+  if d.statut <> 'en_attente' then raise exception 'Demande déjà traitée'; end if;
+  if not p_approuver then
+    update demandes_acces set statut='refusee', traite_par=auth.uid() where id=p_id;
+    return;
+  end if;
+  if d.role_demande = 'portier' and not est_admin() then
+    raise exception 'Seule la direction peut approuver un portier';
+  end if;
+  if d.role_demande = 'parent' and coalesce(array_length(p_eleve_ids,1),0) = 0 then
+    raise exception 'Choisissez au moins un enfant pour ce parent';
+  end if;
+  if exists (select 1 from profiles where id = d.user_id) then
+    raise exception 'Ce compte a déjà un profil';
+  end if;
+  insert into profiles (id, ecole_id, role, nom_complet)
+    values (d.user_id, d.ecole_id, d.role_demande::role_utilisateur, d.nom);
+  if d.role_demande = 'parent' then
+    foreach e in array p_eleve_ids loop
+      if not exists (select 1 from eleves where id = e and ecole_id = d.ecole_id) then
+        raise exception 'Élève invalide';
+      end if;
+      insert into parents_eleves (ecole_id, parent_profile_id, eleve_id) values (d.ecole_id, d.user_id, e);
+    end loop;
+  end if;
+  update demandes_acces set statut='approuvee', traite_par=auth.uid() where id=p_id;
+end $$;
+revoke all on function traiter_demande_acces(uuid,boolean,uuid[]) from public, anon;
+grant execute on function traiter_demande_acces(uuid,boolean,uuid[]) to authenticated;

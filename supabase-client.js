@@ -80,6 +80,20 @@ async function connexion(email, motDePasse){
   if(!profil) return { ok:false, message: "Ce compte n'est associé à aucune école. Contactez votre administrateur." };
   return { ok:true, profil };
 }
+// Connexion par réseau social (Google). Le compte créé n'a AUCUN accès tant
+// que l'école n'a pas approuvé sa demande (voir demandes_acces).
+async function connexionGoogle(){
+  const { error } = await sb.auth.signInWithOAuth({
+    provider: 'google',
+    options: { redirectTo: window.location.origin + window.location.pathname + window.location.search },
+  });
+  if(error) return { ok:false, message: error.message || 'Connexion Google impossible.' };
+  return { ok:true };
+}
+async function utilisateurAuthCourant(){
+  const { data: { session: s } } = await sb.auth.getSession();
+  return s?.user || null;
+}
 async function deconnexion(){
   await sb.auth.signOut();
   session.userId = null; session.ecoleId = null; session.role = null; session.nomComplet = '';
