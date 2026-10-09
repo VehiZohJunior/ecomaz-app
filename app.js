@@ -898,12 +898,14 @@ function renderLoginGate(step, error, loading){
 }
 function showEspaces(){
   stopIdleWatcher();
+  document.body.classList.remove('theme-parent');
   $('#appRoot').style.display = 'none';
   $('#loginGate').classList.add('open');
   $('#loginGate').innerHTML = renderLoginGate('espaces');
 }
 function chooseEspace(key){
   ui.espaceChoisi = key;
+  document.body.classList.toggle('theme-parent', key === 'parent');
   showLoginGate();
 }
 function showLoginGate(error){
@@ -967,6 +969,7 @@ async function handleLoginSubmit(ev){
    n'a accès, via RLS, qu'à son/ses propre(s) enfant(s)).
    --------------------------------------------------------------------- */
 function enterAppParent(){
+  document.body.classList.add('theme-parent');
   $('#loginGate').classList.remove('open');
   $('#appRoot').style.display = '';
   $('#sidebar').style.display = 'none';
@@ -989,10 +992,14 @@ function renderActualitesParent(){
   if(!actus.length) return '';
   return `<div class="panel">
     <div class="panel-head"><div><h2>📰 Actualités</h2></div></div>
-    ${actus.map(a=>`<div class="bulle-item" style="cursor:default;">${escapeHtml(a.texte)}
-      <div class="bulle-meta">${a.createdAt?new Date(a.createdAt).toLocaleDateString('fr-FR',{day:'2-digit',month:'long'}):''}</div>
-    </div>`).join('')}
+    ${actus.map(a=>`<div class="actu-item"><span class="ic">📰</span><div>${escapeHtml(a.texte)}
+      <div class="meta">${a.createdAt?new Date(a.createdAt).toLocaleDateString('fr-FR',{day:'2-digit',month:'long'}):''}</div>
+    </div></div>`).join('')}
   </div>`;
+}
+function toggleHonorCard(btn){
+  const pressed = btn.getAttribute('aria-pressed') === 'true';
+  btn.setAttribute('aria-pressed', String(!pressed));
 }
 function renderTableauHonneurParent(){
   const auMoinsUn = (DB.tableauHonneur||[]).some(h=>h.nomAffiche);
@@ -1001,14 +1008,24 @@ function renderTableauHonneurParent(){
     <div class="panel-head"><div><h2>🏆 Tableau d'honneur</h2></div></div>
     ${HONNEUR_CATEGORIES.map(cat=>`
       <div class="hint" style="margin:10px 0 6px;">${cat.icon} ${escapeHtml(cat.label)} à l'honneur</div>
-      <div class="grid-3">
+      <div class="hc-grid">
         ${HONNEUR_PERIODES.map(per=>{
           const h = honneurActuel(cat.id, per.id);
           if(!h || !h.nomAffiche) return '';
-          return `<div class="panel" style="background:var(--surface-2);">
-            <div class="hint">${per.label}</div>
-            <strong style="font-size:16px;">${escapeHtml(h.nomAffiche)}</strong>
-            <div class="meta">${escapeHtml(h.classeOuMatiere||'')}</div>
+          return `<div class="hc-card">
+            <button type="button" aria-pressed="false" onclick="toggleHonorCard(this)" aria-label="${escapeHtml(cat.label)} ${per.label.toLowerCase()} — toucher pour retourner la carte">
+              <div class="hc-flip">
+                <div class="hc-face hc-face-front">
+                  <div class="hc-avatar" style="font-size:34px;">${cat.icon}</div>
+                  <strong>${escapeHtml(h.nomAffiche)}</strong>
+                  <span class="hc-period">${per.label}</span>
+                </div>
+                <div class="hc-face hc-face-back">
+                  <strong>${escapeHtml(h.nomAffiche)}</strong>
+                  <span>${escapeHtml(h.classeOuMatiere||'')}</span>
+                </div>
+              </div>
+            </button>
           </div>`;
         }).join('') || `<div class="empty" style="padding:4px 0;">Aucun lauréat pour l'instant.</div>`}
       </div>
@@ -1022,7 +1039,10 @@ function renderParentDashboard(){
       <div class="panel"><div class="empty">Aucun enfant n'est encore relié à votre compte. Contactez le secrétariat de l'établissement.</div></div>
     </div>`;
   }
+  const prenomParent = (session.nomComplet||'').trim().split(/\s+/)[0] || '';
   return `<div class="view active">
+    <h2 class="parent-greeting">Bonjour${prenomParent ? ', ' + escapeHtml(prenomParent) : ''} 👋</h2>
+    <p class="parent-greeting-sub">Voici les nouvelles de ${mesEnfants.length>1?'vos enfants':'votre enfant'} et de l'école.</p>
     ${renderActualitesParent()}
     <div class="grid-2">
       ${mesEnfants.map(e=>`
@@ -1350,6 +1370,7 @@ async function handleNotifierPortier(eleveId){
 }
 
 function enterApp(){
+  document.body.classList.remove('theme-parent');
   $('#loginGate').classList.remove('open');
   $('#appRoot').style.display = '';
   $('#sidebar').style.display = '';
@@ -1452,6 +1473,7 @@ async function entrerSelonRole(){
 async function logoutRole(){
   stopIdleWatcher();
   stopPollingBulles();
+  document.body.classList.remove('theme-parent');
   if(typeof arreterScanPointage === 'function') arreterScanPointage();
   await deconnexion();
   ui.role = null;
