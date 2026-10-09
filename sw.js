@@ -6,10 +6,13 @@
    d'attente hors ligne (voir supabase-client.js) — pas ce fichier, qui ne
    s'occupe que des fichiers de l'application (HTML/CSS/JS/icônes).
    ========================================================================= */
-const CACHE_NAME = 'ecomaz-shell-v2';
+const CACHE_NAME = 'ecomaz-shell-v3';
 const SHELL_FILES = [
   './',
   './index.html',
+  './parent.html',
+  './portier.html',
+  './espace-fixe.js',
   './style.css',
   './app.js',
   './config.js',
@@ -44,6 +47,6 @@ self.addEventListener('fetch', (event) => {
         caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copie)).catch(() => {});
         return response;
       })
-      .catch(() => caches.match(event.request).then((trouve) => trouve || caches.match('./index.html')))
+      .catch(() => caches.match(event.request, { ignoreSearch: true }).then((trouve) => trouve || caches.match('./index.html')))
   );
 });

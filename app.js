@@ -758,11 +758,24 @@ window.addEventListener('beforeinstallprompt', (e) => {
   deferredInstallPrompt = e;
   const btn = $('#btnInstallApp');
   if(btn) btn.style.display = '';
+  majBoutonsInstall();
 });
 window.addEventListener('appinstalled', () => {
   deferredInstallPrompt = null;
   const btn = $('#btnInstallApp');
   if(btn) btn.style.display = 'none';
+  majBoutonsInstall();
+});
+// Boutons "Installer" des applications dédiées Parent / Portier
+function majBoutonsInstall(){
+  $$('.btn-install-pwa').forEach(b=>{ b.style.display = deferredInstallPrompt ? '' : 'none'; });
+}
+document.addEventListener('click', async (e) => {
+  if(!e.target.closest || !e.target.closest('.btn-install-pwa') || !deferredInstallPrompt) return;
+  deferredInstallPrompt.prompt();
+  await deferredInstallPrompt.userChoice;
+  deferredInstallPrompt = null;
+  majBoutonsInstall();
 });
 $('#btnInstallApp').addEventListener('click', async () => {
   if(!deferredInstallPrompt) return;
@@ -804,6 +817,9 @@ const ESPACES_DEF = [
   { key:'parent',      ic:'👪' },
   { key:'portier',     ic:'🚪' },
 ];
+// Parent et Portier ont leurs propres applications installables (parent.html /
+// portier.html, voir espace-fixe.js) : la page principale ne propose que le personnel.
+const ESPACES_PERSONNEL = ESPACES_DEF.filter(e=>e.key!=='parent' && e.key!=='portier');
 function langSwitcherHtml(){
   return `<div class="lang-switch">${LANGUES_DISPONIBLES.map(l=>`
     <button type="button" class="${l.code===langCourante?'active':''}" onclick="changerLangue('${l.code}')">${l.code.toUpperCase()}</button>
@@ -819,7 +835,7 @@ function renderLoginGate(step, error, loading){
       <h1>${t('app_name')}</h1>
       <div class="sub">${t('espaces_sub')}</div>
       <div class="role-grid">
-        ${ESPACES_DEF.map(e=>`
+        ${ESPACES_PERSONNEL.map(e=>`
           <div class="role-card" onclick="chooseEspace('${e.key}')">
             <div class="ric">${e.ic}</div>
             <div class="rlabel">${t('espace_'+e.key+'_label')}</div>
@@ -875,10 +891,21 @@ function renderLoginGate(step, error, loading){
     </div>`;
   }
   const espace = ESPACES_DEF.find(e=>e.key===ui.espaceChoisi);
+  const fixe = window.ESPACE_FIXE;
+  const ecoleV = window.ECOLE_VITRINE;
+  const logoHtml = (fixe && ecoleV && ecoleV.logo_url)
+    ? `<img src="${escapeHtml(ecoleV.logo_url)}" alt="" style="width:64px;height:64px;border-radius:16px;object-fit:cover;background:#fff;">`
+    : (espace ? espace.ic : '🎓');
+  const titreLogin = fixe
+    ? (ecoleV ? 'EcoMaZ-' + escapeHtml(ecoleV.nom_ecole) : t('app_name'))
+    : (espace ? t('login_espace_prefix') + t('espace_'+espace.key+'_label') : t('app_name'));
+  const iosHint = (fixe && /iphone|ipad|ipod/i.test(navigator.userAgent) && !window.navigator.standalone)
+    ? `<div class="sub" style="margin-top:12px;">📲 Pour installer sur iPhone : touchez <strong>Partager</strong> puis <strong>Sur l'écran d'accueil</strong>.</div>` : '';
   return `
     <div class="login-card">
-      <div class="login-logo">${espace ? espace.ic : '🎓'}</div>
-      <h1>${espace ? t('login_espace_prefix') + t('espace_'+espace.key+'_label') : t('app_name')}</h1>
+      <div class="login-logo">${logoHtml}</div>
+      <h1>${titreLogin}</h1>
+      ${fixe ? `<div class="sub" style="font-weight:700;margin-bottom:2px;">${t('espace_'+fixe+'_label')}</div>` : ''}
       <div class="sub">${t('login_sub')}</div>
       <form class="pin-pad" onsubmit="return handleLoginSubmit(event)">
         <div class="field" style="text-align:left;margin-bottom:10px;">
@@ -892,11 +919,13 @@ function renderLoginGate(step, error, loading){
         <div class="pin-error">${error ? escapeHtml(error) : ''}</div>
         <button class="btn" type="submit" style="width:100%;margin-top:14px;" ${loading?'disabled':''}>${loading?t('btn_login_loading'):t('btn_login')}</button>
         <button type="button" class="pin-back" onclick="showForgotPassword()">${t('btn_forgot')}</button>
-        <button type="button" class="pin-back" onclick="showEspaces()">${t('btn_change_espace')}</button>
+        ${fixe ? '' : `<button type="button" class="pin-back" onclick="showEspaces()">${t('btn_change_espace')}</button>`}
       </form>
+      ${fixe ? `<button type="button" class="btn secondary btn-install-pwa" style="display:none;width:100%;margin-top:10px;">📲 Installer l'application</button>${iosHint}` : ''}
     </div>`;
 }
 function showEspaces(){
+  if(window.ESPACE_FIXE){ chooseEspace(window.ESPACE_FIXE); return; }
   stopIdleWatcher();
   document.body.classList.remove('theme-parent');
   $('#appRoot').style.display = 'none';
@@ -913,6 +942,7 @@ function showLoginGate(error){
   $('#appRoot').style.display = 'none';
   $('#loginGate').classList.add('open');
   $('#loginGate').innerHTML = renderLoginGate('login', error);
+  majBoutonsInstall();
 }
 function showForgotPassword(){
   $('#loginGate').innerHTML = renderLoginGate('forgot');
@@ -975,7 +1005,7 @@ function enterAppParent(){
   $('#sidebar').style.display = 'none';
   $('#burger').style.display = 'none';
   applyBranding();
-  $('#viewTitle').textContent = 'Espace Parent';
+  $('#viewTitle').textContent = window.ESPACE_FIXE ? `EcoMaZ-${DB.meta.nomEcole}` : 'Espace Parent';
   const pill = $('#topbarPill');
   pill.innerHTML = `${escapeHtml(session.nomComplet||'')} <button class="btn secondary sm" style="margin-left:10px;" onclick="logoutRole()">🔒 Déconnexion</button>`;
   rafraichirBulles();
@@ -1281,7 +1311,7 @@ function enterAppPortier(){
   $('#sidebar').style.display = 'none';
   $('#burger').style.display = 'none';
   applyBranding();
-  $('#viewTitle').textContent = 'Espace Portier';
+  $('#viewTitle').textContent = window.ESPACE_FIXE ? `EcoMaZ-${DB.meta.nomEcole}` : 'Espace Portier';
   const pill = $('#topbarPill');
   pill.innerHTML = `<button class="btn secondary sm" onclick="logoutRole()">🔒 Déconnexion</button>`;
   ui.filters.portierRecherche = '';
@@ -1430,6 +1460,25 @@ async function entrerSelonRole(){
     err.suspendu = true;
     throw err;
   }
+  // Parent et Portier ont chacun leur application dédiée (parent.html /
+  // portier.html). Page dédiée : seul le bon rôle y entre. Page du personnel :
+  // un compte parent/portier est renvoyé vers son application.
+  const fixe = window.ESPACE_FIXE;
+  if(fixe && session.role !== fixe){
+    await deconnexion();
+    ui.role = null;
+    const err = new Error(fixe === 'parent'
+      ? "Ce compte n'est pas un compte parent. Utilisez l'application qui correspond à votre profil."
+      : "Ce compte n'est pas un compte portier. Utilisez l'application qui correspond à votre profil.");
+    err.suspendu = true;
+    throw err;
+  }
+  if(!fixe && (session.role === 'parent' || session.role === 'portier')){
+    const page = session.role === 'parent' ? 'parent.html' : 'portier.html';
+    window.location.replace(page + '?ecole=' + encodeURIComponent(session.ecoleId));
+    return;
+  }
+  if(fixe){ try{ localStorage.setItem('ecomaz_ecole_' + fixe, session.ecoleId); }catch(_e){} }
   // Un compte parent a son propre chemin de chargement (minimal, jamais le
   // chargeur générique du personnel — voir chargerDBParent()) et son propre
   // écran, sans le tableau de bord/menu du personnel.
@@ -5033,6 +5082,33 @@ async function handleSaveHoraires(ev){
 /* ---------------------------------------------------------------------
    ZONE DE L'ÉTABLISSEMENT (géofence) — utilisée par le pointage GPS.
    --------------------------------------------------------------------- */
+function lienApplication(page){
+  const base = window.location.href.replace(/[^/]*([?#].*)?$/, '');
+  return base + page + '?ecole=' + encodeURIComponent(session.ecoleId);
+}
+function copierLienApplication(page){
+  const lien = lienApplication(page);
+  (navigator.clipboard ? navigator.clipboard.writeText(lien) : Promise.reject()).then(
+    ()=>toast('Lien copié ✅'),
+    ()=>{ window.prompt('Copiez ce lien :', lien); }
+  );
+}
+function renderLiensApplications(){
+  const bloc = (titre, page, desc) => `
+    <div style="margin-bottom:14px;">
+      <strong>${titre}</strong>
+      <div class="hint" style="margin:4px 0 6px;">${desc}</div>
+      <input type="text" readonly value="${escapeHtml(lienApplication(page))}" onfocus="this.select()" style="width:100%;margin-bottom:6px;">
+      <button class="btn secondary sm" onclick="copierLienApplication('${page}')">📋 Copier le lien</button>
+      <a class="btn secondary sm" href="${escapeHtml(lienApplication(page))}" target="_blank" rel="noopener">Ouvrir</a>
+    </div>`;
+  return `
+    ${bloc('👪 Application Parents', 'parent.html', 'À envoyer aux parents avec leurs identifiants (SMS, WhatsApp…). Ils voient les tableaux d’honneur, actualités et messages de l’école.')}
+    ${bloc('🚪 Application Portier', 'portier.html', 'À ouvrir une seule fois sur le téléphone du portier. Ses signalements arrivent directement chez les enseignants.')}
+    <div class="hint" style="line-height:1.6;">
+      <strong>Pour installer :</strong> ouvrir le lien sur le téléphone, puis toucher « 📲 Installer l’application » (Android) ou, sur iPhone, <em>Partager → Sur l’écran d’accueil</em>.
+    </div>`;
+}
 function renderGeofence(){
   const m = DB.meta;
   const configuree = m.geofenceLatitude != null && m.geofenceLongitude != null;
@@ -5197,6 +5273,11 @@ function renderParametres(){
     <div class="panel">
       <div class="panel-head"><div><h2>📍 Zone de l'établissement</h2><div class="sub">Utilisée pour valider les pointages GPS des enseignants (à quelle distance de l'école ils se trouvent)</div></div></div>
       ${renderGeofence()}
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><div><h2>📲 Applications Parents &amp; Portier</h2><div class="sub">Deux applications séparées, installables sur le téléphone, nommées « EcoMaZ-${escapeHtml(DB.meta.nomEcole)} »</div></div></div>
+      ${renderLiensApplications()}
     </div>
 
     <div class="panel">
@@ -5687,6 +5768,7 @@ async function journaliserCompta(tableCible, enregistrementId, action, donneesAv
   });
   await new Promise(r => setTimeout(r, 300));
   if(recoveryMode) return;
+  if(window.ESPACE_FIXE_PRET) await window.ESPACE_FIXE_PRET;
 
   // Restaure une session Supabase existante (l'utilisateur avait déjà une session active)
   const profil = await chargerProfilCourant();
