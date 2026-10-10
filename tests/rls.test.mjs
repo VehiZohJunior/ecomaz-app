@@ -94,6 +94,16 @@ async function requete(accessToken, chemin, options = {}){
     verifier('Le secrétariat voit les vraies valeurs (pas masquées)', ensVueAdmin.data[0].salaire_mensuel !== null || ensVueAdmin.data[0].salaire_mensuel === 0);
   }
 
+  section('3bis. RLS — comptabilité : le secrétariat ne lit ni salaires, ni dépenses, ni personnel, ni journal');
+  for(const table of ['paiements_salaires','depenses','personnel_autre','journal_compta','budgets_comptables']){
+    const r = await requete(tokenSecretariat, `/rest/v1/${table}?select=id&limit=1`);
+    verifier(`Le secrétariat ne lit rien dans ${table}`, Array.isArray(r.data) && r.data.length === 0, `reçu ${JSON.stringify(r.data)?.slice(0,80)}`);
+  }
+  const ecritDepense = await requete(tokenSecretariat, `/rest/v1/depenses`, { method:'POST', body: JSON.stringify({ id: '00000000-0000-4000-8000-000000000001', libelle:'test', montant:1, date:'2026-01-01' }) });
+  verifier("Le secrétariat ne peut pas écrire une dépense", !ecritDepense.ok, `statut ${ecritDepense.status}`);
+  const scolSec = await requete(tokenSecretariat, `/rest/v1/paiements_scolarite?select=id&limit=1`);
+  verifier('Le secrétariat garde l accès aux paiements de scolarité (requête acceptée)', scolSec.ok);
+
   section('4. RLS — écoles (isolation développeur)');
   const ecolesDev = await requete(tokenDeveloppeur, `/rest/v1/ecoles?select=id,nom_ecole`);
   verifier('Le développeur voit la liste des écoles', Array.isArray(ecolesDev.data) && ecolesDev.data.length > 0);

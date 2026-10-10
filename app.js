@@ -2635,7 +2635,7 @@ function openEnseignantForm(id){
         <div class="field"><label>Téléphone</label><input name="telephone" required value="${t?escapeHtml(t.telephone):''}"></div>
         <div class="field span2"><label>Email</label><input type="email" name="email" value="${t?escapeHtml(t.email):''}"></div>
         <div class="field"><label>Date d'embauche</label><input type="date" name="dateEmbauche" value="${t?t.dateEmbauche:todayISO()}"></div>
-        <div class="field"><label>Salaire mensuel (${DEVISE})</label><input type="number" name="salaireMensuel" min="0" step="1000" value="${t?t.salaireMensuel||0:75000}"></div>
+        ${(ui.role==='direction' || ui.role==='fondation') ? `<div class="field"><label>Salaire mensuel (${DEVISE})</label><input type="number" name="salaireMensuel" min="0" step="1000" value="${t?t.salaireMensuel||0:75000}"></div>` : ''}
         <div class="field"><label>Statut</label>
           <select name="statut"><option ${t?.statut==='Actif'?'selected':''}>Actif</option><option ${t?.statut==='Inactif'?'selected':''}>Inactif</option></select>
         </div>
@@ -2668,9 +2668,10 @@ async function handleSaveEnseignant(ev){
     prenom: fd.get('prenom').trim(), nom: fd.get('nom').trim(), sexe: fd.get('sexe'),
     telephone: fd.get('telephone').trim(), email: fd.get('email').trim(),
     dateEmbauche: fd.get('dateEmbauche') || todayISO(), statut: fd.get('statut'),
-    salaireMensuel: Math.max(0, parseInt(fd.get('salaireMensuel'))||0),
     classesAssignees: fd.getAll('classes'), matieres: fd.getAll('matieres'),
   };
+  // Le salaire n'est saisi que par Direction/Fondation (le secrétariat ne l'envoie jamais)
+  if(fd.has('salaireMensuel')) patch.salaireMensuel = Math.max(0, parseInt(fd.get('salaireMensuel'))||0);
   try{
     if(id){
       await dbUpdate('enseignants', id, patch);
@@ -3541,12 +3542,12 @@ function renderComptabilite(){
     journal: renderComptaJournal, annees: renderComptaAnnees, budget: renderComptaBudget,
     syscohada: renderComptaSyscohada, rapprochement: renderComptaRapprochement,
   };
-  // Le journal d'audit, la comparaison annuelle, le budget, le plan
-  // SYSCOHADA et le rapprochement bancaire (totaux globaux) sont réservés
-  // à Direction/Fondation, comme les totaux globaux ailleurs dans ce
-  // module — le Secrétariat saisit les paiements mais ne voit pas ça.
+  // Les salaires, les dépenses, le journal d'audit, la comparaison annuelle,
+  // le budget, le plan SYSCOHADA et le rapprochement bancaire sont réservés
+  // à Direction/Fondation (aussi dans la base : voir schema.sql section 42) —
+  // le Secrétariat gère la scolarité, les activités et la boutique.
   const estAdmin = ui.role==='direction' || ui.role==='fondation';
-  const ongletsReserves = ['journal','annees','budget','syscohada','rapprochement'];
+  const ongletsReserves = ['salaires','depenses','journal','annees','budget','syscohada','rapprochement'];
   const tabsVisibles = COMPTA_TABS.filter(t => !ongletsReserves.includes(t.id) || estAdmin);
   const cacheAReinitialiser = {journal:'__journalComptaCache', budget:'__budgetsComptaCache'};
   return `

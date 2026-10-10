@@ -1553,3 +1553,52 @@ begin
 end $$;
 revoke all on function traiter_demande_acces(uuid,boolean,uuid[]) from public, anon;
 grant execute on function traiter_demande_acces(uuid,boolean,uuid[]) to authenticated;
+
+-- =====================================================================
+-- 42. COMPTABILITÉ — le secrétariat ne gère plus que la scolarité (2026-10-10)
+-- =====================================================================
+-- Décision de la direction : le secrétariat garde les paiements de scolarité,
+-- les reçus, les activités et la boutique. Salaires, dépenses, budget et
+-- journal d'audit sont réservés à Direction/Fondation — dans la base, pas
+-- seulement à l'écran (cohérent avec la politique de confidentialité :
+-- « données de paie : direction uniquement »).
+drop policy if exists "acces paiements_salaires" on paiements_salaires;
+create policy "acces paiements_salaires" on paiements_salaires for all
+  using (ecole_id = mon_ecole_id() and est_admin())
+  with check (ecole_id = mon_ecole_id() and est_admin());
+
+drop policy if exists "acces depenses" on depenses;
+create policy "acces depenses" on depenses for all
+  using (ecole_id = mon_ecole_id() and est_admin())
+  with check (ecole_id = mon_ecole_id() and est_admin());
+
+drop policy if exists "acces personnel_autre" on personnel_autre;
+create policy "acces personnel_autre" on personnel_autre for all
+  using (ecole_id = mon_ecole_id() and est_admin())
+  with check (ecole_id = mon_ecole_id() and est_admin());
+
+-- Salaire des enseignants : masqué pour tout compte non admin dans la vue
+-- de lecture, et impossible à modifier par le secrétariat (le trigger
+-- conserve l'ancienne valeur, ou 0 à la création).
+create or replace view enseignants_lecture as
+select
+  id, ecole_id, matricule, nom, prenom, sexe,
+  case when est_perso_admin() then telephone else null end as telephone,
+  case when est_perso_admin() then email else null end as email,
+  classes_assignees, matieres, date_embauche, statut,
+  case when est_admin() then salaire_mensuel else null end as salaire_mensuel,
+  case when est_perso_admin() then qr_token else null end as qr_token
+from enseignants
+where ecole_id = mon_ecole_id() or developpeur_a_acces(ecole_id);
+
+create or replace function proteger_salaire_enseignant() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if auth.uid() is null or est_admin() or mon_role() = 'developpeur' then return new; end if;
+  if tg_op = 'INSERT' then new.salaire_mensuel := 0;
+  else new.salaire_mensuel := old.salaire_mensuel; end if;
+  return new;
+end $$;
+drop trigger if exists trg_proteger_salaire_enseignant on enseignants;
+create trigger trg_proteger_salaire_enseignant before insert or update on enseignants
+  for each row execute function proteger_salaire_enseignant();
