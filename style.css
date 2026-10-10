@@ -119,7 +119,8 @@ button,input,select,textarea{ font-family:inherit; }
 
 .grid-2{ display:grid; grid-template-columns:1.3fr 1fr; gap:var(--sp-4); }
 .grid-3{ display:grid; grid-template-columns:repeat(3,1fr); gap:var(--sp-4); }
-@media (max-width:1000px){ .grid-2, .grid-3{ grid-template-columns:1fr; } }
+@media (max-width:1000px){ .grid-2, .grid-3{ grid-template-columns:minmax(0,1fr); } }
+.grid-2 > *, .grid-3 > *{ min-width:0; }
 
 /* ---------------------------------------------------------------- BUTTONS */
 .btn{
@@ -223,7 +224,10 @@ tbody td input[type=number]{ width:90px; }
 .badge.gray{ background:var(--surface-2); color:var(--text-dim); border:1px solid var(--border); }
 
 /* ------------------------------------------------------------ COMPTABILITÉ */
-.amount{ font-weight:800; font-variant-numeric:tabular-nums; }
+.amount{ font-weight:800; font-variant-numeric:tabular-nums; white-space:nowrap; flex-shrink:0; }
+/* lignes « libellé … montant » : le libellé peut passer à la ligne, le montant jamais */
+:where(div, li):has(> .amount){ gap:var(--sp-3); }
+:where(div, li):has(> .amount) > :first-child{ min-width:0; }
 .amount.in{ color:var(--success); }
 .amount.out{ color:var(--danger); }
 .txn-list{ display:flex; flex-direction:column; }
