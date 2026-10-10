@@ -38,6 +38,8 @@
   <h2>Données collectées</h2>
   <p><strong>Élèves</strong> : identité (nom, prénom, sexe, date de naissance), classe, notes, présences, bulletins, et contact d'un parent/tuteur (nom, téléphone, adresse).</p>
   <p><strong>Personnel</strong> : identité et contact, matières enseignées, classes assignées, présence/pointage, et — pour la direction uniquement — données de paie.</p>
+  <p><strong>Parents et portier</strong> : adresse e-mail et nom, saisis à la création du compte ou reçus de Google lorsque la personne choisit « Continuer avec Google » (nom et adresse e-mail uniquement). Ces informations servent uniquement à identifier la personne ; elle n'a accès à aucune donnée tant que l'École n'a pas validé sa demande et, pour un parent, ne l'a pas reliée à son enfant.</p>
+  <p><strong>Position GPS du personnel</strong> : uniquement lorsqu'un enseignant valide lui-même son arrivée ou son départ depuis un lien reçu par SMS ; la position n'est pas suivie en continu.</p>
   <p><strong>Techniques</strong> : journaux de connexion à des fins de sécurité.</p>
 
   <h2>À quoi servent ces données ?</h2>
@@ -68,6 +70,8 @@
   <ul>
     <li><strong>Supabase</strong> — hébergement de la base de données et authentification</li>
     <li><strong>Africa's Talking</strong> — envoi des SMS (reçoit uniquement le numéro et le message au moment de l'envoi)</li>
+    <li><strong>Google</strong> — connexion « Continuer avec Google » (facultative) : EcoMaZ ne reçoit que le nom et l'adresse e-mail</li>
+    <li><strong>Services d'analyse de documents et de voix</strong> (Anthropic, Groq) — uniquement si le personnel utilise le remplissage automatique par photo ou note vocale : le fichier est analysé au moment de la demande et n'est pas conservé par EcoMaZ</li>
     <li><strong>GitHub Pages</strong> — hébergement du site, ne reçoit aucune donnée d'élève ou de personnel</li>
   </ul>
 
