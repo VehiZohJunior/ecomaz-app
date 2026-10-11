@@ -2378,12 +2378,29 @@ function verifierDatesEleve(naissance, inscription){
   if(mois < 6) return { champ:'dateNaissance', message:"L'enfant aurait moins de 6 mois à l'inscription : vérifiez la date de naissance." };
   return null;
 }
+// Matricule suivant = plus grand numéro déjà attribué dans l'école + 1 (et non
+// « nombre de fiches + 1 », qui redonnait un numéro existant après une
+// suppression — cause des deux élèves EL-0005). La liste est relue sur le
+// serveur pour tenir compte des fiches créées par un autre poste ; hors ligne,
+// on se rabat sur les données de l'appareil.
+async function prochainMatricule(table, prefixe, largeur){
+  let matricules = (table === 'eleves' ? DB.eleves : DB.enseignants || []).map(x => x.matricule);
+  try{
+    const { data, error } = await sb.from(table).select('matricule').eq('ecole_id', session.ecoleId);
+    if(!error && data) matricules = matricules.concat(data.map(x => x.matricule));
+  }catch(_e){ /* hors ligne : données locales */ }
+  const max = matricules.reduce((m, mat) => {
+    const n = parseInt(String(mat || '').replace(prefixe, ''), 10);
+    return String(mat || '').startsWith(prefixe) && Number.isFinite(n) && n > m ? n : m;
+  }, 0);
+  return prefixe + String(max + 1).padStart(largeur, '0');
+}
 async function handleSaveEleve(ev){
   ev.preventDefault();
   const fd = new FormData(ev.target);
   const id = fd.get('id');
   const patch = {
-    matricule: (id && eleveById(id)?.matricule) || `EL-${String(DB.eleves.length+1).padStart(4,'0')}`,
+    matricule: (id && eleveById(id)?.matricule) || null,
     prenom: fd.get('prenom').trim(), nom: fd.get('nom').trim(), sexe: fd.get('sexe'),
     dateNaissance: fd.get('dateNaissance'), classeId: fd.get('classeId'), statut: fd.get('statut'),
     parentNom: fd.get('parentNom').trim(), parentTel: fd.get('parentTel').trim(),
@@ -2402,6 +2419,7 @@ async function handleSaveEleve(ev){
     } else toast('Erreur : ' + erreurDate.message);
     return false;
   }
+  if(!patch.matricule) patch.matricule = await prochainMatricule('eleves', 'EL-', 4);
   try{
     if(id){
       await dbUpdate('eleves', id, patch);
@@ -2929,7 +2947,7 @@ async function handleSaveEnseignant(ev){
   const fd = new FormData(ev.target);
   const id = fd.get('id');
   const patch = {
-    matricule: (id && enseignantById(id)?.matricule) || `ENS-${String(DB.enseignants.length+1).padStart(3,'0')}`,
+    matricule: (id && enseignantById(id)?.matricule) || null,
     prenom: fd.get('prenom').trim(), nom: fd.get('nom').trim(), sexe: fd.get('sexe'),
     telephone: fd.get('telephone').trim(), email: fd.get('email').trim(),
     dateEmbauche: fd.get('dateEmbauche') || todayISO(), statut: fd.get('statut'),
@@ -2937,6 +2955,7 @@ async function handleSaveEnseignant(ev){
   };
   // Le salaire n'est saisi que par Direction/Fondation (le secrétariat ne l'envoie jamais)
   if(fd.has('salaireMensuel')) patch.salaireMensuel = Math.max(0, parseInt(fd.get('salaireMensuel'))||0);
+  if(!patch.matricule) patch.matricule = await prochainMatricule('enseignants', 'ENS-', 3);
   try{
     if(id){
       await dbUpdate('enseignants', id, patch);
