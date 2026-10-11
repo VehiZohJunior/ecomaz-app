@@ -2395,6 +2395,18 @@ async function prochainMatricule(table, prefixe, largeur){
   }, 0);
   return prefixe + String(max + 1).padStart(largeur, '0');
 }
+// La base refuse un matricule déjà pris (schema.sql section 45) : si un autre
+// poste vient de l'utiliser, on reprend le numéro suivant (2 essais au plus).
+async function insererAvecMatricule(table, patch, prefixe, largeur){
+  for(let essai = 0; ; essai++){
+    try{ return await dbInsert(table, patch); }
+    catch(e){
+      const doublon = e && (e.code === '23505' || /matricule_unique_par_ecole/.test(e.message || ''));
+      if(!doublon || essai >= 2) throw doublon ? new Error('Ce matricule est déjà utilisé ; réessayez dans un instant.') : e;
+      patch.matricule = await prochainMatricule(table, prefixe, largeur);
+    }
+  }
+}
 async function handleSaveEleve(ev){
   ev.preventDefault();
   const fd = new FormData(ev.target);
@@ -2426,7 +2438,7 @@ async function handleSaveEleve(ev){
       const idx = DB.eleves.findIndex(e=>e.id===id);
       DB.eleves[idx] = {...DB.eleves[idx], ...patch};
     } else {
-      DB.eleves.push(await dbInsert('eleves', patch));
+      DB.eleves.push(await insererAvecMatricule('eleves', patch, 'EL-', 4));
     }
     closeModal(); toast('Élève enregistré');
     renderView('eleves');
@@ -2962,7 +2974,7 @@ async function handleSaveEnseignant(ev){
       const idx = DB.enseignants.findIndex(e=>e.id===id);
       DB.enseignants[idx] = {...DB.enseignants[idx], ...patch};
     } else {
-      DB.enseignants.push(await dbInsert('enseignants', patch));
+      DB.enseignants.push(await insererAvecMatricule('enseignants', patch, 'ENS-', 3));
     }
     closeModal(); toast('Enseignant enregistré');
     renderView('enseignants');

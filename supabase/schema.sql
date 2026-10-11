@@ -1669,3 +1669,16 @@ revoke all on function applaudir_honneur(text, text) from public, anon;
 revoke all on function compter_applaudissements() from public, anon;
 grant execute on function applaudir_honneur(text, text) to authenticated;
 grant execute on function compter_applaudissements() to authenticated;
+
+-- =====================================================================
+-- 45. RÈGLE ANTI-DOUBLON DES MATRICULES (2026-10-11)
+-- =====================================================================
+-- Demande de Vehi Zoh Junior, après la correction du calcul des matricules
+-- et la renumérotation du doublon EL-0005. Dans une même école, deux élèves
+-- (ou deux enseignants) ne peuvent plus avoir le même matricule. Le nom
+-- de chaque contrainte est reconnu par l'application pour réessayer avec
+-- le numéro suivant (voir prochainMatricule dans app.js).
+alter table eleves drop constraint if exists eleves_matricule_unique_par_ecole;
+alter table eleves add constraint eleves_matricule_unique_par_ecole unique (ecole_id, matricule);
+alter table enseignants drop constraint if exists enseignants_matricule_unique_par_ecole;
+alter table enseignants add constraint enseignants_matricule_unique_par_ecole unique (ecole_id, matricule);
