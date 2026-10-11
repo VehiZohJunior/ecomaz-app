@@ -2431,6 +2431,15 @@ async function handleSaveEleve(ev){
     } else toast('Erreur : ' + erreurDate.message);
     return false;
   }
+  // Date d'inscription future : permise (pré-inscription pour la rentrée), mais
+  // on fait confirmer une seule fois, quand la date est saisie ou modifiée.
+  const inscriptionAvant = id ? eleveById(id)?.dateInscription : null;
+  if(patch.dateInscription > todayISO() && patch.dateInscription !== inscriptionAvant
+     && !confirm(`La date d'inscription (${fmtDate(patch.dateInscription)}) est dans le futur. Est-ce bien voulu ?`)){
+    const champ = ev.target.querySelector('[name="dateInscription"]');
+    if(champ) champ.focus();
+    return false;
+  }
   if(!patch.matricule) patch.matricule = await prochainMatricule('eleves', 'EL-', 4);
   try{
     if(id){
