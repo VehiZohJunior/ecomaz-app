@@ -3377,6 +3377,11 @@ function renderEmploiTemps(){
   ui.filters.ttClasse = classeId;
   const c = DB.classes.find(x=>x.id===classeId);
   const periodes = PERIODES_BY_CYCLE[c.cycle];
+  // Créneau en cours mis en évidence (spec § 5.4) : jour et heure de l'appareil
+  const maintenant = new Date();
+  const jourActuel = JOURS[(maintenant.getDay() + 6) % 7] || null;   // samedi/dimanche -> aucun
+  const hhmm = `${String(maintenant.getHours()).padStart(2,'0')}:${String(maintenant.getMinutes()).padStart(2,'0')}`;
+  const estEnCours = (p, jour) => jour === jourActuel && p.debut <= hhmm && hhmm < p.fin;
 
   let rowsHtml = '';
   periodes.forEach((p,i)=>{
@@ -3389,8 +3394,9 @@ function renderEmploiTemps(){
       const entry = DB.emploiTemps.find(e=>e.classeId===classeId && e.jour===jour && e.slotIndex===i);
       if(entry){
         const t = enseignantById(entry.enseignantId);
-        rowsHtml += `<td>
+        rowsHtml += `<td${estEnCours(p, jour) ? ' class="tt-encours"' : ''}>
           <div class="tt-slot">
+            ${estEnCours(p, jour) ? '<span class="tt-badge-encours">En cours</span>' : ''}
             <b>${escapeHtml(entry.matiere)}</b>
             <span>${escapeHtml(ensFullName(t))}</span>
             <div style="margin-top:5px;display:flex;gap:4px;">

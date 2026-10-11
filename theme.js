@@ -190,7 +190,8 @@
     // Bouton dans la barre du haut (application) et sur l'écran de connexion
     const barre = document.querySelector('.topbar-right');
     if(barre) barre.insertBefore(creerBouton(), barre.firstChild);
-    document.body.appendChild(creerBouton('theme-toggle-gate'));
+    // bouton de l'écran de connexion : seulement dans les applications (pas sur les pages simples)
+    if(document.getElementById('loginGate')) document.body.appendChild(creerBouton('theme-toggle-gate'));
     majBoutons();
 
     const toast = document.getElementById('toast');
