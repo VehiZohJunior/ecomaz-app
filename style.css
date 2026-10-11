@@ -744,3 +744,63 @@ body.theme-parent .salut-main{ color:var(--em-terracotta-600); }
 .toast-item.show{ animation:em-toast 460ms var(--em-ease-back) both; }
 
 @media print{ .parent-nav{ display:none !important; } }
+
+/* =========================================================================
+   CONSOLE PORTIER — Lot 5 (spécification § 5.2), thème sombre dédié,
+   registre « opérationnel » : aucune animation décorative.
+   ========================================================================= */
+body.theme-portier{
+  color-scheme:dark;
+  --surface-0:var(--em-gate-bg); --surface-1:var(--em-gate-surface); --surface-2:#1d2823;
+  --border:var(--em-gate-border); --border-strong:#36463e;
+  --text:var(--em-gate-text); --text-dim:var(--em-gate-muted); --text-faint:#7f9187;
+  --primary:var(--em-gold-400); --primary-hover:#f0c06a; --on-primary:var(--em-green-900);
+  --primary-soft:#2a2615; --primary-ink:var(--em-gold-400);
+  background:var(--em-gate-bg); color:var(--em-gate-text);
+}
+body.theme-portier .theme-toggle{ display:none !important; }   /* le portier reste toujours en sombre */
+body.theme-portier .topbar{ background:var(--em-gate-bg); border-bottom:1px solid var(--em-gate-border); }
+body.theme-portier .topbar h1{ display:flex; flex-direction:column; gap:2px; -webkit-line-clamp:unset; }
+.gate-sur{ font-size:var(--em-fs-12); font-weight:700; color:var(--em-gate-muted); letter-spacing:.06em; text-transform:uppercase; }
+.gate-titre{ font-size:var(--em-fs-20); font-weight:900; color:var(--em-gate-text); }
+.gate-etat{ display:inline-flex; align-items:center; gap:6px; background:#1d3a2f; color:#9fe0c3; font-size:var(--em-fs-12); font-weight:800;
+  border-radius:var(--em-radius-pill); padding:4px 10px; margin-right:8px; }
+.gate-point{ width:8px; height:8px; border-radius:50%; background:var(--em-success); }
+body.theme-portier #topbarPill{ background:none; padding:0; display:flex; align-items:center; }
+body.theme-portier .panel{ background:var(--em-gate-surface); border-color:var(--em-gate-border); box-shadow:none; border-radius:var(--em-radius-lg); }
+body.theme-portier #portierRecherche{ background:var(--em-gate-bg) !important; color:var(--em-gate-text) !important; border-color:var(--em-gate-border) !important; min-height:52px; }
+
+/* Listes : classes et élèves (grandes cibles, lecture rapide) */
+.gate-classe, .gate-eleve{ width:100%; min-height:56px; border-radius:var(--em-radius-md); border:1px solid var(--em-gate-border);
+  background:var(--em-gate-bg); color:var(--em-gate-text); font:inherit; cursor:pointer; text-align:left; padding:14px 16px; }
+.gate-classe{ display:flex; flex-direction:column; gap:2px; }
+.gate-eleve{ display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.gate-eleve-id{ display:flex; flex-direction:column; min-width:0; }
+.gate-eleve-id strong{ font-size:var(--em-fs-15); font-weight:800; overflow-wrap:anywhere; }
+.gate-eleve-classe{ font-size:var(--em-fs-13); color:var(--em-gate-muted); }
+.gate-eleve-action{ flex-shrink:0; background:var(--em-gold-400); color:var(--em-green-900); font-weight:900; font-size:var(--em-fs-14);
+  border-radius:var(--em-radius-sm); padding:10px 14px; white-space:nowrap; }
+.gate-eleve-action .ico{ margin-right:6px; }
+@media (hover:hover){ .gate-classe:hover, .gate-eleve:hover{ border-color:var(--em-gold-400); } }
+
+/* États : envoi, confirmation, échec */
+.gate-etat-carte{ background:var(--em-gate-surface); border:1px solid var(--em-gate-border); border-radius:var(--em-radius-2xl);
+  padding:32px 20px; display:flex; flex-direction:column; align-items:center; text-align:center; gap:14px; max-width:520px; margin:0 auto; }
+.gate-spinner{ width:72px; height:72px; }
+.gate-etat-titre{ font-size:22px; font-weight:900; }
+.gate-rond{ position:relative; width:96px; height:96px; border-radius:50%; display:flex; align-items:center; justify-content:center; }
+.gate-rond svg{ width:48px; height:48px; position:relative; z-index:1; }
+.gate-rond-ok{ background:var(--em-green-500); }
+.gate-rond-erreur{ background:var(--em-danger); animation:em-apparait 200ms linear both; }
+.gate-coche{ stroke-dasharray:40; stroke-dashoffset:40; animation:em-draw 420ms var(--em-ease-out) 240ms forwards; }
+.gate-onde{ position:absolute; inset:0; border-radius:50%; border:3px solid var(--em-green-500); animation:em-ring 1.1s var(--em-ease-out) both; }
+.gate-fiche{ display:flex; flex-direction:column; gap:2px; background:var(--em-gate-bg); border:1px solid var(--em-gate-border);
+  border-radius:var(--em-radius-md); padding:12px 16px; width:100%; }
+.gate-fiche strong{ font-size:var(--em-fs-17); font-weight:800; }
+.gate-fiche span{ color:var(--em-gate-muted); font-size:var(--em-fs-14); }
+.gate-heure{ font-variant-numeric:tabular-nums; color:var(--em-gate-text) !important; font-weight:800; }
+.gate-erreur-detail{ color:var(--em-gate-muted); font-size:var(--em-fs-14); }
+.gate-btn-principal, .gate-btn-contour{ width:100%; min-height:56px; border-radius:18px; font:900 16px/1 var(--em-font); cursor:pointer; }
+.gate-btn-principal{ background:var(--em-gold-400); color:var(--em-green-900); border:none; }
+.gate-btn-contour{ background:transparent; color:var(--em-gate-text); border:1px solid var(--em-gate-border); }
+@media (prefers-reduced-motion: reduce){ .gate-coche{ stroke-dashoffset:0; } }
