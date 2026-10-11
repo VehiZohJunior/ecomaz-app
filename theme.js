@@ -151,7 +151,9 @@
       b.dataset.view = src.dataset.view;
       if(src === active) b.setAttribute('aria-current', 'page');
       const ic = src.querySelector('.ic');
-      b.innerHTML = '<span class="bn-ic" aria-hidden="true">' + (ic ? ic.textContent : '•') + '</span><span class="bn-label"></span>';
+      b.innerHTML = '<span class="bn-ic" aria-hidden="true"></span><span class="bn-label"></span>';
+      // icône : copie de celle du menu (SVG déjà converti par icones.js, ou emoji avant conversion)
+      b.querySelector('.bn-ic').innerHTML = ic ? ic.innerHTML : '•';
       b.querySelector('.bn-label').textContent = L[src.dataset.view] || src.textContent.trim();
       b.addEventListener('click', () => src.click());
       barre.appendChild(b);
