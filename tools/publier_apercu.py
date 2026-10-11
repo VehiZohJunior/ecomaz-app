@@ -16,7 +16,7 @@ BRANCHE = 'design/motion-refonte'
 FICHIERS = [
     'index.html', 'parent.html', 'portier.html', 'affichage.html', 'pointage-gps.html', 'confidentialite.html',
     'app.js', 'supabase-client.js', 'i18n.js', 'config.js', 'theme.js', 'recherche.js', 'espace-fixe.js', 'sw.js',
-    'style.css', 'theme.css', 'manifest.json', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png',
+    'style.css', 'theme.css', 'ecomaz-tokens.css', 'ecomaz-motion.css', 'motion.js', 'manifest.json', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png',
 ]
 BANDEAU = ('<div aria-hidden="true" style="position:fixed;top:0;left:50%;transform:translateX(-50%);z-index:1000;'
            'pointer-events:none;background:#e8b04b;color:#14392d;font:800 11px/1.6 system-ui,sans-serif;'

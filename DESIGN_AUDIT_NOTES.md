@@ -91,4 +91,5 @@ Composants partagés : `.card`, `.panel`, `.btn` (+ variantes), `.badge`, `.subt
 | Lot | Contenu | Commit (branche) | État |
 |---|---|---|---|
 | L0 | Rapport de reconnaissance | 46c18f6 | Fait |
-| L1 | D1 cartes d'honneur sans verso (plus de texte en miroir), D3 regroupement par personne, D5 en-tête collant opaque | voir `git log` | À valider sur l'aperçu |
+| L1 | D1 cartes d honneur sans verso, D3 regroupement par personne, D5 en-tête opaque | 49696b0 | Publié en aperçu |
+| L2 | Jetons `ecomaz-tokens.css` (spec § 2.1, thème sombre limité à l écran), `ecomaz-motion.css` et `motion.js` (window.EmMotion), police Nunito partout, rôles de theme.css branchés sur les jetons --em-*, anneau de focus or 3 px, chiffres tabulaires, texte terracotta-800 sur fond terracotta (contraste AA) | voir git log | À valider sur l aperçu |
