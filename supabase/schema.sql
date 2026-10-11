@@ -1682,3 +1682,64 @@ alter table eleves drop constraint if exists eleves_matricule_unique_par_ecole;
 alter table eleves add constraint eleves_matricule_unique_par_ecole unique (ecole_id, matricule);
 alter table enseignants drop constraint if exists enseignants_matricule_unique_par_ecole;
 alter table enseignants add constraint enseignants_matricule_unique_par_ecole unique (ecole_id, matricule);
+
+-- =====================================================================
+-- 46. SALAIRES DES ENSEIGNANTS DANS UNE TABLE À PART (2026-10-11)
+-- =====================================================================
+-- Accord de Vehi Zoh Junior (« oui, déplace les salaires »). Jusqu'ici le
+-- salaire restait dans la table "enseignants", que le secrétariat peut
+-- lire directement (l'écran le masquait, pas la base). Il est désormais
+-- rangé dans "salaires_enseignants", réservée à Direction/Fondation.
+-- La colonne enseignants.salaire_mensuel reste (pour ne rien casser) mais
+-- vaut toujours 0 : le déclencheur déplace la valeur saisie par
+-- Direction/Fondation vers la nouvelle table.
+create table if not exists salaires_enseignants (
+  enseignant_id uuid primary key references enseignants(id) on delete cascade deferrable initially deferred,
+  ecole_id uuid not null references ecoles(id) on delete cascade,
+  salaire_mensuel numeric not null default 0,
+  updated_at timestamptz default now()
+);
+-- Lien vérifié en fin d'enregistrement : à la création d'un enseignant, le
+-- salaire est rangé (par le déclencheur) juste avant la fiche elle-même.
+alter table salaires_enseignants drop constraint if exists salaires_enseignants_enseignant_id_fkey;
+alter table salaires_enseignants add constraint salaires_enseignants_enseignant_id_fkey
+  foreign key (enseignant_id) references enseignants(id) on delete cascade deferrable initially deferred;
+alter table salaires_enseignants enable row level security;
+drop policy if exists "acces salaires_enseignants" on salaires_enseignants;
+create policy "acces salaires_enseignants" on salaires_enseignants for all
+  using (ecole_id = mon_ecole_id() and est_admin())
+  with check (ecole_id = mon_ecole_id() and est_admin());
+
+-- Reprise des salaires existants
+insert into salaires_enseignants (enseignant_id, ecole_id, salaire_mensuel)
+select id, ecole_id, salaire_mensuel from enseignants where coalesce(salaire_mensuel, 0) <> 0
+on conflict (enseignant_id) do update set salaire_mensuel = excluded.salaire_mensuel, updated_at = now();
+
+create or replace function proteger_salaire_enseignant() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  -- Seule Direction/Fondation (ou la maintenance) peut fixer un salaire ;
+  -- la valeur part dans la table à part. 0 = « non fourni » (un salaire à
+  -- 0 est effacé par l'application directement dans salaires_enseignants).
+  if (auth.uid() is null or est_admin()) and coalesce(new.salaire_mensuel, 0) <> 0 then
+    insert into salaires_enseignants (enseignant_id, ecole_id, salaire_mensuel)
+    values (new.id, new.ecole_id, new.salaire_mensuel)
+    on conflict (enseignant_id) do update set salaire_mensuel = excluded.salaire_mensuel, updated_at = now();
+  end if;
+  new.salaire_mensuel := 0;
+  return new;
+end $$;
+-- (le déclencheur trg_proteger_salaire_enseignant existe depuis la section 42)
+
+update enseignants set salaire_mensuel = 0 where coalesce(salaire_mensuel, 0) <> 0;
+
+create or replace view enseignants_lecture as
+select
+  e.id, e.ecole_id, e.matricule, e.nom, e.prenom, e.sexe,
+  case when est_perso_admin() then e.telephone else null end as telephone,
+  case when est_perso_admin() then e.email else null end as email,
+  e.classes_assignees, e.matieres, e.date_embauche, e.statut,
+  case when est_admin() then coalesce((select s.salaire_mensuel from salaires_enseignants s where s.enseignant_id = e.id), 0) else null end as salaire_mensuel,
+  case when est_perso_admin() then e.qr_token else null end as qr_token
+from enseignants e
+where e.ecole_id = mon_ecole_id() or developpeur_a_acces(e.ecole_id);

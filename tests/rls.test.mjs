@@ -99,6 +99,10 @@ async function requete(accessToken, chemin, options = {}){
     const r = await requete(tokenSecretariat, `/rest/v1/${table}?select=id&limit=1`);
     verifier(`Le secrétariat ne lit rien dans ${table}`, Array.isArray(r.data) && r.data.length === 0, `reçu ${JSON.stringify(r.data)?.slice(0,80)}`);
   }
+  const salSep = await requete(tokenSecretariat, `/rest/v1/salaires_enseignants?select=enseignant_id&limit=1`);
+  verifier('Le secrétariat ne lit rien dans salaires_enseignants', Array.isArray(salSep.data) && salSep.data.length === 0, `reçu ${JSON.stringify(salSep.data)?.slice(0,80)}`);
+  const salBase = await requete(tokenSecretariat, `/rest/v1/enseignants?select=id&salaire_mensuel=neq.0&limit=1`);
+  verifier('Aucun salaire lisible dans la table enseignants', salBase.ok && Array.isArray(salBase.data) && salBase.data.length === 0, `reçu ${JSON.stringify(salBase.data)?.slice(0,80)}`);
   const ecritDepense = await requete(tokenSecretariat, `/rest/v1/depenses`, { method:'POST', body: JSON.stringify({ id: '00000000-0000-4000-8000-000000000001', libelle:'test', montant:1, date:'2026-01-01' }) });
   verifier("Le secrétariat ne peut pas écrire une dépense", !ecritDepense.ok, `statut ${ecritDepense.status}`);
   const scolSec = await requete(tokenSecretariat, `/rest/v1/paiements_scolarite?select=id&limit=1`);

@@ -2971,10 +2971,13 @@ async function handleSaveEnseignant(ev){
   try{
     if(id){
       await dbUpdate('enseignants', id, patch);
+      if(patch.salaireMensuel === 0) await sb.from('salaires_enseignants').delete().eq('enseignant_id', id);
       const idx = DB.enseignants.findIndex(e=>e.id===id);
       DB.enseignants[idx] = {...DB.enseignants[idx], ...patch};
     } else {
-      DB.enseignants.push(await insererAvecMatricule('enseignants', patch, 'ENS-', 3));
+      const cree = await insererAvecMatricule('enseignants', patch, 'ENS-', 3);
+      if('salaireMensuel' in patch) cree.salaireMensuel = patch.salaireMensuel;
+      DB.enseignants.push(cree);
     }
     closeModal(); toast('Enseignant enregistré');
     renderView('enseignants');
