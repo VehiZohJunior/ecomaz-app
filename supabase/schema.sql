@@ -1779,3 +1779,48 @@ create unique index if not exists paiements_en_ligne_reference_unique
 --   aux comptes (un déclencheur fonctionne sans ce droit).
 revoke execute on function proteger_salaire_enseignant() from public, anon, authenticated;
 revoke execute on function remplir_notification_portier() from public, anon, authenticated;
+
+-- =====================================================================
+-- 49. OBJETS PERDUS — signalés par les parents (2026-10-12)
+-- =====================================================================
+-- Demande de Vehi Zoh Junior : dans la console parent, un espace « Objets
+-- perdus » où le parent signale une affaire de son enfant perdue à l'école
+-- (constatée à la maison). Le secrétariat / la direction répond : retrouvé,
+-- non retrouvé, rendu.
+create table if not exists objets_perdus (
+  id uuid primary key default gen_random_uuid(),
+  ecole_id uuid not null references ecoles(id) on delete cascade default mon_ecole_id(),
+  parent_id uuid not null references auth.users(id) on delete cascade default auth.uid(),
+  parent_nom text not null default '',
+  eleve_id uuid not null references eleves(id) on delete cascade,
+  objet text not null check (char_length(objet) between 2 and 200),
+  description text not null default '' check (char_length(description) <= 1000),
+  date_constat date not null default current_date,
+  statut text not null default 'signale' check (statut in ('signale','retrouve','non_retrouve','rendu')),
+  reponse_ecole text not null default '' check (char_length(reponse_ecole) <= 1000),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create index if not exists objets_perdus_ecole_idx on objets_perdus(ecole_id, created_at desc);
+alter table objets_perdus enable row level security;
+
+-- Le parent déclare, uniquement pour un de SES enfants, et sans pouvoir
+-- fixer lui-même le statut ni la réponse de l'école.
+drop policy if exists "creation objets_perdus parent" on objets_perdus;
+create policy "creation objets_perdus parent" on objets_perdus for insert
+  with check (
+    ecole_id = mon_ecole_id() and est_parent() and parent_id = auth.uid()
+    and statut = 'signale' and reponse_ecole = ''
+    and exists (select 1 from parents_eleves pe where pe.parent_profile_id = auth.uid() and pe.eleve_id = objets_perdus.eleve_id)
+  );
+drop policy if exists "lecture objets_perdus parent" on objets_perdus;
+create policy "lecture objets_perdus parent" on objets_perdus for select
+  using (parent_id = auth.uid());
+-- Secrétariat / Direction / Fondation : voient et répondent.
+drop policy if exists "gestion objets_perdus personnel" on objets_perdus;
+create policy "gestion objets_perdus personnel" on objets_perdus for select
+  using (ecole_id = mon_ecole_id() and est_perso_admin());
+drop policy if exists "maj objets_perdus personnel" on objets_perdus;
+create policy "maj objets_perdus personnel" on objets_perdus for update
+  using (ecole_id = mon_ecole_id() and est_perso_admin())
+  with check (ecole_id = mon_ecole_id() and est_perso_admin());

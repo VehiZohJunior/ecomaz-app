@@ -164,8 +164,21 @@ async function requete(accessToken, chemin, options = {}){
   const webhookRep = await webhookFaux.json().catch(() => ({}));
   verifier('Le webhook rejette une fausse confirmation de paiement', webhookRep.ok === false, JSON.stringify(webhookRep).slice(0,80));
 
+  section('7bis. Objets perdus — chacun ne voit que ce qui le concerne');
+  const objEns = await requete(tokenEnseignant, `/rest/v1/objets_perdus?select=id&limit=1`);
+  verifier('Un enseignant ne lit pas les objets perdus', Array.isArray(objEns.data) && objEns.data.length === 0, `reçu ${JSON.stringify(objEns.data)?.slice(0,80)}`);
+  const objSec = await requete(tokenSecretariat, `/rest/v1/objets_perdus?select=id&limit=1`);
+  verifier('Le secrétariat peut consulter les objets perdus (requête acceptée)', objSec.ok);
+  const objFauxSec = await requete(tokenSecretariat, `/rest/v1/objets_perdus`, { method:'POST', body: JSON.stringify({ eleve_id:'00000000-0000-4000-8000-000000000001', objet:'essai refusé' }) });
+  verifier('Le secrétariat ne crée pas de signalement à la place d un parent', !objFauxSec.ok, `statut ${objFauxSec.status}`);
+  if(ENV.PARENT_EMAIL){
+    const tokenParent2 = (await connecter(ENV.PARENT_EMAIL, ENV.PARENT_PASSWORD)).accessToken;
+    const objAutre = await requete(tokenParent2, `/rest/v1/objets_perdus`, { method:'POST', body: JSON.stringify({ eleve_id:'00000000-0000-4000-8000-000000000001', objet:'essai refusé' }) });
+    verifier('Un parent ne signale pas pour un enfant qui n est pas le sien', !objAutre.ok, `statut ${objAutre.status}`);
+  }
+
   section('8. Visiteur non connecté — ne lit que les affichages publics prévus');
-  for(const table of ['eleves','enseignants_lecture','profiles','paiements_scolarite','messages','parents_eleves','presences_eleves','eleves_portier_lecture']){
+  for(const table of ['eleves','enseignants_lecture','profiles','paiements_scolarite','messages','parents_eleves','presences_eleves','eleves_portier_lecture','objets_perdus']){
     const r = await requete(ANON_KEY, `/rest/v1/${table}?select=*&limit=1`);
     verifier(`Sans connexion, rien à lire dans ${table}`, !r.ok || (Array.isArray(r.data) && r.data.length === 0), `reçu ${JSON.stringify(r.data)?.slice(0,80)}`);
   }

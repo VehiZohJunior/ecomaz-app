@@ -1358,6 +1358,7 @@ const NAV_PARENT = [
   {id:'accueil', ic:'house', lib:'Accueil'},
   {id:'msg', ic:'mail', lib:'Messages'},
   {id:'sugg', ic:'lightbulb', lib:'Suggestions'},
+  {id:'objets', ic:'backpack', lib:'Objets perdus'},
   {id:'profil', ic:'user', lib:'Profil'},
 ];
 function renderNavParent(actif){
@@ -1383,7 +1384,123 @@ function navParent(id, ev){
   }
   if(id === 'accueil'){ $$('.bulle-dropdown').forEach(el=>el.style.display='none'); window.scrollTo({top:0, behavior: (window.EmMotion && EmMotion.prefersReducedMotion()) ? 'auto' : 'smooth'}); }
   else if(id === 'msg' || id === 'sugg'){ window.scrollTo({top:0}); toggleBulle(id); }
+  else if(id === 'objets'){ ouvrirObjetsPerdus(); }
   else if(id === 'profil'){ ouvrirProfilParent(); }
+}
+/* ---------------------------------------------------------------------
+   OBJETS PERDUS (schema.sql section 49) — le parent signale une affaire
+   de son enfant perdue à l'école ; le secrétariat / la direction répond
+   depuis la Messagerie.
+   --------------------------------------------------------------------- */
+const STATUTS_OBJET = {
+  signale:      { lib:'Signalé — en recherche', badge:'amber' },
+  retrouve:     { lib:'Retrouvé — à récupérer à l’école', badge:'green' },
+  non_retrouve: { lib:'Pas retrouvé pour le moment', badge:'gray' },
+  rendu:        { lib:'Rendu', badge:'blue' },
+};
+function badgeStatutObjet(statut){
+  const s = STATUTS_OBJET[statut] || STATUTS_OBJET.signale;
+  return `<span class="badge ${s.badge}">${s.lib}</span>`;
+}
+async function chargerObjetsPerdus(){
+  const { data, error } = await sb.from('objets_perdus').select('*').eq('ecole_id', session.ecoleId).order('created_at', { ascending:false });
+  if(error) throw error;
+  DB.objetsPerdus = rowsToCamel(data);
+  return DB.objetsPerdus;
+}
+// --- Côté parent ---
+async function ouvrirObjetsPerdus(){
+  openModal('🎒 Objets perdus', `<div class="hint">Chargement…</div>`);
+  try{ await chargerObjetsPerdus(); }catch(_e){ DB.objetsPerdus = DB.objetsPerdus || []; }
+  afficherObjetsPerdusParent();
+}
+function afficherObjetsPerdusParent(){
+  const enfants = DB.eleves || [];
+  const liste = DB.objetsPerdus || [];
+  openModal('🎒 Objets perdus', `
+    <p class="hint" style="margin-top:0;">Votre enfant est rentré sans une de ses affaires ? Signalez-la : l'école la recherche et vous répond ici.</p>
+    <form onsubmit="return handleSignalerObjetPerdu(event)">
+      ${enfants.length > 1 ? `<div class="field"><label>Enfant concerné</label><select name="eleveId" required>${enfants.map(e => `<option value="${e.id}">${escapeHtml(eleveFullName(e))}</option>`).join('')}</select></div>`
+        : `<input type="hidden" name="eleveId" value="${enfants[0]?.id || ''}">`}
+      <div class="field"><label>Objet perdu</label><input name="objet" required minlength="2" maxlength="200" placeholder="Ex : gourde bleue, pull de l'uniforme, cahier de maths…"></div>
+      <div class="field"><label>Détails (facultatif)</label><textarea name="description" rows="3" maxlength="1000" placeholder="Couleur, marque, nom écrit dessus, où il a pu être oublié…"></textarea></div>
+      <div class="field"><label>Remarqué à la maison le</label><input type="date" name="dateConstat" value="${todayISO()}" max="${todayISO()}" required></div>
+      <button class="btn" type="submit" style="width:100%;">Signaler l'objet perdu</button>
+    </form>
+    ${liste.length ? `<h4 style="margin:var(--sp-4) 0 var(--sp-2);">Mes signalements</h4>
+      <div class="actu-liste">${liste.map(o => {
+        const e = (DB.eleves||[]).find(x => x.id === o.eleveId);
+        return `<div class="actu-carte" style="flex-direction:column;align-items:flex-start;">
+          <div class="actu-titre">${escapeHtml(o.objet)}${e ? ` <span class="hint">— ${escapeHtml(eleveFullName(e))}</span>` : ''}</div>
+          ${o.description ? `<div class="actu-meta">${escapeHtml(o.description)}</div>` : ''}
+          <div>${badgeStatutObjet(o.statut)}</div>
+          ${o.reponseEcole ? `<div class="actu-meta"><strong>Réponse de l'école :</strong> ${escapeHtml(o.reponseEcole)}</div>` : ''}
+          <div class="actu-meta">Remarqué le ${fmtDate(o.dateConstat)}</div>
+        </div>`;
+      }).join('')}</div>` : ''}
+    <div class="form-actions"><button type="button" class="btn secondary" onclick="closeModal(); navParent('accueil')">Fermer</button></div>`);
+}
+async function handleSignalerObjetPerdu(ev){
+  ev.preventDefault();
+  const fd = new FormData(ev.target);
+  const bouton = ev.target.querySelector('button[type="submit"]');
+  bouton.disabled = true;
+  try{
+    const { data, error } = await sb.from('objets_perdus').insert({
+      eleve_id: fd.get('eleveId'), objet: fd.get('objet').trim(), description: (fd.get('description') || '').trim(),
+      date_constat: fd.get('dateConstat'), parent_nom: session.nomComplet || '',
+    }).select().single();
+    if(error) throw error;
+    DB.objetsPerdus = [rowToCamel(data)].concat(DB.objetsPerdus || []);
+    toast('Objet signalé à l’école, merci !');
+    afficherObjetsPerdusParent();
+  }catch(e){ bouton.disabled = false; alert('Erreur : ' + e.message); }
+  return false;
+}
+// --- Côté école (Messagerie) ---
+function renderObjetsPerdusEcole(){
+  if(!['secretariat','direction','fondation'].includes(ui.role)) return '';
+  if(DB.objetsPerdus === undefined){
+    DB.objetsPerdus = null;
+    chargerObjetsPerdus().then(() => { if(ui.currentView === 'messagerie') renderView('messagerie'); }).catch(() => { DB.objetsPerdus = []; });
+  }
+  const liste = DB.objetsPerdus || [];
+  const aTraiter = liste.filter(o => o.statut === 'signale' || o.statut === 'retrouve');
+  const afficher = ui.filters.objetsTous ? liste : aTraiter;
+  return `<div class="panel">
+    <div class="panel-head">
+      <div><h2>🎒 Objets perdus signalés par les parents${aTraiter.length ? ` (${aTraiter.length})` : ''}</h2><div class="sub">Répondez au parent : il voit la réponse dans son application</div></div>
+      ${liste.length > aTraiter.length ? `<button class="btn secondary sm" onclick="ui.filters.objetsTous=${!ui.filters.objetsTous}; renderView('messagerie')">${ui.filters.objetsTous ? 'En cours seulement' : 'Tout afficher'}</button>` : ''}
+    </div>
+    ${DB.objetsPerdus === null ? '<div class="hint">Chargement…</div>' : !afficher.length ? '<div class="hint">Aucun objet perdu en cours.</div>' : `<div class="table-wrap"><table>
+      <thead><tr><th>Date</th><th>Élève</th><th>Objet</th><th>Parent</th><th>Statut et réponse</th></tr></thead>
+      <tbody>${afficher.map(o => {
+        const e = eleveById(o.eleveId);
+        return `<tr>
+          <td>${fmtDate(o.dateConstat)}</td>
+          <td>${e ? escapeHtml(eleveFullName(e)) + `<br><span class="hint">${escapeHtml(classeName(e.classeId))}</span>` : '—'}</td>
+          <td><strong>${escapeHtml(o.objet)}</strong>${o.description ? `<br><span class="hint">${escapeHtml(o.description)}</span>` : ''}</td>
+          <td>${escapeHtml(o.parentNom || '')}</td>
+          <td style="min-width:220px;">
+            <select id="objStatut-${o.id}">${Object.entries(STATUTS_OBJET).map(([k, v]) => `<option value="${k}" ${o.statut === k ? 'selected' : ''}>${v.lib}</option>`).join('')}</select>
+            <input id="objRep-${o.id}" maxlength="1000" placeholder="Message au parent (facultatif)" value="${escapeHtml(o.reponseEcole || '')}" style="margin-top:6px;width:100%;">
+            <button class="btn secondary sm" style="margin-top:6px;" onclick="handleRepondreObjetPerdu('${o.id}')">Enregistrer</button>
+          </td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table></div>`}
+  </div>`;
+}
+async function handleRepondreObjetPerdu(id){
+  const statut = document.getElementById('objStatut-' + id).value;
+  const reponse = document.getElementById('objRep-' + id).value.trim();
+  try{
+    const { error } = await sb.from('objets_perdus').update({ statut, reponse_ecole: reponse, updated_at: new Date().toISOString() }).eq('id', id);
+    if(error) throw error;
+    DB.objetsPerdus = (DB.objetsPerdus || []).map(o => o.id === id ? { ...o, statut, reponseEcole: reponse } : o);
+    toast('Réponse enregistrée : le parent la verra dans son application');
+    renderView('messagerie');
+  }catch(e){ alert('Erreur : ' + e.message); }
 }
 function ouvrirProfilParent(){
   const enfants = (DB.eleves||[]).map(e => `<li>${escapeHtml(eleveFullName(e))} — ${escapeHtml(classeName(e.classeId))}</li>`).join('');
@@ -1739,9 +1856,9 @@ async function handleNotifierPortier(eleveId){
 const VERSIONS = [
   { version: '2026.10.12', nouveautes: {
     commun: [],
-    parent: [ 'L’information sur l’activité à venir défile dans une bande jaune en haut de l’accueil (touchez-la pour la mettre en pause) ; les précédentes sont dans « Informations passées ».' ],
+    parent: [ 'L’information sur l’activité à venir défile dans une bande jaune en haut de l’accueil (touchez-la pour la mettre en pause) ; les précédentes sont dans « Informations passées ».', 'Nouvel onglet « Objets perdus » : signalez une affaire de votre enfant perdue à l’école, l’école vous répond.' ],
     portier: [],
-    personnel: [],
+    personnel: [ 'Messagerie : les objets perdus signalés par les parents, avec une réponse à leur envoyer.' ],
   } },
   { version: '2026.10.11-2', nouveautes: {
     commun: [
@@ -5702,7 +5819,8 @@ function renderMessagerie(){
 
   return `
   <div class="view active">
-    <div class="section-note">📨 Le parent reçoit un vrai SMS à chaque absence de son enfant (via Africa's Talking). La Direction et la Fondation reçoivent la même alerte directement dans l'application — déjà connectées, aucun coût SMS supplémentaire pour elles. Les absences/retards d'enseignants restent des notifications internes à l'application pour Direction et Fondation.</div>
+    <div class="section-note">📨 À chaque absence, le parent est prévenu dans son application ; le secrétariat peut aussi le prévenir gratuitement par WhatsApp depuis l'appel (« Prévenir le parent »). La Direction et la Fondation reçoivent l'alerte dans l'application. Les absences/retards d'enseignants restent des notifications internes pour Direction et Fondation.</div>
+    ${renderObjetsPerdusEcole()}
     <div class="cards">
       <div class="card"><div class="card-top"><div class="icon-badge" style="background:var(--primary-dim);">📨</div></div><div class="num">${DB.messages.length}</div><div class="label">Messages envoyés (total)</div></div>
       <div class="card"><div class="card-top"><div class="icon-badge" style="background:var(--blue-bg);">📆</div></div><div class="num">${totalToday}</div><div class="label">Envoyés aujourd'hui</div></div>

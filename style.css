@@ -721,8 +721,8 @@ body.theme-parent .salut-main{ color:var(--em-terracotta-600); }
 
 /* Barre de navigation basse (§ 5.1.7) */
 .parent-nav{ position:fixed; left:0; right:0; bottom:0; z-index:40; background:var(--em-surface); border-top:1px solid var(--em-border);
-  padding:10px 12px calc(18px + env(safe-area-inset-bottom, 0px)); display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); }
-.pn-pastille{ position:absolute; top:10px; left:12px; width:calc((100% - 24px) / 4); height:52px; border-radius:16px;
+  padding:10px 12px calc(18px + env(safe-area-inset-bottom, 0px)); display:grid; grid-template-columns:repeat(5, minmax(0, 1fr)); }
+.pn-pastille{ position:absolute; top:10px; left:12px; width:calc((100% - 24px) / 5); height:52px; border-radius:16px;
   background:var(--em-green-100); transition:transform 420ms var(--em-ease-tab); pointer-events:none; }
 .pn-item{ position:relative; z-index:1; height:52px; border:none; background:none; border-radius:16px; cursor:pointer;
   display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; color:var(--em-text-muted);
@@ -893,3 +893,4 @@ td:has(> .amount), th.montant{ text-align:right; }
   .bande-info-texte[aria-hidden="true"]{ display:none; }
 }
 @media print{ .bande-info{ display:none !important; } }
+.pn-lib{ text-align:center; line-height:1.1; }
