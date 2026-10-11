@@ -30,7 +30,7 @@ avec son reçu.
 
 1. Remplir le **profil du gestionnaire de compte** (le responsable de l'école).
 2. Remplir les **informations de l'entreprise** :
-   - Secteur : **Éducation** (ou Services) ;
+   - Secteur : **Service** (il n’y a pas de case « Éducation ») ;
    - Pays : **Côte d'Ivoire** ;
    - Volume des ventes : la tranche qui correspond aux frais de scolarité annuels ;
    - Employés : selon votre école.
