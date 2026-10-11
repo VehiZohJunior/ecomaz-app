@@ -1154,24 +1154,42 @@ function renderActualitesParent(){
       <button type="button" class="btn ghost sm actu-tout" aria-expanded="false" aria-controls="actusSuite" onclick="basculerActus(this)">Tout voir (${actus.length})</button>` : ''}
   </section>`;
 }
-// Console parent : les actualités de l'école défilent de droite à gauche
-// dans une bande jaune or, en haut de l'accueil (demande de Vehi Zoh Junior).
-// Toucher la bande la met en pause (et la relance) ; si le téléphone demande
-// moins d'animations, le texte s'affiche sans défiler.
+// Console parent (demandes de Vehi Zoh Junior) : seule l'information la plus
+// récente — l'activité à venir — défile de droite à gauche dans une bande
+// jaune or en haut de l'accueil ; les précédentes restent fixes dans la case
+// « Informations passées ». Toucher la bande la met en pause (et la relance) ;
+// si le téléphone demande moins d'animations, le texte ne défile pas.
+function actualitesTriees(){
+  return (DB.actualitesAffichage||[]).slice().sort((a,b)=> (b.createdAt||'').localeCompare(a.createdAt||''));
+}
 function renderBandeDefilanteParent(){
-  const actus = (DB.actualitesAffichage||[]).slice().sort((a,b)=> (b.createdAt||'').localeCompare(a.createdAt||'')).slice(0, 8);
+  const actus = actualitesTriees().slice(0, 1);
   if(!actus.length) return '';
   const textes = actus.map(a => `<span class="bande-info-item">${escapeHtml(a.texte)}</span>`).join('<span class="bande-info-sep" aria-hidden="true">✦</span>');
   const longueur = actus.reduce((n, a) => n + String(a.texte||'').length, 0);
   const duree = Math.max(14, Math.round(longueur * 0.2));      // ~5 caractères par seconde
   return `<section class="bande-info" aria-label="Actualités de l'école" onclick="this.classList.toggle('en-pause')">
-    <span class="bande-info-etiquette">${window.EmIcones ? EmIcones.svg('newspaper') : '📰'} Infos</span>
+    <span class="bande-info-etiquette">${window.EmIcones ? EmIcones.svg('newspaper') : '📰'} À venir</span>
     <div class="bande-info-fenetre">
       <div class="bande-info-piste" style="animation-duration:${duree}s">
         <div class="bande-info-texte">${textes}<span class="bande-info-sep" aria-hidden="true">✦</span></div>
         <div class="bande-info-texte" aria-hidden="true">${textes}<span class="bande-info-sep">✦</span></div>
       </div>
     </div>
+  </section>`;
+}
+function renderInformationsPassees(){
+  const passees = actualitesTriees().slice(1, 9);
+  if(!passees.length) return '';
+  return `<section class="panel actus-panel" aria-labelledby="titreInfosPassees">
+    <div class="panel-head"><div><h2 id="titreInfosPassees">🗂️ Informations passées</h2></div></div>
+    <div class="actu-liste">${passees.map(a => {
+      const d = a.createdAt ? new Date(a.createdAt) : null;
+      return `<article class="actu-carte">
+        <div class="actu-date" aria-hidden="true"><span class="actu-jour">${d ? d.getDate() : ''}</span><span class="actu-mois">${d ? d.toLocaleDateString('fr-FR', {month:'short'}).replace('.', '').toUpperCase() : ''}</span></div>
+        <div class="actu-corps"><div class="actu-titre">${escapeHtml(a.texte)}</div>${d ? `<div class="actu-meta">Publié le ${d.toLocaleDateString('fr-FR', {weekday:'long', day:'numeric', month:'long'})}</div>` : ''}</div>
+      </article>`;
+    }).join('')}</div>
   </section>`;
 }
 function basculerActus(btn){
@@ -1332,6 +1350,7 @@ function renderParentDashboard(){
     <div class="enfants${plusieurs ? ' enfants--carrousel' : ''} em-rise" style="--i:2">
       ${mesEnfants.map(renderFicheEnfant).join('')}
     </div>
+    ${renderInformationsPassees()}
     ${renderTableauHonneurParent()}
   </div>`;
 }
@@ -1720,7 +1739,7 @@ async function handleNotifierPortier(eleveId){
 const VERSIONS = [
   { version: '2026.10.12', nouveautes: {
     commun: [],
-    parent: [ 'Les informations de l’école défilent maintenant dans une bande jaune en haut de l’accueil (touchez-la pour la mettre en pause).' ],
+    parent: [ 'L’information sur l’activité à venir défile dans une bande jaune en haut de l’accueil (touchez-la pour la mettre en pause) ; les précédentes sont dans « Informations passées ».' ],
     portier: [],
     personnel: [],
   } },
