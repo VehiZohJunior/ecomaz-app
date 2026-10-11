@@ -1690,43 +1690,65 @@ async function handleNotifierPortier(eleveId){
   }
 }
 
-// Notification de mise à jour : affichée une fois par version, par appareil et par compte
-const APP_VERSION = '2026.10.11';
-const NOUVEAUTES = {
-  commun: [
-    'Nouvelle apparence : couleurs vert forêt et or, police plus lisible, icônes plus nettes.',
-    'Mode sombre : bouton lune / soleil en haut de l’écran.',
-  ],
-  parent: [
-    'La fiche de votre enfant affiche sa présence de la semaine.',
-    'Les actualités de l’école sont présentées avec leur date.',
-    'Tableau d’honneur : vous pouvez désormais applaudir les lauréats.',
-    'Barre en bas : Accueil, Messages, Suggestions et Profil (déconnexion).',
-  ],
-  portier: [
-    'Écran sombre plus lisible dehors, grands boutons « Prévenir ».',
-    'Confirmation claire quand l’enseignant est prévenu, avec l’heure.',
-  ],
-  personnel: [
-    'Recherche rapide : bouton loupe (ou Ctrl + K) pour trouver un élève ou une page.',
-    'Sur téléphone : barre de raccourcis en bas de l’écran.',
-    'Tableau de bord : messages clairs quand l’appel n’est pas encore fait.',
-    'Fiche élève : la date de naissance est vérifiée à la saisie.',
-  ],
-};
+// Notification de mise à jour : affichée une fois par version, par appareil et par compte.
+// Chaque version garde sa liste : un utilisateur qui a manqué une version voit
+// aussi ses nouveautés (la plus récente en premier).
+const VERSIONS = [
+  { version: '2026.10.11-2', nouveautes: {
+    commun: [
+      'Nouvelle icône de l’application, aux couleurs vert forêt et or.',
+    ],
+    parent: [],
+    portier: [],
+    personnel: [
+      'Appel : bouton « Prévenir le parent » pour envoyer l’absence par WhatsApp, gratuitement (secrétariat, direction).',
+      'Pointage GPS : le lien est envoyé à l’enseignant par WhatsApp.',
+      'Fiche élève : une question de confirmation si la date d’inscription est dans le futur.',
+      'Matricules : deux élèves ne peuvent plus avoir le même numéro.',
+    ],
+  } },
+  { version: '2026.10.11', nouveautes: {
+    commun: [
+      'Nouvelle apparence : couleurs vert forêt et or, police plus lisible, icônes plus nettes.',
+      'Mode sombre : bouton lune / soleil en haut de l’écran.',
+    ],
+    parent: [
+      'La fiche de votre enfant affiche sa présence de la semaine.',
+      'Les actualités de l’école sont présentées avec leur date.',
+      'Tableau d’honneur : vous pouvez désormais applaudir les lauréats.',
+      'Barre en bas : Accueil, Messages, Suggestions et Profil (déconnexion).',
+    ],
+    portier: [
+      'Écran sombre plus lisible dehors, grands boutons « Prévenir ».',
+      'Confirmation claire quand l’enseignant est prévenu, avec l’heure.',
+    ],
+    personnel: [
+      'Recherche rapide : bouton loupe (ou Ctrl + K) pour trouver un élève ou une page.',
+      'Sur téléphone : barre de raccourcis en bas de l’écran.',
+      'Tableau de bord : messages clairs quand l’appel n’est pas encore fait.',
+      'Fiche élève : la date de naissance est vérifiée à la saisie.',
+    ],
+  } },
+];
+const APP_VERSION = VERSIONS[0].version;
 function afficherNouveautes(){
   try{
-    const cle = `ecomaz_nouveautes_${APP_VERSION}_${session.userId || ''}`;
-    if(!session.userId || localStorage.getItem(cle)) return;
+    if(!session.userId) return;
+    const cle = v => `ecomaz_nouveautes_${v}_${session.userId}`;
+    const nonVues = VERSIONS.filter(v => !localStorage.getItem(cle(v.version)));
+    if(nonVues.length === 0) return;
     const role = ui.role === 'parent' ? 'parent' : ui.role === 'portier' ? 'portier' : 'personnel';
-    const liste = NOUVEAUTES.commun.concat(NOUVEAUTES[role]).map(t => `<li>${escapeHtml(t)}</li>`).join('');
+    const textes = [];
+    nonVues.forEach(v => v.nouveautes.commun.concat(v.nouveautes[role]).forEach(t => { if(!textes.includes(t)) textes.push(t); }));
+    if(textes.length === 0){ nonVues.forEach(v => localStorage.setItem(cle(v.version), '1')); return; }
+    const liste = textes.map(t => `<li>${escapeHtml(t)}</li>`).join('');
     setTimeout(() => {
       if(document.getElementById('modalBackdrop').classList.contains('open')) return;
       openModal('EcoMaZ a été mis à jour', `
         <div class="maj-intro">✨ Votre application <strong>${escapeHtml(nomApplication())}</strong> vient d’être mise à jour. Vos données et vos habitudes ne changent pas.</div>
         <ul class="maj-liste">${liste}</ul>
         <div class="form-actions"><button type="button" class="btn" onclick="closeModal()">J’ai compris</button></div>`);
-      localStorage.setItem(cle, '1');
+      nonVues.forEach(v => localStorage.setItem(cle(v.version), '1'));
     }, 900);
   }catch(_e){ /* stockage indisponible : on n'insiste pas */ }
 }
