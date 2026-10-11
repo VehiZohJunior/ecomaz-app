@@ -1711,6 +1711,7 @@ const VERSIONS = [
       'Matricules : deux élèves ne peuvent plus avoir le même numéro.',
       'Élèves & Inscriptions : encadré « Fiches à vérifier » pour corriger les dates ou numéros mal saisis.',
       'Élèves & Inscriptions : bouton « Importer depuis Excel » pour ajouter une liste d’élèves d’un coup.',
+      'Direction : bouton « Bilan de la semaine » sur le tableau de bord (à imprimer ou partager par WhatsApp).',
     ],
   } },
   { version: '2026.10.11', nouveautes: {
@@ -2054,6 +2055,7 @@ function renderDashboard(){
       ${kpi(3, '🕘', 'var(--blue-bg)', tauxEns===null ? null : tauxEns+'%', "Présence enseignants aujourd'hui", ['Aucun pointage aujourd’hui', lien('presences-enseignants', 'Voir le journal')])}
     </div>
     ${animer ? `${(setTimeout(animerCompteursKpi, 0), '')}` : ''}
+    ${(ui.role==='direction' || ui.role==='fondation') ? `<div class="form-actions no-print" style="justify-content:flex-start;margin:0 0 var(--sp-4);"><button class="btn secondary" onclick="ouvrirBilanHebdo()">📊 Bilan de la semaine</button></div>` : ''}
 
     ${ui.role==='enseignant' ? renderActualitesParent() + renderTableauHonneurParent() : ''}
 
@@ -2088,6 +2090,105 @@ function renderEleves(){
   return renderEleveListe();
 }
 
+/* ---------------------------------------------------------------------
+   BILAN HEBDOMADAIRE (Direction / Fondation)
+   Semaine du lundi au dimanche : présences élèves et enseignants,
+   encaissements, dépenses, nouvelles inscriptions. Imprimable, et
+   partageable gratuitement par WhatsApp (résumé texte).
+   --------------------------------------------------------------------- */
+function lundiDe(iso){
+  const d = new Date(iso + 'T12:00:00');
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+  return d.toISOString().slice(0, 10);
+}
+function decalerJours(iso, n){ const d = new Date(iso + 'T12:00:00'); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); }
+function calculerBilanHebdo(lundi){
+  const dimanche = decalerJours(lundi, 6);
+  const dansSemaine = x => x.date >= lundi && x.date <= dimanche;
+  const presEl = DB.presencesEleves.filter(dansSemaine);
+  const presEns = DB.presencesEnseignants.filter(dansSemaine);
+  const pct = (n, t) => t ? Math.round(100 * n / t) : null;
+  const absencesParEleve = {};
+  presEl.filter(p => p.statut === 'Absent').forEach(p => absencesParEleve[p.eleveId] = (absencesParEleve[p.eleveId] || 0) + 1);
+  const parClasse = DB.classes.map(c => {
+    const l = presEl.filter(p => p.classeId === c.id);
+    return { nom: c.nom, appels: new Set(l.map(p => p.date)).size, taux: pct(l.filter(p => p.statut !== 'Absent').length, l.length) };
+  }).filter(c => c.appels);
+  const retardsEns = {};
+  presEns.filter(p => p.statut === 'Retard' || p.statut === 'Absent').forEach(p => {
+    const r = retardsEns[p.enseignantId] = retardsEns[p.enseignantId] || { retards: 0, minutes: 0, absences: 0 };
+    if(p.statut === 'Retard'){ r.retards++; r.minutes += Number(p.minutesRetard) || 0; } else r.absences++;
+  });
+  const paiements = (DB.paiementsScolarite || []).filter(dansSemaine);
+  const parMode = {};
+  paiements.forEach(p => parMode[p.modePaiement || 'Autre'] = (parMode[p.modePaiement || 'Autre'] || 0) + Number(p.montant || 0));
+  const depenses = (DB.depenses || []).filter(dansSemaine);
+  return {
+    lundi, dimanche,
+    joursAppel: new Set(presEl.map(p => p.date)).size,
+    tauxEleves: pct(presEl.filter(p => p.statut !== 'Absent').length, presEl.length),
+    nbAbsences: presEl.filter(p => p.statut === 'Absent').length,
+    nbRetardsEleves: presEl.filter(p => p.statut === 'Retard').length,
+    elevesSouventAbsents: Object.entries(absencesParEleve).filter(([, n]) => n >= 2).sort((a, b) => b[1] - a[1])
+      .map(([id, n]) => ({ e: eleveById(id), n })).filter(x => x.e),
+    parClasse,
+    tauxEns: pct(presEns.filter(p => p.statut !== 'Absent').length, presEns.length),
+    ensRetards: Object.entries(retardsEns).map(([id, r]) => ({ t: enseignantById(id), ...r })).filter(x => x.t)
+      .sort((a, b) => (b.absences - a.absences) || (b.minutes - a.minutes)),
+    encaisse: paiements.reduce((s, p) => s + Number(p.montant || 0), 0), nbPaiements: paiements.length, parMode,
+    depense: depenses.reduce((s, d) => s + Number(d.montant || 0), 0), nbDepenses: depenses.length,
+    inscriptions: DB.eleves.filter(e => e.dateInscription >= lundi && e.dateInscription <= dimanche),
+  };
+}
+function texteBilanHebdo(b){
+  const pc = v => v === null ? 'pas d’appel' : v + ' %';
+  const lignes = [
+    `*Bilan de la semaine — ${DB.meta?.nomEcole || 'École'}*`,
+    `Du ${fmtDate(b.lundi)} au ${fmtDate(b.dimanche)}`,
+    '',
+    `Élèves : présence ${pc(b.tauxEleves)} (${b.joursAppel} jour(s) d’appel), ${b.nbAbsences} absence(s), ${b.nbRetardsEleves} retard(s).`,
+  ];
+  if(b.elevesSouventAbsents.length) lignes.push(`Absents 2 fois ou plus : ${b.elevesSouventAbsents.map(x => `${eleveFullName(x.e)} (${x.n})`).join(', ')}.`);
+  lignes.push(`Enseignants : présence ${pc(b.tauxEns)}${b.ensRetards.length ? ', ' + b.ensRetards.map(x => `${ensFullName(x.t)} : ${x.retards ? x.retards + ' retard(s), ' + x.minutes + ' min' : ''}${x.retards && x.absences ? ', ' : ''}${x.absences ? x.absences + ' absence(s)' : ''}`).join(' ; ') : ', aucun retard'}.`);
+  lignes.push(`Scolarité encaissée : ${fmtFCFA(b.encaisse)} (${b.nbPaiements} paiement(s)).`);
+  lignes.push(`Dépenses : ${fmtFCFA(b.depense)} (${b.nbDepenses}).`);
+  lignes.push(`Nouvelles inscriptions : ${b.inscriptions.length}.`);
+  lignes.push('', '— EcoMaZ');
+  return lignes.join('\n');
+}
+function ouvrirBilanHebdo(lundi){
+  lundi = lundi || lundiDe(todayISO());
+  const b = calculerBilanHebdo(lundi);
+  const pc = v => v === null ? '—' : v + ' %';
+  const carte = (titre, valeur, sous) => `<div class="panel" style="margin:0;padding:var(--sp-3);"><div class="hint" style="margin:0;">${titre}</div><div style="font-size:var(--em-fs-24, 24px);font-weight:900;">${valeur}</div>${sous ? `<div class="hint" style="margin:0;">${sous}</div>` : ''}</div>`;
+  const lienWa = `https://wa.me/?text=${encodeURIComponent(texteBilanHebdo(b))}`;
+  const futur = decalerJours(lundi, 7) > todayISO();
+  openModal(`Bilan de la semaine`, `
+    <div class="form-actions no-print" style="justify-content:space-between;margin-top:0;">
+      <button type="button" class="btn secondary sm" onclick="ouvrirBilanHebdo('${decalerJours(lundi, -7)}')">← Semaine précédente</button>
+      ${futur ? '' : `<button type="button" class="btn secondary sm" onclick="ouvrirBilanHebdo('${decalerJours(lundi, 7)}')">Semaine suivante →</button>`}
+    </div>
+    <h3 style="margin:var(--sp-2) 0;">${escapeHtml(DB.meta?.nomEcole || '')} — du ${fmtDate(b.lundi)} au ${fmtDate(b.dimanche)}</h3>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:var(--sp-3);margin-bottom:var(--sp-4);">
+      ${carte('Présence élèves', pc(b.tauxEleves), `${b.joursAppel} jour(s) d’appel · ${b.nbAbsences} absence(s)`)}
+      ${carte('Présence enseignants', pc(b.tauxEns), `${b.ensRetards.reduce((s, x) => s + x.retards, 0)} retard(s)`)}
+      ${carte('Scolarité encaissée', fmtFCFA(b.encaisse), `${b.nbPaiements} paiement(s)`)}
+      ${carte('Dépenses', fmtFCFA(b.depense), `${b.nbDepenses} opération(s)`)}
+      ${carte('Nouvelles inscriptions', b.inscriptions.length, '')}
+    </div>
+    ${b.parClasse.length ? `<h4>Présence par classe</h4><div class="table-wrap"><table><thead><tr><th>Classe</th><th>Jours d’appel</th><th>Présence</th></tr></thead><tbody>
+      ${b.parClasse.map(c => `<tr><td>${escapeHtml(c.nom)}</td><td>${c.appels}</td><td>${pc(c.taux)}</td></tr>`).join('')}</tbody></table></div>` : '<div class="hint">Aucun appel enregistré cette semaine.</div>'}
+    ${b.elevesSouventAbsents.length ? `<h4>Élèves absents 2 fois ou plus</h4><div class="table-wrap"><table><thead><tr><th>Élève</th><th>Classe</th><th>Absences</th></tr></thead><tbody>
+      ${b.elevesSouventAbsents.map(x => `<tr><td>${escapeHtml(eleveFullName(x.e))}</td><td>${escapeHtml(classeName(x.e.classeId))}</td><td>${x.n}</td></tr>`).join('')}</tbody></table></div>` : ''}
+    ${b.ensRetards.length ? `<h4>Retards et absences des enseignants</h4><div class="table-wrap"><table><thead><tr><th>Enseignant</th><th>Retards</th><th>Minutes</th><th>Absences</th></tr></thead><tbody>
+      ${b.ensRetards.map(x => `<tr><td>${escapeHtml(ensFullName(x.t))}</td><td>${x.retards}</td><td>${x.minutes}</td><td>${x.absences}</td></tr>`).join('')}</tbody></table></div>` : ''}
+    ${Object.keys(b.parMode).length ? `<h4>Encaissements par mode de paiement</h4><div class="table-wrap"><table><tbody>
+      ${Object.entries(b.parMode).map(([m, v]) => `<tr><td>${escapeHtml(m)}</td><td>${fmtFCFA(v)}</td></tr>`).join('')}</tbody></table></div>` : ''}
+    <div class="form-actions no-print" style="flex-wrap:wrap;">
+      <a class="btn secondary" href="${lienWa}" target="_blank" rel="noopener">📲 Partager par WhatsApp</a>
+      <button type="button" class="btn" onclick="window.print()">🖨️ Imprimer</button>
+    </div>`);
+}
 /* ---------------------------------------------------------------------
    IMPORT DES ÉLÈVES DEPUIS EXCEL (.xlsx, .xls ou .csv)
    Pour installer une école en quelques minutes. La bibliothèque SheetJS
