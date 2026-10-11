@@ -19,7 +19,7 @@
   function pagesDisponibles(){
     return [...document.querySelectorAll('#nav [data-view]')].filter(b => b.style.display !== 'none').map(b => {
       const ic = b.querySelector('.ic');
-      return { type:'page', icone: ic ? ic.textContent : '📄', titre: b.textContent.replace(ic ? ic.textContent : '', '').trim(), sous:'', cle: norm(b.textContent), vue: b.dataset.view };
+      return { type:'page', icone: ic ? ic.textContent : '📄', iconeHtml: ic ? ic.innerHTML : '', titre: b.textContent.replace(ic ? ic.textContent : '', '').trim(), sous:'', cle: norm(b.textContent), vue: b.dataset.view };
     });
   }
   function elevesDisponibles(){
@@ -61,7 +61,7 @@
     r.innerHTML = `
       <div class="rg-box" role="dialog" aria-modal="true" aria-label="Recherche">
         <div class="rg-champ">
-          <span aria-hidden="true">🔍</span>
+          <span aria-hidden="true" class="rg-loupe">${window.EmIcones ? EmIcones.svg('search') : '🔍'}</span>
           <input id="rgInput" type="search" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Rechercher un élève, un enseignant, une page…"
                  role="combobox" aria-expanded="true" aria-controls="rgListe" aria-autocomplete="list" aria-label="Rechercher">
           <button type="button" class="rg-fermer" aria-label="Fermer la recherche">Échap</button>
@@ -100,7 +100,7 @@
       g.items.forEach(it => {
         const i = resultats.push(it) - 1;
         html += `<div class="rg-item" role="option" id="rg-o${i}" data-i="${i}" aria-selected="false">
-          <span class="rg-ic" aria-hidden="true">${esc(it.icone)}</span>
+          <span class="rg-ic" aria-hidden="true">${it.iconeHtml || esc(it.icone)}</span>
           <span class="rg-txt"><span class="rg-titre">${esc(it.titre)}</span>${it.sous ? `<span class="rg-sous">${esc(it.sous)}</span>` : ''}</span>
         </div>`;
       });

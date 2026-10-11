@@ -28,6 +28,20 @@ button,input,select,textarea{ font-family:inherit; }
 }
 :where(select, textarea, input):focus{ outline:none; border-color:var(--focus); box-shadow:0 0 0 3px color-mix(in srgb, var(--focus) 28%, transparent); }
 
+/* Icônes SVG (icones.js) — trait 2, bouts arrondis, couleur du texte */
+.ico{ width:1.15em; height:1.15em; flex-shrink:0; vertical-align:-0.2em; margin-right:.4em; display:inline-block; }
+.ico.ico-seul{ margin-right:0; }
+.nav-item .ic .ico, .bn-ic .ico, .rg-ic .ico{ margin-right:0; width:20px; height:20px; vertical-align:middle; }
+.bn-ic .ico{ width:22px; height:22px; }
+.icon-badge .ico, .txn-ic .ico{ margin:0; width:20px; height:20px; }
+.em-ic .ico, .login-logo .ico, .ric .ico{ margin:0; width:32px; height:32px; }
+.bulle-btn .ico, .theme-toggle .ico, .icon-btn .ico, .modal-close .ico, .burger .ico{ margin:0; width:18px; height:18px; }
+.btn .ico{ margin-right:0; }
+/* une icône reste collée à son mot (pas de retour à la ligne entre les deux) */
+button span:has(> .ico), .btn span:has(> .ico){ white-space:nowrap; }
+.salut-main{ color:var(--accent); display:inline-block; }
+.salut-main .ico{ margin:0; width:24px; height:24px; vertical-align:-0.15em; } /* le bouton a déjà un espacement (gap) */
+
 /* Accessibilité : anneau de focus visible partout (clavier), jamais au clic souris */
 :focus-visible{ outline:3px solid var(--focus); outline-offset:2px; border-radius:var(--r-control); }
 .skip-link{ position:absolute; left:-9999px; top:8px; background:var(--primary); color:var(--on-primary); padding:var(--sp-2) var(--sp-4); border-radius:var(--r-control); z-index:1000; }
@@ -401,7 +415,9 @@ tbody td input[type=number]{ width:90px; }
 .login-logo img{ width:100%; height:100%; object-fit:contain; }
 .login-card h1{ font-size:var(--fs-lg); margin:0 0 var(--sp-1); }
 .login-card .sub{ color:var(--text-dim); font-size:var(--fs-sm); margin-bottom:var(--sp-5); }
-.role-grid{ display:grid; grid-template-columns:1fr 1fr; gap:var(--sp-3); }
+.role-grid{ display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:var(--sp-3); }
+.role-card .rlabel, .role-card .rdesc{ overflow-wrap:anywhere; hyphens:auto; }
+@media (max-width:380px){ .login-card{ padding:var(--sp-5) var(--sp-4); } .role-card{ padding:var(--sp-4) var(--sp-2); } }
 .role-card{ border:1px solid var(--border); background:var(--surface-2); border-radius:var(--r-card); padding:var(--sp-5) var(--sp-4); cursor:pointer; text-align:center; transition:border-color var(--dur) var(--ease), background var(--dur) var(--ease), transform var(--dur) var(--ease), box-shadow var(--dur) var(--ease); }
 .role-card:hover{ border-color:var(--primary); background:var(--primary-soft); transform:translateY(-2px); box-shadow:var(--shadow-2); }
 .role-card .ric{ font-size:28px; margin-bottom:var(--sp-2); }
@@ -483,6 +499,8 @@ body:has(.login-gate.open) .theme-toggle-gate{ display:flex; }
 .rg-champ{ display:flex; align-items:center; gap:var(--sp-3); padding:var(--sp-3) var(--sp-4); border-bottom:1px solid var(--border); font-size:var(--fs-md); }
 .rg-champ input{ flex:1; min-width:0; border:none !important; background:transparent !important; box-shadow:none !important; font-size:var(--fs-md) !important; padding:var(--sp-2) 0 !important; min-height:var(--tap); color:var(--text); }
 .rg-champ input:focus{ outline:none; }
+.rg-loupe{ display:flex; color:var(--text-dim); }
+.rg-loupe .ico{ margin:0; width:20px; height:20px; }
 .rg-fermer{ border:1px solid var(--border-strong); background:var(--surface-2); color:var(--text-dim); border-radius:var(--r-control); font-size:var(--fs-xs); padding:2px var(--sp-2); cursor:pointer; min-height:28px; }
 .rg-liste{ overflow-y:auto; padding:var(--sp-2); flex:1; }
 .rg-groupe{ font-size:var(--fs-xs); font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--text-dim); padding:var(--sp-3) var(--sp-3) var(--sp-1); }

@@ -1177,7 +1177,7 @@ function renderParentDashboard(){
   }
   const prenomParent = (session.nomComplet||'').trim().split(/\s+/)[0] || '';
   return `<div class="view active">
-    <h2 class="parent-greeting">Bonjour${prenomParent ? ', ' + escapeHtml(prenomParent) : ''} 👋</h2>
+    <h2 class="parent-greeting">Bonjour${prenomParent ? ', ' + escapeHtml(prenomParent) : ''} <span class="salut-main">${window.EmIcones ? EmIcones.svg('hand') : '👋'}</span></h2>
     <p class="parent-greeting-sub">Voici les nouvelles de ${mesEnfants.length>1?'vos enfants':'votre enfant'} et de l'école.</p>
     ${renderActualitesParent()}
     <div class="grid-2">
