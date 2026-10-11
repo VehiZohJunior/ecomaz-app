@@ -17,7 +17,7 @@ EMOJIS = {
   '🏷️':'tag', '🛡️':'shield', '🟡':'circle', '📥':'download', '📤':'upload', '📈':'trending-up',
   '📉':'trending-down', '👤':'user', '📱':'smartphone', '📆':'calendar-range', '🖥️':'monitor', '🏫':'school',
   '🔐':'lock-keyhole', '🧱':'brick-wall', '⏱️':'timer', '💾':'save', '🧪':'flask-conical', '☀️':'sun', '🌙':'moon',
-  '⬇️':'download', '⬆️':'upload',
+  '⬇️':'download', '⬆️':'upload', '🔓':'lock-open', '💳':'credit-card',
 }
 noms = sorted(set(EMOJIS.values()) | {'thumbs-up','chevron-down','send'})
 icones = {}
@@ -63,7 +63,7 @@ js = """/* =====================================================================
     'h1', 'h2', 'h3', 'h4', '.icon-badge', '.em-ic', '.ric', '.rlabel', '.login-logo', '.hn-sous-titre', '.rg-ic',
     '.txn-ic', '.section-note', '.hint', '.badge', '.role-badge', '.pill', '.mask-badge', '.actu-item > .ic',
     '.pin-back', '.btn-install', '.btn-reset', '.burger', 'label', '.offline-banner', '.empty-state', '.empty',
-    'th', 'strong', '.num', '.lh-ph', '.recu-logo-ph', '.logo-preview .ph', 'button', '.bulle-dropdown h4', '.sub', 'summary', 'legend'
+    'th', 'strong', '.num', '.pin-error', '.lh-ph', '.recu-logo-ph', '.logo-preview .ph', 'button', '.bulle-dropdown h4', '.sub', 'summary', 'legend'
   ].join(',');
   const EXCLUS = '.bulle-item, .actu-item > div, .rg-titre, .rg-sous, textarea, input, select, option, [contenteditable], .no-icon';
 

@@ -43,7 +43,7 @@ button span:has(> .ico), .btn span:has(> .ico){ white-space:nowrap; }
 .salut-main .ico{ margin:0; width:24px; height:24px; vertical-align:-0.15em; } /* le bouton a déjà un espacement (gap) */
 
 /* Accessibilité : anneau de focus visible partout (clavier), jamais au clic souris */
-:focus-visible{ outline:3px solid var(--focus); outline-offset:2px; border-radius:var(--r-control); }
+:focus-visible{ outline:3px solid var(--focus); outline-offset:2px; box-shadow:0 0 0 2px var(--em-green-900); /* or + liseré vert foncé : visible sur fond clair comme sombre */ border-radius:var(--r-control); }
 .skip-link{ position:absolute; left:-9999px; top:8px; background:var(--primary); color:var(--on-primary); padding:var(--sp-2) var(--sp-4); border-radius:var(--r-control); z-index:1000; }
 .skip-link:focus{ left:8px; }
 .sr-only{ position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
