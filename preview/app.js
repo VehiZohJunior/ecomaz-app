@@ -1103,11 +1103,18 @@ function enterAppParent(){
   $('#sidebar').style.display = 'none';
   $('#burger').style.display = 'none';
   applyBranding();
-  $('#viewTitle').textContent = window.ESPACE_FIXE ? nomApplication() : 'Espace Parent';
+  // En-tête (spec § 5.1.1) : pastille « E » + « ECOMAZ PARENTS » + nom de l'école
+  $('#viewTitle').innerHTML = `<span class="pt-marque em-rise" style="--i:0"><span class="pt-logo" aria-hidden="true">E</span>
+    <span class="pt-textes"><span class="pt-sur">EcoMaZ Parents</span><span class="pt-ecole">${escapeHtml(DB.meta.nomEcole || '')}</span></span></span>
+    <span class="sr-only">${escapeHtml(window.ESPACE_FIXE ? nomApplication() : 'Espace Parent')}</span>`;
   const pill = $('#topbarPill');
   pill.innerHTML = `${escapeHtml(session.nomComplet||'')} <button class="btn secondary sm" style="margin-left:10px;" onclick="logoutRole()">🔒 Déconnexion</button>`;
   rafraichirBulles();
   $('#viewContainer').innerHTML = renderParentDashboard();
+  let nav = document.getElementById('parentNav');
+  if(!nav){ nav = document.createElement('nav'); nav.id = 'parentNav'; nav.className = 'parent-nav'; nav.setAttribute('aria-label', 'Navigation de la console parent'); document.body.appendChild(nav); }
+  nav.innerHTML = renderNavParent('accueil');
+  document.body.classList.add('has-parent-nav');
   startIdleWatcher();
   startPollingBulles();
 }
@@ -1118,18 +1125,52 @@ function renderActualitesParent(){
   // logique que renderListeActualites() côté gestion Direction.
   const actus = (DB.actualitesAffichage||[]).slice().sort((a,b)=> (b.createdAt||'').localeCompare(a.createdAt||'')).slice(0, 8);
   if(!actus.length) return '';
-  return `<div class="panel">
-    <div class="panel-head"><div><h2>📰 Actualités</h2></div></div>
-    ${actus.map(a=>`<div class="actu-item"><span class="ic">📰</span><div>${escapeHtml(a.texte)}
-      <div class="meta">${a.createdAt?new Date(a.createdAt).toLocaleDateString('fr-FR',{day:'2-digit',month:'long'}):''}</div>
-    </div></div>`).join('')}
-  </div>`;
+  const vivant = ui.role === 'parent';
+  // Carte actualité (spec § 5.1.5) : bloc date à gauche (date de publication,
+  // aucune date d'événement n'étant saisie), texte saisi par l'école intact.
+  const carte = (a, i) => {
+    const d = a.createdAt ? new Date(a.createdAt) : null;
+    const jour = d ? d.getDate() : '';
+    const mois = d ? d.toLocaleDateString('fr-FR', {month:'short'}).replace('.', '').toUpperCase() : '';
+    const meta = d ? d.toLocaleDateString('fr-FR', {weekday:'long', day:'numeric', month:'long'}) : '';
+    return `<article class="actu-carte${vivant ? ' em-lift em-rise' : ''}" ${vivant ? `style="animation-delay:${340 + i*70}ms"` : ''}>
+      <div class="actu-date" aria-hidden="true"><span class="actu-jour">${jour}</span><span class="actu-mois">${mois}</span></div>
+      <div class="actu-corps"><div class="actu-titre">${escapeHtml(a.texte)}</div>${meta ? `<div class="actu-meta">Publié le ${meta}</div>` : ''}</div>
+    </article>`;
+  };
+  const visibles = actus.slice(0, 3), autres = actus.slice(3);
+  return `<section class="panel actus-panel" aria-labelledby="titreActus">
+    <div class="panel-head"><div><h2 id="titreActus">📰 Actualités</h2></div></div>
+    <div class="actu-liste">${visibles.map(carte).join('')}</div>
+    ${autres.length ? `<div class="actu-liste" id="actusSuite" hidden>${autres.map((a,i)=>carte(a, i)).join('')}</div>
+      <button type="button" class="btn ghost sm actu-tout" aria-expanded="false" aria-controls="actusSuite" onclick="basculerActus(this)">Tout voir (${actus.length})</button>` : ''}
+  </section>`;
+}
+function basculerActus(btn){
+  const suite = document.getElementById('actusSuite');
+  if(!suite) return;
+  const ouvrir = suite.hidden;
+  suite.hidden = !ouvrir;
+  btn.setAttribute('aria-expanded', String(ouvrir));
+  btn.textContent = ouvrir ? 'Voir moins' : `Tout voir (${(DB.actualitesAffichage||[]).slice(0,8).length})`;
 }
 // Tableau d'honneur (spécification motion design § 5.1.6, corrige D1/D2/D3) :
 // cartes compactes SANS verso (l'ancienne carte retournable affichait le nom
 // en miroir sur certains téléphones). Une personne honorée sur plusieurs
 // périodes n'a qu'UNE carte, avec un badge par période.
 const HONNEUR_BADGES = { mois:'Mois', trimestre:'Trimestre', annee:'Année' };
+// Bouton « Applaudir » (spec § 5.1.6) : la persistance demande une table en
+// base, pas encore créée (accord nécessaire). Désactivé tant que false.
+const ENABLE_APPLAUSE = false;
+function applaudir(btn){
+  if(!ENABLE_APPLAUSE || btn.getAttribute('aria-pressed') === 'true') return;
+  const compteur = btn.querySelector('.hn-applause-n');
+  if(compteur){ compteur.textContent = String((parseInt(compteur.textContent,10)||0) + 1); if(window.EmMotion) EmMotion.replay(compteur, 'em-bump'); }
+  if(window.EmMotion) EmMotion.burst(btn.closest('.hn-carte'));
+  btn.setAttribute('aria-pressed', 'true');
+  btn.disabled = true;
+  const lib = btn.querySelector('.hn-applause-lib'); if(lib) lib.textContent = 'Applaudi';
+}
 function initialesHonneur(nom){
   const mots = String(nom||'').replace(/\b(M|Mme|Mlle|Mr|Dr|Pr)\.?(?=\s)/gi, ' ').trim().split(/\s+/).filter(Boolean);
   return ((mots[0]||'')[0] || '') + ((mots[mots.length-1]||'')[0] && mots.length > 1 ? mots[mots.length-1][0] : '');
@@ -1152,21 +1193,90 @@ function renderTableauHonneurParent(){
   const auMoinsUn = (DB.tableauHonneur||[]).some(h=>h.nomAffiche);
   if(!auMoinsUn) return '';
   const groupes = HONNEUR_CATEGORIES.map(cat => ({ cat, laureats: laureatsHonneur(cat.id) })).filter(g => g.laureats.length);
+  const vivant = ui.role === 'parent';
+  let rang = 0;
   return `<div class="panel">
     <div class="panel-head"><div><h2>🏆 Tableau d'honneur</h2></div></div>
     ${groupes.map(({cat, laureats}) => `
       <div class="hn-sous-titre">${cat.icon} ${cat.id === 'eleve' ? 'Élève(s) à l’honneur' : 'Enseignant·e(s) à l’honneur'}</div>
       <div class="hn-rangee" role="list">
-        ${laureats.map((l, i) => `<article class="hn-carte${cat.id === 'eleve' && i === 0 ? ' hn-carte--une' : ''}" role="listitem">
-          <div class="hn-avatar" aria-hidden="true">${escapeHtml(initialesHonneur(l.nom).toUpperCase())}</div>
+        ${laureats.map((l, i) => `<article class="hn-carte${cat.id === 'eleve' && i === 0 ? ' hn-carte--une' : ''}${vivant ? ' em-rise' : ''}" role="listitem" ${vivant ? `style="animation-delay:${560 + (rang++)*90}ms"` : ''}>
+          <div class="hn-avatar${vivant && cat.id === 'eleve' && i === 0 ? ' em-glow' : ''}" aria-hidden="true">${escapeHtml(initialesHonneur(l.nom).toUpperCase())}</div>
           <strong class="hn-nom">${escapeHtml(l.nom)}</strong>
           ${l.detail ? `<span class="hn-detail">${escapeHtml(l.detail)}</span>` : ''}
           <span class="hn-badges">${l.periodes.map(p => `<span class="hn-badge">${HONNEUR_BADGES[p] || p}</span>`).join('')}</span>
           ${l.commentaire ? `<span class="hn-mot">« ${escapeHtml(l.commentaire)} »</span>` : ''}
+          ${ENABLE_APPLAUSE ? `<button type="button" class="hn-applause em-press" aria-pressed="false" onclick="applaudir(this)">${window.EmIcones ? EmIcones.svg('thumbs-up') : ''}<span class="hn-applause-lib">Applaudir</span><span class="hn-applause-n" aria-live="polite">0</span></button>` : ''}
         </article>`).join('')}
       </div>
     `).join('')}
   </div>`;
+}
+const JOURS_SEMAINE = ['Lun','Mar','Mer','Jeu','Ven'];
+const JOURS_LONGS = ['lundi','mardi','mercredi','jeudi','vendredi'];
+function isoLocal(d){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+function renderPresenceSemaine(e){
+  // Bloc masqué si les présences n'ont pas pu être lues (jamais de fausses données)
+  if(!Array.isArray(DB.presencesSemaine)) return '';
+  const lundi = debutSemaine(new Date());
+  const aujourdhui = isoLocal(new Date());
+  const cases = JOURS_SEMAINE.map((lib, i) => {
+    const d = new Date(lundi); d.setDate(lundi.getDate() + i);
+    const iso = isoLocal(d);
+    const p = DB.presencesSemaine.find(x => x.eleveId === e.id && x.date === iso);
+    const futur = iso > aujourdhui;
+    let etat = 'vide', libelle = 'non renseigné';
+    if(p && p.statut === 'Présent'){ etat = 'present'; libelle = 'présent'; }
+    else if(p && p.statut === 'Retard'){ etat = 'retard'; libelle = 'en retard'; }
+    else if(p && p.statut === 'Absent'){ etat = 'absent'; libelle = 'absent'; }
+    else if(futur){ etat = 'futur'; libelle = 'à venir'; }
+    const coche = (etat === 'present' || etat === 'retard')
+      ? `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>` : '';
+    return `<div class="sem-jour">
+      <div class="sem-case sem-${etat}${iso === aujourdhui ? ' sem-auj' : ''}" role="img" aria-label="${JOURS_LONGS[i]} : ${libelle}">
+        ${coche ? `<span class="sem-remplir em-fill-y" style="animation-delay:${520 + i*110}ms">${coche}</span>` : ''}
+        ${etat === 'absent' ? '<span class="sem-point" aria-hidden="true"></span>' : ''}
+      </div>
+      <span class="sem-lib" aria-hidden="true">${lib}</span>
+    </div>`;
+  }).join('');
+  const aucun = !DB.presencesSemaine.some(x => x.eleveId === e.id);
+  return `<div class="sem-bloc">
+    <div class="sem-titre">Présence de la semaine</div>
+    <div class="sem-grille">${cases}</div>
+    ${aucun ? '<div class="sem-note">L’appel de cette semaine n’a pas encore été enregistré par l’école.</div>' : ''}
+  </div>`;
+}
+function renderAlerteAbsence(enfants){
+  if(!Array.isArray(DB.presencesSemaine)) return '';
+  const auj = isoLocal(new Date());
+  const absents = enfants.filter(e => DB.presencesSemaine.some(x => x.eleveId === e.id && x.date === auj && x.statut === 'Absent'));
+  if(!absents.length) return '';
+  // Affichée immédiatement, sans délai d'animation (spec § 5.1.4)
+  return absents.map(e => `<div class="alerte-absence" role="alert">
+    <span class="alerte-ic" aria-hidden="true">${window.EmIcones ? EmIcones.svg('triangle-alert') : '⚠️'}</span>
+    <div><strong>${escapeHtml(e.prenom || eleveFullName(e))} est noté(e) absent(e) aujourd’hui.</strong>
+      <div class="alerte-sous">Les détails sont dans vos notifications.</div></div>
+    <button type="button" class="btn sm" onclick="event.stopPropagation(); toggleBulle('notif')">Voir</button>
+  </div>`).join('');
+}
+function renderFicheEnfant(e){
+  const ini = initials(e.prenom, e.nom);
+  return `<article class="enfant-carte">
+    <div class="enfant-tete">
+      <div class="enfant-avatar em-pop" style="animation-delay:320ms" aria-hidden="true">${escapeHtml(ini)}</div>
+      <div class="enfant-id">
+        <h3 class="enfant-nom">${escapeHtml(eleveFullName(e))}</h3>
+        <div class="enfant-classe">${escapeHtml(classeName(e.classeId))} <span class="enfant-statut">${escapeHtml(e.statut || '')}</span></div>
+      </div>
+    </div>
+    <dl class="enfant-details">
+      <div><dt>Matricule</dt><dd>${escapeHtml(e.matricule || '—')}</dd></div>
+      <div><dt>Naissance</dt><dd>${fmtDate(e.dateNaissance)}</dd></div>
+      <div><dt>Inscription</dt><dd>${fmtDate(e.dateInscription)}</dd></div>
+    </dl>
+    ${renderPresenceSemaine(e)}
+  </article>`;
 }
 function renderParentDashboard(){
   const mesEnfants = DB.eleves || [];
@@ -1176,31 +1286,67 @@ function renderParentDashboard(){
     </div>`;
   }
   const prenomParent = (session.nomComplet||'').trim().split(/\s+/)[0] || '';
-  return `<div class="view active">
-    <h2 class="parent-greeting">Bonjour${prenomParent ? ', ' + escapeHtml(prenomParent) : ''} <span class="salut-main">${window.EmIcones ? EmIcones.svg('hand') : '👋'}</span></h2>
-    <p class="parent-greeting-sub">Voici les nouvelles de ${mesEnfants.length>1?'vos enfants':'votre enfant'} et de l'école.</p>
-    ${renderActualitesParent()}
-    <div class="grid-2">
-      ${mesEnfants.map(e=>`
-        <div class="panel">
-          <div class="profile-head">
-            <span class="avatar">${initials(e.prenom,e.nom)}</span>
-            <div>
-              <h2>${escapeHtml(eleveFullName(e))}</h2>
-              <div class="meta">${classeName(e.classeId)} · <span class="badge ${e.statut==='Actif'?'green':'gray'}">${e.statut}</span></div>
-            </div>
-          </div>
-          <div class="grid-3">
-            <div><div class="hint">Matricule</div><strong>${escapeHtml(e.matricule)}</strong></div>
-            <div><div class="hint">Date de naissance</div><strong>${fmtDate(e.dateNaissance)}</strong></div>
-            <div><div class="hint">Date d'inscription</div><strong>${fmtDate(e.dateInscription)}</strong></div>
-          </div>
-        </div>`).join('')}
+  const plusieurs = mesEnfants.length > 1;
+  return `<div class="view active parent-accueil">
+    ${renderAlerteAbsence(mesEnfants)}
+    <div class="em-rise" style="--i:1">
+      <h2 class="parent-greeting">Bonjour${prenomParent ? ', ' + escapeHtml(prenomParent) : ''} <span class="salut-main em-wave">${window.EmIcones ? EmIcones.svg('hand') : '👋'}</span></h2>
+      <p class="parent-greeting-sub">Voici la semaine de ${plusieurs ? 'vos enfants' : 'votre enfant'}.</p>
     </div>
+    <div class="enfants${plusieurs ? ' enfants--carrousel' : ''} em-rise" style="--i:2">
+      ${mesEnfants.map(renderFicheEnfant).join('')}
+    </div>
+    ${renderActualitesParent()}
     ${renderTableauHonneurParent()}
   </div>`;
 }
-
+// Barre de navigation basse de la console parent (spec § 5.1.7) :
+// Accueil, Messages, Suggestions, Profil — uniquement des entrées qui existent.
+const NAV_PARENT = [
+  {id:'accueil', ic:'house', lib:'Accueil'},
+  {id:'msg', ic:'mail', lib:'Messages'},
+  {id:'sugg', ic:'lightbulb', lib:'Suggestions'},
+  {id:'profil', ic:'user', lib:'Profil'},
+];
+function renderNavParent(actif){
+  const idx = Math.max(0, NAV_PARENT.findIndex(n => n.id === actif));
+  const nbMsg = (DB.messagesInternes||[]).filter(m=>!m.lu).length;
+  return `<div class="pn-pastille" style="transform:translateX(${idx*100}%)" aria-hidden="true"></div>
+    ${NAV_PARENT.map((n, i) => `<button type="button" class="pn-item em-press${i === idx ? ' actif' : ''}" ${i === idx ? 'aria-current="page"' : ''} onclick="navParent('${n.id}', event)">
+      <span class="pn-ic" aria-hidden="true">${window.EmIcones ? EmIcones.svg(n.ic) : ''}${n.id === 'msg' && nbMsg ? `<span class="pn-badge">${nbMsg>9?'9+':nbMsg}</span>` : ''}</span>
+      <span class="pn-lib">${n.lib}</span>
+    </button>`).join('')}`;
+}
+function navParent(id, ev){
+  if(ev) ev.stopPropagation();
+  // Mise à jour sur place (et non re-rendu) pour que la pastille GLISSE vers l'onglet choisi
+  const nav = document.getElementById('parentNav');
+  const idx = NAV_PARENT.findIndex(n => n.id === id);
+  if(nav && idx >= 0){
+    const pastille = nav.querySelector('.pn-pastille');
+    if(pastille) pastille.style.transform = `translateX(${idx*100}%)`;
+    nav.querySelectorAll('.pn-item').forEach((b, i) => {
+      b.classList.toggle('actif', i === idx);
+      if(i === idx) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
+    });
+  }
+  if(id === 'accueil'){ $$('.bulle-dropdown').forEach(el=>el.style.display='none'); window.scrollTo({top:0, behavior: (window.EmMotion && EmMotion.prefersReducedMotion()) ? 'auto' : 'smooth'}); }
+  else if(id === 'msg' || id === 'sugg'){ window.scrollTo({top:0}); toggleBulle(id); }
+  else if(id === 'profil'){ ouvrirProfilParent(); }
+}
+function ouvrirProfilParent(){
+  const enfants = (DB.eleves||[]).map(e => `<li>${escapeHtml(eleveFullName(e))} — ${escapeHtml(classeName(e.classeId))}</li>`).join('');
+  openModal('Mon profil', `
+    <div class="profil-parent">
+      <div class="profil-nom">${escapeHtml(session.nomComplet || '')}</div>
+      <div class="hint">${escapeHtml(nomApplication())}</div>
+      ${enfants ? `<div class="profil-sous">Enfant(s) relié(s)</div><ul class="profil-enfants">${enfants}</ul>` : ''}
+    </div>
+    <div class="form-actions">
+      <button type="button" class="btn secondary" onclick="closeModal(); navParent('accueil')">Fermer</button>
+      <button type="button" class="btn danger" onclick="closeModal(); logoutRole()">🔒 Déconnexion</button>
+    </div>`);
+}
 /* ---------------------------------------------------------------------
    BULLES — Notifications / Messages / Suggestions. 3 icônes dans la
    barre du haut, visibles sur toutes les vues (personnel ET parent).
@@ -1219,7 +1365,7 @@ function renderBulles(){
   const badge = n => n ? `<span class="bulle-badge">${n>9?'9+':n}</span>` : '';
   return `
     <div class="bulle-wrap">
-      <button class="bulle-btn" onclick="toggleBulle('notif')" title="Notifications">🔔${badge(nbNotif)}</button>
+      <button class="bulle-btn" onclick="toggleBulle('notif')" title="Notifications" aria-label="Notifications${nbNotif ? ', ' + nbNotif + ' nouvelle' + (nbNotif>1?'s':'') : ''}">🔔${nbNotif ? `<span class="bulle-badge${ui.role==='parent' ? ' em-pulse' : ''}">${nbNotif>9?'9+':nbNotif}</span>` : ''}</button>
       <div class="bulle-dropdown" id="dropdownNotif" style="display:none;">${renderDropdownNotifications()}</div>
     </div>
     <div class="bulle-wrap">
@@ -1628,7 +1774,8 @@ async function entrerSelonRole(){
 async function logoutRole(){
   stopIdleWatcher();
   stopPollingBulles();
-  document.body.classList.remove('theme-parent');
+  document.body.classList.remove('theme-parent', 'has-parent-nav');
+  const navParentEl = document.getElementById('parentNav'); if(navParentEl) navParentEl.remove();
   if(typeof arreterScanPointage === 'function') arreterScanPointage();
   await deconnexion();
   ui.role = null;

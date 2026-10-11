@@ -597,15 +597,9 @@ body.theme-parent .profile-head h2, body.theme-parent .login-card h1{
   font-family:var(--em-font); font-weight:900;
 }
 body.theme-parent .panel{
-  border-radius:22px; border-color:var(--primary-soft);
-  box-shadow:var(--shadow-2);
-  animation:parentPopIn .5s var(--ease) both;
+  border-radius:var(--em-radius-lg); border-color:var(--em-border);
+  box-shadow:var(--em-shadow-sm);
 }
-body.theme-parent .panel:nth-of-type(2){ animation-delay:.07s; }
-body.theme-parent .panel:nth-of-type(3){ animation-delay:.14s; }
-body.theme-parent .panel:nth-of-type(4){ animation-delay:.21s; }
-@keyframes parentPopIn{ from{ opacity:0; transform:translateY(16px); } to{ opacity:1; transform:none; } }
-@media (prefers-reduced-motion: reduce){ body.theme-parent .panel{ animation:none; } }
 
 body.theme-parent .avatar{
   background:linear-gradient(135deg,var(--primary),var(--accent)); color:var(--on-primary);
@@ -619,12 +613,12 @@ body.theme-parent .btn:hover{ transform:translateY(-2px); box-shadow:var(--shado
 body.theme-parent .btn.secondary{ background:var(--surface-1); box-shadow:none; }
 body.theme-parent .badge{ border-radius:var(--r-pill); font-weight:800; }
 
-body.theme-parent .bulle-btn{ width:42px; height:42px; font-size:var(--fs-md); box-shadow:var(--shadow-1); }
+body.theme-parent .bulle-btn, body.theme-parent .topbar .theme-toggle{ width:44px; height:44px; border-radius:14px; background:var(--em-surface); border:1px solid var(--em-border); box-shadow:none; }
 body.theme-parent .bulle-dropdown{ border-radius:18px; }
 body.theme-parent .bulle-item{ border-radius:var(--r-card); }
 
 
-body.theme-parent .topbar{ background:var(--surface-0); }
+body.theme-parent .topbar{ background:var(--em-bg); border-bottom:none; padding:18px 20px 12px; }
 body.theme-parent .parent-greeting{
   font-family:var(--em-font); font-size:var(--em-fs-26); font-weight:900; letter-spacing:-.01em; margin:0 0 var(--sp-1);
 }
@@ -636,3 +630,117 @@ body.theme-parent .parent-greeting-sub{ color:var(--text-dim); margin:0 0 var(--
 .toast-item.show{ opacity:1; transform:none; }
 .toast-item.error{ background:var(--danger); color:var(--surface-1); }
 @media (max-width:640px){ #toastStack{ left:var(--sp-4); right:var(--sp-4); bottom:var(--sp-4); align-items:stretch; } }
+
+/* =========================================================================
+   CONSOLE PARENT — Lot 4 (spécification § 5.1), registre « vivant »
+   ========================================================================= */
+body.theme-parent .view-container{ max-width:960px; }
+body.theme-parent.has-parent-nav .view-container{ padding-bottom:calc(110px + env(safe-area-inset-bottom, 0px)); }
+body.theme-parent.has-parent-nav #toastStack{ bottom:calc(96px + env(safe-area-inset-bottom, 0px)); }
+@media (max-width:900px){ body.theme-parent #topbarPill{ display:none; } }  /* nom + déconnexion : onglet Profil */
+
+/* En-tête de marque (§ 5.1.1) */
+.pt-marque{ display:inline-flex; align-items:center; gap:10px; min-width:0; }
+.pt-logo{ width:38px; height:38px; border-radius:12px; background:var(--em-green-700); color:#fff; font-weight:900; font-size:18px;
+  display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+.pt-textes{ display:flex; flex-direction:column; line-height:1.2; min-width:0; }
+.pt-sur{ font-size:var(--em-fs-12); font-weight:700; color:var(--em-text-muted); letter-spacing:.04em; text-transform:uppercase; }
+.pt-ecole{ font-size:var(--em-fs-15); font-weight:800; color:var(--em-text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+body.theme-parent .topbar h1{ display:block; -webkit-line-clamp:unset; }
+body.theme-parent .bulle-badge{ min-width:20px; height:20px; border-radius:10px; background:var(--em-terracotta-600); color:#fff;
+  font-size:11px; font-weight:900; border:2px solid var(--em-bg); top:-4px; right:-4px; }
+
+/* Salutation (§ 5.1.2) */
+body.theme-parent .salut-main{ color:var(--em-terracotta-600); }
+
+/* Alerte d'absence (§ 5.1.4) — sans délai d'animation */
+.alerte-absence{ display:flex; align-items:center; gap:12px; background:var(--em-terracotta-100); color:var(--em-terracotta-800);
+  border-radius:var(--em-radius-md); padding:14px 16px; margin-bottom:var(--em-space-4); animation:em-apparait 200ms linear both; }
+.alerte-absence > div{ flex:1; min-width:0; }
+.alerte-ic .ico{ width:22px; height:22px; margin:0; }
+.alerte-sous{ font-size:var(--em-fs-13); }
+@keyframes em-apparait{ from{ opacity:0; } to{ opacity:1; } }
+
+/* Fiche enfant — carte forte (§ 5.1.3) */
+.enfants{ margin-bottom:var(--em-space-6); }
+.enfants--carrousel{ display:flex; gap:var(--em-space-3); overflow-x:auto; scroll-snap-type:x mandatory; scrollbar-width:none; }
+.enfants--carrousel::-webkit-scrollbar{ display:none; }
+.enfants--carrousel .enfant-carte{ flex:0 0 min(100%, 420px); scroll-snap-align:start; }
+.enfant-carte{ position:relative; overflow:hidden; background:var(--em-green-900); color:#fff; border-radius:var(--em-radius-xl);
+  padding:18px; display:flex; flex-direction:column; gap:16px; box-shadow:var(--em-shadow-md); }
+.enfant-carte::after{ content:''; position:absolute; width:160px; height:160px; top:-40px; right:-40px; border-radius:50%;
+  border:22px solid rgba(255,255,255,.06); pointer-events:none; }
+.enfant-tete{ display:flex; align-items:center; gap:14px; position:relative; z-index:1; }
+.enfant-avatar{ width:56px; height:56px; border-radius:18px; background:var(--em-gold-400); color:var(--em-green-900);
+  font-weight:900; font-size:20px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+.enfant-nom{ margin:0; font-size:var(--em-fs-17); font-weight:800; color:#fff; line-height:1.25; }
+.enfant-classe{ font-size:var(--em-fs-13); color:var(--em-text-on-dark); margin-top:2px; display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.enfant-statut{ background:rgba(255,255,255,.14); color:#fff; font-size:var(--em-fs-12); font-weight:800; border-radius:var(--em-radius-pill); padding:2px 10px; }
+.enfant-details{ display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:8px; margin:0; position:relative; z-index:1; }
+.enfant-details dt{ font-size:var(--em-fs-12); color:var(--em-text-on-dark); }
+.enfant-details dd{ margin:2px 0 0; font-size:clamp(12px, 3.6vw, var(--em-fs-14)); font-weight:800; font-variant-numeric:tabular-nums; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+/* Présence de la semaine */
+.sem-bloc{ position:relative; z-index:1; }
+.sem-titre{ font-size:var(--em-fs-13); font-weight:700; color:var(--em-text-on-dark); margin-bottom:8px; }
+.sem-grille{ display:grid; grid-template-columns:repeat(5, minmax(0, 1fr)); gap:8px; }
+.sem-jour{ display:flex; flex-direction:column; align-items:center; gap:4px; }
+.sem-case{ position:relative; width:100%; height:44px; border-radius:12px; background:rgba(255,255,255,.1); overflow:hidden;
+  display:flex; align-items:center; justify-content:center; }
+.sem-case.sem-auj{ box-shadow:inset 0 0 0 2px rgba(232,176,75,.7); }
+.sem-remplir{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; background:var(--em-green-500); }
+.sem-retard .sem-remplir{ background:var(--em-gold-400); }
+.sem-retard .sem-remplir path{ stroke:var(--em-green-900); }
+.sem-remplir svg{ width:22px; height:22px; }
+.sem-point{ width:8px; height:8px; border-radius:50%; background:var(--em-terracotta-600); }
+.sem-futur{ background:rgba(255,255,255,.05); }
+.sem-lib{ font-size:var(--em-fs-11); font-weight:800; color:var(--em-text-on-dark); }
+.sem-note{ font-size:var(--em-fs-12); color:var(--em-text-on-dark); margin-top:8px; }
+
+/* Actualités (§ 5.1.5) — aussi dans la console enseignant, sans animation */
+.actus-panel .panel-head{ margin-bottom:var(--em-space-3); }
+.actu-liste{ display:flex; flex-direction:column; gap:10px; }
+.actu-liste + .actu-liste{ margin-top:10px; }
+.actu-carte{ display:flex; align-items:center; gap:12px; background:var(--em-surface); border:1px solid var(--em-border);
+  border-radius:18px; padding:14px; }
+.actu-date{ width:48px; height:52px; border-radius:14px; background:var(--em-terracotta-100); color:var(--em-terracotta-800);
+  display:flex; flex-direction:column; align-items:center; justify-content:center; flex-shrink:0; }
+.actu-jour{ font-size:18px; font-weight:900; line-height:1; font-variant-numeric:tabular-nums; }
+.actu-mois{ font-size:10px; font-weight:800; letter-spacing:.06em; margin-top:2px; }
+.actu-corps{ min-width:0; }
+.actu-titre{ font-size:var(--em-fs-14); font-weight:800; overflow-wrap:anywhere; }
+.actu-meta{ font-size:var(--em-fs-12); color:var(--em-text-muted); margin-top:2px; }
+.actu-tout{ margin-top:10px; }
+
+/* Tableau d'honneur — compléments vivants (§ 5.1.6) */
+.hn-applause{ width:100%; min-height:44px; border-radius:14px; border:none; background:var(--em-green-100); color:var(--em-green-900);
+  font:900 var(--em-fs-13)/1 var(--em-font); display:flex; align-items:center; justify-content:center; gap:6px; cursor:pointer; margin-top:4px; }
+.hn-applause[aria-pressed="true"]{ opacity:.8; cursor:default; }
+.hn-applause .ico{ margin:0; width:18px; height:18px; }
+.hn-applause-n{ font-variant-numeric:tabular-nums; display:inline-block; }
+
+/* Barre de navigation basse (§ 5.1.7) */
+.parent-nav{ position:fixed; left:0; right:0; bottom:0; z-index:40; background:var(--em-surface); border-top:1px solid var(--em-border);
+  padding:10px 12px calc(18px + env(safe-area-inset-bottom, 0px)); display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); }
+.pn-pastille{ position:absolute; top:10px; left:12px; width:calc((100% - 24px) / 4); height:52px; border-radius:16px;
+  background:var(--em-green-100); transition:transform 420ms var(--em-ease-tab); pointer-events:none; }
+.pn-item{ position:relative; z-index:1; height:52px; border:none; background:none; border-radius:16px; cursor:pointer;
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; color:var(--em-text-muted);
+  font:800 var(--em-fs-11)/1.2 var(--em-font); transition:color var(--em-dur-hover) var(--em-ease-out); }
+.pn-item.actif{ color:var(--em-green-900); }
+.pn-ic{ position:relative; display:flex; }
+.pn-ic .ico{ width:22px; height:22px; margin:0; }
+.pn-badge{ position:absolute; top:-6px; right:-10px; min-width:18px; height:18px; border-radius:9px; background:var(--em-terracotta-600);
+  color:#fff; font-size:10px; font-weight:900; display:flex; align-items:center; justify-content:center; padding:0 4px; border:2px solid var(--em-surface); }
+:root[data-theme="dark"] .pn-item.actif{ color:var(--primary-ink); }
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .pn-item.actif{ color:var(--primary-ink); } }
+
+/* Profil parent */
+.profil-nom{ font-size:var(--em-fs-17); font-weight:900; }
+.profil-sous{ font-size:var(--em-fs-12); font-weight:800; color:var(--em-text-muted); margin-top:var(--em-space-4); text-transform:uppercase; letter-spacing:.04em; }
+.profil-enfants{ margin:6px 0 0; padding-left:18px; }
+
+/* Notifications passagères (§ 5.1.9) */
+.toast-item.show{ animation:em-toast 460ms var(--em-ease-back) both; }
+
+@media print{ .parent-nav{ display:none !important; } }
