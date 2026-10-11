@@ -1743,3 +1743,22 @@ select
   case when est_perso_admin() then e.qr_token else null end as qr_token
 from enseignants e
 where e.ecole_id = mon_ecole_id() or developpeur_a_acces(e.ecole_id);
+
+-- =====================================================================
+-- 47. PAIEMENT EN LIGNE — DURCISSEMENT AVANT ACTIVATION (2026-10-11)
+-- =====================================================================
+-- Accord de Vehi Zoh Junior. Avant que la première école active le
+-- paiement Mobile Money :
+-- 1) Les clés PayDunya ne sont plus lisibles par AUCUN compte, même
+--    Direction/Fondation/Développeur : seules les fonctions serveur les
+--    utilisent. La configuration se fait par la fonction
+--    configurer-paiement-en-ligne (Console Développeur) ; l'application
+--    lit seulement la vue paiement_en_ligne_config_lecture (sans les clés).
+drop policy if exists "gestion paiement_en_ligne_config" on paiement_en_ligne_config;
+drop policy if exists "acces support developpeur" on paiement_en_ligne_config;
+-- 2) Les tentatives de paiement ne sont créées que par la fonction
+--    initier-paiement-en-ligne (jamais directement depuis un navigateur).
+drop policy if exists "creation paiements_en_ligne" on paiements_en_ligne;
+-- 3) Une facture PayDunya ne peut correspondre qu'à une seule tentative.
+create unique index if not exists paiements_en_ligne_reference_unique
+  on paiements_en_ligne(reference_prestataire) where reference_prestataire <> '';

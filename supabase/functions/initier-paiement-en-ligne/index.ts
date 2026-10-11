@@ -33,7 +33,11 @@ Deno.serve(async (req) => {
     if (!['secretariat', 'direction', 'fondation'].includes(profil.role)) throw new Error('Rôle non autorisé à générer un lien de paiement');
 
     const { eleveId, tranche, montant } = await req.json();
-    if (!eleveId || !tranche || !montant || montant <= 0) throw new Error('Paramètres manquants');
+    if (!eleveId || !tranche || !montant) throw new Error('Paramètres manquants');
+    // Montant entier, positif et raisonnable (aucune scolarité ne dépasse 5 000 000 F CFA)
+    const montantEntier = Math.round(Number(montant));
+    if (!Number.isFinite(montantEntier) || montantEntier < 100 || montantEntier > 5000000) throw new Error('Montant invalide');
+    if (typeof tranche !== 'string' || tranche.length > 60) throw new Error('Tranche invalide');
 
     // 2) Clé service_role pour lire la config + les identifiants PayDunya
     // (jamais transmis au client — voir schema.sql section 29).
@@ -54,16 +58,16 @@ Deno.serve(async (req) => {
 
     const { data: ecole } = await supabaseAdmin.from('ecoles').select('nom_ecole').eq('id', profil.ecole_id).single();
 
-    // Les clés PayDunya de test commencent par "test_" — on choisit
-    // automatiquement l'environnement (sandbox ou production) en fonction
-    // de la clé privée enregistrée, sans réglage supplémentaire à gérer.
-    const estTest = String(ident.privateKey).startsWith('test_');
-    const baseUrl = estTest ? 'https://app.paydunya.com/sandbox-api/v1' : 'https://app.paydunya.com/api/v1';
+    // Application en service chez de vraies écoles : les clés PayDunya de
+    // test (« test_… ») sont refusées, pour qu'aucun faux paiement ne se
+    // mélange à la vraie comptabilité.
+    if (String(ident.privateKey).startsWith('test_')) throw new Error('Clés PayDunya de test : enregistrez les clés de production (Console Développeur)');
+    const baseUrl = 'https://app.paydunya.com/api/v1';
 
     const eleveNomComplet = `${eleve.prenom} ${eleve.nom}`;
     const corpsRequete = {
       invoice: {
-        total_amount: Math.round(montant),
+        total_amount: montantEntier,
         description: `Scolarité — ${tranche} — ${eleveNomComplet}`,
         customer: {
           name: eleve.parent_nom || eleveNomComplet,
@@ -88,16 +92,19 @@ Deno.serve(async (req) => {
     const resultat = await reponsePaydunya.json();
     if (resultat.response_code !== '00') throw new Error(resultat.response_text || 'Échec de la création du lien de paiement');
 
-    await supabaseAdmin.from('paiements_en_ligne').insert({
+    const { error: errInsert } = await supabaseAdmin.from('paiements_en_ligne').insert({
       ecole_id: profil.ecole_id,
       eleve_id: eleveId,
       tranche,
-      montant: Math.round(montant),
+      montant: montantEntier,
       statut: 'en_attente',
       reference_prestataire: resultat.token,
     });
+    // Sans cette ligne, le paiement ne pourrait pas être rattaché à l'élève :
+    // on ne donne pas le lien.
+    if (errInsert) throw new Error('Lien non créé (enregistrement impossible), réessayez');
 
-    return new Response(JSON.stringify({ ok: true, url: resultat.response_text, mode: estTest ? 'test' : 'production' }), {
+    return new Response(JSON.stringify({ ok: true, url: resultat.response_text, mode: 'production' }), {
       headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
     });
   } catch (e) {

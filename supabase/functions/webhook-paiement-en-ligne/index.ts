@@ -14,6 +14,15 @@ async function sha512Hex(texte: string): Promise<string> {
   return Array.from(new Uint8Array(empreinte)).map((o) => o.toString(16).padStart(2, '0')).join('');
 }
 
+// Comparaison sans fuite de temps (la durée de la réponse ne révèle pas
+// combien de caractères du hash étaient justes).
+function egaliteConstante(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
 // PayDunya poste en application/x-www-form-urlencoded avec des clés du
 // type "data[invoice][token]" — on reconstruit l'objet imbriqué.
 function reconstituerObjet(formData: FormData): Record<string, unknown> {
@@ -49,7 +58,6 @@ Deno.serve(async (req) => {
 
     const ecoleId = donnees.custom_data?.ecole_id;
     const invoiceToken = donnees.invoice?.token;
-    const statut = donnees.status;
     const hashRecu = donnees.hash;
     if (!ecoleId || !invoiceToken || !hashRecu) throw new Error('Champs requis manquants dans la notification');
 
@@ -59,14 +67,42 @@ Deno.serve(async (req) => {
     if (!masterKey) throw new Error('Configuration PayDunya introuvable pour cette école');
 
     const hashAttendu = await sha512Hex(masterKey);
-    if (hashAttendu !== hashRecu) throw new Error('Hash de vérification invalide — notification rejetée (pas confirmée PayDunya)');
+    if (!egaliteConstante(hashAttendu, String(hashRecu))) throw new Error('Hash de vérification invalide — notification rejetée (pas confirmée PayDunya)');
 
     const { data: ligne } = await supabaseAdmin
       .from('paiements_en_ligne').select('*').eq('ecole_id', ecoleId).eq('reference_prestataire', invoiceToken).maybeSingle();
     if (!ligne) throw new Error('Paiement en ligne introuvable pour ce jeton');
+    if (ligne.statut !== 'en_attente') throw new Error('Paiement déjà traité');
 
-    if (statut === 'completed' && ligne.statut !== 'reussi') {
-      const montant = Math.round(Number(donnees.invoice?.total_amount ?? ligne.montant));
+    // On ne croit pas la notification sur parole : on redemande à PayDunya
+    // le statut et le montant réels de la facture (API « confirm »).
+    const ident = config.identifiants;
+    if (String(ident.privateKey || '').startsWith('test_')) throw new Error('Clés de test : paiement ignoré');
+    const rep = await fetch(`https://app.paydunya.com/api/v1/checkout-invoice/confirm/${encodeURIComponent(invoiceToken)}`, {
+      headers: {
+        'Content-Type': 'application/json',
+        'PAYDUNYA-MASTER-KEY': ident.masterKey,
+        'PAYDUNYA-PRIVATE-KEY': ident.privateKey,
+        'PAYDUNYA-TOKEN': ident.token,
+      },
+    });
+    const confirme = await rep.json();
+    if (confirme.response_code !== '00') throw new Error('Facture introuvable chez PayDunya');
+    if (confirme.mode && confirme.mode !== 'live') throw new Error('Paiement de test ignoré');
+    const statutReel = confirme.status;
+
+    if (statutReel === 'completed') {
+      const montant = Math.round(Number(confirme.invoice?.total_amount));
+      // Le montant payé doit être exactement celui du lien créé par l'école
+      if (montant !== Math.round(Number(ligne.montant))) throw new Error(`Montant différent de celui attendu (${montant} au lieu de ${ligne.montant})`);
+
+      // Verrou : un seul passage peut faire passer la ligne de « en_attente »
+      // à « reussi » (si PayDunya envoie deux fois la notification, le
+      // paiement n'est enregistré qu'une fois).
+      const { data: verrou } = await supabaseAdmin.from('paiements_en_ligne')
+        .update({ statut: 'reussi', updated_at: new Date().toISOString() })
+        .eq('id', ligne.id).eq('statut', 'en_attente').select('id');
+      if (!verrou || verrou.length === 0) throw new Error('Paiement déjà traité');
 
       const { data: paiement } = await supabaseAdmin.from('paiements_scolarite').insert({
         ecole_id: ecoleId,
@@ -78,7 +114,6 @@ Deno.serve(async (req) => {
       }).select().single();
 
       await supabaseAdmin.from('paiements_en_ligne').update({
-        statut: 'reussi',
         paiement_scolarite_id: paiement?.id ?? null,
         updated_at: new Date().toISOString(),
       }).eq('id', ligne.id);
@@ -94,11 +129,11 @@ Deno.serve(async (req) => {
           auteur_role: 'systeme',
         });
       }
-    } else if (statut === 'failed' || statut === 'cancelled') {
+    } else if (statutReel === 'failed' || statutReel === 'cancelled') {
       await supabaseAdmin.from('paiements_en_ligne').update({
-        statut: statut === 'failed' ? 'echoue' : 'expire',
+        statut: statutReel === 'failed' ? 'echoue' : 'expire',
         updated_at: new Date().toISOString(),
-      }).eq('id', ligne.id);
+      }).eq('id', ligne.id).eq('statut', 'en_attente');
     }
 
     return new Response(JSON.stringify({ ok: true }), { headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } });

@@ -150,6 +150,20 @@ async function requete(accessToken, chemin, options = {}){
   });
   verifier('notifier-absence-eleve refuse un élève inexistant', notifRes.status === 400);
 
+  section('7. Paiement en ligne — clés protégées, aucune fausse confirmation acceptée');
+  const cfgSec = await requete(tokenSecretariat, `/rest/v1/paiement_en_ligne_config?select=identifiants&limit=1`);
+  verifier('Le secrétariat ne lit pas les clés PayDunya', Array.isArray(cfgSec.data) && cfgSec.data.length === 0, `reçu ${JSON.stringify(cfgSec.data)?.slice(0,80)}`);
+  const cfgDev = await requete(tokenDeveloppeur, `/rest/v1/paiement_en_ligne_config?select=identifiants&limit=1`);
+  verifier('Le développeur ne lit pas non plus les clés PayDunya', Array.isArray(cfgDev.data) && cfgDev.data.length === 0, `reçu ${JSON.stringify(cfgDev.data)?.slice(0,80)}`);
+  const vueCfg = await requete(tokenSecretariat, `/rest/v1/paiement_en_ligne_config_lecture?select=actif`);
+  verifier('La vue sans clés reste lisible par le personnel', vueCfg.ok);
+  const fauxLien = await requete(tokenSecretariat, `/rest/v1/paiements_en_ligne`, { method:'POST', body: JSON.stringify({ eleve_id:'00000000-0000-4000-8000-000000000001', tranche:'x', montant:1, statut:'reussi' }) });
+  verifier('Personne ne crée une tentative de paiement depuis le navigateur', !fauxLien.ok, `statut ${fauxLien.status}`);
+  const corpsFaux = new URLSearchParams({ 'data[custom_data][ecole_id]':'00000000-0000-4000-8000-000000000001', 'data[invoice][token]':'faux', 'data[status]':'completed', 'data[hash]':'0'.repeat(128) });
+  const webhookFaux = await fetch(`${URL_BASE}/functions/v1/webhook-paiement-en-ligne`, { method:'POST', body: corpsFaux });
+  const webhookRep = await webhookFaux.json().catch(() => ({}));
+  verifier('Le webhook rejette une fausse confirmation de paiement', webhookRep.ok === false, JSON.stringify(webhookRep).slice(0,80));
+
   console.log('\n' + '='.repeat(40));
   console.log(`Résultat : ${nbOk} réussi(s), ${nbEchec} échoué(s)`);
   process.exit(nbEchec > 0 ? 1 : 0);
