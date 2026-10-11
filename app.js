@@ -1709,6 +1709,7 @@ const VERSIONS = [
       'Pointage GPS : le lien est envoyé à l’enseignant par WhatsApp.',
       'Fiche élève : une question de confirmation si la date d’inscription est dans le futur.',
       'Matricules : deux élèves ne peuvent plus avoir le même numéro.',
+      'Élèves & Inscriptions : encadré « Fiches à vérifier » pour corriger les dates ou numéros mal saisis.',
     ],
   } },
   { version: '2026.10.11', nouveautes: {
@@ -2086,6 +2087,49 @@ function renderEleves(){
   return renderEleveListe();
 }
 
+// Fiches à vérifier : l'école voit elle-même ce qui empêche l'application de
+// bien fonctionner (date impossible, numéro de parent manquant ou mal saisi,
+// qui ferait échouer le bouton WhatsApp). Élèves actifs uniquement.
+function numerosParentValides(tel){
+  const morceaux = String(tel || '').split(/\s*[\/;,|]\s*|\s+-\s+|\s+et\s+/i)
+    .map(m => m.replace(/\D/g, '').replace(/^225/, '')).filter(m => m.length);
+  return morceaux.length > 0 && morceaux.every(m => m.length === 10);
+}
+function problemesFicheEleve(e){
+  const p = [];
+  const erreurDate = verifierDatesEleve(e.dateNaissance, e.dateInscription);
+  if(!e.dateNaissance) p.push('date de naissance manquante');
+  else if(erreurDate) p.push('date de naissance impossible');
+  if(e.dateInscription && e.dateInscription > todayISO()) p.push('date d’inscription dans le futur');
+  if(!String(e.parentTel || '').trim()) p.push('numéro du parent manquant');
+  else if(!numerosParentValides(e.parentTel)) p.push('numéro du parent à vérifier (10 chiffres attendus)');
+  if(!String(e.parentNom || '').trim()) p.push('nom du parent manquant');
+  return p;
+}
+function renderFichesAVerifier(){
+  if(!['secretariat','direction','fondation'].includes(ui.role)) return '';
+  const fiches = DB.eleves.filter(e => e.statut === 'Actif')
+    .map(e => ({ e, p: problemesFicheEleve(e) })).filter(x => x.p.length)
+    .sort((a, b) => a.e.nom.localeCompare(b.e.nom));
+  if(fiches.length === 0) return '';
+  const ouvert = ui.filters.fichesAVerifierOuvert;
+  return `
+    <div class="panel">
+      <div class="panel-head">
+        <div><h2>⚠️ Fiches à vérifier (${fiches.length})</h2><div class="sub">Informations manquantes ou impossibles — à corriger avec les documents de l'élève</div></div>
+        <button class="btn secondary sm" onclick="ui.filters.fichesAVerifierOuvert=${!ouvert}; renderView('eleves')">${ouvert ? 'Masquer' : 'Afficher'}</button>
+      </div>
+      ${ouvert ? `<div class="table-wrap"><table>
+        <thead><tr><th>Élève</th><th>Classe</th><th>À corriger</th><th></th></tr></thead>
+        <tbody>${fiches.map(({e, p}) => `<tr>
+          <td>${escapeHtml(eleveFullName(e))}<br><span class="hint">${escapeHtml(e.matricule || '')}</span></td>
+          <td>${escapeHtml(classeName(e.classeId))}</td>
+          <td>${p.map(x => `<span class="badge amber" style="margin:1px;">${escapeHtml(x)}</span>`).join(' ')}</td>
+          <td><button class="btn secondary sm" onclick="openEleveForm('${e.id}')">Corriger</button></td>
+        </tr>`).join('')}</tbody>
+      </table></div>` : ''}
+    </div>`;
+}
 function toggleEleveNiveau(key){
   const f = ui.filters.eleves;
   f.collapsed = f.collapsed || {};
@@ -2167,6 +2211,7 @@ function renderEleveListe(){
 
   return `
   <div class="view active">
+    ${renderFichesAVerifier()}
     <div class="panel">
       <div class="panel-head">
         <div><h2>Liste des élèves</h2><div class="sub">${DB.eleves.length} élève(s) au total</div></div>
