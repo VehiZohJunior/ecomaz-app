@@ -1,0 +1,72 @@
+/* EcoMaZ — mise en page des documents imprimables (plaquette, guide).
+   Couleurs de la charte (ecomaz-tokens.css). PDF produit par tools/generer_documents.py */
+@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap');
+:root{
+  --vert:#14392d; --vert-2:#1f5442; --vert-clair:#e6efe9; --or:#e8b04b; --or-clair:#fbf1dc;
+  --terre:#a4532f; --texte:#1d2a24; --gris:#5c6b64; --ligne:#d9e2dc; --papier:#fbfaf6;
+}
+@page{ size:A4; margin:0; }
+*{ box-sizing:border-box; }
+html,body{ margin:0; padding:0; background:#fff; color:var(--texte); font-family:'Nunito','Segoe UI',sans-serif; font-size:10.5pt; line-height:1.45;
+  -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+.page{ width:210mm; height:297mm; overflow:hidden; position:relative; page-break-after:always; background:var(--papier); }
+.page:last-child{ page-break-after:auto; }
+.page.auto{ height:auto; min-height:297mm; overflow:visible; }
+.corps{ padding:12mm 15mm 14mm; }
+h1,h2,h3{ margin:0; line-height:1.15; color:var(--vert); }
+h1{ font-size:30pt; font-weight:900; }
+h2{ font-size:15pt; font-weight:900; margin-bottom:3mm; }
+h3{ font-size:11.5pt; font-weight:800; margin-bottom:1mm; }
+p{ margin:0 0 2mm; }
+.bandeau{ background:linear-gradient(160deg,var(--vert-2),var(--vert)); color:#fff; padding:12mm 15mm 10mm; position:relative; overflow:hidden; }
+.bandeau::after{ content:''; position:absolute; right:-40mm; top:-50mm; width:120mm; height:120mm; border-radius:50%; background:var(--or); opacity:.09; }
+.bandeau h1{ color:#fff; }
+.bandeau .trait{ width:26mm; height:1.6mm; background:var(--or); margin:3mm 0 4mm; border-radius:1mm; }
+.bandeau .accroche{ font-size:14pt; font-weight:700; color:#e3efe8; max-width:150mm; }
+.sur-titre{ text-transform:uppercase; letter-spacing:.12em; font-size:8.5pt; font-weight:900; color:var(--terre); margin-bottom:1.5mm; }
+.grille{ display:grid; grid-template-columns:1fr 1fr; gap:4mm; }
+.grille-3{ display:grid; grid-template-columns:repeat(3,1fr); gap:4mm; }
+.carte{ background:#fff; border:0.3mm solid var(--ligne); border-radius:4mm; padding:4mm 4.5mm; break-inside:avoid; }
+.carte .pastille{ display:inline-flex; width:9mm; height:9mm; border-radius:2.5mm; align-items:center; justify-content:center; background:var(--vert-clair); color:var(--vert); margin-bottom:2mm; }
+.carte.or .pastille{ background:var(--or-clair); color:#8a5a00; }
+.carte.terre .pastille{ background:#f6e3da; color:var(--terre); }
+.pastille svg{ width:5mm; height:5mm; }
+.carte p{ color:var(--gris); font-size:9.5pt; margin:0; }
+.section{ margin-top:6mm; }
+.journee{ display:grid; grid-template-columns:repeat(4,1fr); gap:3mm; }
+.journee .h{ font-size:16pt; font-weight:900; color:var(--or); line-height:1; }
+.journee .t{ font-weight:800; color:var(--vert); margin:1mm 0; }
+.journee p{ font-size:9pt; color:var(--gris); }
+.niveaux{ display:flex; flex-wrap:wrap; gap:2mm; }
+.niveaux span{ background:var(--vert-clair); color:var(--vert); font-weight:800; border-radius:10mm; padding:1.2mm 4mm; font-size:9.5pt; }
+ul.coches{ list-style:none; margin:0; padding:0; }
+ul.coches li{ position:relative; padding-left:6mm; margin-bottom:1.6mm; }
+ul.coches li::before{ content:''; position:absolute; left:0; top:1.6mm; width:3mm; height:3mm; border-radius:50%; background:var(--or); }
+.prix{ font-size:22pt; font-weight:900; color:var(--vert); line-height:1.1; }
+.prix span{ font-size:10pt; font-weight:700; color:var(--gris); }
+.carte.forte{ background:var(--vert); border-color:var(--vert); }
+.carte.forte h3,.carte.forte .prix{ color:#fff; }
+.carte.forte p,.carte.forte .prix span{ color:#cfe3da; }
+.encadre{ background:var(--or-clair); border-left:1.6mm solid var(--or); border-radius:2mm; padding:3.5mm 4.5mm; }
+.contact{ background:var(--vert); color:#fff; border-radius:4mm; padding:6mm; display:grid; grid-template-columns:1.2fr 1fr; gap:5mm; align-items:center; }
+.contact h2{ color:#fff; }
+.contact p{ color:#cfe3da; }
+.contact .ligne{ font-weight:800; font-size:11pt; margin-bottom:1.5mm; color:#fff; }
+.contact .ligne b{ color:var(--or); font-weight:900; display:inline-block; min-width:24mm; }
+.pied{ position:absolute; bottom:6mm; left:15mm; right:15mm; display:flex; justify-content:space-between; font-size:8pt; color:var(--gris); }
+
+/* Guide */
+.role{ margin-top:6mm; break-inside:auto; }
+.role-tete{ display:flex; align-items:center; gap:3mm; background:var(--vert); color:#fff; border-radius:3mm; padding:2.5mm 4mm; margin-bottom:3mm; break-after:avoid; }
+.role-tete h2{ color:#fff; margin:0; font-size:13pt; }
+.role-tete .qui{ margin-left:auto; font-size:8.5pt; color:#cfe3da; font-weight:700; }
+.tache{ background:#fff; border:0.3mm solid var(--ligne); border-radius:3mm; padding:3mm 4mm; margin-bottom:3mm; break-inside:avoid; }
+.tache h3{ display:flex; gap:2mm; align-items:baseline; }
+.tache h3 .num{ color:var(--or); font-weight:900; }
+.tache ol{ margin:1mm 0 0; padding-left:6mm; }
+.tache li{ margin-bottom:0.8mm; }
+.chemin{ font-weight:800; color:var(--vert); background:var(--vert-clair); border-radius:1.5mm; padding:0 1.5mm; white-space:nowrap; }
+.astuce{ font-size:9pt; color:var(--gris); margin-top:1.5mm; }
+.astuce b{ color:var(--terre); }
+.sommaire{ columns:2; column-gap:8mm; }
+.sommaire div{ break-inside:avoid; margin-bottom:2mm; }
