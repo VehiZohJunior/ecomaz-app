@@ -239,7 +239,7 @@ def page():
 </footer>
 
 <script src="site-config.js"></script>
-<script src="../motion.js"></script>
+<script src="../motion.min.js"></script>
 <script src="script.js"></script>
 </body>
 </html>

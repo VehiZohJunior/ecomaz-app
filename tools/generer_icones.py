@@ -46,13 +46,14 @@ js = """/* =====================================================================
    concerné. Le remplacement a lieu avant l'affichage (pas de clignotement).
    ========================================================================= */
 (function(){
-  const ICONES = """ + json.dumps(icones, ensure_ascii=False, indent=0).replace('\n', '\n    ') + """;
+  // Les dessins des icônes sont dans icones.svg (fichier image, mis en cache,
+  // non analysé comme du JavaScript) : ici seulement la liste des noms.
+  const NOMS = new Set(""" + json.dumps(sorted(icones.keys())) + """);
   const EMOJIS = """ + json.dumps(EMOJIS, ensure_ascii=False, indent=0).replace('\n', '\n    ') + """;
 
   function svg(nom, classe){
-    const corps = ICONES[nom];
-    if(!corps) return '';
-    return '<svg class="ico' + (classe ? ' ' + classe : '') + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">' + corps + '</svg>';
+    if(!NOMS.has(nom)) return '';
+    return '<svg class="ico' + (classe ? ' ' + classe : '') + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="icones.svg#i-' + nom + '"/></svg>';
   }
   // Emojis connus triés du plus long au plus court (séquences composées d'abord)
   const CLES = Object.keys(EMOJIS).sort((a, b) => b.length - a.length);
@@ -159,7 +160,7 @@ js = """/* =====================================================================
     traiter(document.body);
     obs.observe(document.body, { childList:true, subtree:true, characterData:true });
   }
-  window.EmIcones = { svg, traiter, noms: Object.keys(ICONES) };
+  window.EmIcones = { svg, traiter, noms: Array.from(NOMS) };
   if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', demarrer); else demarrer();
 })();
 """
@@ -169,3 +170,12 @@ print(len(icones), 'icônes,', len(js), 'octets')
 # Lisibilité : les sélecteurs de variante invisibles sont écrits en échappement \uFE0F
 _s = open(DST, encoding='utf-8').read().replace("'\uFE0F'", "'\\uFE0F'")
 open(DST, 'w', encoding='utf-8').write(_s)
+
+# Planche d'icônes (sprite) : un <symbol> par icône, référencé par <use href="icones.svg#i-nom">
+SPRITE = os.path.join(os.path.dirname(DST), 'icones.svg')
+with open(SPRITE, 'w', encoding='utf-8') as f:
+    f.write('<svg xmlns="http://www.w3.org/2000/svg">\n<!-- Icônes Lucide (lucide-static 1.55.0), licence ISC : https://lucide.dev -->\n')
+    for n in sorted(icones):
+        f.write(f'<symbol id="i-{n}" viewBox="0 0 24 24">{icones[n]}</symbol>\n')
+    f.write('</svg>\n')
+print('icones.svg écrit')

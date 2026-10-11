@@ -117,6 +117,12 @@ async function requete(accessToken, chemin, options = {}){
     console.log('  ⚠️  PARENT_EMAIL absent de tests/.env.test — test ignoré');
   }
 
+  section('3quater. Applaudissements : réservés aux parents, personne ne voit qui a applaudi');
+  const appStaff = await requete(tokenSecretariat, `/rest/v1/rpc/applaudir_honneur`, { method:'POST', body: JSON.stringify({ p_categorie:'eleve', p_nom:'x' }) });
+  verifier('Le personnel ne peut pas applaudir', !appStaff.ok, `statut ${appStaff.status}`);
+  const appTable = await requete(tokenSecretariat, `/rest/v1/applaudissements_honneur?select=*`);
+  verifier('La table des applaudissements n est pas lisible directement', Array.isArray(appTable.data) && appTable.data.length === 0, `reçu ${JSON.stringify(appTable.data)?.slice(0,60)}`);
+
   section('4. RLS — écoles (isolation développeur)');
   const ecolesDev = await requete(tokenDeveloppeur, `/rest/v1/ecoles?select=id,nom_ecole`);
   verifier('Le développeur voit la liste des écoles', Array.isArray(ecolesDev.data) && ecolesDev.data.length > 0);

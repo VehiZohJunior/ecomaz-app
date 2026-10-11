@@ -1619,3 +1619,53 @@ create policy "lecture presences_eleves parent" on presences_eleves for select
         and pe.parent_profile_id = auth.uid()
     )
   );
+
+-- =====================================================================
+-- 44. APPLAUDISSEMENTS DU TABLEAU D'HONNEUR (2026-10-11)
+-- =====================================================================
+-- Demande de Vehi Zoh Junior : bouton « Applaudir » de la console parent.
+-- Un seul applaudissement par parent et par lauréat (catégorie + nom affiché).
+-- Aucun accès direct à la table : tout passe par deux fonctions qui ne
+-- révèlent jamais QUI a applaudi (seulement le total et « moi oui/non »).
+create table if not exists applaudissements_honneur (
+  id uuid primary key default gen_random_uuid(),
+  ecole_id uuid not null references ecoles(id) on delete cascade,
+  categorie text not null check (categorie in ('eleve','enseignant')),
+  nom_cle text not null,
+  parent_id uuid not null references auth.users(id) on delete cascade,
+  created_at timestamptz default now(),
+  unique (ecole_id, categorie, nom_cle, parent_id)
+);
+alter table applaudissements_honneur enable row level security;
+-- (aucune policy : lecture et écriture uniquement via les fonctions ci-dessous)
+
+create or replace function applaudir_honneur(p_categorie text, p_nom text)
+returns integer language plpgsql security definer set search_path = public as $$
+declare cle text := lower(btrim(p_nom)); total integer;
+begin
+  if not est_parent() then raise exception 'Réservé aux parents'; end if;
+  if not exists (select 1 from tableau_honneur t where t.ecole_id = mon_ecole_id()
+                 and t.categorie = p_categorie and lower(btrim(t.nom_affiche)) = cle and cle <> '') then
+    raise exception 'Lauréat introuvable';
+  end if;
+  insert into applaudissements_honneur (ecole_id, categorie, nom_cle, parent_id)
+    values (mon_ecole_id(), p_categorie, cle, auth.uid())
+    on conflict (ecole_id, categorie, nom_cle, parent_id) do nothing;
+  select count(*) into total from applaudissements_honneur
+    where ecole_id = mon_ecole_id() and categorie = p_categorie and nom_cle = cle;
+  return total;
+end $$;
+
+create or replace function compter_applaudissements()
+returns table (categorie text, nom_cle text, total integer, moi boolean)
+language sql stable security definer set search_path = public as $$
+  select a.categorie, a.nom_cle, count(*)::integer, bool_or(a.parent_id = auth.uid())
+  from applaudissements_honneur a
+  where a.ecole_id = mon_ecole_id()
+  group by a.categorie, a.nom_cle
+$$;
+
+revoke all on function applaudir_honneur(text, text) from public, anon;
+revoke all on function compter_applaudissements() from public, anon;
+grant execute on function applaudir_honneur(text, text) to authenticated;
+grant execute on function compter_applaudissements() to authenticated;

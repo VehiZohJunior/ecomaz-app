@@ -1109,7 +1109,6 @@ function enterAppParent(){
   $('#sidebar').style.display = 'none';
   $('#burger').style.display = 'none';
   applyBranding();
-  // En-tête (spec § 5.1.1) : pastille « E » + « ECOMAZ PARENTS » + nom de l'école
   $('#viewTitle').innerHTML = `<span class="pt-marque em-rise" style="--i:0"><span class="pt-logo" aria-hidden="true">E</span>
     <span class="pt-textes"><span class="pt-sur">EcoMaZ Parents</span><span class="pt-ecole">${escapeHtml(DB.meta.nomEcole || '')}</span></span></span>
     <span class="sr-only">${escapeHtml(window.ESPACE_FIXE ? nomApplication() : 'Espace Parent')}</span>`;
@@ -1121,6 +1120,7 @@ function enterAppParent(){
   if(!nav){ nav = document.createElement('nav'); nav.id = 'parentNav'; nav.className = 'parent-nav'; nav.setAttribute('aria-label', 'Navigation de la console parent'); document.body.appendChild(nav); }
   nav.innerHTML = renderNavParent('accueil');
   document.body.classList.add('has-parent-nav');
+  afficherNouveautes();
   startIdleWatcher();
   startPollingBulles();
 }
@@ -1132,8 +1132,6 @@ function renderActualitesParent(){
   const actus = (DB.actualitesAffichage||[]).slice().sort((a,b)=> (b.createdAt||'').localeCompare(a.createdAt||'')).slice(0, 8);
   if(!actus.length) return '';
   const vivant = ui.role === 'parent';
-  // Carte actualité (spec § 5.1.5) : bloc date à gauche (date de publication,
-  // aucune date d'événement n'étant saisie), texte saisi par l'école intact.
   const carte = (a, i) => {
     const d = a.createdAt ? new Date(a.createdAt) : null;
     const jour = d ? d.getDate() : '';
@@ -1160,22 +1158,31 @@ function basculerActus(btn){
   btn.setAttribute('aria-expanded', String(ouvrir));
   btn.textContent = ouvrir ? 'Voir moins' : `Tout voir (${(DB.actualitesAffichage||[]).slice(0,8).length})`;
 }
-// Tableau d'honneur (spécification motion design § 5.1.6, corrige D1/D2/D3) :
-// cartes compactes SANS verso (l'ancienne carte retournable affichait le nom
-// en miroir sur certains téléphones). Une personne honorée sur plusieurs
-// périodes n'a qu'UNE carte, avec un badge par période.
 const HONNEUR_BADGES = { mois:'Mois', trimestre:'Trimestre', annee:'Année' };
-// Bouton « Applaudir » (spec § 5.1.6) : la persistance demande une table en
-// base, pas encore créée (accord nécessaire). Désactivé tant que false.
-const ENABLE_APPLAUSE = false;
-function applaudir(btn){
-  if(!ENABLE_APPLAUSE || btn.getAttribute('aria-pressed') === 'true') return;
-  const compteur = btn.querySelector('.hn-applause-n');
-  if(compteur){ compteur.textContent = String((parseInt(compteur.textContent,10)||0) + 1); if(window.EmMotion) EmMotion.replay(compteur, 'em-bump'); }
-  if(window.EmMotion) EmMotion.burst(btn.closest('.hn-carte'));
-  btn.setAttribute('aria-pressed', 'true');
-  btn.disabled = true;
-  const lib = btn.querySelector('.hn-applause-lib'); if(lib) lib.textContent = 'Applaudi';
+const ENABLE_APPLAUSE = true;
+function applaudissementsDe(categorie, nom){
+  const cle = String(nom||'').trim().toLowerCase();
+  return (DB.applaudissements||[]).find(a => a.categorie === categorie && a.nomCle === cle) || { total:0, moi:false };
+}
+async function applaudir(btn){
+  if(!ENABLE_APPLAUSE || btn.getAttribute('aria-pressed') === 'true' || btn.dataset.envoi) return;
+  btn.dataset.envoi = '1';
+  const { categorie, nom } = btn.dataset;
+  try{
+    const { data, error } = await sb.rpc('applaudir_honneur', { p_categorie: categorie, p_nom: nom });
+    if(error) throw error;
+    const cle = String(nom).trim().toLowerCase();
+    DB.applaudissements = (DB.applaudissements||[]).filter(a => !(a.categorie === categorie && a.nomCle === cle));
+    DB.applaudissements.push({ categorie, nomCle: cle, total: data, moi: true });
+    const compteur = btn.querySelector('.hn-applause-n');
+    if(compteur){ compteur.textContent = String(data); if(window.EmMotion) EmMotion.replay(compteur, 'em-bump'); }
+    if(window.EmMotion) EmMotion.burst(btn.closest('.hn-carte'));
+    btn.setAttribute('aria-pressed', 'true');
+    btn.disabled = true;
+    const lib = btn.querySelector('.hn-applause-lib'); if(lib) lib.textContent = 'Applaudi';
+  }catch(e){
+    toast('Erreur : applaudissement non enregistré, réessayez.');
+  }finally{ delete btn.dataset.envoi; }
 }
 function initialesHonneur(nom){
   const mots = String(nom||'').replace(/\b(M|Mme|Mlle|Mr|Dr|Pr)\.?(?=\s)/gi, ' ').trim().split(/\s+/).filter(Boolean);
@@ -1212,7 +1219,7 @@ function renderTableauHonneurParent(){
           ${l.detail ? `<span class="hn-detail">${escapeHtml(l.detail)}</span>` : ''}
           <span class="hn-badges">${l.periodes.map(p => `<span class="hn-badge">${HONNEUR_BADGES[p] || p}</span>`).join('')}</span>
           ${l.commentaire ? `<span class="hn-mot">« ${escapeHtml(l.commentaire)} »</span>` : ''}
-          ${ENABLE_APPLAUSE ? `<button type="button" class="hn-applause em-press" aria-pressed="false" onclick="applaudir(this)">${window.EmIcones ? EmIcones.svg('thumbs-up') : ''}<span class="hn-applause-lib">Applaudir</span><span class="hn-applause-n" aria-live="polite">0</span></button>` : ''}
+          ${ENABLE_APPLAUSE && vivant ? (() => { const ap = applaudissementsDe(cat.id, l.nom); return `<button type="button" class="hn-applause em-press" data-categorie="${cat.id}" data-nom="${escapeHtml(l.nom)}" aria-pressed="${ap.moi}" ${ap.moi ? 'disabled' : ''} onclick="applaudir(this)" aria-label="Applaudir ${escapeHtml(l.nom)}">${window.EmIcones ? EmIcones.svg('thumbs-up') : ''}<span class="hn-applause-lib">${ap.moi ? 'Applaudi' : 'Applaudir'}</span><span class="hn-applause-n" aria-live="polite">${ap.total}</span></button>`; })() : ''}
         </article>`).join('')}
       </div>
     `).join('')}
@@ -1222,7 +1229,6 @@ const JOURS_SEMAINE = ['Lun','Mar','Mer','Jeu','Ven'];
 const JOURS_LONGS = ['lundi','mardi','mercredi','jeudi','vendredi'];
 function isoLocal(d){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
 function renderPresenceSemaine(e){
-  // Bloc masqué si les présences n'ont pas pu être lues (jamais de fausses données)
   if(!Array.isArray(DB.presencesSemaine)) return '';
   const lundi = debutSemaine(new Date());
   const aujourdhui = isoLocal(new Date());
@@ -1258,7 +1264,6 @@ function renderAlerteAbsence(enfants){
   const auj = isoLocal(new Date());
   const absents = enfants.filter(e => DB.presencesSemaine.some(x => x.eleveId === e.id && x.date === auj && x.statut === 'Absent'));
   if(!absents.length) return '';
-  // Affichée immédiatement, sans délai d'animation (spec § 5.1.4)
   return absents.map(e => `<div class="alerte-absence" role="alert">
     <span class="alerte-ic" aria-hidden="true">${window.EmIcones ? EmIcones.svg('triangle-alert') : '⚠️'}</span>
     <div><strong>${escapeHtml(e.prenom || eleveFullName(e))} est noté(e) absent(e) aujourd’hui.</strong>
@@ -1306,8 +1311,6 @@ function renderParentDashboard(){
     ${renderTableauHonneurParent()}
   </div>`;
 }
-// Barre de navigation basse de la console parent (spec § 5.1.7) :
-// Accueil, Messages, Suggestions, Profil — uniquement des entrées qui existent.
 const NAV_PARENT = [
   {id:'accueil', ic:'house', lib:'Accueil'},
   {id:'msg', ic:'mail', lib:'Messages'},
@@ -1325,7 +1328,6 @@ function renderNavParent(actif){
 }
 function navParent(id, ev){
   if(ev) ev.stopPropagation();
-  // Mise à jour sur place (et non re-rendu) pour que la pastille GLISSE vers l'onglet choisi
   const nav = document.getElementById('parentNav');
   const idx = NAV_PARENT.findIndex(n => n.id === id);
   if(nav && idx >= 0){
@@ -1564,8 +1566,6 @@ async function handleMarquerSuggestionLue(id){
    chargerDBPortier() dans supabase-client.js).
    --------------------------------------------------------------------- */
 function enterAppPortier(){
-  // Console portier (spec § 5.2) : thème sombre dédié, toujours actif (lecture
-  // rapide en extérieur), registre « opérationnel » sans animation décorative.
   document.body.classList.add('theme-portier');
   $('#loginGate').classList.remove('open');
   $('#appRoot').style.display = '';
@@ -1581,6 +1581,7 @@ function enterAppPortier(){
   ui.filters.portierRecherche = '';
   refreshPortierDashboard();
   startIdleWatcher();
+  afficherNouveautes();
 }
 function refreshPortierDashboard(){
   $('#viewContainer').innerHTML = renderPortierDashboard();
@@ -1653,9 +1654,6 @@ function renderPortierBarreRecherche(){
     oninput="ui.filters.portierRecherche=this.value; refreshPortierDashboard()"
     style="width:100%;padding:14px;font-size:var(--fs-md);border:1px solid var(--border);border-radius:var(--r-card);margin-bottom:16px;">`;
 }
-// États visuels du signalement (spec § 5.2) : envoi (durée réelle, aucun
-// délai artificiel) → confirmation ou échec. L'enregistrement lui-même est
-// inchangé : une ligne dans notifications_portier, comme avant.
 function renderEtatPortier(etat, e, detail){
   const eleve = e ? `<div class="gate-fiche"><strong>${escapeHtml(eleveFullName(e))}</strong><span>${escapeHtml(classeName(e.classeId))}</span>
       ${detail && detail.heure ? `<span class="gate-heure">Signalé à ${detail.heure}</span>` : ''}</div>` : '';
@@ -1692,6 +1690,46 @@ async function handleNotifierPortier(eleveId){
   }
 }
 
+// Notification de mise à jour : affichée une fois par version, par appareil et par compte
+const APP_VERSION = '2026.10.11';
+const NOUVEAUTES = {
+  commun: [
+    'Nouvelle apparence : couleurs vert forêt et or, police plus lisible, icônes plus nettes.',
+    'Mode sombre : bouton lune / soleil en haut de l’écran.',
+  ],
+  parent: [
+    'La fiche de votre enfant affiche sa présence de la semaine.',
+    'Les actualités de l’école sont présentées avec leur date.',
+    'Tableau d’honneur : vous pouvez désormais applaudir les lauréats.',
+    'Barre en bas : Accueil, Messages, Suggestions et Profil (déconnexion).',
+  ],
+  portier: [
+    'Écran sombre plus lisible dehors, grands boutons « Prévenir ».',
+    'Confirmation claire quand l’enseignant est prévenu, avec l’heure.',
+  ],
+  personnel: [
+    'Recherche rapide : bouton loupe (ou Ctrl + K) pour trouver un élève ou une page.',
+    'Sur téléphone : barre de raccourcis en bas de l’écran.',
+    'Tableau de bord : messages clairs quand l’appel n’est pas encore fait.',
+    'Fiche élève : la date de naissance est vérifiée à la saisie.',
+  ],
+};
+function afficherNouveautes(){
+  try{
+    const cle = `ecomaz_nouveautes_${APP_VERSION}_${session.userId || ''}`;
+    if(!session.userId || localStorage.getItem(cle)) return;
+    const role = ui.role === 'parent' ? 'parent' : ui.role === 'portier' ? 'portier' : 'personnel';
+    const liste = NOUVEAUTES.commun.concat(NOUVEAUTES[role]).map(t => `<li>${escapeHtml(t)}</li>`).join('');
+    setTimeout(() => {
+      if(document.getElementById('modalBackdrop').classList.contains('open')) return;
+      openModal('EcoMaZ a été mis à jour', `
+        <div class="maj-intro">✨ Votre application <strong>${escapeHtml(nomApplication())}</strong> vient d’être mise à jour. Vos données et vos habitudes ne changent pas.</div>
+        <ul class="maj-liste">${liste}</ul>
+        <div class="form-actions"><button type="button" class="btn" onclick="closeModal()">J’ai compris</button></div>`);
+      localStorage.setItem(cle, '1');
+    }, 900);
+  }catch(_e){ /* stockage indisponible : on n'insiste pas */ }
+}
 function enterApp(){
   document.body.classList.remove('theme-parent');
   $('#loginGate').classList.remove('open');
@@ -1706,6 +1744,7 @@ function enterApp(){
   majBanniereHorsLigne();
   synchroniserFileAttente();
   startPollingBulles();
+  afficherNouveautes();
 }
 
 /* ---------------------------------------------------------------------
@@ -1927,8 +1966,6 @@ function renderDashboard(){
 
   const maxEffectif = Math.max(...DB.classes.map(c=>DB.eleves.filter(e=>e.classeId===c.id && e.statut==='Actif').length), 1);
 
-  // Registre sobre (spec § 4) : la cascade et les compteurs ne jouent qu'une
-  // fois par session de page, pas à chaque retour sur le tableau de bord.
   const animer = !dashboardDejaAnime;
   dashboardDejaAnime = true;
   const barsHtml = DB.classes.map((c, i)=>{
@@ -1954,13 +1991,11 @@ function renderDashboard(){
 
   const elAbsentsCount = presToday.filter(p=>p.statut==='Absent').length;
   const elRetardCount = presToday.filter(p=>p.statut==='Retard').length;
-  // Bonne nouvelle d'abord (spec § 5.3.4) — mais sans l'annoncer si l'appel n'a pas été fait
   const alertesEleves = !presToday.length
     ? `<div class="hint">L'appel n'a pas encore été fait aujourd'hui.${hasAccess('presences-eleves') ? ` <a href="#" onclick="go('presences-eleves');return false;">Faire l'appel</a>` : ''}</div>`
     : (elAbsentsCount || elRetardCount)
       ? `<div class="alerte-pastilles"><span class="pastille-absent">${elAbsentsCount} élève(s) absent(s)</span><span class="pastille-retard">${elRetardCount} retard(s)</span></div>`
       : `<div class="alerte-ok">${window.EmIcones ? EmIcones.svg('circle-check') : ''}Aucune absence signalée aujourd'hui.</div>`;
-  // États vides explicites des chiffres clés (spec § 5.3.2, corrige D6)
   const lien = (vue, texte) => hasAccess(vue) ? `<a href="#" class="kpi-lien" onclick="go('${vue}');return false;">${texte}</a>` : '';
   const kpi = (i, icone, fond, valeur, libelle, vide) => `<div class="card kpi-carte${animer ? ' em-rise' : ''}" style="--i:${i}">
         <div class="card-top"><div class="icon-badge" style="background:${fond};">${icone}</div></div>
@@ -2338,7 +2373,6 @@ function verifierDatesEleve(naissance, inscription){
   const aujourdHui = todayISO();
   if(naissance > aujourdHui) return { champ:'dateNaissance', message:"La date de naissance ne peut pas être dans le futur." };
   if(inscription && naissance >= inscription) return { champ:'dateNaissance', message:"La date de naissance doit être antérieure à la date d'inscription (" + fmtDate(inscription) + ")." };
-  // Âge minimal plausible à l'inscription : 6 mois (garderie)
   const ref = new Date(inscription || aujourdHui); const n = new Date(naissance);
   const mois = (ref.getFullYear() - n.getFullYear())*12 + (ref.getMonth() - n.getMonth()) - (ref.getDate() < n.getDate() ? 1 : 0);
   if(mois < 6) return { champ:'dateNaissance', message:"L'enfant aurait moins de 6 mois à l'inscription : vérifiez la date de naissance." };
@@ -2355,7 +2389,6 @@ async function handleSaveEleve(ev){
     parentNom: fd.get('parentNom').trim(), parentTel: fd.get('parentTel').trim(),
     parentAdresse: fd.get('parentAdresse').trim(), dateInscription: fd.get('dateInscription') || todayISO(),
   };
-  // Cohérence des dates (spec § 6.2) : vérifiée à la saisie, message clair sous le champ
   const erreurDate = verifierDatesEleve(patch.dateNaissance, patch.dateInscription);
   ev.target.querySelectorAll('.field.has-error').forEach(f => { f.classList.remove('has-error'); const m = f.querySelector('.error-text'); if(m) m.remove(); });
   if(erreurDate){
@@ -3377,7 +3410,6 @@ function renderEmploiTemps(){
   ui.filters.ttClasse = classeId;
   const c = DB.classes.find(x=>x.id===classeId);
   const periodes = PERIODES_BY_CYCLE[c.cycle];
-  // Créneau en cours mis en évidence (spec § 5.4) : jour et heure de l'appareil
   const maintenant = new Date();
   const jourActuel = JOURS[(maintenant.getDay() + 6) % 7] || null;   // samedi/dimanche -> aucun
   const hhmm = `${String(maintenant.getHours()).padStart(2,'0')}:${String(maintenant.getMinutes()).padStart(2,'0')}`;

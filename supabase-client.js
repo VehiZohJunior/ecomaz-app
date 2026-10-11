@@ -522,6 +522,12 @@ async function chargerDBParent(){
     const res = await sb.from('presences_eleves').select('eleve_id,date,statut').eq('ecole_id', session.ecoleId).gte('date', iso(lundi)).lte('date', iso(vendredi));
     if(!res.error) presencesSemaine = rowsToCamel(res.data);
   }catch(_e){ presencesSemaine = null; }
+  // Applaudissements du tableau d'honneur (totaux + « déjà applaudi par moi »)
+  let applaudissements = [];
+  try{
+    const res = await sb.rpc('compter_applaudissements');
+    if(!res.error) applaudissements = rowsToCamel(res.data || []);
+  }catch(_e){ applaudissements = []; }
   if(ecoleRow.error) throw ecoleRow.error;
   if(eleves.error) throw eleves.error;
   if(classesRows.error) throw classesRows.error;
@@ -540,6 +546,7 @@ async function chargerDBParent(){
     eleves: rowsToCamel(eleves.data),
     classes: rowsToCamel(classesRows.data),
     presencesSemaine,
+    applaudissements,
     messages: rowsToCamel(messages.data),
     annoncesHoraires: rowsToCamel(annoncesHoraires.data),
     messagesInternes: rowsToCamel(messagesInternes.data),

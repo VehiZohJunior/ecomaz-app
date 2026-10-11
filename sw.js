@@ -6,20 +6,21 @@
    d'attente hors ligne (voir supabase-client.js) — pas ce fichier, qui ne
    s'occupe que des fichiers de l'application (HTML/CSS/JS/icônes).
    ========================================================================= */
-const CACHE_NAME = 'ecomaz-shell-v9';
+const CACHE_NAME = 'ecomaz-shell-v11';
 const SHELL_FILES = [
   './',
   './index.html',
   './parent.html',
   './portier.html',
-  './espace-fixe.js',
+  './espace-fixe.min.js',
   './ecomaz-tokens.css',
   './ecomaz-motion.css',
-  './motion.js',
-  './icones.js',
+  './motion.min.js',
+  './icones.min.js',
+  './icones.svg',
   './theme.css',
-  './theme.js',
-  './recherche.js',
+  './theme.min.js',
+  './recherche.min.js',
   './style.css',
   './app.js',
   './config.js',

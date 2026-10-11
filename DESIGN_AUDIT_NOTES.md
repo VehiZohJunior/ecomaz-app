@@ -112,3 +112,8 @@ Les noms complets sont dans le journal local (non publié).
 
 ### Performance (§ 8) — écart à signaler
 Poids JavaScript ajouté par la refonte (gzip) : ≈ 17 Ko (icones.js 8,6 Ko, chargé en différé ; app.js + 6,7 Ko pour les nouveaux écrans parent/portier/administration ; motion.js 1,4 Ko ; autres < 1 Ko). Le budget de la spécification est de 10 Ko : **dépassé d'environ 7 Ko**. Atténuations : icones.js est chargé en « defer » (ne bloque pas l'affichage) et tous les fichiers sont mis en cache par le service worker (coût uniquement au premier chargement). Réduction possible plus tard : minifier les fichiers (demande un outil de construction, aujourd'hui absent) ou retirer les icônes jamais affichées. Lighthouse n'a pas été lancé (outil non installé ici).
+
+## Après la mise en service (2026-10-11)
+- **Applaudissements** : table `applaudissements_honneur` + fonctions `applaudir_honneur` / `compter_applaudissements` (schema.sql section 44) ; un applaudissement par parent et par lauréat ; personne ne voit qui a applaudi ; bouton actif dans la console parent ; 2 tests de sécurité ajoutés (18 au total).
+- **Performance — budget respecté** : icônes déplacées dans `icones.svg` (planche d'images mise en cache, non analysée comme du JavaScript) ; scripts autonomes compactés (`*.min.js`, outil `tools/minifier.py` avec Deno déjà installé) ; commentaires ajoutés par la refonte retirés d'app.js. JavaScript ajouté par la refonte : **≈ 9,6 Ko gzip** (budget 10 Ko).
+- **Notification de mise à jour** : fenêtre « EcoMaZ a été mis à jour » montrée une fois par compte et par appareil (liste adaptée au rôle) ; vérification automatique des nouvelles versions toutes les 30 min et au retour sur l'appli, avec bandeau « Mettre à jour ».
