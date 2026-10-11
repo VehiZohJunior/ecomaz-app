@@ -3081,7 +3081,7 @@ function renderPresencesEnseignants(){
 
     <div class="panel">
       <div class="panel-head">
-        <div><h2>📍 Pointage GPS</h2><div class="sub">L'enseignant clique un lien reçu par SMS et valide sa position, sans se connecter à l'appli</div></div>
+        <div><h2>📍 Pointage GPS</h2><div class="sub">L'enseignant reçoit un lien par WhatsApp, l'ouvre et valide sa position, sans se connecter à l'appli</div></div>
         ${(DB.pointagesGps||[]).some(p=>p.date===date) ? `<button class="btn secondary sm no-print" onclick="exporterPointagesGpsCSV()">⬇️ Exporter (CSV)</button>` : ''}
       </div>
       ${!DB.meta.geofenceLatitude ? `<div class="hint">⚠️ La zone de l'établissement n'est pas encore configurée — allez dans <strong>Paramètres → Zone de l'établissement</strong> avant d'envoyer des liens.</div>` : `
@@ -3137,11 +3137,22 @@ function renderPointagesGpsDuJour(date){
 async function handleEnvoyerLienPointage(enseignantId, action){
   try{
     const { data, error } = await sb.functions.invoke('generer-lien-pointage', {
-      body: { enseignantId, action, origine: location.origin + location.pathname.replace(/[^/]*$/, '') },
+      body: { enseignantId, action, canal: 'whatsapp', origine: location.origin + location.pathname.replace(/[^/]*$/, '') },
     });
     if(error) throw new Error(await messageErreurFonction(error));
-    if(!data?.ok) throw new Error(data?.error || "Échec de l'envoi du lien");
-    toast(data.smsEnvoye ? 'Lien envoyé par SMS' : 'Lien créé, mais le SMS a échoué — vérifiez le numéro');
+    if(!data?.ok) throw new Error(data?.error || "Échec de la création du lien");
+    // Envoi gratuit par WhatsApp : la secrétaire n'a plus qu'à appuyer sur Envoyer.
+    // (Un vrai bouton plutôt qu'une ouverture automatique : les navigateurs
+    // bloquent les fenêtres ouvertes après une attente réseau.)
+    const t = enseignantById(enseignantId);
+    const lienWa = `https://wa.me/${encodeURIComponent(data.telephone)}?text=${encodeURIComponent(data.message)}`;
+    openModal(`Lien ${action === 'arrivee' ? 'd’arrivée' : 'de départ'} — ${t ? ensFullName(t) : ''}`, `
+      <p>Le lien est prêt (valable 30 minutes, utilisable une seule fois). Envoyez-le à l'enseignant :</p>
+      <div class="form-actions" style="flex-wrap:wrap;">
+        <a class="btn" href="${lienWa}" target="_blank" rel="noopener" onclick="setTimeout(closeModal, 400)">📲 Envoyer par WhatsApp</a>
+        <button type="button" class="btn secondary" onclick="closeModal()">Fermer</button>
+      </div>
+      <div class="hint">WhatsApp s'ouvre avec le message déjà écrit, au numéro de l'enseignant : appuyez sur Envoyer.</div>`);
   }catch(e){ alert('Erreur : ' + e.message); }
 }
 function exporterPointagesGpsCSV(){

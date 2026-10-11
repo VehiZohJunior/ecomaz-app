@@ -1,10 +1,15 @@
 // =====================================================================
-// EcoMaZ — Fonction Edge : génère et envoie par SMS un lien de pointage
-// GPS personnel (usage unique, expirant) pour un enseignant.
+// EcoMaZ — Fonction Edge : génère un lien de pointage GPS personnel
+// (usage unique, expirant 30 min) pour un enseignant.
 // =====================================================================
 // Sécurité : réservé au personnel administratif (secretariat/direction/
-// fondation). Le token lui-même n'est JAMAIS renvoyé au client — il ne
-// transite que dans le SMS envoyé au téléphone de l'enseignant.
+// fondation).
+// Envoi (décision de Vehi Zoh Junior, 2026-10-11) : par WhatsApp, gratuit —
+// la fonction renvoie le message et le numéro, l'application ouvre WhatsApp
+// et la secrétaire appuie sur Envoyer. Le lien reste à usage unique ; chaque
+// pointage garde sa position et son heure, visibles par la Direction.
+// canal = 'sms' (envoi Africa's Talking, payant) reste possible : le lien
+// n'est alors jamais renvoyé au client.
 // =====================================================================
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
@@ -40,7 +45,7 @@ Deno.serve(async (req) => {
       throw new Error('Réservé au personnel administratif');
     }
 
-    const { enseignantId, action, origine } = await req.json();
+    const { enseignantId, action, origine, canal } = await req.json();
     if (!enseignantId || !['arrivee', 'depart'].includes(action) || !origine) {
       throw new Error('Paramètres manquants');
     }
@@ -67,6 +72,12 @@ Deno.serve(async (req) => {
     const url = `${origine.replace(/\/$/, '')}/pointage-gps.html?token=${lien.token}`;
     const libelleAction = action === 'arrivee' ? 'votre arrivée' : 'votre départ';
     const message = `${ecole?.nom_ecole || 'École'} : cliquez ce lien pour valider ${libelleAction} (valable 30 min) : ${url}`;
+
+    if (canal === 'whatsapp') {
+      return new Response(JSON.stringify({ ok: true, message, telephone: normaliserTelephoneCI(enseignant.telephone).replace('+', '') }), {
+        headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+      });
+    }
 
     let smsEnvoye = false;
     try {
