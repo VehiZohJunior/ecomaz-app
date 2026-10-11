@@ -185,7 +185,7 @@ const VIEW_TITLES = {
 };
 
 /* --- Comptabilité --- */
-const DEVISE = 'FCFA';
+const DEVISE = 'F\u00a0CFA'; // format de la spécification : « 600 000 F CFA »
 const CATEGORIES_DEPENSES = ['Loyer','Entretien','Matériel pédagogique','Fournitures scolaires','Électricité & Eau','Transport','Restauration','Autre'];
 const TRANCHES_SCOLARITE = ['Inscription','Tranche 1','Tranche 2','Tranche 3','Versement libre'];
 const MODES_PAIEMENT = ['Espèces','Mobile Money','Virement bancaire','Chèque'];
@@ -335,6 +335,12 @@ function toast(msg){
   const el = document.createElement('div');
   el.className = 'toast-item' + (erreur ? ' error' : '');
   el.textContent = msg;
+  if(!erreur && window.EmIcones){
+    const coche = document.createElement('span');
+    coche.className = 'toast-coche'; coche.setAttribute('aria-hidden', 'true');
+    coche.innerHTML = '<svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    el.prepend(coche);
+  }
   if(erreur) el.setAttribute('role', 'alert');
   pile.appendChild(el);
   while(pile.children.length > 4) pile.firstChild.remove();
@@ -1900,6 +1906,14 @@ async function clearEcoleData(){
 /* ---------------------------------------------------------------------
    4. TABLEAU DE BORD
    --------------------------------------------------------------------- */
+let dashboardDejaAnime = false;
+function animerCompteursKpi(){
+  document.querySelectorAll('#viewContainer [data-compteur]').forEach(el => {
+    const n = parseInt(el.dataset.compteur, 10);
+    el.removeAttribute('data-compteur');
+    if(window.EmMotion) EmMotion.countUp(el, n, { duration:900 }); else el.textContent = n;
+  });
+}
 function renderDashboard(){
   const today = todayISO();
   const totalEleves = DB.eleves.filter(e=>e.statut==='Actif').length;
@@ -1913,13 +1927,18 @@ function renderDashboard(){
 
   const maxEffectif = Math.max(...DB.classes.map(c=>DB.eleves.filter(e=>e.classeId===c.id && e.statut==='Actif').length), 1);
 
-  const barsHtml = DB.classes.map(c=>{
+  // Registre sobre (spec § 4) : la cascade et les compteurs ne jouent qu'une
+  // fois par session de page, pas à chaque retour sur le tableau de bord.
+  const animer = !dashboardDejaAnime;
+  dashboardDejaAnime = true;
+  const barsHtml = DB.classes.map((c, i)=>{
     const n = DB.eleves.filter(e=>e.classeId===c.id && e.statut==='Actif').length;
     const pct = Math.round(100*n/maxEffectif);
-    return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:9px;">
-      <div style="width:110px;font-size:var(--fs-xs);color:var(--text-dim);flex-shrink:0;">${c.nom}</div>
-      <div class="progress" style="flex:1;"><div style="width:${pct}%;background:var(--primary);"></div></div>
-      <div style="width:26px;text-align:right;font-size:var(--fs-xs);font-weight:700;">${n}</div>
+    const anim = animer && i < 12 ? ` em-fill-x" style="width:${pct}%;animation-delay:${i*40}ms` : `" style="width:${pct}%`;
+    return `<div class="repart-ligne${n ? '' : ' repart-vide'}">
+      <div class="repart-nom">${escapeHtml(c.nom)}</div>
+      <div class="repart-piste"><div class="repart-barre${anim}"></div></div>
+      <div class="repart-n">${n}</div>
     </div>`;
   }).join('');
 
@@ -1929,10 +1948,25 @@ function renderDashboard(){
       <span>${escapeHtml(ensFullName(t))}</span>
       <span class="badge ${p.statut==='Absent'?'red':'amber'}">${p.statut}</span>
     </div>`;
-  }).join('') || `<div class="hint">Aucune absence enseignant enregistrée aujourd'hui.</div>`;
+  }).join('') || (presEnsToday.length
+      ? `<div class="alerte-ok">${window.EmIcones ? EmIcones.svg('circle-check') : ''}Aucune absence d'enseignant aujourd'hui.</div>`
+      : `<div class="hint">Aucun pointage d'enseignant enregistré aujourd'hui.</div>`);
 
   const elAbsentsCount = presToday.filter(p=>p.statut==='Absent').length;
   const elRetardCount = presToday.filter(p=>p.statut==='Retard').length;
+  // Bonne nouvelle d'abord (spec § 5.3.4) — mais sans l'annoncer si l'appel n'a pas été fait
+  const alertesEleves = !presToday.length
+    ? `<div class="hint">L'appel n'a pas encore été fait aujourd'hui.${hasAccess('presences-eleves') ? ` <a href="#" onclick="go('presences-eleves');return false;">Faire l'appel</a>` : ''}</div>`
+    : (elAbsentsCount || elRetardCount)
+      ? `<div class="alerte-pastilles"><span class="pastille-absent">${elAbsentsCount} élève(s) absent(s)</span><span class="pastille-retard">${elRetardCount} retard(s)</span></div>`
+      : `<div class="alerte-ok">${window.EmIcones ? EmIcones.svg('circle-check') : ''}Aucune absence signalée aujourd'hui.</div>`;
+  // États vides explicites des chiffres clés (spec § 5.3.2, corrige D6)
+  const lien = (vue, texte) => hasAccess(vue) ? `<a href="#" class="kpi-lien" onclick="go('${vue}');return false;">${texte}</a>` : '';
+  const kpi = (i, icone, fond, valeur, libelle, vide) => `<div class="card kpi-carte${animer ? ' em-rise' : ''}" style="--i:${i}">
+        <div class="card-top"><div class="icon-badge" style="background:${fond};">${icone}</div></div>
+        ${valeur === null ? `<div class="kpi-vide">${vide[0]}</div>${vide[1]}` : `<div class="num"${animer && typeof valeur === 'number' ? ` data-compteur="${valeur}"` : ''}>${typeof valeur === 'number' ? (animer ? 0 : valeur) : valeur}</div>`}
+        <div class="label">${libelle}</div>
+      </div>`;
 
   const classesRows = DB.classes.map(c=>{
     const eff = DB.eleves.filter(e=>e.classeId===c.id && e.statut==='Actif').length;
@@ -1944,34 +1978,19 @@ function renderDashboard(){
       <td><span class="badge gray">${c.cycle}</span></td>
       <td>${eff}</td>
       <td>${escapeHtml(ensFullName(tit))}</td>
-      <td>${taux===null ? '<span class="hint">—</span>' : `<span class="badge ${taux>=90?'green':taux>=75?'amber':'red'}">${taux}%</span>`}</td>
+      <td>${taux===null ? '<span class="hint">Appel non fait</span>' : `<span class="badge ${taux>=90?'green':taux>=75?'amber':'red'}">${taux}%</span>`}</td>
     </tr>`;
   }).join('');
 
   return `
   <div class="view active">
     <div class="cards">
-      <div class="card">
-        <div class="card-top"><div class="icon-badge" style="background:var(--primary-dim);">🧒</div></div>
-        <div class="num">${totalEleves}</div>
-        <div class="label">Élèves inscrits (actifs)</div>
-      </div>
-      <div class="card">
-        <div class="card-top"><div class="icon-badge" style="background:var(--purple-bg);">👩‍🏫</div></div>
-        <div class="num">${totalEns}</div>
-        <div class="label">Enseignants actifs</div>
-      </div>
-      <div class="card">
-        <div class="card-top"><div class="icon-badge" style="background:var(--green-bg);">✅</div></div>
-        <div class="num">${tauxEleves===null?'—':tauxEleves+'%'}</div>
-        <div class="label">Présence élèves aujourd'hui</div>
-      </div>
-      <div class="card">
-        <div class="card-top"><div class="icon-badge" style="background:var(--blue-bg);">🕘</div></div>
-        <div class="num">${tauxEns===null?'—':tauxEns+'%'}</div>
-        <div class="label">Présence enseignants aujourd'hui</div>
-      </div>
+      ${kpi(0, '🧒', 'var(--primary-dim)', totalEleves, 'Élèves inscrits (actifs)')}
+      ${kpi(1, '👩‍🏫', 'var(--purple-bg)', totalEns, 'Enseignants actifs')}
+      ${kpi(2, '✅', 'var(--green-bg)', tauxEleves===null ? null : tauxEleves+'%', "Présence élèves aujourd'hui", ['Appel non effectué', lien('presences-eleves', "Faire l'appel")])}
+      ${kpi(3, '🕘', 'var(--blue-bg)', tauxEns===null ? null : tauxEns+'%', "Présence enseignants aujourd'hui", ['Aucun pointage aujourd’hui', lien('presences-enseignants', 'Voir le journal')])}
     </div>
+    ${animer ? `${(setTimeout(animerCompteursKpi, 0), '')}` : ''}
 
     ${ui.role==='enseignant' ? renderActualitesParent() + renderTableauHonneurParent() : ''}
 
@@ -1982,10 +2001,7 @@ function renderDashboard(){
       </div>
       <div class="panel">
         <div class="panel-head"><div><h2>Alertes du jour</h2><div class="sub">${fmtDate(today)}</div></div></div>
-        <div style="display:flex;gap:10px;margin-bottom:14px;">
-          <div class="badge red" style="font-size:var(--fs-xs);padding:6px 10px;">${elAbsentsCount} élève(s) absent(s)</div>
-          <div class="badge amber" style="font-size:var(--fs-xs);padding:6px 10px;">${elRetardCount} retard(s)</div>
-        </div>
+        <div style="margin-bottom:14px;">${alertesEleves}</div>
         <div class="sub" style="margin-bottom:6px;font-weight:700;">Enseignants absents</div>
         ${ensAbsents}
       </div>
@@ -2317,6 +2333,17 @@ function openEleveForm(id){
     </form>`);
 }
 
+function verifierDatesEleve(naissance, inscription){
+  if(!naissance) return null;
+  const aujourdHui = todayISO();
+  if(naissance > aujourdHui) return { champ:'dateNaissance', message:"La date de naissance ne peut pas être dans le futur." };
+  if(inscription && naissance >= inscription) return { champ:'dateNaissance', message:"La date de naissance doit être antérieure à la date d'inscription (" + fmtDate(inscription) + ")." };
+  // Âge minimal plausible à l'inscription : 6 mois (garderie)
+  const ref = new Date(inscription || aujourdHui); const n = new Date(naissance);
+  const mois = (ref.getFullYear() - n.getFullYear())*12 + (ref.getMonth() - n.getMonth()) - (ref.getDate() < n.getDate() ? 1 : 0);
+  if(mois < 6) return { champ:'dateNaissance', message:"L'enfant aurait moins de 6 mois à l'inscription : vérifiez la date de naissance." };
+  return null;
+}
 async function handleSaveEleve(ev){
   ev.preventDefault();
   const fd = new FormData(ev.target);
@@ -2328,6 +2355,20 @@ async function handleSaveEleve(ev){
     parentNom: fd.get('parentNom').trim(), parentTel: fd.get('parentTel').trim(),
     parentAdresse: fd.get('parentAdresse').trim(), dateInscription: fd.get('dateInscription') || todayISO(),
   };
+  // Cohérence des dates (spec § 6.2) : vérifiée à la saisie, message clair sous le champ
+  const erreurDate = verifierDatesEleve(patch.dateNaissance, patch.dateInscription);
+  ev.target.querySelectorAll('.field.has-error').forEach(f => { f.classList.remove('has-error'); const m = f.querySelector('.error-text'); if(m) m.remove(); });
+  if(erreurDate){
+    const champ = ev.target.querySelector(`[name="${erreurDate.champ}"]`);
+    const field = champ && champ.closest('.field');
+    if(field){
+      field.classList.add('has-error');
+      champ.setAttribute('aria-invalid', 'true');
+      const m = document.createElement('div'); m.className = 'error-text'; m.id = 'err-' + erreurDate.champ; m.textContent = erreurDate.message;
+      field.appendChild(m); champ.setAttribute('aria-describedby', m.id); champ.focus();
+    } else toast('Erreur : ' + erreurDate.message);
+    return false;
+  }
   try{
     if(id){
       await dbUpdate('eleves', id, patch);

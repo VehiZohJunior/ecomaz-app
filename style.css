@@ -804,3 +804,56 @@ body.theme-portier #portierRecherche{ background:var(--em-gate-bg) !important; c
 .gate-btn-principal{ background:var(--em-gold-400); color:var(--em-green-900); border:none; }
 .gate-btn-contour{ background:transparent; color:var(--em-gate-text); border:1px solid var(--em-gate-border); }
 @media (prefers-reduced-motion: reduce){ .gate-coche{ stroke-dashoffset:0; } }
+
+/* =========================================================================
+   ADMINISTRATION — Lot 6 (spécification § 5.3), registre « sobre »
+   ========================================================================= */
+/* Barre latérale (§ 5.3.1) */
+.nav-group{ font-size:11px; font-weight:800; letter-spacing:.06em; }
+.nav-item{ font-weight:700; border-radius:12px; min-height:40px; }
+.nav-item:hover{ background:rgba(31,92,70,.06); }
+.nav-item.active{ background:var(--em-green-100); color:var(--em-green-900); }
+:root[data-theme="dark"] .nav-item.active{ color:var(--primary-ink); }
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .nav-item.active{ color:var(--primary-ink); } }
+
+/* Chiffres clés (§ 5.3.2) */
+.kpi-carte{ border-radius:16px; padding:20px; }
+.kpi-carte .icon-badge{ width:40px; height:40px; border-radius:12px; }
+.kpi-carte .num{ font-size:clamp(22px, 6vw, 30px); font-weight:900; letter-spacing:-.02em; font-variant-numeric:tabular-nums; }
+.kpi-vide{ font-size:var(--em-fs-14); font-weight:700; color:var(--em-text-muted); margin-top:var(--sp-3); }
+.kpi-lien{ display:inline-block; font-size:var(--em-fs-13); font-weight:800; color:var(--primary); margin-top:2px; min-height:24px; }
+
+/* Répartition par classe (§ 5.3.3) */
+.repart-ligne{ display:flex; align-items:center; gap:10px; margin-bottom:9px; }
+.repart-nom{ width:110px; font-size:var(--fs-xs); color:var(--text-dim); flex-shrink:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.repart-piste{ flex:1; height:10px; border-radius:999px; background:var(--em-border); overflow:hidden; }
+.repart-barre{ height:100%; border-radius:999px; background:var(--em-green-700); }
+.repart-n{ width:28px; text-align:right; font-size:var(--fs-xs); font-weight:800; font-variant-numeric:tabular-nums; }
+.repart-vide .repart-n{ color:var(--em-text-muted); }
+:root[data-theme="dark"] .repart-barre{ background:var(--primary); }
+
+/* Alertes du jour (§ 5.3.4) */
+.alerte-pastilles{ display:flex; gap:10px; flex-wrap:wrap; }
+.pastille-absent, .pastille-retard{ font-size:var(--em-fs-13); font-weight:800; border-radius:var(--em-radius-pill); padding:6px 12px; font-variant-numeric:tabular-nums; }
+.pastille-absent{ background:var(--em-terracotta-100); color:var(--em-terracotta-800); }
+.pastille-retard{ background:var(--em-gold-100); color:var(--em-gold-800); }
+.alerte-ok{ display:flex; align-items:center; gap:8px; font-size:var(--em-fs-14); font-weight:700; color:var(--success); }
+.alerte-ok .ico{ color:var(--em-green-500); width:20px; height:20px; margin:0; }
+
+/* Tableaux (§ 5.3.5) : lignes 48 px, survol discret, montants alignés à droite */
+tbody td{ height:48px; }
+tbody tr:hover{ background:rgba(31,92,70,.04); }
+:root[data-theme="dark"] tbody tr:hover{ background:rgba(255,255,255,.03); }
+td:has(> .amount), th.montant{ text-align:right; }
+
+/* Formulaires (§ 5.3.6) */
+.field input, .field select, .field textarea, .filters input[type=text], .filters input[type=search], .filters input[type=date], .filters select{ min-height:44px; border-radius:12px; }
+.field input:focus, .field select:focus, .field textarea:focus{ border-color:var(--em-green-700); box-shadow:0 0 0 3px rgba(31,92,70,.15); }
+.field.has-error input, .field.has-error select, .field.has-error textarea, .field [aria-invalid="true"]{ border-color:var(--em-danger); }
+.field .error-text{ color:var(--danger); font-size:var(--em-fs-13); font-weight:700; }
+
+/* Notification de réussite : coche dessinée */
+.toast-coche{ display:inline-flex; width:18px; height:18px; margin-right:8px; vertical-align:-3px; color:var(--em-green-500); }
+.toast-coche svg{ width:18px; height:18px; }
+.toast-coche path{ stroke-dasharray:40; stroke-dashoffset:40; animation:em-draw 420ms var(--em-ease-out) 120ms forwards; }
+@media (prefers-reduced-motion: reduce){ .toast-coche path{ stroke-dashoffset:0; } }
