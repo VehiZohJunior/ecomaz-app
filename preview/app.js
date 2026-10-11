@@ -1558,14 +1558,20 @@ async function handleMarquerSuggestionLue(id){
    chargerDBPortier() dans supabase-client.js).
    --------------------------------------------------------------------- */
 function enterAppPortier(){
+  // Console portier (spec § 5.2) : thème sombre dédié, toujours actif (lecture
+  // rapide en extérieur), registre « opérationnel » sans animation décorative.
+  document.body.classList.add('theme-portier');
   $('#loginGate').classList.remove('open');
   $('#appRoot').style.display = '';
   $('#sidebar').style.display = 'none';
   $('#burger').style.display = 'none';
   applyBranding();
-  $('#viewTitle').textContent = window.ESPACE_FIXE ? nomApplication() : 'Espace Portier';
+  $('#viewTitle').innerHTML = `<span class="gate-sur">Portail · ${escapeHtml(DB.meta.nomEcole || '')}</span>
+    <span class="gate-titre">Arrivée des parents</span>
+    <span class="sr-only">${escapeHtml(window.ESPACE_FIXE ? nomApplication() : 'Espace Portier')}</span>`;
   const pill = $('#topbarPill');
-  pill.innerHTML = `<button class="btn secondary sm" onclick="logoutRole()">🔒 Déconnexion</button>`;
+  pill.innerHTML = `<span class="gate-etat"><span class="gate-point" aria-hidden="true"></span>En service</span>
+    <button class="btn secondary sm" onclick="logoutRole()">🔒 Déconnexion</button>`;
   ui.filters.portierRecherche = '';
   refreshPortierDashboard();
   startIdleWatcher();
@@ -1576,9 +1582,9 @@ function refreshPortierDashboard(){
   if(input){ input.focus(); const pos = input.value.length; input.setSelectionRange(pos, pos); }
 }
 function renderBoutonEleve(e){
-  return `<button class="btn secondary" style="text-align:left;padding:14px 18px;display:flex;justify-content:space-between;align-items:center;" onclick="handleNotifierPortier('${e.id}')">
-    <span><strong>${escapeHtml(eleveFullName(e))}</strong> <span class="hint">· ${escapeHtml(classeName(e.classeId))}</span></span>
-    <span>🚪 Prévenir</span>
+  return `<button class="gate-eleve em-press" onclick="handleNotifierPortier('${e.id}')">
+    <span class="gate-eleve-id"><strong>${escapeHtml(eleveFullName(e))}</strong><span class="gate-eleve-classe">${escapeHtml(classeName(e.classeId))}</span></span>
+    <span class="gate-eleve-action">🚪 Prévenir</span>
   </button>`;
 }
 function renderPortierDashboard(){
@@ -1628,8 +1634,8 @@ function renderPortierDashboard(){
         <div class="grid-3">
           ${DB.classes.filter(c=>c.cycle===cycle).map(c=>{
             const effectif = DB.eleves.filter(e=>e.classeId===c.id).length;
-            return `<button class="btn secondary" style="padding:16px;text-align:left;" onclick="ui.filters.portierClasse='${c.id}'; refreshPortierDashboard()">
-              <strong>${escapeHtml(c.nom)}</strong><div class="hint">${effectif} élève(s)</div>
+            return `<button class="gate-classe em-press" onclick="ui.filters.portierClasse='${c.id}'; refreshPortierDashboard()">
+              <strong>${escapeHtml(c.nom)}</strong><span class="gate-eleve-classe">${effectif} élève(s)</span>
             </button>`;
           }).join('')}
         </div>`).join('') || `<div class="empty">Aucune classe active.</div>`}
@@ -1641,14 +1647,43 @@ function renderPortierBarreRecherche(){
     oninput="ui.filters.portierRecherche=this.value; refreshPortierDashboard()"
     style="width:100%;padding:14px;font-size:var(--fs-md);border:1px solid var(--border);border-radius:var(--r-card);margin-bottom:16px;">`;
 }
+// États visuels du signalement (spec § 5.2) : envoi (durée réelle, aucun
+// délai artificiel) → confirmation ou échec. L'enregistrement lui-même est
+// inchangé : une ligne dans notifications_portier, comme avant.
+function renderEtatPortier(etat, e, detail){
+  const eleve = e ? `<div class="gate-fiche"><strong>${escapeHtml(eleveFullName(e))}</strong><span>${escapeHtml(classeName(e.classeId))}</span>
+      ${detail && detail.heure ? `<span class="gate-heure">Signalé à ${detail.heure}</span>` : ''}</div>` : '';
+  if(etat === 'envoi') return `<div class="view active"><div class="gate-etat-carte" role="status" aria-live="polite">
+      <svg class="gate-spinner em-spin" viewBox="0 0 72 72" aria-hidden="true"><circle cx="36" cy="36" r="30" fill="none" stroke="var(--em-gate-border)" stroke-width="6"/><path d="M36 6a30 30 0 0 1 30 30" fill="none" stroke="var(--em-gold-400)" stroke-width="6" stroke-linecap="round"/></svg>
+      <div class="gate-etat-titre">Envoi à l’enseignant…</div>${eleve}</div></div>`;
+  if(etat === 'ok') return `<div class="view active"><div class="gate-etat-carte" role="status" aria-live="polite">
+      <div class="gate-rond gate-rond-ok em-pop"><span class="gate-onde" aria-hidden="true"></span>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path class="gate-coche" d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      <div class="gate-etat-titre">Enseignant prévenu</div>${eleve}
+      <button class="gate-btn-principal em-press" onclick="ui.filters.portierRecherche=''; refreshPortierDashboard()">Nouveau signalement</button></div></div>`;
+  return `<div class="view active"><div class="gate-etat-carte" role="alert">
+      <div class="gate-rond gate-rond-erreur"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"/></svg></div>
+      <div class="gate-etat-titre">Envoi impossible</div>${eleve}
+      <div class="gate-erreur-detail">${escapeHtml(detail && detail.message ? detail.message : 'Vérifiez la connexion internet puis réessayez.')}</div>
+      ${e ? `<button class="gate-btn-principal em-press" onclick="handleNotifierPortier('${e.id}')">Réessayer</button>` : ''}
+      <button class="gate-btn-contour em-press" onclick="refreshPortierDashboard()">Retour à la liste</button></div></div>`;
+}
 async function handleNotifierPortier(eleveId){
+  const e = (DB.eleves||[]).find(x => x.id === eleveId);
+  $('#viewContainer').innerHTML = renderEtatPortier('envoi', e);
   try{
     const { error } = await sb.from('notifications_portier').insert({ eleve_id: eleveId });
     if(error) throw error;
-    toast('Notification envoyée à l\'enseignant(e)');
+    const d = new Date();
+    const heure = `${String(d.getHours()).padStart(2,'0')}h${String(d.getMinutes()).padStart(2,'0')}`;
     ui.filters.portierRecherche = '';
-    refreshPortierDashboard();
-  }catch(e){ alert('Erreur : ' + e.message); }
+    $('#viewContainer').innerHTML = renderEtatPortier('ok', e, { heure });
+    if(navigator.vibrate) try{ navigator.vibrate(30); }catch(_e){}
+    toast('Enseignant prévenu · signalement enregistré');
+  }catch(err){
+    $('#viewContainer').innerHTML = renderEtatPortier('erreur', e, { message: err && err.message ? 'Erreur : ' + err.message : '' });
+    if(navigator.vibrate) try{ navigator.vibrate([60,40,60]); }catch(_e){}
+  }
 }
 
 function enterApp(){
@@ -1775,6 +1810,7 @@ async function logoutRole(){
   stopIdleWatcher();
   stopPollingBulles();
   document.body.classList.remove('theme-parent', 'has-parent-nav');
+  if(window.ESPACE_FIXE !== 'portier') document.body.classList.remove('theme-portier');
   const navParentEl = document.getElementById('parentNav'); if(navParentEl) navParentEl.remove();
   if(typeof arreterScanPointage === 'function') arreterScanPointage();
   await deconnexion();
