@@ -1710,6 +1710,7 @@ const VERSIONS = [
       'Fiche élève : une question de confirmation si la date d’inscription est dans le futur.',
       'Matricules : deux élèves ne peuvent plus avoir le même numéro.',
       'Élèves & Inscriptions : encadré « Fiches à vérifier » pour corriger les dates ou numéros mal saisis.',
+      'Élèves & Inscriptions : bouton « Importer depuis Excel » pour ajouter une liste d’élèves d’un coup.',
     ],
   } },
   { version: '2026.10.11', nouveautes: {
@@ -2087,6 +2088,190 @@ function renderEleves(){
   return renderEleveListe();
 }
 
+/* ---------------------------------------------------------------------
+   IMPORT DES ÉLÈVES DEPUIS EXCEL (.xlsx, .xls ou .csv)
+   Pour installer une école en quelques minutes. La bibliothèque SheetJS
+   (gratuite) n'est chargée qu'à l'ouverture de l'import. Rien n'est
+   enregistré avant l'aperçu et la confirmation ; les doublons (même nom,
+   prénom et date de naissance) sont ignorés.
+   --------------------------------------------------------------------- */
+const XLSX_URL = 'https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js';
+let importEleves = null;   // { lignes:[{patch, erreurs, avertissements}], nomFichier }
+function chargerXLSX(){
+  if(window.XLSX) return Promise.resolve(window.XLSX);
+  return new Promise((ok, ko) => {
+    const sc = document.createElement('script');
+    sc.src = XLSX_URL; sc.onload = () => ok(window.XLSX);
+    sc.onerror = () => ko(new Error('Connexion internet nécessaire pour lire un fichier Excel.'));
+    document.head.appendChild(sc);
+  });
+}
+const COLONNES_IMPORT = [
+  { cle:'nom', titre:'Nom', alias:['nom','nom de famille','nom eleve','nom de l eleve'] },
+  { cle:'prenom', titre:'Prénoms', alias:['prenom','prenoms','prenom s'] },
+  { cle:'sexe', titre:'Sexe (M/F)', alias:['sexe','genre','sexe m f'] },
+  { cle:'dateNaissance', titre:'Date de naissance', alias:['date de naissance','naissance','ne le','nee le','date naissance','ne e le'] },
+  { cle:'classe', titre:'Classe', alias:['classe','niveau'] },
+  { cle:'parentNom', titre:'Nom du parent', alias:['nom du parent','parent','nom parent','tuteur','nom du tuteur','parent tuteur'] },
+  { cle:'parentTel', titre:'Téléphone du parent', alias:['telephone du parent','telephone','tel','contact','telephone parent','tel parent','numero','contact parent'] },
+  { cle:'parentAdresse', titre:'Adresse', alias:['adresse','lieu d habitation','domicile','quartier'] },
+  { cle:'dateInscription', titre:'Date d’inscription', alias:['date d inscription','inscription','date inscription','inscrit le'] },
+];
+function simplifierTexte(t){
+  return String(t ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+function dateImportISO(v){
+  const iso = dateImportBrute(v);
+  if(!iso || iso === 'invalide') return iso;
+  const [a, m, j] = iso.split('-').map(Number), d = new Date(a, m - 1, j);   // refuse 31/02, 13e mois…
+  return d.getFullYear() === a && d.getMonth() === m - 1 && d.getDate() === j && a > 1900 ? iso : 'invalide';
+}
+function dateImportBrute(v){
+  if(v == null || v === '') return '';
+  if(v instanceof Date && !isNaN(v)) return `${v.getFullYear()}-${String(v.getMonth()+1).padStart(2,'0')}-${String(v.getDate()).padStart(2,'0')}`;
+  const t = String(v).trim();
+  let m = t.match(/^(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})$/);
+  if(m) return `${m[1]}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}`;
+  m = t.match(/^(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{2}|\d{4})$/);   // JJ/MM/AAAA (usage ivoirien)
+  if(m){ const an = m[3].length === 2 ? (Number(m[3]) > 50 ? '19' : '20') + m[3] : m[3]; return `${an}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`; }
+  return 'invalide';
+}
+function sexeImport(v){
+  const t = simplifierTexte(v);
+  if(['m','masculin','garcon','g','homme','h'].includes(t)) return 'M';
+  if(['f','feminin','fille','femme'].includes(t)) return 'F';
+  return '';
+}
+function ouvrirImportEleves(){
+  importEleves = null;
+  openModal('Importer des élèves depuis Excel', `
+    <ol class="hint" style="padding-left:18px;margin-top:0;">
+      <li>Téléchargez le modèle, ou utilisez votre propre fichier : la 1<sup>re</sup> ligne doit contenir les titres des colonnes (Nom, Prénoms, Sexe, Date de naissance, Classe, Nom du parent, Téléphone du parent…).</li>
+      <li>Les classes doivent porter le même nom que dans EcoMaZ (${escapeHtml(DB.classes.slice(0,4).map(c=>c.nom).join(', '))}${DB.classes.length>4?'…':''}).</li>
+      <li>Choisissez le fichier : un aperçu s'affiche, rien n'est enregistré avant votre confirmation.</li>
+    </ol>
+    <div class="form-actions" style="flex-wrap:wrap;justify-content:flex-start;">
+      <button type="button" class="btn secondary" onclick="telechargerModeleImport()">⬇️ Télécharger le modèle</button>
+      <label class="btn" style="cursor:pointer;">📄 Choisir le fichier Excel
+        <input type="file" accept=".xlsx,.xls,.csv" style="display:none;" onchange="lireFichierImport(this.files[0])">
+      </label>
+    </div>
+    <div id="importApercu"></div>`);
+}
+async function telechargerModeleImport(){
+  try{
+    const X = await chargerXLSX();
+    const ex = DB.classes[0]?.nom || 'CP1';
+    const feuille = X.utils.aoa_to_sheet([COLONNES_IMPORT.map(c => c.titre),
+      ['KOUASSI', 'Jean Daniel', 'M', '15/03/2018', ex, 'KOUASSI Marc', '0701020304', 'Cocody', '']]);
+    feuille['!cols'] = COLONNES_IMPORT.map(() => ({ wch: 20 }));
+    const classeur = X.utils.book_new();
+    X.utils.book_append_sheet(classeur, feuille, 'Élèves');
+    X.writeFile(classeur, 'modele-import-eleves-ecomaz.xlsx');
+  }catch(e){ alert('Erreur : ' + e.message); }
+}
+async function lireFichierImport(fichier){
+  if(!fichier) return;
+  const zone = document.getElementById('importApercu');
+  zone.innerHTML = '<div class="hint">Lecture du fichier…</div>';
+  try{
+    const X = await chargerXLSX();
+    const classeur = X.read(await fichier.arrayBuffer(), { cellDates:true });
+    const feuille = classeur.Sheets[classeur.SheetNames[0]];
+    const tableau = X.utils.sheet_to_json(feuille, { header:1, raw:true, defval:'' })
+      .filter(l => l.some(c => String(c).trim() !== ''));
+    if(tableau.length < 2) throw new Error('Le fichier ne contient aucune ligne d’élève sous les titres.');
+    // Repérer les colonnes d'après les titres de la 1re ligne
+    const titres = tableau[0].map(simplifierTexte);
+    const index = {};
+    COLONNES_IMPORT.forEach(c => { const i = titres.findIndex(t => c.alias.includes(t)); if(i >= 0) index[c.cle] = i; });
+    const manquantes = ['nom','prenom','classe'].filter(k => index[k] === undefined);
+    if(manquantes.length) throw new Error('Colonnes introuvables : ' + manquantes.map(k => COLONNES_IMPORT.find(c=>c.cle===k).titre).join(', ') + '. Vérifiez la 1re ligne du fichier.');
+    const classesParNom = {};
+    DB.classes.forEach(c => classesParNom[simplifierTexte(c.nom)] = c);
+    const existants = new Set(DB.eleves.map(e => simplifierTexte(`${e.nom} ${e.prenom} ${e.dateNaissance||''}`)));
+    const vus = new Set();
+    const val = (l, k) => index[k] === undefined ? '' : l[index[k]];
+    const lignes = tableau.slice(1).map((l, n) => {
+      const erreurs = [], avertissements = [];
+      const nom = String(val(l,'nom')).trim().toUpperCase(), prenom = String(val(l,'prenom')).trim();
+      const classe = classesParNom[simplifierTexte(val(l,'classe'))];
+      const dateNaissance = dateImportISO(val(l,'dateNaissance'));
+      let dateInscription = dateImportISO(val(l,'dateInscription'));
+      if(!nom || !prenom) erreurs.push('nom ou prénom manquant');
+      if(!classe) erreurs.push(`classe « ${String(val(l,'classe')).trim() || 'vide'} » inconnue`);
+      if(dateNaissance === 'invalide') erreurs.push('date de naissance illisible');
+      if(dateInscription === 'invalide'){ avertissements.push('date d’inscription illisible : aujourd’hui'); dateInscription = ''; }
+      const sexe = sexeImport(val(l,'sexe'));
+      if(!sexe) avertissements.push('sexe non précisé');
+      const patch = {
+        matricule: null, nom, prenom, sexe: sexe || 'M', classeId: classe?.id || '', statut: 'Actif',
+        dateNaissance: dateNaissance === 'invalide' ? null : (dateNaissance || null),
+        dateInscription: dateInscription || todayISO(),
+        parentNom: String(val(l,'parentNom')).trim(), parentTel: String(val(l,'parentTel')).trim(), parentAdresse: String(val(l,'parentAdresse')).trim(),
+      };
+      if(!erreurs.length){
+        const erreurDate = verifierDatesEleve(patch.dateNaissance, patch.dateInscription);
+        if(erreurDate) avertissements.push('date de naissance à vérifier');
+        if(!patch.parentTel) avertissements.push('pas de numéro de parent');
+        else if(!numerosParentValides(patch.parentTel)) avertissements.push('numéro du parent à vérifier');
+        const cle = simplifierTexte(`${nom} ${prenom} ${patch.dateNaissance}`);
+        if(existants.has(cle)) erreurs.push('déjà inscrit dans EcoMaZ');
+        else if(vus.has(cle)) erreurs.push('en double dans le fichier');
+        vus.add(cle);
+      }
+      return { ligne: n + 2, patch, erreurs, avertissements };
+    });
+    importEleves = { lignes, nomFichier: fichier.name };
+    afficherApercuImport();
+  }catch(e){ zone.innerHTML = `<div class="hint" style="color:var(--danger);">Erreur : ${escapeHtml(e.message)}</div>`; }
+}
+function afficherApercuImport(){
+  const { lignes } = importEleves;
+  const bonnes = lignes.filter(l => !l.erreurs.length);
+  document.getElementById('importApercu').innerHTML = `
+    <p><strong>${bonnes.length}</strong> élève(s) prêt(s) à importer${lignes.length - bonnes.length ? `, <strong>${lignes.length - bonnes.length}</strong> ligne(s) ignorée(s)` : ''}.</p>
+    <div class="table-wrap" style="max-height:320px;overflow:auto;"><table>
+      <thead><tr><th>Ligne</th><th>Élève</th><th>Classe</th><th>Remarques</th></tr></thead>
+      <tbody>${lignes.map(l => `<tr>
+        <td>${l.ligne}</td>
+        <td>${escapeHtml(`${l.patch.nom} ${l.patch.prenom}`.trim() || '—')}</td>
+        <td>${escapeHtml(l.patch.classeId ? classeName(l.patch.classeId) : '—')}</td>
+        <td>${l.erreurs.map(x => `<span class="badge red" style="margin:1px;">${escapeHtml(x)}</span>`).join(' ')}
+            ${l.avertissements.map(x => `<span class="badge amber" style="margin:1px;">${escapeHtml(x)}</span>`).join(' ')}
+            ${!l.erreurs.length && !l.avertissements.length ? '<span class="badge green">OK</span>' : ''}</td>
+      </tr>`).join('')}</tbody>
+    </table></div>
+    <div class="hint">En rouge : ligne ignorée. En orange : importée, à compléter ensuite (elle apparaîtra dans « Fiches à vérifier »).</div>
+    <div class="form-actions">
+      <button type="button" class="btn secondary" onclick="closeModal()">Annuler</button>
+      ${bonnes.length ? `<button type="button" class="btn" id="btnLancerImport" onclick="lancerImportEleves()">Importer ${bonnes.length} élève(s)</button>` : ''}
+    </div>`;
+}
+async function lancerImportEleves(){
+  const bouton = document.getElementById('btnLancerImport');
+  const aImporter = importEleves.lignes.filter(l => !l.erreurs.length);
+  if(!confirm(`Importer ${aImporter.length} élève(s) dans EcoMaZ ?`)) return;
+  bouton.disabled = true;
+  let faits = 0, echecs = 0;
+  // Matricule de départ lu une seule fois sur le serveur, puis +1 à chaque élève
+  // (en cas de conflit, insererAvecMatricule reprend le numéro suivant).
+  let numero = parseInt((await prochainMatricule('eleves', 'EL-', 4)).replace('EL-', ''), 10);
+  for(const l of aImporter){
+    bouton.textContent = `Import en cours… ${faits + echecs + 1} / ${aImporter.length}`;
+    l.patch.matricule = 'EL-' + String(numero).padStart(4, '0');
+    try{
+      const cree = await insererAvecMatricule('eleves', l.patch, 'EL-', 4);
+      DB.eleves.push(cree);
+      numero = parseInt(String(cree.matricule).replace('EL-', ''), 10) + 1;
+      faits++;
+    }catch(e){ echecs++; l.erreurs.push('échec : ' + e.message); }
+  }
+  closeModal();
+  renderView('eleves');
+  toast(`${faits} élève(s) importé(s)` + (echecs ? ` · ${echecs} échec(s)` : ''));
+  if(echecs) alert(`${echecs} élève(s) n'ont pas pu être importés. Réessayez l'import : les élèves déjà importés seront ignorés.`);
+}
 // Fiches à vérifier : l'école voit elle-même ce qui empêche l'application de
 // bien fonctionner (date impossible, numéro de parent manquant ou mal saisi,
 // qui ferait échouer le bouton WhatsApp). Élèves actifs uniquement.
@@ -2215,6 +2400,7 @@ function renderEleveListe(){
     <div class="panel">
       <div class="panel-head">
         <div><h2>Liste des élèves</h2><div class="sub">${DB.eleves.length} élève(s) au total</div></div>
+        <button class="btn secondary" onclick="ouvrirImportEleves()">⬆️ Importer depuis Excel</button>
         <button class="btn" onclick="openEleveForm()">+ Nouvel élève</button>
       </div>
       <div class="filters">
