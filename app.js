@@ -1154,6 +1154,26 @@ function renderActualitesParent(){
       <button type="button" class="btn ghost sm actu-tout" aria-expanded="false" aria-controls="actusSuite" onclick="basculerActus(this)">Tout voir (${actus.length})</button>` : ''}
   </section>`;
 }
+// Console parent : les actualités de l'école défilent de droite à gauche
+// dans une bande jaune or, en haut de l'accueil (demande de Vehi Zoh Junior).
+// Toucher la bande la met en pause (et la relance) ; si le téléphone demande
+// moins d'animations, le texte s'affiche sans défiler.
+function renderBandeDefilanteParent(){
+  const actus = (DB.actualitesAffichage||[]).slice().sort((a,b)=> (b.createdAt||'').localeCompare(a.createdAt||'')).slice(0, 8);
+  if(!actus.length) return '';
+  const textes = actus.map(a => `<span class="bande-info-item">${escapeHtml(a.texte)}</span>`).join('<span class="bande-info-sep" aria-hidden="true">✦</span>');
+  const longueur = actus.reduce((n, a) => n + String(a.texte||'').length, 0);
+  const duree = Math.max(14, Math.round(longueur * 0.2));      // ~5 caractères par seconde
+  return `<section class="bande-info" aria-label="Actualités de l'école" onclick="this.classList.toggle('en-pause')">
+    <span class="bande-info-etiquette">${window.EmIcones ? EmIcones.svg('newspaper') : '📰'} Infos</span>
+    <div class="bande-info-fenetre">
+      <div class="bande-info-piste" style="animation-duration:${duree}s">
+        <div class="bande-info-texte">${textes}<span class="bande-info-sep" aria-hidden="true">✦</span></div>
+        <div class="bande-info-texte" aria-hidden="true">${textes}<span class="bande-info-sep">✦</span></div>
+      </div>
+    </div>
+  </section>`;
+}
 function basculerActus(btn){
   const suite = document.getElementById('actusSuite');
   if(!suite) return;
@@ -1303,6 +1323,7 @@ function renderParentDashboard(){
   const prenomParent = (session.nomComplet||'').trim().split(/\s+/)[0] || '';
   const plusieurs = mesEnfants.length > 1;
   return `<div class="view active parent-accueil">
+    ${renderBandeDefilanteParent()}
     ${renderAlerteAbsence(mesEnfants)}
     <div class="em-rise" style="--i:1">
       <h2 class="parent-greeting">Bonjour${prenomParent ? ', ' + escapeHtml(prenomParent) : ''} <span class="salut-main em-wave">${window.EmIcones ? EmIcones.svg('hand') : '👋'}</span></h2>
@@ -1311,7 +1332,6 @@ function renderParentDashboard(){
     <div class="enfants${plusieurs ? ' enfants--carrousel' : ''} em-rise" style="--i:2">
       ${mesEnfants.map(renderFicheEnfant).join('')}
     </div>
-    ${renderActualitesParent()}
     ${renderTableauHonneurParent()}
   </div>`;
 }
@@ -1698,6 +1718,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.10.12', nouveautes: {
+    commun: [],
+    parent: [ 'Les informations de l’école défilent maintenant dans une bande jaune en haut de l’accueil (touchez-la pour la mettre en pause).' ],
+    portier: [],
+    personnel: [],
+  } },
   { version: '2026.10.11-2', nouveautes: {
     commun: [
       'Nouvelle icône de l’application, aux couleurs vert forêt et or.',

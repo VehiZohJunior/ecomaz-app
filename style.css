@@ -872,3 +872,24 @@ td:has(> .amount), th.montant{ text-align:right; }
   animation:em-toast 460ms var(--em-ease-back) both; }
 .bandeau-maj button{ background:var(--em-gold-400); color:var(--em-green-900); border:none; border-radius:12px; min-height:40px; padding:0 14px; font:900 var(--em-fs-14) var(--em-font); cursor:pointer; flex-shrink:0; }
 @media print{ .bandeau-maj{ display:none !important; } }
+
+/* Console parent : bande d'actualités défilante (jaune or, droite → gauche) */
+.bande-info{ display:flex; align-items:stretch; background:#e8b04b; color:#14392d; border-radius:var(--em-radius-md, 14px);
+  overflow:hidden; margin-bottom:var(--sp-4); box-shadow:0 2px 10px rgba(20,57,45,.15); cursor:pointer; min-height:46px; }
+.bande-info-etiquette{ display:flex; align-items:center; gap:6px; flex-shrink:0; background:#14392d; color:#e8b04b;
+  font-weight:900; font-size:var(--em-fs-14, 14px); padding:0 14px; text-transform:uppercase; letter-spacing:.05em; }
+.bande-info-etiquette .ico{ width:18px; height:18px; }
+.bande-info-fenetre{ flex:1; min-width:0; overflow:hidden; display:flex; align-items:center;
+  -webkit-mask-image:linear-gradient(90deg, transparent 0, #000 24px, #000 calc(100% - 24px), transparent 100%);
+          mask-image:linear-gradient(90deg, transparent 0, #000 24px, #000 calc(100% - 24px), transparent 100%); }
+.bande-info-piste{ display:flex; width:max-content; animation:bande-info-defile linear infinite; will-change:transform; }
+.bande-info-texte{ display:flex; align-items:center; white-space:nowrap; min-width:100vw; justify-content:flex-start; font-weight:800; font-size:var(--em-fs-16, 16px); }
+.bande-info-sep{ margin:0 22px; opacity:.7; }
+.bande-info:hover .bande-info-piste, .bande-info.en-pause .bande-info-piste{ animation-play-state:paused; }
+@keyframes bande-info-defile{ from{ transform:translateX(0); } to{ transform:translateX(-50%); } }
+@media (prefers-reduced-motion: reduce){
+  .bande-info-piste{ animation:none; width:auto; }
+  .bande-info-texte{ white-space:normal; flex-wrap:wrap; padding:8px 0; min-width:0; }
+  .bande-info-texte[aria-hidden="true"]{ display:none; }
+}
+@media print{ .bande-info{ display:none !important; } }
