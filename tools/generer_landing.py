@@ -37,8 +37,29 @@ FAQ = [
     ("Que se passe-t-il quand internet coupe ?", "L'application s'ouvre quand même et garde vos saisies sur l'appareil ; elles sont envoyées automatiquement dès que la connexion revient."),
     ("Qui voit les données de mon école ?", "Seules les personnes de votre école, chacune selon son rôle (direction, secrétariat, enseignant, parent, portier). Une autre école ne peut techniquement pas les voir."),
     ("Comment les parents se connectent-ils ?", "L'école leur envoie leur lien et leurs identifiants, ou ils se connectent avec Google ; la direction valide alors chaque demande et la relie à l'enfant."),
-    ("Combien de temps faut-il pour démarrer ?", "[Délai de mise en place à préciser]"),
+    # À ajouter quand le délai de mise en place sera connu :
+    # ("Combien de temps faut-il pour démarrer ?", "…"),
 ]
+# Témoignage : None tant que la direction de SUCCESS KIDS ne l'a pas donné
+# (jamais de texte inventé). Format : ("La citation…", "Nom, fonction")
+TEMOIGNAGE = None
+
+
+def bloc_temoignage():
+    if not TEMOIGNAGE:
+        return ''
+    from html import escape
+    citation, auteur = TEMOIGNAGE
+    return '''<section class="section" aria-labelledby="titre-temoignage">
+  <div class="conteneur temoignage em-reveal">
+    <h2 id="titre-temoignage" class="sr-only">Témoignage</h2>
+    <svg class="guillemets" viewBox="0 0 48 48" aria-hidden="true"><path d="M8 34c0-8 4-15 12-20l2 3c-4 3-6 7-6 10h6v11H8zm18 0c0-8 4-15 12-20l2 3c-4 3-6 7-6 10h6v11H26z" fill="currentColor"/></svg>
+    <blockquote class="citation">''' + escape(citation) + '''</blockquote>
+    <p class="auteur">''' + escape(auteur) + '''</p>
+  </div>
+</section>
+
+'''
 
 
 def page():
@@ -51,13 +72,17 @@ def page():
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>EcoMaZ — Gestion scolaire de la garderie à l'université | Côte d'Ivoire</title>
-<!-- Retirer la ligne « robots » quand la page sera définitive (témoignage et délai renseignés, adresse choisie) -->
-<meta name="robots" content="noindex">
+<link rel="canonical" href="https://vehizohjunior.github.io/ecomaz-app/landing/">
 <meta name="description" content="Présences, parents prévenus, paiement Mobile Money, comptabilité : EcoMaZ gère votre école de la garderie à l'université. Conçu à Abidjan.">
 <meta property="og:type" content="website">
 <meta property="og:title" content="EcoMaZ — Gestion scolaire de la garderie à l'université">
 <meta property="og:description" content="Présences, parents prévenus, paiement Mobile Money, comptabilité : EcoMaZ gère votre école. Conçu à Abidjan.">
-<meta property="og:image" content="../icon-512.png">
+<meta property="og:url" content="https://vehizohjunior.github.io/ecomaz-app/landing/">
+<meta property="og:image" content="https://vehizohjunior.github.io/ecomaz-app/landing/partage.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="EcoMaZ — gestion scolaire, de la garderie à l'université. Conçu à Abidjan.">
+<meta name="twitter:card" content="summary_large_image">
 <meta property="og:locale" content="fr_FR">
 <meta name="theme-color" content="#14392d">
 <link rel="icon" href="../icon-192.png">
@@ -171,16 +196,7 @@ def page():
   </div>
 </section>
 
-<section class="section" aria-labelledby="titre-temoignage">
-  <div class="conteneur temoignage em-reveal">
-    <h2 id="titre-temoignage" class="sr-only">Témoignage</h2>
-    <svg class="guillemets" viewBox="0 0 48 48" aria-hidden="true"><path d="M8 34c0-8 4-15 12-20l2 3c-4 3-6 7-6 10h6v11H8zm18 0c0-8 4-15 12-20l2 3c-4 3-6 7-6 10h6v11H26z" fill="currentColor"/></svg>
-    <blockquote class="citation espace-reserve">[Citation de la direction de SUCCESS KIDS à recueillir]</blockquote>
-    <p class="auteur espace-reserve">[Nom, fonction]</p>
-  </div>
-</section>
-
-<section class="section section--douce" id="tarifs" aria-labelledby="titre-tarifs">
+''' + bloc_temoignage() + '''<section class="section section--douce" id="tarifs" aria-labelledby="titre-tarifs">
   <div class="conteneur">
     <p class="sur-titre">Tarifs</p>
     <h2 id="titre-tarifs">Un prix clair, sans surprise.</h2>
