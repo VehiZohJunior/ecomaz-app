@@ -1762,3 +1762,20 @@ drop policy if exists "creation paiements_en_ligne" on paiements_en_ligne;
 -- 3) Une facture PayDunya ne peut correspondre qu'à une seule tentative.
 create unique index if not exists paiements_en_ligne_reference_unique
   on paiements_en_ligne(reference_prestataire) where reference_prestataire <> '';
+
+-- =====================================================================
+-- 48. CONTRÔLE DE SÉCURITÉ COMPLET (2026-10-11)
+-- =====================================================================
+-- Accord de Vehi Zoh Junior. Bilan de l'analyse Supabase (« advisors ») :
+-- - Vues « security definer » (8) : voulues. Elles masquent des colonnes
+--   (téléphone, salaire, clés) et filtrent par école. Vérifié avec la clé
+--   publique, sans connexion : seules ecoles_vitrine, tableau_honneur_public
+--   et actualites_affichage_public renvoient des données (écran d'affichage
+--   et page de connexion), comme prévu.
+-- - Fonctions d'aide (mon_ecole_id, est_admin…) : ont toutes un search_path
+--   fixe ; sans connexion elles renvoient null/false. Gardées exécutables car
+--   les règles RLS les appellent.
+-- - Fonctions de déclenchement : jamais utiles en appel direct → retirées
+--   aux comptes (un déclencheur fonctionne sans ce droit).
+revoke execute on function proteger_salaire_enseignant() from public, anon, authenticated;
+revoke execute on function remplir_notification_portier() from public, anon, authenticated;
