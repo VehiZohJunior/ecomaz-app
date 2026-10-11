@@ -78,3 +78,17 @@ Composants partagés : `.card`, `.panel`, `.btn` (+ variantes), `.badge`, `.subt
   - (b) **Copie de prévisualisation en ligne** dans un sous-dossier `/preview/` de la branche `main` : visible sur téléphone à `…/ecomaz-app/preview/`, sans toucher à l'application de l'école. La base de données reste la vraie (lecture réelle, mêmes comptes).
   - (c) Un **second dépôt GitHub** dédié aux prévisualisations (à créer par vous).
 - Chaque lot : résumé des fichiers, captures, liste de ce qu'il reste à valider, ligne dans le journal local.
+
+## 10. Décisions de Vehi Zoh Junior (2026-10-11)
+
+1. **Prévisualisation** : dossier `/preview/` en ligne (https://vehizohjunior.github.io/ecomaz-app/preview/), publié par `tools/publier_apercu.py` depuis la branche `design/motion-refonte`. L'application de l'école (racine) n'est pas touchée. Même base de données et mêmes comptes ; la connexion est partagée avec l'application réelle (même adresse).
+2. **Présence de la semaine (parent)** : accord pour une règle en base permettant à un parent de lire **uniquement** les présences de **ses** enfants (Lot 4, testée avant publication).
+3. **Console portier** : nouveau look (thème sombre, états visuels) **sur l'existant** ; pas de contrôle de sortie par badge (projet séparé si besoin).
+4. **Tableau d'honneur** : une carte par personne et par catégorie, avec un badge par période (« Mois · Trimestre · Année »).
+
+## 11. Journal des lots
+
+| Lot | Contenu | Commit (branche) | État |
+|---|---|---|---|
+| L0 | Rapport de reconnaissance | 46c18f6 | Fait |
+| L1 | D1 cartes d'honneur sans verso (plus de texte en miroir), D3 regroupement par personne, D5 en-tête collant opaque | voir `git log` | À valider sur l'aperçu |

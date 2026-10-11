@@ -1125,37 +1125,45 @@ function renderActualitesParent(){
     </div></div>`).join('')}
   </div>`;
 }
-function toggleHonorCard(btn){
-  const pressed = btn.getAttribute('aria-pressed') === 'true';
-  btn.setAttribute('aria-pressed', String(!pressed));
+// Tableau d'honneur (spécification motion design § 5.1.6, corrige D1/D2/D3) :
+// cartes compactes SANS verso (l'ancienne carte retournable affichait le nom
+// en miroir sur certains téléphones). Une personne honorée sur plusieurs
+// périodes n'a qu'UNE carte, avec un badge par période.
+const HONNEUR_BADGES = { mois:'Mois', trimestre:'Trimestre', annee:'Année' };
+function initialesHonneur(nom){
+  const mots = String(nom||'').replace(/\b(M|Mme|Mlle|Mr|Dr|Pr)\.?(?=\s)/gi, ' ').trim().split(/\s+/).filter(Boolean);
+  return ((mots[0]||'')[0] || '') + ((mots[mots.length-1]||'')[0] && mots.length > 1 ? mots[mots.length-1][0] : '');
+}
+function laureatsHonneur(categorie){
+  const groupes = [];
+  HONNEUR_PERIODES.forEach(per => {
+    const h = honneurActuel(categorie, per.id);
+    if(!h || !h.nomAffiche) return;
+    const cle = h.nomAffiche.trim().toLowerCase();
+    let g = groupes.find(x => x.cle === cle);
+    if(!g){ g = { cle, nom:h.nomAffiche.trim(), detail:h.classeOuMatiere||'', commentaire:'', periodes:[] }; groupes.push(g); }
+    g.periodes.push(per.id);
+    if(!g.detail && h.classeOuMatiere) g.detail = h.classeOuMatiere;
+    if(!g.commentaire && h.commentaire) g.commentaire = h.commentaire;
+  });
+  return groupes;
 }
 function renderTableauHonneurParent(){
   const auMoinsUn = (DB.tableauHonneur||[]).some(h=>h.nomAffiche);
   if(!auMoinsUn) return '';
+  const groupes = HONNEUR_CATEGORIES.map(cat => ({ cat, laureats: laureatsHonneur(cat.id) })).filter(g => g.laureats.length);
   return `<div class="panel">
     <div class="panel-head"><div><h2>🏆 Tableau d'honneur</h2></div></div>
-    ${HONNEUR_CATEGORIES.map(cat=>`
-      <div class="hint" style="margin:10px 0 6px;">${cat.icon} ${escapeHtml(cat.label)} à l'honneur</div>
-      <div class="hc-grid">
-        ${HONNEUR_PERIODES.map(per=>{
-          const h = honneurActuel(cat.id, per.id);
-          if(!h || !h.nomAffiche) return '';
-          return `<div class="hc-card">
-            <button type="button" aria-pressed="false" onclick="toggleHonorCard(this)" aria-label="${escapeHtml(cat.label)} ${per.label.toLowerCase()} — toucher pour retourner la carte">
-              <div class="hc-flip">
-                <div class="hc-face hc-face-front">
-                  <div class="hc-avatar" style="font-size:34px;">${cat.icon}</div>
-                  <strong>${escapeHtml(h.nomAffiche)}</strong>
-                  <span class="hc-period">${per.label}</span>
-                </div>
-                <div class="hc-face hc-face-back">
-                  <strong>${escapeHtml(h.nomAffiche)}</strong>
-                  <span>${escapeHtml(h.classeOuMatiere||'')}</span>
-                </div>
-              </div>
-            </button>
-          </div>`;
-        }).join('') || `<div class="empty" style="padding:4px 0;">Aucun lauréat pour l'instant.</div>`}
+    ${groupes.map(({cat, laureats}) => `
+      <div class="hn-sous-titre">${cat.icon} ${cat.id === 'eleve' ? 'Élève(s) à l’honneur' : 'Enseignant·e(s) à l’honneur'}</div>
+      <div class="hn-rangee" role="list">
+        ${laureats.map((l, i) => `<article class="hn-carte${cat.id === 'eleve' && i === 0 ? ' hn-carte--une' : ''}" role="listitem">
+          <div class="hn-avatar" aria-hidden="true">${escapeHtml(initialesHonneur(l.nom).toUpperCase())}</div>
+          <strong class="hn-nom">${escapeHtml(l.nom)}</strong>
+          ${l.detail ? `<span class="hn-detail">${escapeHtml(l.detail)}</span>` : ''}
+          <span class="hn-badges">${l.periodes.map(p => `<span class="hn-badge">${HONNEUR_BADGES[p] || p}</span>`).join('')}</span>
+          ${l.commentaire ? `<span class="hn-mot">« ${escapeHtml(l.commentaire)} »</span>` : ''}
+        </article>`).join('')}
       </div>
     `).join('')}
   </div>`;
