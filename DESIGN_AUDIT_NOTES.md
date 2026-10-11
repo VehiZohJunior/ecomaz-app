@@ -117,3 +117,9 @@ Poids JavaScript ajouté par la refonte (gzip) : ≈ 17 Ko (icones.js 8,6 Ko, ch
 - **Applaudissements** : table `applaudissements_honneur` + fonctions `applaudir_honneur` / `compter_applaudissements` (schema.sql section 44) ; un applaudissement par parent et par lauréat ; personne ne voit qui a applaudi ; bouton actif dans la console parent ; 2 tests de sécurité ajoutés (18 au total).
 - **Performance — budget respecté** : icônes déplacées dans `icones.svg` (planche d'images mise en cache, non analysée comme du JavaScript) ; scripts autonomes compactés (`*.min.js`, outil `tools/minifier.py` avec Deno déjà installé) ; commentaires ajoutés par la refonte retirés d'app.js. JavaScript ajouté par la refonte : **≈ 9,6 Ko gzip** (budget 10 Ko).
 - **Notification de mise à jour** : fenêtre « EcoMaZ a été mis à jour » montrée une fois par compte et par appareil (liste adaptée au rôle) ; vérification automatique des nouvelles versions toutes les 30 min et au retour sur l'appli, avec bandeau « Mettre à jour ».
+
+## Retrait de l'aperçu /preview/ (2026-10-11)
+La refonte étant en service à la racine, la copie `/preview/` (figée au Lot 9,
+avec l'ancien calcul des matricules et branchée sur la vraie base) a été
+retirée pour qu'on ne l'utilise plus par erreur. `tools/publier_apercu.py`
+reste disponible pour une future refonte.
