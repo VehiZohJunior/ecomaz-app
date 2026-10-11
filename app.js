@@ -2808,6 +2808,7 @@ function renderPresencesEleves(){
       </table></div>
       <div class="form-actions"><button class="btn" onclick="savePresencesEleves()">Enregistrer la présence</button></div>`}
     </div>
+    ${renderPrevenirParentsWhatsapp(f)}
 
     <div class="panel">
       <div class="panel-head"><div><h2>Historique récent</h2><div class="sub">20 derniers enregistrements</div></div></div>
@@ -2819,6 +2820,36 @@ function renderPresencesEleves(){
   </div>`;
 }
 
+// Absents enregistrés de la classe et du jour affichés : le secrétariat ou la
+// direction prévient chaque parent par WhatsApp (gratuit). Les comptes
+// enseignants ne voient pas le numéro des parents : panneau masqué pour eux.
+function renderPrevenirParentsWhatsapp(f){
+  if(!['secretariat','direction','fondation'].includes(ui.role)) return '';
+  const absents = DB.presencesEleves.filter(p => p.date===f.date && p.classeId===f.classeId && p.statut==='Absent')
+    .map(p => ({ p, e: eleveById(p.eleveId) })).filter(x => x.e);
+  if(absents.length===0) return '';
+  return `
+    <div class="panel">
+      <div class="panel-head"><div><h2>📲 Prévenir les parents des absents</h2><div class="sub">Message gratuit par WhatsApp, déjà écrit : il reste à appuyer sur Envoyer</div></div></div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;">
+        ${absents.map(({p, e}) => `
+          <div style="display:flex;align-items:center;gap:6px;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r-card);padding:6px 10px;">
+            <span style="font-size:var(--fs-xs);">${escapeHtml(eleveFullName(e))}</span>
+            <button class="btn secondary sm" onclick="prevenirParentWhatsapp('${e.id}','${p.date}')">Prévenir le parent</button>
+          </div>`).join('')}
+      </div>
+    </div>`;
+}
+async function prevenirParentWhatsapp(eleveId, date){
+  try{
+    const rec = DB.presencesEleves.find(p => p.eleveId===eleveId && p.date===date);
+    const { data, error } = await sb.functions.invoke('notifier-absence-eleve', { body: { eleveId, date, motif: rec?.motif || '', canal: 'whatsapp' } });
+    if(error) throw new Error(await messageErreurFonction(error));
+    if(!data?.ok) throw new Error(data?.error || 'Échec de la préparation du message');
+    const e = eleveById(eleveId);
+    ouvrirEnvoiWhatsapp(`Absence — ${e ? eleveFullName(e) : ''}`, data.telephone, data.message, "WhatsApp s'ouvrira au numéro du parent avec ce message :");
+  }catch(e){ alert('Erreur : ' + e.message); }
+}
 async function savePresencesEleves(){
   const f = ui.filters.presEleves;
   let nbNotifs = 0;
@@ -2838,7 +2869,9 @@ async function savePresencesEleves(){
       }
       if(statut==='Absent' && !wasAbsent){ await envoyerNotificationAbsenceEleve(eleveId, f.date, motif); nbNotifs += 3; }
     }
-    toast(nbNotifs ? `Présence enregistrée · ${nbNotifs} notification(s) envoyée(s) (parent, direction, fondation)` : 'Présence enregistrée');
+    toast(nbNotifs ? (['secretariat','direction','fondation'].includes(ui.role)
+      ? 'Présence enregistrée · prévenez les parents des absents par WhatsApp (plus bas)'
+      : 'Présence enregistrée · absences signalées au parent dans son application et à la direction') : 'Présence enregistrée');
     renderView('presences-eleves');
   }catch(e){ alert('Erreur : ' + e.message); }
 }
@@ -3134,6 +3167,19 @@ function renderPointagesGpsDuJour(date){
     </tbody>
   </table></div>`;
 }
+// Envoi gratuit par WhatsApp : un vrai bouton (les navigateurs bloquent les
+// fenêtres ouvertes automatiquement après une attente réseau). WhatsApp
+// s'ouvre avec le message déjà écrit ; il reste à appuyer sur Envoyer.
+function ouvrirEnvoiWhatsapp(titre, telephone, message, intro){
+  const lienWa = `https://wa.me/${encodeURIComponent(telephone)}?text=${encodeURIComponent(message)}`;
+  openModal(titre, `
+    <p>${intro}</p>
+    <div class="hint" style="white-space:pre-wrap;">${escapeHtml(message)}</div>
+    <div class="form-actions" style="flex-wrap:wrap;">
+      <a class="btn" href="${lienWa}" target="_blank" rel="noopener" onclick="setTimeout(closeModal, 400)">📲 Envoyer par WhatsApp</a>
+      <button type="button" class="btn secondary" onclick="closeModal()">Fermer</button>
+    </div>`);
+}
 async function handleEnvoyerLienPointage(enseignantId, action){
   try{
     const { data, error } = await sb.functions.invoke('generer-lien-pointage', {
@@ -3141,18 +3187,9 @@ async function handleEnvoyerLienPointage(enseignantId, action){
     });
     if(error) throw new Error(await messageErreurFonction(error));
     if(!data?.ok) throw new Error(data?.error || "Échec de la création du lien");
-    // Envoi gratuit par WhatsApp : la secrétaire n'a plus qu'à appuyer sur Envoyer.
-    // (Un vrai bouton plutôt qu'une ouverture automatique : les navigateurs
-    // bloquent les fenêtres ouvertes après une attente réseau.)
     const t = enseignantById(enseignantId);
-    const lienWa = `https://wa.me/${encodeURIComponent(data.telephone)}?text=${encodeURIComponent(data.message)}`;
-    openModal(`Lien ${action === 'arrivee' ? 'd’arrivée' : 'de départ'} — ${t ? ensFullName(t) : ''}`, `
-      <p>Le lien est prêt (valable 30 minutes, utilisable une seule fois). Envoyez-le à l'enseignant :</p>
-      <div class="form-actions" style="flex-wrap:wrap;">
-        <a class="btn" href="${lienWa}" target="_blank" rel="noopener" onclick="setTimeout(closeModal, 400)">📲 Envoyer par WhatsApp</a>
-        <button type="button" class="btn secondary" onclick="closeModal()">Fermer</button>
-      </div>
-      <div class="hint">WhatsApp s'ouvre avec le message déjà écrit, au numéro de l'enseignant : appuyez sur Envoyer.</div>`);
+    ouvrirEnvoiWhatsapp(`Lien ${action === 'arrivee' ? 'd’arrivée' : 'de départ'} — ${t ? ensFullName(t) : ''}`, data.telephone, data.message,
+      "Le lien est prêt (valable 30 minutes, utilisable une seule fois). WhatsApp s'ouvrira au numéro de l'enseignant :");
   }catch(e){ alert('Erreur : ' + e.message); }
 }
 function exporterPointagesGpsCSV(){

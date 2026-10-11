@@ -45,7 +45,7 @@ Deno.serve(async (req) => {
       throw new Error("Rôle non autorisé à signaler une absence");
     }
 
-    const { eleveId, date, motif } = await req.json();
+    const { eleveId, date, motif, canal } = await req.json();
     if (!eleveId || !date) throw new Error('Paramètres manquants');
 
     // 2) À partir d'ici, clé service_role — mais le numéro du parent n'est
@@ -75,6 +75,18 @@ Deno.serve(async (req) => {
     const classeNom = classe?.nom || '—';
     const contenu = composeMsgAbsenceEleve(nomEcole, eleveNomComplet, classeNom, date, motif || '');
     const heure = heureActuelle();
+
+    // Envoi gratuit par WhatsApp (décision de Vehi Zoh Junior, 2026-10-11) :
+    // on renvoie le message et le numéro du parent, l'application ouvre
+    // WhatsApp. Réservé au personnel administratif, qui voit déjà le numéro
+    // du parent sur la fiche élève — jamais à un compte enseignant.
+    if (canal === 'whatsapp') {
+      if (!['secretariat', 'direction', 'fondation'].includes(profil.role)) throw new Error('Réservé au secrétariat et à la direction');
+      if (!eleve.parent_tel) throw new Error("Aucun numéro de parent sur la fiche de cet élève");
+      return new Response(JSON.stringify({ ok: true, telephone: normaliserTelephoneCI(eleve.parent_tel).replace('+', ''), message: contenu }), {
+        headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+      });
+    }
 
     const destinataires = [
       { destinataire_nom: eleve.parent_nom, destinataire_role: 'Parent', destinataire_tel: eleve.parent_tel || '', canal: 'SMS' },
