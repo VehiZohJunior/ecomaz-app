@@ -790,6 +790,10 @@ function renderView(view){
     'tableau-affichage': renderTableauAffichage,
     parametres: renderParametres,
   };
+  // Données pas encore chargées, ou déjà effacées par une déconnexion (fin
+  // de session, inactivité) : rien à afficher, l'écran de connexion est là.
+  // Évite l'erreur « Cannot read properties of null » vue en service le 06/10.
+  if(!DB) return;
   $('#viewContainer').innerHTML = (map[view] || renderDashboard)();
 }
 
@@ -2869,7 +2873,7 @@ async function prevenirParentWhatsapp(eleveId, date){
     if(error) throw new Error(await messageErreurFonction(error));
     if(!data?.ok) throw new Error(data?.error || 'Échec de la préparation du message');
     const e = eleveById(eleveId);
-    ouvrirEnvoiWhatsapp(`Absence — ${e ? eleveFullName(e) : ''}`, data.telephone, data.message, "WhatsApp s'ouvrira au numéro du parent avec ce message :");
+    ouvrirEnvoiWhatsapp(`Absence — ${e ? eleveFullName(e) : ''}`, data.telephones || data.telephone, data.message, "WhatsApp s'ouvrira au numéro du parent avec ce message :");
   }catch(e){ alert('Erreur : ' + e.message); }
 }
 async function savePresencesEleves(){
@@ -3192,13 +3196,17 @@ function renderPointagesGpsDuJour(date){
 // Envoi gratuit par WhatsApp : un vrai bouton (les navigateurs bloquent les
 // fenêtres ouvertes automatiquement après une attente réseau). WhatsApp
 // s'ouvre avec le message déjà écrit ; il reste à appuyer sur Envoyer.
-function ouvrirEnvoiWhatsapp(titre, telephone, message, intro){
-  const lienWa = `https://wa.me/${encodeURIComponent(telephone)}?text=${encodeURIComponent(message)}`;
+// telephones : un numéro ou une liste (fiche avec deux numéros « 07… / 05… ») —
+// un bouton par numéro.
+function ouvrirEnvoiWhatsapp(titre, telephones, message, intro){
+  const liste = [].concat(telephones || []).filter(Boolean);
+  const lisible = t => String(t).replace(/^225/, '').replace(/(\d{2})(?=\d)/g, '$1 ');
+  const boutons = liste.map(t => `<a class="btn" href="https://wa.me/${encodeURIComponent(t)}?text=${encodeURIComponent(message)}" target="_blank" rel="noopener" onclick="setTimeout(closeModal, 400)">📲 ${liste.length > 1 ? 'Envoyer au ' + lisible(t) : 'Envoyer par WhatsApp'}</a>`).join('');
   openModal(titre, `
     <p>${intro}</p>
     <div class="hint" style="white-space:pre-wrap;">${escapeHtml(message)}</div>
     <div class="form-actions" style="flex-wrap:wrap;">
-      <a class="btn" href="${lienWa}" target="_blank" rel="noopener" onclick="setTimeout(closeModal, 400)">📲 Envoyer par WhatsApp</a>
+      ${boutons}
       <button type="button" class="btn secondary" onclick="closeModal()">Fermer</button>
     </div>`);
 }
@@ -3210,7 +3218,7 @@ async function handleEnvoyerLienPointage(enseignantId, action){
     if(error) throw new Error(await messageErreurFonction(error));
     if(!data?.ok) throw new Error(data?.error || "Échec de la création du lien");
     const t = enseignantById(enseignantId);
-    ouvrirEnvoiWhatsapp(`Lien ${action === 'arrivee' ? 'd’arrivée' : 'de départ'} — ${t ? ensFullName(t) : ''}`, data.telephone, data.message,
+    ouvrirEnvoiWhatsapp(`Lien ${action === 'arrivee' ? 'd’arrivée' : 'de départ'} — ${t ? ensFullName(t) : ''}`, data.telephones || data.telephone, data.message,
       "Le lien est prêt (valable 30 minutes, utilisable une seule fois). WhatsApp s'ouvrira au numéro de l'enseignant :");
   }catch(e){ alert('Erreur : ' + e.message); }
 }

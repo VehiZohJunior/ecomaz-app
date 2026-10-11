@@ -25,6 +25,17 @@ function normaliserTelephoneCI(tel: string): string {
   return '+225' + digits;
 }
 
+// Une case « téléphone » contient parfois deux numéros (« 07… / 05… »,
+// « 07-…  -  05-… ») : on les sépare, chacun devient un numéro WhatsApp
+// international (225…), sans « + ».
+function telephonesWhatsappCI(brut: string): string[] {
+  return (brut || '').split(/\s*[\/;,|]\s*|\s+-\s+|\s+et\s+/i)
+    .map((morceau) => morceau.replace(/\D/g, ''))
+    .filter((chiffres) => chiffres.length >= 8)
+    .map((chiffres) => '225' + (chiffres.startsWith('225') ? chiffres.slice(3) : chiffres))
+    .filter((num, i, liste) => liste.indexOf(num) === i);
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS_HEADERS });
 
@@ -74,7 +85,9 @@ Deno.serve(async (req) => {
     const message = `${ecole?.nom_ecole || 'École'} : cliquez ce lien pour valider ${libelleAction} (valable 30 min) : ${url}`;
 
     if (canal === 'whatsapp') {
-      return new Response(JSON.stringify({ ok: true, message, telephone: normaliserTelephoneCI(enseignant.telephone).replace('+', '') }), {
+      const telephones = telephonesWhatsappCI(enseignant.telephone);
+      if (telephones.length === 0) throw new Error("Le numéro de l'enseignant n'est pas valide");
+      return new Response(JSON.stringify({ ok: true, message, telephones, telephone: telephones[0] }), {
         headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
       });
     }

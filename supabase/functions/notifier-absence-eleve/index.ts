@@ -17,6 +17,16 @@ function normaliserTelephoneCI(tel: string): string {
   if (digits.startsWith('225')) digits = digits.slice(3);
   return '+225' + digits;
 }
+// Une case « téléphone » contient parfois deux numéros (« 07… / 05… »,
+// « 07-…  -  05-… ») : on les sépare, chacun devient un numéro WhatsApp
+// international (225…), sans « + ».
+function telephonesWhatsappCI(brut: string): string[] {
+  return (brut || '').split(/\s*[\/;,|]\s*|\s+-\s+|\s+et\s+/i)
+    .map((morceau) => morceau.replace(/\D/g, ''))
+    .filter((chiffres) => chiffres.length >= 8)
+    .map((chiffres) => '225' + (chiffres.startsWith('225') ? chiffres.slice(3) : chiffres))
+    .filter((num, i, liste) => liste.indexOf(num) === i);
+}
 function composeMsgAbsenceEleve(nomEcole: string, eleveNomComplet: string, classeNom: string, date: string, motif: string): string {
   return `Bonjour, nous vous informons que ${eleveNomComplet} (${classeNom}) est ABSENT(E) de l'école ce ${fmtDate(date)}${motif ? ` (motif signalé : ${motif})` : ''}. Merci de contacter l'établissement pour toute justification. — ${nomEcole}`;
 }
@@ -83,7 +93,9 @@ Deno.serve(async (req) => {
     if (canal === 'whatsapp') {
       if (!['secretariat', 'direction', 'fondation'].includes(profil.role)) throw new Error('Réservé au secrétariat et à la direction');
       if (!eleve.parent_tel) throw new Error("Aucun numéro de parent sur la fiche de cet élève");
-      return new Response(JSON.stringify({ ok: true, telephone: normaliserTelephoneCI(eleve.parent_tel).replace('+', ''), message: contenu }), {
+      const telephones = telephonesWhatsappCI(eleve.parent_tel);
+      if (telephones.length === 0) throw new Error("Le numéro du parent sur la fiche n'est pas valide");
+      return new Response(JSON.stringify({ ok: true, telephones, telephone: telephones[0], message: contenu }), {
         headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
       });
     }
