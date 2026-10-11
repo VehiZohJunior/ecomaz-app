@@ -15,7 +15,9 @@ body{
   line-height:var(--lh-text);
   -webkit-font-smoothing:antialiased;
 }
-h1,h2,h3,h4{ font-family:var(--font-title); line-height:var(--lh-title); letter-spacing:-.015em; }
+h1,h2,h3,h4{ font-family:var(--font-title); line-height:var(--lh-title); letter-spacing:-.01em; font-weight:900; }
+/* Chiffres (montants, effectifs, heures) : largeur fixe, pas de tremblement pendant les compteurs */
+.num, .amount, .recu-montant, .bulle-badge, .tt-time, .badge, .kpi-flow{ font-variant-numeric:tabular-nums; }
 button,input,select,textarea{ font-family:inherit; }
 
 /* Champs « nus » (listes de classes, dates…) : même apparence que les formulaires.
@@ -27,7 +29,7 @@ button,input,select,textarea{ font-family:inherit; }
 :where(select, textarea, input):focus{ outline:none; border-color:var(--focus); box-shadow:0 0 0 3px color-mix(in srgb, var(--focus) 28%, transparent); }
 
 /* Accessibilité : anneau de focus visible partout (clavier), jamais au clic souris */
-:focus-visible{ outline:2px solid var(--focus); outline-offset:2px; border-radius:var(--r-control); }
+:focus-visible{ outline:3px solid var(--focus); outline-offset:2px; border-radius:var(--r-control); }
 .skip-link{ position:absolute; left:-9999px; top:8px; background:var(--primary); color:var(--on-primary); padding:var(--sp-2) var(--sp-4); border-radius:var(--r-control); z-index:1000; }
 .skip-link:focus{ left:8px; }
 .sr-only{ position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
@@ -92,7 +94,7 @@ button,input,select,textarea{ font-family:inherit; }
 .topbar h1{ font-size:var(--fs-lg); margin:0; flex:1; font-weight:700; }
 .topbar-right{ display:flex; align-items:center; gap:var(--sp-2); }
 .burger{ display:none; background:none; border:none; font-size:var(--fs-lg); cursor:pointer; min-width:var(--tap); min-height:var(--tap); color:var(--text); border-radius:var(--r-control); }
-.pill{ background:var(--accent-soft); color:var(--accent); font-size:var(--fs-xs); font-weight:700; padding:var(--sp-1) var(--sp-3); border-radius:var(--r-pill); }
+.pill{ background:var(--accent-soft); color:var(--accent-ink); font-size:var(--fs-xs); font-weight:700; padding:var(--sp-1) var(--sp-3); border-radius:var(--r-pill); }
 
 .view-container{ padding:var(--sp-5) var(--gutter) var(--sp-8); flex:1; width:100%; max-width:var(--content-max); margin-inline:auto; }
 .view{ display:none; }
@@ -226,7 +228,7 @@ tbody td input[type=number]{ width:90px; }
 .badge.red{ background:var(--danger-soft); color:var(--danger); }
 .badge.amber{ background:var(--warning-soft); color:var(--warning); }
 .badge.blue{ background:var(--info-soft); color:var(--info); }
-.badge.purple{ background:var(--accent-soft); color:var(--accent); }
+.badge.purple{ background:var(--accent-soft); color:var(--accent-ink); }
 .badge.gray{ background:var(--surface-2); color:var(--text-dim); border:1px solid var(--border); }
 
 /* ------------------------------------------------------------ COMPTABILITÉ */
@@ -558,7 +560,7 @@ body:has(.login-gate.open) .theme-toggle-gate{ display:flex; }
 .hn-nom{ font-size:var(--fs-sm); font-weight:800; line-height:1.25; overflow-wrap:anywhere; }
 .hn-detail{ font-size:var(--fs-xs); color:var(--text-dim); }
 .hn-badges{ display:flex; flex-wrap:wrap; justify-content:center; gap:4px; }
-.hn-badge{ font-size:11px; font-weight:800; color:var(--accent); background:var(--accent-soft); border-radius:var(--r-pill); padding:2px 8px; }
+.hn-badge{ font-size:11px; font-weight:800; color:var(--accent-ink); background:var(--accent-soft); border-radius:var(--r-pill); padding:2px 8px; }
 .hn-mot{ font-size:var(--fs-xs); font-style:italic; color:var(--text-dim); }
 
 .actu-item{ display:flex; gap:var(--sp-3); align-items:flex-start; padding:var(--sp-3); border-radius:var(--r-card); background:var(--surface-2); margin-bottom:var(--sp-2); font-size:var(--fs-sm); }
@@ -570,11 +572,11 @@ body:has(.login-gate.open) .theme-toggle-gate{ display:flex; }
    (classe posée sur <body> par chooseEspace()/enterAppParent()).
    ========================================================================= */
 body.theme-parent{
-  font-family:'Nunito',var(--font-body);
+  font-family:var(--em-font);
 }
 body.theme-parent h1, body.theme-parent h2, body.theme-parent .panel-head h2,
 body.theme-parent .profile-head h2, body.theme-parent .login-card h1{
-  font-family:'Baloo 2',var(--font-title);
+  font-family:var(--em-font); font-weight:900;
 }
 body.theme-parent .panel{
   border-radius:22px; border-color:var(--primary-soft);
@@ -591,7 +593,7 @@ body.theme-parent .avatar{
   background:linear-gradient(135deg,var(--primary),var(--accent)); color:var(--on-primary);
 }
 body.theme-parent .btn{
-  border-radius:var(--r-pill); font-family:'Baloo 2',var(--font-title); font-weight:700;
+  border-radius:var(--r-pill); font-family:var(--em-font); font-weight:800;
   background:linear-gradient(135deg,var(--primary),var(--primary-hover));
   box-shadow:var(--shadow-2); transition:transform var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
 }
@@ -606,7 +608,7 @@ body.theme-parent .bulle-item{ border-radius:var(--r-card); }
 
 body.theme-parent .topbar{ background:var(--surface-0); }
 body.theme-parent .parent-greeting{
-  font-family:'Baloo 2',var(--font-title); font-size:var(--fs-lg); font-weight:700; margin:0 0 var(--sp-1);
+  font-family:var(--em-font); font-size:var(--em-fs-26); font-weight:900; letter-spacing:-.01em; margin:0 0 var(--sp-1);
 }
 body.theme-parent .parent-greeting-sub{ color:var(--text-dim); margin:0 0 var(--sp-4); font-size:var(--fs-sm); }
 
