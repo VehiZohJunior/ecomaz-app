@@ -17,6 +17,7 @@ FICHIERS = [
     'index.html', 'parent.html', 'portier.html', 'affichage.html', 'pointage-gps.html', 'confidentialite.html',
     'app.js', 'supabase-client.js', 'i18n.js', 'config.js', 'theme.js', 'recherche.js', 'espace-fixe.js', 'sw.js',
     'style.css', 'theme.css', 'ecomaz-tokens.css', 'ecomaz-motion.css', 'motion.js', 'icones.js', 'manifest.json', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png',
+    'landing/index.html', 'landing/style.css', 'landing/script.js', 'landing/site-config.js',
 ]
 BANDEAU = ('<div aria-hidden="true" style="position:fixed;top:0;left:50%;transform:translateX(-50%);z-index:1000;'
            'pointer-events:none;background:#e8b04b;color:#14392d;font:800 11px/1.6 system-ui,sans-serif;'
@@ -53,6 +54,7 @@ def main():
                 texte = texte.replace('<head>', '<head>\n<meta name="robots" content="noindex, nofollow">', 1)
                 texte = texte.replace('<body>', '<body>\n' + BANDEAU, 1)
                 contenu = texte.encode('utf-8')
+            os.makedirs(os.path.dirname(os.path.join(cible, f)), exist_ok=True)
             with open(os.path.join(cible, f), 'wb') as out:
                 out.write(contenu)
         git('add', 'preview', cwd=arbre)
