@@ -185,7 +185,7 @@ const VIEW_TITLES = {
 };
 
 /* --- Comptabilité --- */
-const DEVISE = 'FCFA';
+const DEVISE = 'F\u00a0CFA'; // format de la spécification : « 600 000 F CFA »
 const CATEGORIES_DEPENSES = ['Loyer','Entretien','Matériel pédagogique','Fournitures scolaires','Électricité & Eau','Transport','Restauration','Autre'];
 const TRANCHES_SCOLARITE = ['Inscription','Tranche 1','Tranche 2','Tranche 3','Versement libre'];
 const MODES_PAIEMENT = ['Espèces','Mobile Money','Virement bancaire','Chèque'];
@@ -335,6 +335,12 @@ function toast(msg){
   const el = document.createElement('div');
   el.className = 'toast-item' + (erreur ? ' error' : '');
   el.textContent = msg;
+  if(!erreur && window.EmIcones){
+    const coche = document.createElement('span');
+    coche.className = 'toast-coche'; coche.setAttribute('aria-hidden', 'true');
+    coche.innerHTML = '<svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    el.prepend(coche);
+  }
   if(erreur) el.setAttribute('role', 'alert');
   pile.appendChild(el);
   while(pile.children.length > 4) pile.firstChild.remove();
@@ -1103,11 +1109,18 @@ function enterAppParent(){
   $('#sidebar').style.display = 'none';
   $('#burger').style.display = 'none';
   applyBranding();
-  $('#viewTitle').textContent = window.ESPACE_FIXE ? nomApplication() : 'Espace Parent';
+  // En-tête (spec § 5.1.1) : pastille « E » + « ECOMAZ PARENTS » + nom de l'école
+  $('#viewTitle').innerHTML = `<span class="pt-marque em-rise" style="--i:0"><span class="pt-logo" aria-hidden="true">E</span>
+    <span class="pt-textes"><span class="pt-sur">EcoMaZ Parents</span><span class="pt-ecole">${escapeHtml(DB.meta.nomEcole || '')}</span></span></span>
+    <span class="sr-only">${escapeHtml(window.ESPACE_FIXE ? nomApplication() : 'Espace Parent')}</span>`;
   const pill = $('#topbarPill');
   pill.innerHTML = `${escapeHtml(session.nomComplet||'')} <button class="btn secondary sm" style="margin-left:10px;" onclick="logoutRole()">🔒 Déconnexion</button>`;
   rafraichirBulles();
   $('#viewContainer').innerHTML = renderParentDashboard();
+  let nav = document.getElementById('parentNav');
+  if(!nav){ nav = document.createElement('nav'); nav.id = 'parentNav'; nav.className = 'parent-nav'; nav.setAttribute('aria-label', 'Navigation de la console parent'); document.body.appendChild(nav); }
+  nav.innerHTML = renderNavParent('accueil');
+  document.body.classList.add('has-parent-nav');
   startIdleWatcher();
   startPollingBulles();
 }
@@ -1118,47 +1131,158 @@ function renderActualitesParent(){
   // logique que renderListeActualites() côté gestion Direction.
   const actus = (DB.actualitesAffichage||[]).slice().sort((a,b)=> (b.createdAt||'').localeCompare(a.createdAt||'')).slice(0, 8);
   if(!actus.length) return '';
-  return `<div class="panel">
-    <div class="panel-head"><div><h2>📰 Actualités</h2></div></div>
-    ${actus.map(a=>`<div class="actu-item"><span class="ic">📰</span><div>${escapeHtml(a.texte)}
-      <div class="meta">${a.createdAt?new Date(a.createdAt).toLocaleDateString('fr-FR',{day:'2-digit',month:'long'}):''}</div>
-    </div></div>`).join('')}
-  </div>`;
+  const vivant = ui.role === 'parent';
+  // Carte actualité (spec § 5.1.5) : bloc date à gauche (date de publication,
+  // aucune date d'événement n'étant saisie), texte saisi par l'école intact.
+  const carte = (a, i) => {
+    const d = a.createdAt ? new Date(a.createdAt) : null;
+    const jour = d ? d.getDate() : '';
+    const mois = d ? d.toLocaleDateString('fr-FR', {month:'short'}).replace('.', '').toUpperCase() : '';
+    const meta = d ? d.toLocaleDateString('fr-FR', {weekday:'long', day:'numeric', month:'long'}) : '';
+    return `<article class="actu-carte${vivant ? ' em-lift em-rise' : ''}" ${vivant ? `style="animation-delay:${340 + i*70}ms"` : ''}>
+      <div class="actu-date" aria-hidden="true"><span class="actu-jour">${jour}</span><span class="actu-mois">${mois}</span></div>
+      <div class="actu-corps"><div class="actu-titre">${escapeHtml(a.texte)}</div>${meta ? `<div class="actu-meta">Publié le ${meta}</div>` : ''}</div>
+    </article>`;
+  };
+  const visibles = actus.slice(0, 3), autres = actus.slice(3);
+  return `<section class="panel actus-panel" aria-labelledby="titreActus">
+    <div class="panel-head"><div><h2 id="titreActus">📰 Actualités</h2></div></div>
+    <div class="actu-liste">${visibles.map(carte).join('')}</div>
+    ${autres.length ? `<div class="actu-liste" id="actusSuite" hidden>${autres.map((a,i)=>carte(a, i)).join('')}</div>
+      <button type="button" class="btn ghost sm actu-tout" aria-expanded="false" aria-controls="actusSuite" onclick="basculerActus(this)">Tout voir (${actus.length})</button>` : ''}
+  </section>`;
 }
-function toggleHonorCard(btn){
-  const pressed = btn.getAttribute('aria-pressed') === 'true';
-  btn.setAttribute('aria-pressed', String(!pressed));
+function basculerActus(btn){
+  const suite = document.getElementById('actusSuite');
+  if(!suite) return;
+  const ouvrir = suite.hidden;
+  suite.hidden = !ouvrir;
+  btn.setAttribute('aria-expanded', String(ouvrir));
+  btn.textContent = ouvrir ? 'Voir moins' : `Tout voir (${(DB.actualitesAffichage||[]).slice(0,8).length})`;
+}
+// Tableau d'honneur (spécification motion design § 5.1.6, corrige D1/D2/D3) :
+// cartes compactes SANS verso (l'ancienne carte retournable affichait le nom
+// en miroir sur certains téléphones). Une personne honorée sur plusieurs
+// périodes n'a qu'UNE carte, avec un badge par période.
+const HONNEUR_BADGES = { mois:'Mois', trimestre:'Trimestre', annee:'Année' };
+// Bouton « Applaudir » (spec § 5.1.6) : la persistance demande une table en
+// base, pas encore créée (accord nécessaire). Désactivé tant que false.
+const ENABLE_APPLAUSE = false;
+function applaudir(btn){
+  if(!ENABLE_APPLAUSE || btn.getAttribute('aria-pressed') === 'true') return;
+  const compteur = btn.querySelector('.hn-applause-n');
+  if(compteur){ compteur.textContent = String((parseInt(compteur.textContent,10)||0) + 1); if(window.EmMotion) EmMotion.replay(compteur, 'em-bump'); }
+  if(window.EmMotion) EmMotion.burst(btn.closest('.hn-carte'));
+  btn.setAttribute('aria-pressed', 'true');
+  btn.disabled = true;
+  const lib = btn.querySelector('.hn-applause-lib'); if(lib) lib.textContent = 'Applaudi';
+}
+function initialesHonneur(nom){
+  const mots = String(nom||'').replace(/\b(M|Mme|Mlle|Mr|Dr|Pr)\.?(?=\s)/gi, ' ').trim().split(/\s+/).filter(Boolean);
+  return ((mots[0]||'')[0] || '') + ((mots[mots.length-1]||'')[0] && mots.length > 1 ? mots[mots.length-1][0] : '');
+}
+function laureatsHonneur(categorie){
+  const groupes = [];
+  HONNEUR_PERIODES.forEach(per => {
+    const h = honneurActuel(categorie, per.id);
+    if(!h || !h.nomAffiche) return;
+    const cle = h.nomAffiche.trim().toLowerCase();
+    let g = groupes.find(x => x.cle === cle);
+    if(!g){ g = { cle, nom:h.nomAffiche.trim(), detail:h.classeOuMatiere||'', commentaire:'', periodes:[] }; groupes.push(g); }
+    g.periodes.push(per.id);
+    if(!g.detail && h.classeOuMatiere) g.detail = h.classeOuMatiere;
+    if(!g.commentaire && h.commentaire) g.commentaire = h.commentaire;
+  });
+  return groupes;
 }
 function renderTableauHonneurParent(){
   const auMoinsUn = (DB.tableauHonneur||[]).some(h=>h.nomAffiche);
   if(!auMoinsUn) return '';
+  const groupes = HONNEUR_CATEGORIES.map(cat => ({ cat, laureats: laureatsHonneur(cat.id) })).filter(g => g.laureats.length);
+  const vivant = ui.role === 'parent';
+  let rang = 0;
   return `<div class="panel">
     <div class="panel-head"><div><h2>🏆 Tableau d'honneur</h2></div></div>
-    ${HONNEUR_CATEGORIES.map(cat=>`
-      <div class="hint" style="margin:10px 0 6px;">${cat.icon} ${escapeHtml(cat.label)} à l'honneur</div>
-      <div class="hc-grid">
-        ${HONNEUR_PERIODES.map(per=>{
-          const h = honneurActuel(cat.id, per.id);
-          if(!h || !h.nomAffiche) return '';
-          return `<div class="hc-card">
-            <button type="button" aria-pressed="false" onclick="toggleHonorCard(this)" aria-label="${escapeHtml(cat.label)} ${per.label.toLowerCase()} — toucher pour retourner la carte">
-              <div class="hc-flip">
-                <div class="hc-face hc-face-front">
-                  <div class="hc-avatar" style="font-size:34px;">${cat.icon}</div>
-                  <strong>${escapeHtml(h.nomAffiche)}</strong>
-                  <span class="hc-period">${per.label}</span>
-                </div>
-                <div class="hc-face hc-face-back">
-                  <strong>${escapeHtml(h.nomAffiche)}</strong>
-                  <span>${escapeHtml(h.classeOuMatiere||'')}</span>
-                </div>
-              </div>
-            </button>
-          </div>`;
-        }).join('') || `<div class="empty" style="padding:4px 0;">Aucun lauréat pour l'instant.</div>`}
+    ${groupes.map(({cat, laureats}) => `
+      <div class="hn-sous-titre">${cat.icon} ${cat.id === 'eleve' ? 'Élève(s) à l’honneur' : 'Enseignant·e(s) à l’honneur'}</div>
+      <div class="hn-rangee" role="list">
+        ${laureats.map((l, i) => `<article class="hn-carte${cat.id === 'eleve' && i === 0 ? ' hn-carte--une' : ''}${vivant ? ' em-rise' : ''}" role="listitem" ${vivant ? `style="animation-delay:${560 + (rang++)*90}ms"` : ''}>
+          <div class="hn-avatar${vivant && cat.id === 'eleve' && i === 0 ? ' em-glow' : ''}" aria-hidden="true">${escapeHtml(initialesHonneur(l.nom).toUpperCase())}</div>
+          <strong class="hn-nom">${escapeHtml(l.nom)}</strong>
+          ${l.detail ? `<span class="hn-detail">${escapeHtml(l.detail)}</span>` : ''}
+          <span class="hn-badges">${l.periodes.map(p => `<span class="hn-badge">${HONNEUR_BADGES[p] || p}</span>`).join('')}</span>
+          ${l.commentaire ? `<span class="hn-mot">« ${escapeHtml(l.commentaire)} »</span>` : ''}
+          ${ENABLE_APPLAUSE ? `<button type="button" class="hn-applause em-press" aria-pressed="false" onclick="applaudir(this)">${window.EmIcones ? EmIcones.svg('thumbs-up') : ''}<span class="hn-applause-lib">Applaudir</span><span class="hn-applause-n" aria-live="polite">0</span></button>` : ''}
+        </article>`).join('')}
       </div>
     `).join('')}
   </div>`;
+}
+const JOURS_SEMAINE = ['Lun','Mar','Mer','Jeu','Ven'];
+const JOURS_LONGS = ['lundi','mardi','mercredi','jeudi','vendredi'];
+function isoLocal(d){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+function renderPresenceSemaine(e){
+  // Bloc masqué si les présences n'ont pas pu être lues (jamais de fausses données)
+  if(!Array.isArray(DB.presencesSemaine)) return '';
+  const lundi = debutSemaine(new Date());
+  const aujourdhui = isoLocal(new Date());
+  const cases = JOURS_SEMAINE.map((lib, i) => {
+    const d = new Date(lundi); d.setDate(lundi.getDate() + i);
+    const iso = isoLocal(d);
+    const p = DB.presencesSemaine.find(x => x.eleveId === e.id && x.date === iso);
+    const futur = iso > aujourdhui;
+    let etat = 'vide', libelle = 'non renseigné';
+    if(p && p.statut === 'Présent'){ etat = 'present'; libelle = 'présent'; }
+    else if(p && p.statut === 'Retard'){ etat = 'retard'; libelle = 'en retard'; }
+    else if(p && p.statut === 'Absent'){ etat = 'absent'; libelle = 'absent'; }
+    else if(futur){ etat = 'futur'; libelle = 'à venir'; }
+    const coche = (etat === 'present' || etat === 'retard')
+      ? `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>` : '';
+    return `<div class="sem-jour">
+      <div class="sem-case sem-${etat}${iso === aujourdhui ? ' sem-auj' : ''}" role="img" aria-label="${JOURS_LONGS[i]} : ${libelle}">
+        ${coche ? `<span class="sem-remplir em-fill-y" style="animation-delay:${520 + i*110}ms">${coche}</span>` : ''}
+        ${etat === 'absent' ? '<span class="sem-point" aria-hidden="true"></span>' : ''}
+      </div>
+      <span class="sem-lib" aria-hidden="true">${lib}</span>
+    </div>`;
+  }).join('');
+  const aucun = !DB.presencesSemaine.some(x => x.eleveId === e.id);
+  return `<div class="sem-bloc">
+    <div class="sem-titre">Présence de la semaine</div>
+    <div class="sem-grille">${cases}</div>
+    ${aucun ? '<div class="sem-note">L’appel de cette semaine n’a pas encore été enregistré par l’école.</div>' : ''}
+  </div>`;
+}
+function renderAlerteAbsence(enfants){
+  if(!Array.isArray(DB.presencesSemaine)) return '';
+  const auj = isoLocal(new Date());
+  const absents = enfants.filter(e => DB.presencesSemaine.some(x => x.eleveId === e.id && x.date === auj && x.statut === 'Absent'));
+  if(!absents.length) return '';
+  // Affichée immédiatement, sans délai d'animation (spec § 5.1.4)
+  return absents.map(e => `<div class="alerte-absence" role="alert">
+    <span class="alerte-ic" aria-hidden="true">${window.EmIcones ? EmIcones.svg('triangle-alert') : '⚠️'}</span>
+    <div><strong>${escapeHtml(e.prenom || eleveFullName(e))} est noté(e) absent(e) aujourd’hui.</strong>
+      <div class="alerte-sous">Les détails sont dans vos notifications.</div></div>
+    <button type="button" class="btn sm" onclick="event.stopPropagation(); toggleBulle('notif')">Voir</button>
+  </div>`).join('');
+}
+function renderFicheEnfant(e){
+  const ini = initials(e.prenom, e.nom);
+  return `<article class="enfant-carte">
+    <div class="enfant-tete">
+      <div class="enfant-avatar em-pop" style="animation-delay:320ms" aria-hidden="true">${escapeHtml(ini)}</div>
+      <div class="enfant-id">
+        <h3 class="enfant-nom">${escapeHtml(eleveFullName(e))}</h3>
+        <div class="enfant-classe">${escapeHtml(classeName(e.classeId))} <span class="enfant-statut">${escapeHtml(e.statut || '')}</span></div>
+      </div>
+    </div>
+    <dl class="enfant-details">
+      <div><dt>Matricule</dt><dd>${escapeHtml(e.matricule || '—')}</dd></div>
+      <div><dt>Naissance</dt><dd>${fmtDate(e.dateNaissance)}</dd></div>
+      <div><dt>Inscription</dt><dd>${fmtDate(e.dateInscription)}</dd></div>
+    </dl>
+    ${renderPresenceSemaine(e)}
+  </article>`;
 }
 function renderParentDashboard(){
   const mesEnfants = DB.eleves || [];
@@ -1168,31 +1292,67 @@ function renderParentDashboard(){
     </div>`;
   }
   const prenomParent = (session.nomComplet||'').trim().split(/\s+/)[0] || '';
-  return `<div class="view active">
-    <h2 class="parent-greeting">Bonjour${prenomParent ? ', ' + escapeHtml(prenomParent) : ''} 👋</h2>
-    <p class="parent-greeting-sub">Voici les nouvelles de ${mesEnfants.length>1?'vos enfants':'votre enfant'} et de l'école.</p>
-    ${renderActualitesParent()}
-    <div class="grid-2">
-      ${mesEnfants.map(e=>`
-        <div class="panel">
-          <div class="profile-head">
-            <span class="avatar">${initials(e.prenom,e.nom)}</span>
-            <div>
-              <h2>${escapeHtml(eleveFullName(e))}</h2>
-              <div class="meta">${classeName(e.classeId)} · <span class="badge ${e.statut==='Actif'?'green':'gray'}">${e.statut}</span></div>
-            </div>
-          </div>
-          <div class="grid-3">
-            <div><div class="hint">Matricule</div><strong>${escapeHtml(e.matricule)}</strong></div>
-            <div><div class="hint">Date de naissance</div><strong>${fmtDate(e.dateNaissance)}</strong></div>
-            <div><div class="hint">Date d'inscription</div><strong>${fmtDate(e.dateInscription)}</strong></div>
-          </div>
-        </div>`).join('')}
+  const plusieurs = mesEnfants.length > 1;
+  return `<div class="view active parent-accueil">
+    ${renderAlerteAbsence(mesEnfants)}
+    <div class="em-rise" style="--i:1">
+      <h2 class="parent-greeting">Bonjour${prenomParent ? ', ' + escapeHtml(prenomParent) : ''} <span class="salut-main em-wave">${window.EmIcones ? EmIcones.svg('hand') : '👋'}</span></h2>
+      <p class="parent-greeting-sub">Voici la semaine de ${plusieurs ? 'vos enfants' : 'votre enfant'}.</p>
     </div>
+    <div class="enfants${plusieurs ? ' enfants--carrousel' : ''} em-rise" style="--i:2">
+      ${mesEnfants.map(renderFicheEnfant).join('')}
+    </div>
+    ${renderActualitesParent()}
     ${renderTableauHonneurParent()}
   </div>`;
 }
-
+// Barre de navigation basse de la console parent (spec § 5.1.7) :
+// Accueil, Messages, Suggestions, Profil — uniquement des entrées qui existent.
+const NAV_PARENT = [
+  {id:'accueil', ic:'house', lib:'Accueil'},
+  {id:'msg', ic:'mail', lib:'Messages'},
+  {id:'sugg', ic:'lightbulb', lib:'Suggestions'},
+  {id:'profil', ic:'user', lib:'Profil'},
+];
+function renderNavParent(actif){
+  const idx = Math.max(0, NAV_PARENT.findIndex(n => n.id === actif));
+  const nbMsg = (DB.messagesInternes||[]).filter(m=>!m.lu).length;
+  return `<div class="pn-pastille" style="transform:translateX(${idx*100}%)" aria-hidden="true"></div>
+    ${NAV_PARENT.map((n, i) => `<button type="button" class="pn-item em-press${i === idx ? ' actif' : ''}" ${i === idx ? 'aria-current="page"' : ''} onclick="navParent('${n.id}', event)">
+      <span class="pn-ic" aria-hidden="true">${window.EmIcones ? EmIcones.svg(n.ic) : ''}${n.id === 'msg' && nbMsg ? `<span class="pn-badge">${nbMsg>9?'9+':nbMsg}</span>` : ''}</span>
+      <span class="pn-lib">${n.lib}</span>
+    </button>`).join('')}`;
+}
+function navParent(id, ev){
+  if(ev) ev.stopPropagation();
+  // Mise à jour sur place (et non re-rendu) pour que la pastille GLISSE vers l'onglet choisi
+  const nav = document.getElementById('parentNav');
+  const idx = NAV_PARENT.findIndex(n => n.id === id);
+  if(nav && idx >= 0){
+    const pastille = nav.querySelector('.pn-pastille');
+    if(pastille) pastille.style.transform = `translateX(${idx*100}%)`;
+    nav.querySelectorAll('.pn-item').forEach((b, i) => {
+      b.classList.toggle('actif', i === idx);
+      if(i === idx) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
+    });
+  }
+  if(id === 'accueil'){ $$('.bulle-dropdown').forEach(el=>el.style.display='none'); window.scrollTo({top:0, behavior: (window.EmMotion && EmMotion.prefersReducedMotion()) ? 'auto' : 'smooth'}); }
+  else if(id === 'msg' || id === 'sugg'){ window.scrollTo({top:0}); toggleBulle(id); }
+  else if(id === 'profil'){ ouvrirProfilParent(); }
+}
+function ouvrirProfilParent(){
+  const enfants = (DB.eleves||[]).map(e => `<li>${escapeHtml(eleveFullName(e))} — ${escapeHtml(classeName(e.classeId))}</li>`).join('');
+  openModal('Mon profil', `
+    <div class="profil-parent">
+      <div class="profil-nom">${escapeHtml(session.nomComplet || '')}</div>
+      <div class="hint">${escapeHtml(nomApplication())}</div>
+      ${enfants ? `<div class="profil-sous">Enfant(s) relié(s)</div><ul class="profil-enfants">${enfants}</ul>` : ''}
+    </div>
+    <div class="form-actions">
+      <button type="button" class="btn secondary" onclick="closeModal(); navParent('accueil')">Fermer</button>
+      <button type="button" class="btn danger" onclick="closeModal(); logoutRole()">🔒 Déconnexion</button>
+    </div>`);
+}
 /* ---------------------------------------------------------------------
    BULLES — Notifications / Messages / Suggestions. 3 icônes dans la
    barre du haut, visibles sur toutes les vues (personnel ET parent).
@@ -1211,7 +1371,7 @@ function renderBulles(){
   const badge = n => n ? `<span class="bulle-badge">${n>9?'9+':n}</span>` : '';
   return `
     <div class="bulle-wrap">
-      <button class="bulle-btn" onclick="toggleBulle('notif')" title="Notifications">🔔${badge(nbNotif)}</button>
+      <button class="bulle-btn" onclick="toggleBulle('notif')" title="Notifications" aria-label="Notifications${nbNotif ? ', ' + nbNotif + ' nouvelle' + (nbNotif>1?'s':'') : ''}">🔔${nbNotif ? `<span class="bulle-badge${ui.role==='parent' ? ' em-pulse' : ''}">${nbNotif>9?'9+':nbNotif}</span>` : ''}</button>
       <div class="bulle-dropdown" id="dropdownNotif" style="display:none;">${renderDropdownNotifications()}</div>
     </div>
     <div class="bulle-wrap">
@@ -1404,14 +1564,20 @@ async function handleMarquerSuggestionLue(id){
    chargerDBPortier() dans supabase-client.js).
    --------------------------------------------------------------------- */
 function enterAppPortier(){
+  // Console portier (spec § 5.2) : thème sombre dédié, toujours actif (lecture
+  // rapide en extérieur), registre « opérationnel » sans animation décorative.
+  document.body.classList.add('theme-portier');
   $('#loginGate').classList.remove('open');
   $('#appRoot').style.display = '';
   $('#sidebar').style.display = 'none';
   $('#burger').style.display = 'none';
   applyBranding();
-  $('#viewTitle').textContent = window.ESPACE_FIXE ? nomApplication() : 'Espace Portier';
+  $('#viewTitle').innerHTML = `<span class="gate-sur">Portail · ${escapeHtml(DB.meta.nomEcole || '')}</span>
+    <span class="gate-titre">Arrivée des parents</span>
+    <span class="sr-only">${escapeHtml(window.ESPACE_FIXE ? nomApplication() : 'Espace Portier')}</span>`;
   const pill = $('#topbarPill');
-  pill.innerHTML = `<button class="btn secondary sm" onclick="logoutRole()">🔒 Déconnexion</button>`;
+  pill.innerHTML = `<span class="gate-etat"><span class="gate-point" aria-hidden="true"></span>En service</span>
+    <button class="btn secondary sm" onclick="logoutRole()">🔒 Déconnexion</button>`;
   ui.filters.portierRecherche = '';
   refreshPortierDashboard();
   startIdleWatcher();
@@ -1422,9 +1588,9 @@ function refreshPortierDashboard(){
   if(input){ input.focus(); const pos = input.value.length; input.setSelectionRange(pos, pos); }
 }
 function renderBoutonEleve(e){
-  return `<button class="btn secondary" style="text-align:left;padding:14px 18px;display:flex;justify-content:space-between;align-items:center;" onclick="handleNotifierPortier('${e.id}')">
-    <span><strong>${escapeHtml(eleveFullName(e))}</strong> <span class="hint">· ${escapeHtml(classeName(e.classeId))}</span></span>
-    <span>🚪 Prévenir</span>
+  return `<button class="gate-eleve em-press" onclick="handleNotifierPortier('${e.id}')">
+    <span class="gate-eleve-id"><strong>${escapeHtml(eleveFullName(e))}</strong><span class="gate-eleve-classe">${escapeHtml(classeName(e.classeId))}</span></span>
+    <span class="gate-eleve-action">🚪 Prévenir</span>
   </button>`;
 }
 function renderPortierDashboard(){
@@ -1474,8 +1640,8 @@ function renderPortierDashboard(){
         <div class="grid-3">
           ${DB.classes.filter(c=>c.cycle===cycle).map(c=>{
             const effectif = DB.eleves.filter(e=>e.classeId===c.id).length;
-            return `<button class="btn secondary" style="padding:16px;text-align:left;" onclick="ui.filters.portierClasse='${c.id}'; refreshPortierDashboard()">
-              <strong>${escapeHtml(c.nom)}</strong><div class="hint">${effectif} élève(s)</div>
+            return `<button class="gate-classe em-press" onclick="ui.filters.portierClasse='${c.id}'; refreshPortierDashboard()">
+              <strong>${escapeHtml(c.nom)}</strong><span class="gate-eleve-classe">${effectif} élève(s)</span>
             </button>`;
           }).join('')}
         </div>`).join('') || `<div class="empty">Aucune classe active.</div>`}
@@ -1487,14 +1653,43 @@ function renderPortierBarreRecherche(){
     oninput="ui.filters.portierRecherche=this.value; refreshPortierDashboard()"
     style="width:100%;padding:14px;font-size:var(--fs-md);border:1px solid var(--border);border-radius:var(--r-card);margin-bottom:16px;">`;
 }
+// États visuels du signalement (spec § 5.2) : envoi (durée réelle, aucun
+// délai artificiel) → confirmation ou échec. L'enregistrement lui-même est
+// inchangé : une ligne dans notifications_portier, comme avant.
+function renderEtatPortier(etat, e, detail){
+  const eleve = e ? `<div class="gate-fiche"><strong>${escapeHtml(eleveFullName(e))}</strong><span>${escapeHtml(classeName(e.classeId))}</span>
+      ${detail && detail.heure ? `<span class="gate-heure">Signalé à ${detail.heure}</span>` : ''}</div>` : '';
+  if(etat === 'envoi') return `<div class="view active"><div class="gate-etat-carte" role="status" aria-live="polite">
+      <svg class="gate-spinner em-spin" viewBox="0 0 72 72" aria-hidden="true"><circle cx="36" cy="36" r="30" fill="none" stroke="var(--em-gate-border)" stroke-width="6"/><path d="M36 6a30 30 0 0 1 30 30" fill="none" stroke="var(--em-gold-400)" stroke-width="6" stroke-linecap="round"/></svg>
+      <div class="gate-etat-titre">Envoi à l’enseignant…</div>${eleve}</div></div>`;
+  if(etat === 'ok') return `<div class="view active"><div class="gate-etat-carte" role="status" aria-live="polite">
+      <div class="gate-rond gate-rond-ok em-pop"><span class="gate-onde" aria-hidden="true"></span>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path class="gate-coche" d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      <div class="gate-etat-titre">Enseignant prévenu</div>${eleve}
+      <button class="gate-btn-principal em-press" onclick="ui.filters.portierRecherche=''; refreshPortierDashboard()">Nouveau signalement</button></div></div>`;
+  return `<div class="view active"><div class="gate-etat-carte" role="alert">
+      <div class="gate-rond gate-rond-erreur"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"/></svg></div>
+      <div class="gate-etat-titre">Envoi impossible</div>${eleve}
+      <div class="gate-erreur-detail">${escapeHtml(detail && detail.message ? detail.message : 'Vérifiez la connexion internet puis réessayez.')}</div>
+      ${e ? `<button class="gate-btn-principal em-press" onclick="handleNotifierPortier('${e.id}')">Réessayer</button>` : ''}
+      <button class="gate-btn-contour em-press" onclick="refreshPortierDashboard()">Retour à la liste</button></div></div>`;
+}
 async function handleNotifierPortier(eleveId){
+  const e = (DB.eleves||[]).find(x => x.id === eleveId);
+  $('#viewContainer').innerHTML = renderEtatPortier('envoi', e);
   try{
     const { error } = await sb.from('notifications_portier').insert({ eleve_id: eleveId });
     if(error) throw error;
-    toast('Notification envoyée à l\'enseignant(e)');
+    const d = new Date();
+    const heure = `${String(d.getHours()).padStart(2,'0')}h${String(d.getMinutes()).padStart(2,'0')}`;
     ui.filters.portierRecherche = '';
-    refreshPortierDashboard();
-  }catch(e){ alert('Erreur : ' + e.message); }
+    $('#viewContainer').innerHTML = renderEtatPortier('ok', e, { heure });
+    if(navigator.vibrate) try{ navigator.vibrate(30); }catch(_e){}
+    toast('Enseignant prévenu · signalement enregistré');
+  }catch(err){
+    $('#viewContainer').innerHTML = renderEtatPortier('erreur', e, { message: err && err.message ? 'Erreur : ' + err.message : '' });
+    if(navigator.vibrate) try{ navigator.vibrate([60,40,60]); }catch(_e){}
+  }
 }
 
 function enterApp(){
@@ -1620,7 +1815,9 @@ async function entrerSelonRole(){
 async function logoutRole(){
   stopIdleWatcher();
   stopPollingBulles();
-  document.body.classList.remove('theme-parent');
+  document.body.classList.remove('theme-parent', 'has-parent-nav');
+  if(window.ESPACE_FIXE !== 'portier') document.body.classList.remove('theme-portier');
+  const navParentEl = document.getElementById('parentNav'); if(navParentEl) navParentEl.remove();
   if(typeof arreterScanPointage === 'function') arreterScanPointage();
   await deconnexion();
   ui.role = null;
@@ -1709,6 +1906,14 @@ async function clearEcoleData(){
 /* ---------------------------------------------------------------------
    4. TABLEAU DE BORD
    --------------------------------------------------------------------- */
+let dashboardDejaAnime = false;
+function animerCompteursKpi(){
+  document.querySelectorAll('#viewContainer [data-compteur]').forEach(el => {
+    const n = parseInt(el.dataset.compteur, 10);
+    el.removeAttribute('data-compteur');
+    if(window.EmMotion) EmMotion.countUp(el, n, { duration:900 }); else el.textContent = n;
+  });
+}
 function renderDashboard(){
   const today = todayISO();
   const totalEleves = DB.eleves.filter(e=>e.statut==='Actif').length;
@@ -1722,13 +1927,18 @@ function renderDashboard(){
 
   const maxEffectif = Math.max(...DB.classes.map(c=>DB.eleves.filter(e=>e.classeId===c.id && e.statut==='Actif').length), 1);
 
-  const barsHtml = DB.classes.map(c=>{
+  // Registre sobre (spec § 4) : la cascade et les compteurs ne jouent qu'une
+  // fois par session de page, pas à chaque retour sur le tableau de bord.
+  const animer = !dashboardDejaAnime;
+  dashboardDejaAnime = true;
+  const barsHtml = DB.classes.map((c, i)=>{
     const n = DB.eleves.filter(e=>e.classeId===c.id && e.statut==='Actif').length;
     const pct = Math.round(100*n/maxEffectif);
-    return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:9px;">
-      <div style="width:110px;font-size:var(--fs-xs);color:var(--text-dim);flex-shrink:0;">${c.nom}</div>
-      <div class="progress" style="flex:1;"><div style="width:${pct}%;background:var(--primary);"></div></div>
-      <div style="width:26px;text-align:right;font-size:var(--fs-xs);font-weight:700;">${n}</div>
+    const anim = animer && i < 12 ? ` em-fill-x" style="width:${pct}%;animation-delay:${i*40}ms` : `" style="width:${pct}%`;
+    return `<div class="repart-ligne${n ? '' : ' repart-vide'}">
+      <div class="repart-nom">${escapeHtml(c.nom)}</div>
+      <div class="repart-piste"><div class="repart-barre${anim}"></div></div>
+      <div class="repart-n">${n}</div>
     </div>`;
   }).join('');
 
@@ -1738,10 +1948,25 @@ function renderDashboard(){
       <span>${escapeHtml(ensFullName(t))}</span>
       <span class="badge ${p.statut==='Absent'?'red':'amber'}">${p.statut}</span>
     </div>`;
-  }).join('') || `<div class="hint">Aucune absence enseignant enregistrée aujourd'hui.</div>`;
+  }).join('') || (presEnsToday.length
+      ? `<div class="alerte-ok">${window.EmIcones ? EmIcones.svg('circle-check') : ''}Aucune absence d'enseignant aujourd'hui.</div>`
+      : `<div class="hint">Aucun pointage d'enseignant enregistré aujourd'hui.</div>`);
 
   const elAbsentsCount = presToday.filter(p=>p.statut==='Absent').length;
   const elRetardCount = presToday.filter(p=>p.statut==='Retard').length;
+  // Bonne nouvelle d'abord (spec § 5.3.4) — mais sans l'annoncer si l'appel n'a pas été fait
+  const alertesEleves = !presToday.length
+    ? `<div class="hint">L'appel n'a pas encore été fait aujourd'hui.${hasAccess('presences-eleves') ? ` <a href="#" onclick="go('presences-eleves');return false;">Faire l'appel</a>` : ''}</div>`
+    : (elAbsentsCount || elRetardCount)
+      ? `<div class="alerte-pastilles"><span class="pastille-absent">${elAbsentsCount} élève(s) absent(s)</span><span class="pastille-retard">${elRetardCount} retard(s)</span></div>`
+      : `<div class="alerte-ok">${window.EmIcones ? EmIcones.svg('circle-check') : ''}Aucune absence signalée aujourd'hui.</div>`;
+  // États vides explicites des chiffres clés (spec § 5.3.2, corrige D6)
+  const lien = (vue, texte) => hasAccess(vue) ? `<a href="#" class="kpi-lien" onclick="go('${vue}');return false;">${texte}</a>` : '';
+  const kpi = (i, icone, fond, valeur, libelle, vide) => `<div class="card kpi-carte${animer ? ' em-rise' : ''}" style="--i:${i}">
+        <div class="card-top"><div class="icon-badge" style="background:${fond};">${icone}</div></div>
+        ${valeur === null ? `<div class="kpi-vide">${vide[0]}</div>${vide[1]}` : `<div class="num"${animer && typeof valeur === 'number' ? ` data-compteur="${valeur}"` : ''}>${typeof valeur === 'number' ? (animer ? 0 : valeur) : valeur}</div>`}
+        <div class="label">${libelle}</div>
+      </div>`;
 
   const classesRows = DB.classes.map(c=>{
     const eff = DB.eleves.filter(e=>e.classeId===c.id && e.statut==='Actif').length;
@@ -1753,34 +1978,19 @@ function renderDashboard(){
       <td><span class="badge gray">${c.cycle}</span></td>
       <td>${eff}</td>
       <td>${escapeHtml(ensFullName(tit))}</td>
-      <td>${taux===null ? '<span class="hint">—</span>' : `<span class="badge ${taux>=90?'green':taux>=75?'amber':'red'}">${taux}%</span>`}</td>
+      <td>${taux===null ? '<span class="hint">Appel non fait</span>' : `<span class="badge ${taux>=90?'green':taux>=75?'amber':'red'}">${taux}%</span>`}</td>
     </tr>`;
   }).join('');
 
   return `
   <div class="view active">
     <div class="cards">
-      <div class="card">
-        <div class="card-top"><div class="icon-badge" style="background:var(--primary-dim);">🧒</div></div>
-        <div class="num">${totalEleves}</div>
-        <div class="label">Élèves inscrits (actifs)</div>
-      </div>
-      <div class="card">
-        <div class="card-top"><div class="icon-badge" style="background:var(--purple-bg);">👩‍🏫</div></div>
-        <div class="num">${totalEns}</div>
-        <div class="label">Enseignants actifs</div>
-      </div>
-      <div class="card">
-        <div class="card-top"><div class="icon-badge" style="background:var(--green-bg);">✅</div></div>
-        <div class="num">${tauxEleves===null?'—':tauxEleves+'%'}</div>
-        <div class="label">Présence élèves aujourd'hui</div>
-      </div>
-      <div class="card">
-        <div class="card-top"><div class="icon-badge" style="background:var(--blue-bg);">🕘</div></div>
-        <div class="num">${tauxEns===null?'—':tauxEns+'%'}</div>
-        <div class="label">Présence enseignants aujourd'hui</div>
-      </div>
+      ${kpi(0, '🧒', 'var(--primary-dim)', totalEleves, 'Élèves inscrits (actifs)')}
+      ${kpi(1, '👩‍🏫', 'var(--purple-bg)', totalEns, 'Enseignants actifs')}
+      ${kpi(2, '✅', 'var(--green-bg)', tauxEleves===null ? null : tauxEleves+'%', "Présence élèves aujourd'hui", ['Appel non effectué', lien('presences-eleves', "Faire l'appel")])}
+      ${kpi(3, '🕘', 'var(--blue-bg)', tauxEns===null ? null : tauxEns+'%', "Présence enseignants aujourd'hui", ['Aucun pointage aujourd’hui', lien('presences-enseignants', 'Voir le journal')])}
     </div>
+    ${animer ? `${(setTimeout(animerCompteursKpi, 0), '')}` : ''}
 
     ${ui.role==='enseignant' ? renderActualitesParent() + renderTableauHonneurParent() : ''}
 
@@ -1791,10 +2001,7 @@ function renderDashboard(){
       </div>
       <div class="panel">
         <div class="panel-head"><div><h2>Alertes du jour</h2><div class="sub">${fmtDate(today)}</div></div></div>
-        <div style="display:flex;gap:10px;margin-bottom:14px;">
-          <div class="badge red" style="font-size:var(--fs-xs);padding:6px 10px;">${elAbsentsCount} élève(s) absent(s)</div>
-          <div class="badge amber" style="font-size:var(--fs-xs);padding:6px 10px;">${elRetardCount} retard(s)</div>
-        </div>
+        <div style="margin-bottom:14px;">${alertesEleves}</div>
         <div class="sub" style="margin-bottom:6px;font-weight:700;">Enseignants absents</div>
         ${ensAbsents}
       </div>
@@ -2126,6 +2333,17 @@ function openEleveForm(id){
     </form>`);
 }
 
+function verifierDatesEleve(naissance, inscription){
+  if(!naissance) return null;
+  const aujourdHui = todayISO();
+  if(naissance > aujourdHui) return { champ:'dateNaissance', message:"La date de naissance ne peut pas être dans le futur." };
+  if(inscription && naissance >= inscription) return { champ:'dateNaissance', message:"La date de naissance doit être antérieure à la date d'inscription (" + fmtDate(inscription) + ")." };
+  // Âge minimal plausible à l'inscription : 6 mois (garderie)
+  const ref = new Date(inscription || aujourdHui); const n = new Date(naissance);
+  const mois = (ref.getFullYear() - n.getFullYear())*12 + (ref.getMonth() - n.getMonth()) - (ref.getDate() < n.getDate() ? 1 : 0);
+  if(mois < 6) return { champ:'dateNaissance', message:"L'enfant aurait moins de 6 mois à l'inscription : vérifiez la date de naissance." };
+  return null;
+}
 async function handleSaveEleve(ev){
   ev.preventDefault();
   const fd = new FormData(ev.target);
@@ -2137,6 +2355,20 @@ async function handleSaveEleve(ev){
     parentNom: fd.get('parentNom').trim(), parentTel: fd.get('parentTel').trim(),
     parentAdresse: fd.get('parentAdresse').trim(), dateInscription: fd.get('dateInscription') || todayISO(),
   };
+  // Cohérence des dates (spec § 6.2) : vérifiée à la saisie, message clair sous le champ
+  const erreurDate = verifierDatesEleve(patch.dateNaissance, patch.dateInscription);
+  ev.target.querySelectorAll('.field.has-error').forEach(f => { f.classList.remove('has-error'); const m = f.querySelector('.error-text'); if(m) m.remove(); });
+  if(erreurDate){
+    const champ = ev.target.querySelector(`[name="${erreurDate.champ}"]`);
+    const field = champ && champ.closest('.field');
+    if(field){
+      field.classList.add('has-error');
+      champ.setAttribute('aria-invalid', 'true');
+      const m = document.createElement('div'); m.className = 'error-text'; m.id = 'err-' + erreurDate.champ; m.textContent = erreurDate.message;
+      field.appendChild(m); champ.setAttribute('aria-describedby', m.id); champ.focus();
+    } else toast('Erreur : ' + erreurDate.message);
+    return false;
+  }
   try{
     if(id){
       await dbUpdate('eleves', id, patch);
@@ -3145,6 +3377,11 @@ function renderEmploiTemps(){
   ui.filters.ttClasse = classeId;
   const c = DB.classes.find(x=>x.id===classeId);
   const periodes = PERIODES_BY_CYCLE[c.cycle];
+  // Créneau en cours mis en évidence (spec § 5.4) : jour et heure de l'appareil
+  const maintenant = new Date();
+  const jourActuel = JOURS[(maintenant.getDay() + 6) % 7] || null;   // samedi/dimanche -> aucun
+  const hhmm = `${String(maintenant.getHours()).padStart(2,'0')}:${String(maintenant.getMinutes()).padStart(2,'0')}`;
+  const estEnCours = (p, jour) => jour === jourActuel && p.debut <= hhmm && hhmm < p.fin;
 
   let rowsHtml = '';
   periodes.forEach((p,i)=>{
@@ -3157,8 +3394,9 @@ function renderEmploiTemps(){
       const entry = DB.emploiTemps.find(e=>e.classeId===classeId && e.jour===jour && e.slotIndex===i);
       if(entry){
         const t = enseignantById(entry.enseignantId);
-        rowsHtml += `<td>
+        rowsHtml += `<td${estEnCours(p, jour) ? ' class="tt-encours"' : ''}>
           <div class="tt-slot">
+            ${estEnCours(p, jour) ? '<span class="tt-badge-encours">En cours</span>' : ''}
             <b>${escapeHtml(entry.matiere)}</b>
             <span>${escapeHtml(ensFullName(t))}</span>
             <div style="margin-top:5px;display:flex;gap:4px;">

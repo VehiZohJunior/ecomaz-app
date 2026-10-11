@@ -7,6 +7,8 @@
    ========================================================================= */
 (function(){
   const espace = window.ESPACE_FIXE; // 'parent' | 'portier'
+  // Le portier travaille toujours en thème sombre dédié, dès l'écran de connexion
+  if(espace === 'portier' && document.body) document.body.classList.add('theme-portier');
   const page = espace + '.html';
   const base = new URL('./', window.location.href);
   const abs = (f) => new URL(f, base).href;

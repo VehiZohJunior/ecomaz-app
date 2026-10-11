@@ -482,6 +482,12 @@ async function loadAllFromSupabase(){
    policy existante s'avérait trop permissive pour ce rôle qui n'existait
    pas quand elle a été écrite.
    --------------------------------------------------------------------- */
+function debutSemaine(d){
+  const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const j = (x.getDay() + 6) % 7; // lundi = 0
+  x.setDate(x.getDate() - j);
+  return x;
+}
 async function chargerDBParent(){
   const [ecoleRow, eleves, classesRows, messages, annoncesHoraires, messagesInternes, tableauHonneur, actualitesAffichage] = await Promise.all([
     sb.from('ecoles').select('*').eq('id', session.ecoleId).single(),
@@ -505,6 +511,17 @@ async function chargerDBParent(){
     sb.from('tableau_honneur_public').select('*').eq('ecole_id', session.ecoleId),
     sb.from('actualites_affichage_public').select('*').eq('ecole_id', session.ecoleId).order('created_at', {ascending:false}),
   ]);
+  // Présences de la semaine (lundi → vendredi) de SES enfants uniquement
+  // (RLS : policy "lecture presences_eleves parent", schema.sql section 43).
+  // En cas d'échec, la console s'affiche quand même, sans ce bloc.
+  let presencesSemaine = null;
+  try{
+    const lundi = debutSemaine(new Date());
+    const vendredi = new Date(lundi); vendredi.setDate(lundi.getDate() + 4);
+    const iso = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    const res = await sb.from('presences_eleves').select('eleve_id,date,statut').eq('ecole_id', session.ecoleId).gte('date', iso(lundi)).lte('date', iso(vendredi));
+    if(!res.error) presencesSemaine = rowsToCamel(res.data);
+  }catch(_e){ presencesSemaine = null; }
   if(ecoleRow.error) throw ecoleRow.error;
   if(eleves.error) throw eleves.error;
   if(classesRows.error) throw classesRows.error;
@@ -522,6 +539,7 @@ async function chargerDBParent(){
     },
     eleves: rowsToCamel(eleves.data),
     classes: rowsToCamel(classesRows.data),
+    presencesSemaine,
     messages: rowsToCamel(messages.data),
     annoncesHoraires: rowsToCamel(annoncesHoraires.data),
     messagesInternes: rowsToCamel(messagesInternes.data),
