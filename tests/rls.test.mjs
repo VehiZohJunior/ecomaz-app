@@ -104,6 +104,19 @@ async function requete(accessToken, chemin, options = {}){
   const scolSec = await requete(tokenSecretariat, `/rest/v1/paiements_scolarite?select=id&limit=1`);
   verifier('Le secrétariat garde l accès aux paiements de scolarité (requête acceptée)', scolSec.ok);
 
+  section('3ter. RLS — présences : un parent lit SEULEMENT celles de ses enfants, sans pouvoir écrire');
+  if(ENV.PARENT_EMAIL){
+    const tokenParent = (await connecter(ENV.PARENT_EMAIL, ENV.PARENT_PASSWORD)).accessToken;
+    const liens = await requete(tokenParent, `/rest/v1/parents_eleves?select=eleve_id`);
+    const mesEnfants = new Set((liens.data || []).map(l => l.eleve_id));
+    const pres = await requete(tokenParent, `/rest/v1/presences_eleves?select=eleve_id&limit=500`);
+    verifier('Le parent ne lit que des présences de SES enfants', Array.isArray(pres.data) && pres.data.every(p => mesEnfants.has(p.eleve_id)), `reçu ${JSON.stringify(pres.data)?.slice(0,80)}`);
+    const ecrit = await requete(tokenParent, `/rest/v1/presences_eleves`, { method:'POST', body: JSON.stringify({ date:'2026-01-01', statut:'Présent', eleve_id:[...mesEnfants][0] || null }) });
+    verifier('Le parent ne peut pas écrire une présence', !ecrit.ok, `statut ${ecrit.status}`);
+  } else {
+    console.log('  ⚠️  PARENT_EMAIL absent de tests/.env.test — test ignoré');
+  }
+
   section('4. RLS — écoles (isolation développeur)');
   const ecolesDev = await requete(tokenDeveloppeur, `/rest/v1/ecoles?select=id,nom_ecole`);
   verifier('Le développeur voit la liste des écoles', Array.isArray(ecolesDev.data) && ecolesDev.data.length > 0);

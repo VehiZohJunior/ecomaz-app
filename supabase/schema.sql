@@ -1602,3 +1602,20 @@ end $$;
 drop trigger if exists trg_proteger_salaire_enseignant on enseignants;
 create trigger trg_proteger_salaire_enseignant before insert or update on enseignants
   for each row execute function proteger_salaire_enseignant();
+
+-- =====================================================================
+-- 43. PRÉSENCES VISIBLES PAR LE PARENT — ses enfants uniquement (2026-10-11)
+-- =====================================================================
+-- Accord de Vehi Zoh Junior (refonte motion design, Lot 4) : la fiche
+-- enfant de la console parent affiche « la présence de la semaine ».
+-- Lecture SEULE, limitée aux enfants reliés à ce parent (parents_eleves) ;
+-- aucune écriture, aucune autre classe, aucun autre élève.
+drop policy if exists "lecture presences_eleves parent" on presences_eleves;
+create policy "lecture presences_eleves parent" on presences_eleves for select
+  using (
+    est_parent() and exists (
+      select 1 from parents_eleves pe
+      where pe.eleve_id = presences_eleves.eleve_id
+        and pe.parent_profile_id = auth.uid()
+    )
+  );
