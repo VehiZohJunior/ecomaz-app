@@ -41,6 +41,7 @@
     "circle-x": "<circle cx=\"12\" cy=\"12\" r=\"10\"/><path d=\"m15 9-6 6\"/><path d=\"m9 9 6 6\"/>",
     "clipboard": "<rect width=\"8\" height=\"4\" x=\"8\" y=\"2\" rx=\"1\" ry=\"1\"/><path d=\"M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2\"/>",
     "clock": "<circle cx=\"12\" cy=\"12\" r=\"10\"/><path d=\"M12 6v6l4 2\"/>",
+    "credit-card": "<rect width=\"20\" height=\"14\" x=\"2\" y=\"5\" rx=\"2\"/><line x1=\"2\" x2=\"22\" y1=\"10\" y2=\"10\"/><path d=\"M6 14h2\"/>",
     "door-open": "<path d=\"M10 21H2\"/><path d=\"M10 3H7a2 2 0 00-2 2v16\"/><path d=\"M14 12h.01\"/><path d=\"M19 21V5a2 2 0 00-1.675-1.974l-6.163-1.013A1 1 0 0010 3v18a1 1 0 001.124.992z\"/><path d=\"M22 21h-3\"/>",
     "download": "<path d=\"M12 15V3\"/><path d=\"M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4\"/><path d=\"m7 10 5 5 5-5\"/>",
     "eye": "<path d=\"M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0\"/><circle cx=\"12\" cy=\"12\" r=\"3\"/>",
@@ -58,6 +59,7 @@
     "link": "<path d=\"M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71\"/><path d=\"M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71\"/>",
     "lock": "<rect width=\"18\" height=\"11\" x=\"3\" y=\"11\" rx=\"2\" ry=\"2\"/><path d=\"M7 11V7a5 5 0 0 1 10 0v4\"/>",
     "lock-keyhole": "<circle cx=\"12\" cy=\"16\" r=\"1\"/><rect x=\"3\" y=\"10\" width=\"18\" height=\"12\" rx=\"2\"/><path d=\"M7 10V7a5 5 0 0 1 10 0v3\"/>",
+    "lock-open": "<rect width=\"18\" height=\"11\" x=\"3\" y=\"11\" rx=\"2\" ry=\"2\"/><path d=\"M7 11V7a5 5 0 0 1 9.9-1\"/>",
     "log-in": "<path d=\"m10 17 5-5-5-5\"/><path d=\"M15 12H3\"/><path d=\"M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4\"/>",
     "mail": "<path d=\"m22 7-8.991 5.727a2 2 0 0 1-2.009 0L2 7\"/><rect x=\"2\" y=\"4\" width=\"20\" height=\"16\" rx=\"2\"/>",
     "map-pin": "<path d=\"M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0\"/><circle cx=\"12\" cy=\"10\" r=\"3\"/>",
@@ -194,7 +196,9 @@
     "☀️": "sun",
     "🌙": "moon",
     "⬇️": "download",
-    "⬆️": "upload"
+    "⬆️": "upload",
+    "🔓": "lock-open",
+    "💳": "credit-card"
     };
 
   function svg(nom, classe){
@@ -211,7 +215,7 @@
     'h1', 'h2', 'h3', 'h4', '.icon-badge', '.em-ic', '.ric', '.rlabel', '.login-logo', '.hn-sous-titre', '.rg-ic',
     '.txn-ic', '.section-note', '.hint', '.badge', '.role-badge', '.pill', '.mask-badge', '.actu-item > .ic',
     '.pin-back', '.btn-install', '.btn-reset', '.burger', 'label', '.offline-banner', '.empty-state', '.empty',
-    'th', 'strong', '.num', '.lh-ph', '.recu-logo-ph', '.logo-preview .ph', 'button', '.bulle-dropdown h4', '.sub', 'summary', 'legend'
+    'th', 'strong', '.num', '.pin-error', '.lh-ph', '.recu-logo-ph', '.logo-preview .ph', 'button', '.bulle-dropdown h4', '.sub', 'summary', 'legend'
   ].join(',');
   const EXCLUS = '.bulle-item, .actu-item > div, .rg-titre, .rg-sous, textarea, input, select, option, [contenteditable], .no-icon';
 

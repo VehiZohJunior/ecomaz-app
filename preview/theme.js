@@ -186,6 +186,22 @@
     planifier();
   }
 
+  /* ---- Éléments cliquables qui ne sont pas des boutons (div, span… avec onclick) :
+        on leur donne le rôle de bouton et l'accès au clavier (Entrée / Espace) ---- */
+  const NON_NATIFS = '[onclick]:not(button):not(a):not(input):not(select):not(textarea):not(label):not(option):not(body)';
+  function rendreCliquablesAccessibles(racine){
+    (racine || document).querySelectorAll(NON_NATIFS).forEach(el => {
+      if(!el.hasAttribute('role')) el.setAttribute('role', 'button');
+      if(!el.hasAttribute('tabindex')) el.setAttribute('tabindex', '0');
+    });
+  }
+  document.addEventListener('keydown', e => {
+    const el = e.target;
+    if(!(e.key === 'Enter' || e.key === ' ') || !el || !el.matches || !el.matches(NON_NATIFS)) return;
+    e.preventDefault();
+    el.click();
+  });
+
   function demarrer(){
     // Bouton dans la barre du haut (application) et sur l'écran de connexion
     const barre = document.querySelector('.topbar-right');
@@ -202,6 +218,12 @@
     if(main){ main.setAttribute('role', 'main'); }
 
     installerModales();
+    rendreCliquablesAccessibles(document);
+    let planifieA11y = false;
+    new MutationObserver(() => {
+      if(planifieA11y) return; planifieA11y = true;
+      requestAnimationFrame(() => { planifieA11y = false; rendreCliquablesAccessibles(document); });
+    }).observe(document.body, { childList:true, subtree:true });
     installerBarreBas();
 
     const zone = document.getElementById('viewContainer');

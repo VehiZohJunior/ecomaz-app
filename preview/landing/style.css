@@ -179,7 +179,7 @@ h1, h2, h3{ line-height:1.1; margin:0; }
 
 /* Thème sombre : sur-titres et pastilles éclaircis pour rester lisibles */
 @media (prefers-color-scheme: dark){
-  .sur-titre{ color:#ee9f7e; }
+  .sur-titre, .etape-heure{ color:#ee9f7e; }
   .pastille--terre{ color:#f2b39a; } .pastille--or{ color:var(--em-gold-400); } .pastille--vert{ color:#9fdcba; }
   .espace-reserve{ color:#f2b39a; }
 }
