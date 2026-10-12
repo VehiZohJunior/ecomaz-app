@@ -1824,3 +1824,67 @@ drop policy if exists "maj objets_perdus personnel" on objets_perdus;
 create policy "maj objets_perdus personnel" on objets_perdus for update
   using (ecole_id = mon_ecole_id() and est_perso_admin())
   with check (ecole_id = mon_ecole_id() and est_perso_admin());
+
+-- =====================================================================
+-- 50. ANNONCES HORAIRES « INTELLIGENTES » (2026-10-12)
+-- =====================================================================
+-- Demande de Vehi Zoh Junior. Les colonnes de horaires_annonces contiennent
+-- désormais l'HEURE RÉELLE de chaque moment (début, pause…) ; la fonction
+-- annoncer-horaires prévient les parents « avance_minutes » AVANT (15 min).
+-- Nouveautés : pause de 10h, cours de renforcement (élèves cochés), jours
+-- de classe, suspension pendant les vacances.
+alter table horaires_annonces add column if not exists pause_matin_primaire time default '10:00';
+alter table horaires_annonces add column if not exists pause_matin_maternelle time default '10:00';
+alter table horaires_annonces add column if not exists renforcement_fin time default '17:00';
+alter table horaires_annonces add column if not exists avance_minutes integer not null default 15;
+alter table horaires_annonces add column if not exists jours_cours integer[] not null default '{1,2,3,4,5}';
+alter table horaires_annonces add column if not exists suspendu_jusquau date;
+alter table horaires_annonces drop constraint if exists horaires_annonces_avance_check;
+alter table horaires_annonces add constraint horaires_annonces_avance_check check (avance_minutes between 0 and 60);
+
+alter table horaires_annonces alter column matin_debut_primaire set default '07:30';
+alter table horaires_annonces alter column matin_debut_maternelle set default '08:00';
+alter table horaires_annonces alter column midi_pause_primaire set default '12:00';
+alter table horaires_annonces alter column midi_pause_maternelle set default '11:00';
+alter table horaires_annonces alter column apresmidi_debut_primaire set default '14:00';
+alter table horaires_annonces alter column apresmidi_debut_maternelle set default '14:00';
+alter table horaires_annonces alter column apresmidi_fin_primaire set default '16:00';
+alter table horaires_annonces alter column apresmidi_fin_maternelle set default '16:00';
+
+-- Horaires réels de SUCCESS KIDS (consignes de Vehi Zoh Junior)
+update horaires_annonces set
+  matin_debut_primaire = '07:30', matin_debut_maternelle = '08:00',
+  pause_matin_primaire = '10:00', pause_matin_maternelle = '10:00',
+  midi_pause_primaire = '12:00', midi_pause_maternelle = '11:00',
+  apresmidi_debut_primaire = '14:00', apresmidi_debut_maternelle = '14:00',
+  apresmidi_fin_primaire = '16:00', apresmidi_fin_maternelle = '16:00',
+  renforcement_fin = '17:00', avance_minutes = 15, jours_cours = '{1,2,3,4,5}'
+where ecole_id = (select id from ecoles where nom_ecole ilike '%SUCCESS KIDS%');
+
+-- Élèves inscrits au cours de renforcement (cochés sur leur fiche)
+alter table eleves add column if not exists renforcement boolean not null default false;
+
+-- Annonces : nouvelles fonctions + ciblage d'élèves précis (renforcement)
+alter table annonces_horaires_envoyees drop constraint if exists annonces_horaires_envoyees_fonction_check;
+alter table annonces_horaires_envoyees add constraint annonces_horaires_envoyees_fonction_check
+  check (fonction in ('matin_debut','pause_matin','midi_pause','apresmidi_debut','apresmidi_fin','renforcement_debut','renforcement_fin'));
+-- eleve_ids : seulement les parents de ces élèves ; eleve_ids_exclus : tous sauf eux
+alter table annonces_horaires_envoyees add column if not exists eleve_ids uuid[];
+alter table annonces_horaires_envoyees add column if not exists eleve_ids_exclus uuid[];
+
+drop policy if exists "lecture annonces_horaires parent" on annonces_horaires_envoyees;
+create policy "lecture annonces_horaires parent" on annonces_horaires_envoyees for select using (
+  est_parent() and exists (
+    select 1 from parents_eleves pe
+    join eleves e on e.id = pe.eleve_id
+    join classes c on c.id = e.classe_id
+    where pe.parent_profile_id = auth.uid()
+      and pe.ecole_id = annonces_horaires_envoyees.ecole_id
+      and (
+        (annonces_horaires_envoyees.cycle = 'maternelle' and c.cycle in ('Garderie','Maternelle')) or
+        (annonces_horaires_envoyees.cycle = 'primaire' and c.cycle = 'Primaire')
+      )
+      and (annonces_horaires_envoyees.eleve_ids is null or e.id = any(annonces_horaires_envoyees.eleve_ids))
+      and (annonces_horaires_envoyees.eleve_ids_exclus is null or not (e.id = any(annonces_horaires_envoyees.eleve_ids_exclus)))
+  )
+);

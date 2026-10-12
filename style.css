@@ -894,3 +894,11 @@ td:has(> .amount), th.montant{ text-align:right; }
 }
 @media print{ .bande-info{ display:none !important; } }
 .pn-lib{ text-align:center; line-height:1.1; }
+
+/* Console parent : annonce horaire du moment (15 min avant) */
+.annonce-moment{ display:flex; align-items:center; gap:12px; justify-content:space-between; background:#14392d; color:#fff;
+  border-left:6px solid #e8b04b; border-radius:var(--em-radius-md, 14px); padding:14px 16px; margin-bottom:var(--sp-3);
+  box-shadow:0 4px 16px rgba(20,57,45,.25); animation:em-toast 460ms var(--em-ease-back, ease) both; }
+.annonce-moment-texte{ font-weight:800; font-size:var(--em-fs-16, 16px); line-height:1.4; }
+.annonce-moment-quand{ flex-shrink:0; font-size:var(--em-fs-12, 12px); color:#e8b04b; font-weight:800; }
+.annonce-autoriser{ width:100%; margin-bottom:var(--sp-3); }

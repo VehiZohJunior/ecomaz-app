@@ -1185,6 +1185,60 @@ function renderActualitesParent(){
 function actualitesTriees(){
   return (DB.actualitesAffichage||[]).slice().sort((a,b)=> (b.createdAt||'').localeCompare(a.createdAt||''));
 }
+/* ---------------------------------------------------------------------
+   ANNONCES HORAIRES — console parent (schema.sql section 50)
+   Le serveur publie chaque annonce 15 min avant le moment (début des cours,
+   pauses, fin, renforcement). La console les récupère toutes les 20 s :
+   encadré bien visible en haut de l'accueil, message, vibration, et
+   notification du téléphone si le parent l'a autorisée.
+   --------------------------------------------------------------------- */
+function annonceRecente(a){
+  return a && a.date === todayISO() && a.createdAt && (Date.now() - new Date(a.createdAt).getTime()) < 30 * 60 * 1000;
+}
+function renderAnnonceDuMoment(){
+  const a = (DB.annoncesHoraires || []).filter(annonceRecente)
+    .sort((x, y) => String(y.createdAt).localeCompare(String(x.createdAt)))[0];
+  const autoriser = ('Notification' in window) && Notification.permission === 'default'
+    ? `<button type="button" class="btn sm annonce-autoriser" onclick="autoriserAlertesTelephone()">🔔 Recevoir ces annonces comme notifications du téléphone</button>` : '';
+  if(!a) return autoriser ? `<div id="annonceDuMoment">${autoriser}</div>` : '<div id="annonceDuMoment"></div>';
+  const minutes = Math.max(0, Math.round((Date.now() - new Date(a.createdAt).getTime()) / 60000));
+  return `<div id="annonceDuMoment">
+    <div class="annonce-moment" role="status">
+      <div class="annonce-moment-texte">${escapeHtml(a.contenu)}</div>
+      <div class="annonce-moment-quand">${minutes ? `il y a ${minutes} min` : 'à l’instant'}</div>
+    </div>${autoriser}</div>`;
+}
+function rafraichirAnnonceDuMoment(){
+  const zone = document.getElementById('annonceDuMoment');
+  if(zone) zone.outerHTML = renderAnnonceDuMoment();
+}
+async function autoriserAlertesTelephone(){
+  try{ await Notification.requestPermission(); }catch(_e){}
+  rafraichirAnnonceDuMoment();
+  if(Notification.permission === 'granted') toast('Les annonces de l’école s’afficheront aussi en notification');
+}
+async function notifierTelephone(texte){
+  try{
+    if(!('Notification' in window) || Notification.permission !== 'granted') return;
+    const titre = DB.meta?.nomEcole || 'EcoMaZ';
+    const reg = navigator.serviceWorker && await navigator.serviceWorker.getRegistration();
+    if(reg) reg.showNotification(titre, { body: texte, icon: 'icon-192.png', badge: 'icon-192.png', tag: 'annonce-' + Date.now() });
+    else new Notification(titre, { body: texte, icon: 'icon-192.png' });
+  }catch(_e){ /* notification refusée par le navigateur : l'encadré suffit */ }
+}
+async function verifierNouvellesAnnonces(){
+  const { data, error } = await sb.from('annonces_horaires_envoyees').select('*')
+    .eq('ecole_id', session.ecoleId).eq('date', todayISO()).order('created_at', { ascending:false });
+  if(error) return;
+  const connues = new Set((DB.annoncesHoraires || []).map(a => a.id));
+  const recues = rowsToCamel(data);
+  const nouvelles = recues.filter(a => !connues.has(a.id));
+  DB.annoncesHoraires = recues.concat((DB.annoncesHoraires || []).filter(a => a.date !== todayISO()));
+  if(!nouvelles.length) return;
+  rafraichirAnnonceDuMoment();
+  nouvelles.forEach(a => { toast(a.contenu); notifierTelephone(a.contenu); });
+  try{ if(navigator.vibrate) navigator.vibrate([200, 100, 200]); }catch(_e){}
+}
 function renderBandeDefilanteParent(){
   const actus = actualitesTriees().slice(0, 1);
   if(!actus.length) return '';
@@ -1365,6 +1419,7 @@ function renderParentDashboard(){
   const plusieurs = mesEnfants.length > 1;
   return `<div class="view active parent-accueil">
     ${renderBandeDefilanteParent()}
+    ${renderAnnonceDuMoment()}
     ${renderAlerteAbsence(mesEnfants)}
     <div class="em-rise" style="--i:1">
       <h2 class="parent-greeting">Bonjour${prenomParent ? ', ' + escapeHtml(prenomParent) : ''} <span class="salut-main em-wave">${window.EmIcones ? EmIcones.svg('hand') : '👋'}</span></h2>
@@ -1879,9 +1934,9 @@ async function handleNotifierPortier(eleveId){
 const VERSIONS = [
   { version: '2026.10.12', nouveautes: {
     commun: [],
-    parent: [ 'L’information sur l’activité à venir défile dans une bande jaune en haut de l’accueil (touchez-la pour la mettre en pause) ; les précédentes sont dans « Informations passées ».', 'Nouvel onglet « Objets perdus » : signalez une affaire de votre enfant perdue à l’école, l’école vous répond.' ],
+    parent: [ 'Annonces de la journée 15 minutes avant : début des cours, pauses, fin des cours et cours de renforcement — avec notification du téléphone si vous l’autorisez.', 'L’information sur l’activité à venir défile dans une bande jaune en haut de l’accueil (touchez-la pour la mettre en pause) ; les précédentes sont dans « Informations passées ».', 'Nouvel onglet « Objets perdus » : signalez une affaire de votre enfant perdue à l’école, l’école vous répond.' ],
     portier: [],
-    personnel: [ 'Messagerie : les objets perdus signalés par les parents, avec une réponse à leur envoyer.' ],
+    personnel: [ 'Paramètres → Annonces horaires : heures réelles, pause de 10h, jours de classe, vacances ; case « cours de renforcement » sur la fiche élève.', 'Messagerie : les objets perdus signalés par les parents, avec une réponse à leur envoyer.' ],
   } },
   { version: '2026.10.11-2', nouveautes: {
     commun: [
@@ -2126,6 +2181,8 @@ function startPollingBulles(){
         const { data, error } = await sb.from('messages_internes').select('*').order('created_at', {ascending:false});
         if(!error) DB.messagesInternes = rowsToCamel(data);
       }
+      // Annonces horaires (début des cours, pauses, fin) : arrivent sans recharger
+      if(ui.role === 'parent') await verifierNouvellesAnnonces();
       if(['direction','fondation'].includes(ui.role)){
         const { data, error } = await sb.from('suggestions').select('*').order('created_at', {ascending:false});
         if(!error) DB.suggestions = rowsToCamel(data);
@@ -2903,6 +2960,8 @@ function openEleveForm(id){
         <div class="field"><label>Téléphone du parent</label><input name="parentTel" required value="${e?escapeHtml(e.parentTel):''}"></div>
         <div class="field span2"><label>Adresse</label><input name="parentAdresse" value="${e?escapeHtml(e.parentAdresse):''}"></div>
         <div class="field"><label>Date d'inscription</label><input type="date" name="dateInscription" value="${e?e.dateInscription:todayISO()}"></div>
+        <div class="field span2"><label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" name="renforcement" ${e?.renforcement?'checked':''}> Suit le cours de renforcement (après la fin des cours)</label>
+          <div class="hint" style="margin:2px 0 0;">Ses parents seront prévenus qu’il est retenu, puis de la fin du renforcement.</div></div>
       </div>
       <div class="form-actions">
         <button type="button" class="btn secondary" onclick="closeModal()">Annuler</button>
@@ -2960,6 +3019,7 @@ async function handleSaveEleve(ev){
     dateNaissance: fd.get('dateNaissance'), classeId: fd.get('classeId'), statut: fd.get('statut'),
     parentNom: fd.get('parentNom').trim(), parentTel: fd.get('parentTel').trim(),
     parentAdresse: fd.get('parentAdresse').trim(), dateInscription: fd.get('dateInscription') || todayISO(),
+    renforcement: fd.get('renforcement') === 'on',
   };
   const erreurDate = verifierDatesEleve(patch.dateNaissance, patch.dateInscription);
   ev.target.querySelectorAll('.field.has-error').forEach(f => { f.classList.remove('has-error'); const m = f.querySelector('.error-text'); if(m) m.remove(); });
@@ -6033,28 +6093,39 @@ async function handleSupprimerActualite(id){
    Fondation). L'envoi lui-même est géré côté serveur (pg_cron + fonction
    Edge "annoncer-horaires", chaque minute) — voir schema.sql section 35.
    --------------------------------------------------------------------- */
+// Heures RÉELLES de chaque moment de la journée ; les parents sont prévenus
+// « avance_minutes » avant (schema.sql section 50, fonction annoncer-horaires).
 const HORAIRES_CHAMPS = [
-  {fonction:'matin_debut', label:'Début des cours — matin', champPrimaire:'matinDebutPrimaire', champMaternelle:'matinDebutMaternelle'},
+  {fonction:'matin_debut', label:'Début des cours du matin', champPrimaire:'matinDebutPrimaire', champMaternelle:'matinDebutMaternelle'},
+  {fonction:'pause_matin', label:'Pause du matin (récréation)', champPrimaire:'pauseMatinPrimaire', champMaternelle:'pauseMatinMaternelle'},
   {fonction:'midi_pause', label:'Pause de midi', champPrimaire:'midiPausePrimaire', champMaternelle:'midiPauseMaternelle'},
-  {fonction:'apresmidi_debut', label:'Début des cours — après-midi', champPrimaire:'apresmidiDebutPrimaire', champMaternelle:'apresmidiDebutMaternelle'},
-  {fonction:'apresmidi_fin', label:'Fin des cours — après-midi', champPrimaire:'apresmidiFinPrimaire', champMaternelle:'apresmidiFinMaternelle'},
+  {fonction:'apresmidi_debut', label:'Début des cours de l’après-midi', champPrimaire:'apresmidiDebutPrimaire', champMaternelle:'apresmidiDebutMaternelle'},
+  {fonction:'apresmidi_fin', label:'Fin des cours', champPrimaire:'apresmidiFinPrimaire', champMaternelle:'apresmidiFinMaternelle'},
 ];
 const HORAIRES_DEFAUTS = {
-  matinDebutPrimaire:'07:15', matinDebutMaternelle:'07:45',
-  midiPausePrimaire:'11:45', midiPauseMaternelle:'10:45',
-  apresmidiDebutPrimaire:'13:45', apresmidiDebutMaternelle:'13:45',
-  apresmidiFinPrimaire:'16:45', apresmidiFinMaternelle:'15:45',
+  matinDebutPrimaire:'07:30', matinDebutMaternelle:'08:00',
+  pauseMatinPrimaire:'10:00', pauseMatinMaternelle:'10:00',
+  midiPausePrimaire:'12:00', midiPauseMaternelle:'11:00',
+  apresmidiDebutPrimaire:'14:00', apresmidiDebutMaternelle:'14:00',
+  apresmidiFinPrimaire:'16:00', apresmidiFinMaternelle:'16:00',
+  renforcementFin:'17:00',
 };
+const JOURS_COMPLETS = ['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi','Dimanche'];
 function renderHorairesAnnonces(){
   const h = DB.horairesAnnonces || {};
+  const avance = Number.isFinite(h.avanceMinutes) ? h.avanceMinutes : 15;
+  const jours = h.joursCours || [1,2,3,4,5];
+  const nbRenf = (DB.eleves||[]).filter(e => e.renforcement && e.statut === 'Actif').length;
   return `
     <form onsubmit="return handleSaveHoraires(event)">
       <label style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
         <input type="checkbox" name="actif" ${h.actif!==false?'checked':''}>
-        <strong>Activer les annonces automatiques</strong>
+        <strong>Activer les annonces automatiques aux parents</strong>
       </label>
-      <table class="table">
-        <thead><tr><th>Annonce</th><th>Primaire</th><th>Maternelle</th></tr></thead>
+      <div class="hint" style="margin-bottom:10px;">Indiquez l’heure <strong>réelle</strong> de chaque moment : les parents sont prévenus automatiquement
+        <input type="number" name="avanceMinutes" min="0" max="60" value="${avance}" style="width:70px;display:inline-block;"> minutes avant, dans leur application.</div>
+      <div class="table-wrap"><table class="table">
+        <thead><tr><th>Moment</th><th>Primaire</th><th>Maternelle / Garderie</th></tr></thead>
         <tbody>
           ${HORAIRES_CHAMPS.map(c=>`
             <tr>
@@ -6062,9 +6133,20 @@ function renderHorairesAnnonces(){
               <td><input type="time" name="${c.champPrimaire}" value="${(h[c.champPrimaire]||HORAIRES_DEFAUTS[c.champPrimaire]).slice(0,5)}"></td>
               <td><input type="time" name="${c.champMaternelle}" value="${(h[c.champMaternelle]||HORAIRES_DEFAUTS[c.champMaternelle]).slice(0,5)}"></td>
             </tr>`).join('')}
+          <tr>
+            <td>Fin du cours de renforcement<div class="hint" style="margin:0;">commence à la fin des cours · ${nbRenf} élève(s) coché(s)</div></td>
+            <td colspan="2"><input type="time" name="renforcementFin" value="${(h.renforcementFin||HORAIRES_DEFAUTS.renforcementFin).slice(0,5)}"></td>
+          </tr>
         </tbody>
-      </table>
-      <div class="hint" style="margin-top:10px;">Ces annonces apparaissent automatiquement dans l'espace Parent (selon le cycle de l'enfant) et dans le tableau de bord du personnel — jamais par SMS.</div>
+      </table></div>
+      <div class="field" style="margin-top:12px;"><label>Jours de classe</label>
+        <div style="display:flex;flex-wrap:wrap;gap:12px;">${JOURS_COMPLETS.map((j, i) => `<label style="display:flex;align-items:center;gap:6px;font-weight:600;"><input type="checkbox" name="jour" value="${i+1}" ${jours.includes(i+1)?'checked':''}> ${j}</label>`).join('')}</div>
+      </div>
+      <div class="field"><label>Vacances : suspendre les annonces jusqu’au (inclus)</label>
+        <input type="date" name="suspenduJusquau" value="${h.suspenduJusquau || ''}">
+        <div class="hint" style="margin:4px 0 0;">Laissez vide pendant l’année scolaire. Les annonces reprennent toutes seules le lendemain de cette date.</div>
+      </div>
+      <div class="hint" style="margin-top:10px;">Les élèves du cours de renforcement se cochent sur leur fiche (Élèves &amp; Inscriptions → modifier). Leurs parents reçoivent un message à part : « votre enfant est retenu pour le renforcement », puis la fin du renforcement.</div>
       <div class="form-actions"><button class="btn" type="submit">Enregistrer les horaires</button></div>
     </form>
   `;
@@ -6072,11 +6154,16 @@ function renderHorairesAnnonces(){
 async function handleSaveHoraires(ev){
   ev.preventDefault();
   const fd = new FormData(ev.target);
-  const payload = { ecole_id: session.ecoleId, actif: fd.get('actif') === 'on' };
+  const jours = fd.getAll('jour').map(Number).sort();
+  const avance = Math.min(60, Math.max(0, parseInt(fd.get('avanceMinutes'), 10) || 0));
+  const payload = { ecole_id: session.ecoleId, actif: fd.get('actif') === 'on', avance_minutes: avance,
+    jours_cours: jours, suspendu_jusquau: fd.get('suspenduJusquau') || null,
+    renforcement_fin: fd.get('renforcementFin') || HORAIRES_DEFAUTS.renforcementFin };
   HORAIRES_CHAMPS.forEach(c=>{
     payload[camelToSnake(c.champPrimaire)] = fd.get(c.champPrimaire) || HORAIRES_DEFAUTS[c.champPrimaire];
     payload[camelToSnake(c.champMaternelle)] = fd.get(c.champMaternelle) || HORAIRES_DEFAUTS[c.champMaternelle];
   });
+  if(!jours.length){ alert('Cochez au moins un jour de classe.'); return false; }
   try{
     const { data, error } = await sb.from('horaires_annonces').upsert(payload, { onConflict: 'ecole_id' }).select().single();
     if(error) throw error;
@@ -6325,7 +6412,7 @@ function renderParametres(){
     </div>
 
     <div class="panel">
-      <div class="panel-head"><div><h2>⏰ Annonces horaires automatiques</h2><div class="sub">Notification automatique (dans l'appli, pas par SMS) au début/fin des cours — visible par les parents et le personnel</div></div></div>
+      <div class="panel-head"><div><h2>⏰ Annonces horaires automatiques</h2><div class="sub">Les parents sont prévenus automatiquement avant le début des cours, les pauses et la fin des cours — jours de classe uniquement</div></div></div>
       ${renderHorairesAnnonces()}
     </div>
 
