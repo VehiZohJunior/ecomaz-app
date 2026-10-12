@@ -182,6 +182,8 @@ const VIEW_TITLES = {
   messagerie: 'Messagerie',
   'tableau-affichage': "Tableau d'affichage",
   parametres: 'Paramètres',
+  'liens-parents': 'Parents ↔ Élèves',
+  renforcement: 'Cours de renforcement',
 };
 
 /* --- Comptabilité --- */
@@ -217,7 +219,7 @@ const COMPTA_TABS = [
 /* --- Rôles / Interfaces --- */
 const ROLES = {
   enseignant:  {label:'Enseignant(e)', icon:'👩‍🏫', desc:'Notes, présences, emploi du temps', nav:['dashboard','notes','presences-eleves','emploi-temps','programmes']},
-  secretariat: {label:'Secrétariat', icon:'🗂️', desc:'Gestion administrative & scolarité', nav:['dashboard','eleves','notes','presences-eleves','emploi-temps','programmes','pointage-scan','enseignants','presences-enseignants','comptabilite','messagerie']},
+  secretariat: {label:'Secrétariat', icon:'🗂️', desc:'Gestion administrative & scolarité', nav:['dashboard','eleves','liens-parents','renforcement','notes','presences-eleves','emploi-temps','programmes','pointage-scan','enseignants','presences-enseignants','comptabilite','messagerie']},
   direction:   {label:'Direction', icon:'🎩', desc:'Accès complet', nav:'all'},
   fondation:   {label:'Fondation', icon:'🏛️', desc:'Accès complet', nav:'all'},
   parent:      {label:'Parent', icon:'👪', desc:"Suivi de l'enfant", nav:[]},
@@ -789,6 +791,8 @@ function renderView(view){
     messagerie: renderMessagerie,
     'tableau-affichage': renderTableauAffichage,
     parametres: renderParametres,
+    'liens-parents': renderLiensParents,
+    renforcement: renderRenforcement,
   };
   // Données pas encore chargées, ou déjà effacées par une déconnexion (fin
   // de session, inactivité) : rien à afficher, l'écran de connexion est là.
@@ -1936,7 +1940,7 @@ const VERSIONS = [
     commun: [],
     parent: [ 'Annonces de la journée 15 minutes avant : début des cours, pauses, fin des cours et cours de renforcement — avec notification du téléphone si vous l’autorisez.', 'L’information sur l’activité à venir défile dans une bande jaune en haut de l’accueil (touchez-la pour la mettre en pause) ; les précédentes sont dans « Informations passées ».', 'Nouvel onglet « Objets perdus » : signalez une affaire de votre enfant perdue à l’école, l’école vous répond.' ],
     portier: [],
-    personnel: [ 'Paramètres → Annonces horaires : heures réelles, pause de 10h, jours de classe, vacances ; case « cours de renforcement » sur la fiche élève.', 'Messagerie : les objets perdus signalés par les parents, avec une réponse à leur envoyer.' ],
+    personnel: [ 'Nouveau menu « Parents ↔ Élèves » : reliez chaque élève au compte de son parent (suggestions, invitation WhatsApp).', 'Nouveau menu « Cours de renforcement » : inscriptions par classe, jours et heure, message aux seuls parents concernés.', 'Paramètres → Annonces horaires : heures réelles, pause de 10h, jours de classe, vacances ; case « cours de renforcement » sur la fiche élève.', 'Messagerie : les objets perdus signalés par les parents, avec une réponse à leur envoyer.' ],
   } },
   { version: '2026.10.11-2', nouveautes: {
     commun: [
@@ -2430,6 +2434,209 @@ function ouvrirBilanHebdo(lundi){
       <a class="btn secondary" href="${lienWa}" target="_blank" rel="noopener">📲 Partager par WhatsApp</a>
       <button type="button" class="btn" onclick="window.print()">🖨️ Imprimer</button>
     </div>`);
+}
+/* =====================================================================
+   PARENTS ↔ ÉLÈVES — relier chaque élève au compte de son parent, pour
+   que notifications, annonces et messages arrivent à la bonne personne.
+   ===================================================================== */
+function comptesParents(){ return (DB.profiles || []).filter(p => p.role === 'parent'); }
+function parentsDeLEleve(eleveId){
+  return (DB.parentsEleves || []).filter(pe => pe.eleveId === eleveId)
+    .map(pe => ({ lien: pe, profil: comptesParents().find(p => p.id === pe.parentProfileId) }));
+}
+// Suggestions : comptes parents dont le nom ressemble au parent noté sur la
+// fiche, ou qui portent le nom de famille de l'élève.
+function suggestionsParent(e){
+  const mots = t => simplifierTexte(t).split(' ').filter(m => m.length >= 3);
+  const cles = new Set(mots(e.parentNom).concat(mots(e.nom)));
+  return comptesParents().map(p => ({ p, score: mots(p.nomComplet).filter(m => cles.has(m)).length }))
+    .filter(x => x.score > 0).sort((a, b) => b.score - a.score).map(x => x.p);
+}
+function renderLiensParents(){
+  const eleves = DB.eleves.filter(e => e.statut === 'Actif').sort((a, b) => a.nom.localeCompare(b.nom));
+  const sansParent = eleves.filter(e => !parentsDeLEleve(e.id).length);
+  const parents = comptesParents().slice().sort((a, b) => (a.nomComplet||'').localeCompare(b.nomComplet||''));
+  const optionsParents = sel => parents.map(p => `<option value="${p.id}" ${sel===p.id?'selected':''}>${escapeHtml(p.nomComplet || '—')}</option>`).join('');
+  return `<div class="view active">
+    <div class="section-note">👪 Un élève relié au compte de son parent permet à ce parent de recevoir <strong>uniquement</strong> ce qui concerne son enfant : absences, annonces de son cycle, cours de renforcement, objets perdus et messages de l'école.</div>
+    <div class="cards">
+      <div class="card"><div class="num">${eleves.length - sansParent.length} / ${eleves.length}</div><div class="label">Élèves reliés à un parent</div></div>
+      <div class="card"><div class="num">${parents.length}</div><div class="label">Comptes parents</div></div>
+      <div class="card"><div class="num">${sansParent.length}</div><div class="label">Élèves sans parent relié</div></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><div><h2>⚠️ Élèves sans parent relié (${sansParent.length})</h2><div class="sub">Reliez un compte existant, ou invitez le parent par WhatsApp : il se connecte avec Google et vous validez sa demande (Paramètres → Demandes d'accès)</div></div></div>
+      ${!sansParent.length ? '<div class="hint">Tous les élèves actifs sont reliés à un parent. 🎉</div>' : `<div class="table-wrap"><table>
+        <thead><tr><th>Élève</th><th>Parent sur la fiche</th><th>Relier à un compte existant</th><th>Inviter</th></tr></thead>
+        <tbody>${sansParent.map(e => {
+          const sugg = suggestionsParent(e);
+          const tels = String(e.parentTel || '').split(/\s*[\/;,|]\s*|\s+-\s+|\s+et\s+/i).map(t => t.replace(/\D/g, '').replace(/^225/, '')).filter(t => t.length === 10);
+          return `<tr>
+            <td>${escapeHtml(eleveFullName(e))}<br><span class="hint">${escapeHtml(classeName(e.classeId))}</span></td>
+            <td>${escapeHtml(e.parentNom || '—')}<br><span class="hint">${escapeHtml(e.parentTel || '')}</span></td>
+            <td style="min-width:220px;">${parents.length ? `<select id="lienParent-${e.id}"><option value="">— Choisir un compte —</option>
+                ${sugg.length ? `<optgroup label="Suggestions">${sugg.map(p => `<option value="${p.id}">${escapeHtml(p.nomComplet || '—')}</option>`).join('')}</optgroup><optgroup label="Tous les comptes">` : ''}${optionsParents(sugg[0]?.id)}${sugg.length ? '</optgroup>' : ''}</select>
+              <button class="btn secondary sm" style="margin-top:6px;" onclick="relierParentEleve('${e.id}')">Relier</button>` : '<span class="hint">Aucun compte parent pour l’instant</span>'}</td>
+            <td>${tels.map(t => `<a class="btn sm" style="margin:2px 0;" href="https://wa.me/225${t}?text=${encodeURIComponent(messagePartageApplication('parent.html'))}" target="_blank" rel="noopener">📲 ${t.replace(/(\d{2})(?=\d)/g, '$1 ')}</a>`).join('<br>') || '<span class="hint">Pas de numéro valide</span>'}
+              <br><button class="btn secondary sm" style="margin-top:4px;" onclick="ouvrirCreerCompteParent('${e.id}')">Créer par e-mail</button></td>
+          </tr>`;
+        }).join('')}</tbody></table></div>`}
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><div><h2>👪 Comptes parents et leurs enfants</h2><div class="sub">Un parent peut avoir plusieurs enfants dans l'école</div></div></div>
+      ${!parents.length ? '<div class="hint">Aucun compte parent pour l’instant.</div>' : `<div class="table-wrap"><table>
+        <thead><tr><th>Parent</th><th>Enfant(s) relié(s)</th><th>Ajouter un enfant</th></tr></thead>
+        <tbody>${parents.map(p => {
+          const liens = (DB.parentsEleves || []).filter(pe => pe.parentProfileId === p.id);
+          const dejaRelies = new Set(liens.map(l => l.eleveId));
+          return `<tr>
+            <td><strong>${escapeHtml(p.nomComplet || '—')}</strong></td>
+            <td>${liens.map(l => { const e = eleveById(l.eleveId); return `<span class="badge green" style="margin:2px;">${escapeHtml(e ? eleveFullName(e) : '—')} <button class="no-icon" style="border:none;background:none;cursor:pointer;color:inherit;font-weight:900;" title="Retirer le lien" onclick="retirerAccesParentLiens('${l.id}')">✕</button></span>`; }).join(' ') || '<span class="hint">aucun</span>'}</td>
+            <td style="min-width:220px;"><select id="ajoutEnfant-${p.id}"><option value="">— Choisir un élève —</option>${eleves.filter(e => !dejaRelies.has(e.id)).map(e => `<option value="${e.id}">${escapeHtml(eleveFullName(e))} (${escapeHtml(classeName(e.classeId))})</option>`).join('')}</select>
+              <button class="btn secondary sm" style="margin-top:6px;" onclick="relierEnfantAuParent('${p.id}')">Ajouter</button></td>
+          </tr>`;
+        }).join('')}</tbody></table></div>`}
+    </div>
+  </div>`;
+}
+async function creerLienParentEleve(parentId, eleveId){
+  const { data, error } = await sb.from('parents_eleves').insert({ parent_profile_id: parentId, eleve_id: eleveId, ecole_id: session.ecoleId }).select().single();
+  if(error) throw error;
+  DB.parentsEleves = (DB.parentsEleves || []).concat(rowToCamel(data));
+}
+async function relierParentEleve(eleveId){
+  const parentId = document.getElementById('lienParent-' + eleveId)?.value;
+  if(!parentId) return alert('Choisissez d’abord le compte du parent.');
+  try{ await creerLienParentEleve(parentId, eleveId); toast('Élève relié à son parent'); renderView('liens-parents'); }
+  catch(e){ alert('Erreur : ' + e.message); }
+}
+async function relierEnfantAuParent(parentId){
+  const eleveId = document.getElementById('ajoutEnfant-' + parentId)?.value;
+  if(!eleveId) return alert('Choisissez d’abord l’élève.');
+  try{ await creerLienParentEleve(parentId, eleveId); toast('Enfant ajouté à ce parent'); renderView('liens-parents'); }
+  catch(e){ alert('Erreur : ' + e.message); }
+}
+async function retirerAccesParentLiens(peId){
+  if(!confirm("Retirer le lien entre ce parent et cet élève ? Le parent ne verra plus rien de cet enfant.")) return;
+  try{
+    const { error } = await sb.from('parents_eleves').delete().eq('id', peId);
+    if(error) throw error;
+    DB.parentsEleves = (DB.parentsEleves || []).filter(pe => pe.id !== peId);
+    toast('Lien retiré'); renderView('liens-parents');
+  }catch(e){ alert('Erreur : ' + e.message); }
+}
+
+/* =====================================================================
+   COURS DE RENFORCEMENT — inscriptions, jours et heure, parents prévenus
+   (annonces automatiques : fonction annoncer-horaires, sections 50 et 51).
+   ===================================================================== */
+function renderRenforcement(){
+  const h = DB.horairesAnnonces || {};
+  const inscrits = DB.eleves.filter(e => e.statut === 'Actif' && e.renforcement).sort((a, b) => a.nom.localeCompare(b.nom));
+  const jours = h.joursRenforcement || [1,2,3,4,5];
+  const debut = (h.apresmidiFinPrimaire || '16:00').slice(0, 5), fin = (h.renforcementFin || '17:00').slice(0, 5);
+  const classes = classesVisibles ? classesVisibles() : DB.classes;
+  const f = ui.filters.renforcement = ui.filters.renforcement || { classeId: classes[0]?.id || '' };
+  if(!classes.some(c => c.id === f.classeId)) f.classeId = classes[0]?.id || '';
+  const elevesClasse = DB.eleves.filter(e => e.classeId === f.classeId && e.statut === 'Actif').sort((a, b) => a.nom.localeCompare(b.nom));
+  const sansParent = inscrits.filter(e => !parentsDeLEleve(e.id).length);
+  return `<div class="view active">
+    <div class="cards">
+      <div class="card"><div class="num">${inscrits.length}</div><div class="label">Élèves inscrits</div></div>
+      <div class="card"><div class="num">${debut.replace(':','h')} → ${fin.replace(':','h')}</div><div class="label">Horaire (après la fin des cours)</div></div>
+      <div class="card"><div class="num">${jours.length} j</div><div class="label">${JOURS_COMPLETS.filter((_, i) => jours.includes(i+1)).map(j => j.slice(0,3)).join(', ') || 'aucun jour'}</div></div>
+      <div class="card"><div class="num">${inscrits.length - sansParent.length} / ${inscrits.length}</div><div class="label">Parents reliés (prévenus)</div></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><div><h2>📘 Inscrire des élèves</h2><div class="sub">Cochez les élèves de la classe qui suivent le renforcement, puis enregistrez</div></div></div>
+      <div class="filters"><select onchange="ui.filters.renforcement.classeId=this.value; renderView('renforcement')">${classes.map(c => `<option value="${c.id}" ${c.id===f.classeId?'selected':''}>${escapeHtml(c.nom)}</option>`).join('')}</select></div>
+      ${!elevesClasse.length ? '<div class="hint">Aucun élève actif dans cette classe.</div>' : `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px;">
+        ${elevesClasse.map(e => `<label style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:var(--r-card);"><input type="checkbox" class="case-renf" value="${e.id}" ${e.renforcement?'checked':''}> ${escapeHtml(eleveFullName(e))}</label>`).join('')}
+      </div>
+      <div class="form-actions"><button class="btn" onclick="enregistrerRenforcementClasse()">Enregistrer pour ${escapeHtml(classeName(f.classeId))}</button></div>`}
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><div><h2>Élèves inscrits (${inscrits.length})</h2><div class="sub">Leurs parents sont prévenus automatiquement : « votre enfant est retenu », puis la fin du renforcement</div></div></div>
+      ${!inscrits.length ? '<div class="hint">Aucun élève inscrit pour l’instant.</div>' : `<div class="table-wrap"><table>
+        <thead><tr><th>Élève</th><th>Classe</th><th>Parent relié</th><th></th></tr></thead>
+        <tbody>${inscrits.map(e => { const ps = parentsDeLEleve(e.id); return `<tr>
+          <td>${escapeHtml(eleveFullName(e))}</td><td>${escapeHtml(classeName(e.classeId))}</td>
+          <td>${ps.length ? ps.map(x => `<span class="badge green">${escapeHtml(x.profil?.nomComplet || 'parent')}</span>`).join(' ') : `<span class="badge amber">aucun — ne sera pas prévenu</span> <button class="btn secondary sm" onclick="go('liens-parents')">Relier</button>`}</td>
+          <td><button class="btn secondary sm" onclick="retirerDuRenforcement('${e.id}')">Retirer</button></td>
+        </tr>`; }).join('')}</tbody></table></div>`}
+    </div>
+
+    <div class="grid-2">
+      <div class="panel">
+        <div class="panel-head"><div><h2>⏰ Jours et heure</h2></div></div>
+        <form onsubmit="return enregistrerReglagesRenforcement(event)">
+          <div class="field"><label>Fin du renforcement (il commence à la fin des cours, ${debut.replace(':','h')})</label><input type="time" name="renforcementFin" value="${fin}"></div>
+          <div class="field"><label>Jours du renforcement</label>
+            <div style="display:flex;flex-wrap:wrap;gap:10px;">${JOURS_COMPLETS.slice(0,6).map((j, i) => `<label style="display:flex;align-items:center;gap:6px;font-weight:600;"><input type="checkbox" name="jourRenf" value="${i+1}" ${jours.includes(i+1)?'checked':''}> ${j}</label>`).join('')}</div>
+            <div class="hint" style="margin:4px 0 0;">Les autres jours, les parents des inscrits reçoivent l’annonce normale de fin des cours.</div></div>
+          <div class="form-actions"><button class="btn" type="submit">Enregistrer</button></div>
+        </form>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><div><h2>✉️ Message aux parents des inscrits</h2><div class="sub">Arrive uniquement chez les parents des élèves du renforcement</div></div></div>
+        <form onsubmit="return envoyerMessageRenforcement(event)">
+          <div class="field"><textarea name="contenu" rows="4" required maxlength="1000" placeholder="Ex : Le cours de renforcement de vendredi est annulé."></textarea></div>
+          ${sansParent.length ? `<div class="hint">⚠️ ${sansParent.length} élève(s) inscrit(s) n’ont pas de parent relié : leur parent ne recevra pas ce message.</div>` : ''}
+          <div class="form-actions"><button class="btn" type="submit" ${inscrits.length ? '' : 'disabled'}>Envoyer à ${inscrits.length - sansParent.length} famille(s)</button></div>
+        </form>
+      </div>
+    </div>
+  </div>`;
+}
+async function majRenforcement(ids, valeur){
+  if(!ids.length) return;
+  const { error } = await sb.from('eleves').update({ renforcement: valeur }).in('id', ids).eq('ecole_id', session.ecoleId);
+  if(error) throw error;
+  DB.eleves.forEach(e => { if(ids.includes(e.id)) e.renforcement = valeur; });
+}
+async function enregistrerRenforcementClasse(){
+  const cases = $$('.case-renf');
+  try{
+    await majRenforcement(cases.filter(c => c.checked).map(c => c.value), true);
+    await majRenforcement(cases.filter(c => !c.checked).map(c => c.value), false);
+    toast('Inscriptions au renforcement enregistrées'); renderView('renforcement');
+  }catch(e){ alert('Erreur : ' + e.message); }
+}
+async function retirerDuRenforcement(id){
+  try{ await majRenforcement([id], false); toast('Élève retiré du renforcement'); renderView('renforcement'); }
+  catch(e){ alert('Erreur : ' + e.message); }
+}
+async function enregistrerReglagesRenforcement(ev){
+  ev.preventDefault();
+  const fd = new FormData(ev.target);
+  const jours = fd.getAll('jourRenf').map(Number).sort();
+  try{
+    const { data, error } = await sb.from('horaires_annonces').upsert({ ecole_id: session.ecoleId, renforcement_fin: fd.get('renforcementFin') || '17:00', jours_renforcement: jours }, { onConflict: 'ecole_id' }).select().single();
+    if(error) throw error;
+    DB.horairesAnnonces = rowToCamel(data);
+    toast('Réglages du renforcement enregistrés'); renderView('renforcement');
+  }catch(e){ alert('Erreur : ' + e.message); }
+  return false;
+}
+async function envoyerMessageRenforcement(ev){
+  ev.preventDefault();
+  const contenu = new FormData(ev.target).get('contenu').trim();
+  const cibles = DB.eleves.filter(e => e.statut === 'Actif' && e.renforcement && parentsDeLEleve(e.id).length);
+  if(!cibles.length) return alert('Aucun élève inscrit n’a de parent relié.'), false;
+  if(!confirm(`Envoyer ce message aux parents de ${cibles.length} élève(s) du renforcement ?`)) return false;
+  try{
+    const lignes = cibles.map(e => ({ destinataire_type: 'parent', eleve_id: e.id, contenu: '📘 Renforcement — ' + contenu, auteur_nom: session.nomComplet || '' }));
+    const { data, error } = await sb.from('messages_internes').insert(lignes).select();
+    if(error) throw error;
+    DB.messagesInternes = rowsToCamel(data).concat(DB.messagesInternes || []);
+    ev.target.reset();
+    toast(`Message envoyé à ${cibles.length} famille(s)`);
+  }catch(e){ alert('Erreur : ' + e.message); }
+  return false;
 }
 /* ---------------------------------------------------------------------
    IMPORT DES ÉLÈVES DEPUIS EXCEL (.xlsx, .xls ou .csv)

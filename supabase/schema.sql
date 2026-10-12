@@ -1888,3 +1888,11 @@ create policy "lecture annonces_horaires parent" on annonces_horaires_envoyees f
       and (annonces_horaires_envoyees.eleve_ids_exclus is null or not (e.id = any(annonces_horaires_envoyees.eleve_ids_exclus)))
   )
 );
+
+-- =====================================================================
+-- 51. MODULE « COURS DE RENFORCEMENT » (2026-10-12)
+-- =====================================================================
+-- Demande de Vehi Zoh Junior. Jours où le renforcement a lieu (lundi = 1
+-- … dimanche = 7) : les jours sans renforcement, les parents des élèves
+-- inscrits reçoivent l'annonce normale de fin des cours.
+alter table horaires_annonces add column if not exists jours_renforcement integer[] not null default '{1,2,3,4,5}';

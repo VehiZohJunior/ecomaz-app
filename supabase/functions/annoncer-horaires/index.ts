@@ -83,7 +83,9 @@ Deno.serve(async (req) => {
         const heure = (champ: string) => String(h[`${champ}_${cycle}`] || '').slice(0, 5);
         const fin = heure('apresmidi_fin');
         const finRenf = String(h.renforcement_fin || '').slice(0, 5);
-        const retenus = renforcement[cycle];
+        // Jours sans renforcement : personne n'est retenu, tout le monde reçoit la fin des cours
+        const renfAujourdhui = (h.jours_renforcement || [1, 2, 3, 4, 5]).includes(jourIso);
+        const retenus = renfAujourdhui ? renforcement[cycle] : [];
 
         const annonces: { fonction: string; moment: string; contenu: string; eleve_ids?: string[]; eleve_ids_exclus?: string[] }[] = [
           { fonction: 'matin_debut', moment: heure('matin_debut'),
