@@ -25,6 +25,7 @@ EXCLUES = {
     'paiement_en_ligne_config': ['identifiants'],
     'fne_config': ['api_key'],
     'liens_pointage_gps': ['token'],
+    'push_abonnements': ['p256dh', 'auth', 'endpoint'],
 }
 
 

@@ -22,6 +22,7 @@
 // =====================================================================
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { envoyerPush, parentsDesEleves } from '../_shared/push.ts';
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -54,7 +55,7 @@ Deno.serve(async (req) => {
 
     const { data: horaires, error: errHoraires } = await supabaseAdmin
       .from('horaires_annonces')
-      .select('*, ecoles!inner(id, actif)')
+      .select('*, ecoles!inner(id, actif, nom_ecole)')
       .eq('actif', true)
       .eq('ecoles.actif', true);
     if (errHoraires) throw errHoraires;
@@ -68,16 +69,20 @@ Deno.serve(async (req) => {
       const avance = Number.isFinite(h.avance_minutes) ? h.avance_minutes : 15;
       const dans = avance > 0 ? `dans ${avance} minutes` : 'maintenant';
 
-      // Élèves actifs inscrits au renforcement, par cycle
-      const { data: elevesRenf } = await supabaseAdmin
-        .from('eleves').select('id, classes!inner(cycle)')
-        .eq('ecole_id', h.ecole_id).eq('statut', 'Actif').eq('renforcement', true);
+      // Élèves actifs par cycle (pour les notifications push) et inscrits au renforcement
+      const { data: elevesActifs } = await supabaseAdmin
+        .from('eleves').select('id, renforcement, classes!inner(cycle)')
+        .eq('ecole_id', h.ecole_id).eq('statut', 'Actif');
+      const parCycle: Record<Cycle, string[]> = { primaire: [], maternelle: [] };
       const renforcement: Record<Cycle, string[]> = { primaire: [], maternelle: [] };
-      for (const e of (elevesRenf || []) as any[]) {
+      for (const e of (elevesActifs || []) as any[]) {
         for (const c of ['primaire', 'maternelle'] as Cycle[]) {
-          if (CYCLES_CLASSES[c].includes(e.classes?.cycle)) renforcement[c].push(e.id);
+          if (!CYCLES_CLASSES[c].includes(e.classes?.cycle)) continue;
+          parCycle[c].push(e.id);
+          if (e.renforcement) renforcement[c].push(e.id);
         }
       }
+      const nomEcole = (h.ecoles as any)?.nom_ecole || 'EcoMaZ';
 
       for (const cycle of ['primaire', 'maternelle'] as Cycle[]) {
         const heure = (champ: string) => String(h[`${champ}_${cycle}`] || '').slice(0, 5);
@@ -125,6 +130,13 @@ Deno.serve(async (req) => {
             continue;
           }
           nbEnvoyees++;
+          // Notification push sur le téléphone des parents concernés (même application fermée)
+          try {
+            const exclus = new Set(a.eleve_ids_exclus || []);
+            const cibles = (a.eleve_ids || parCycle[cycle]).filter((id) => !exclus.has(id));
+            const parents = await parentsDesEleves(supabaseAdmin, h.ecole_id, cibles);
+            await envoyerPush(supabaseAdmin, parents, { title: nomEcole, body: a.contenu, url: './parent.html', tag: `${a.fonction}-${cycle}` });
+          } catch (e) { erreurs.push(`push ${a.fonction}/${cycle}: ${(e as Error).message}`); }
         }
       }
     }

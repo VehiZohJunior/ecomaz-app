@@ -1152,6 +1152,7 @@ function enterAppParent(){
   nav.innerHTML = renderNavParent('accueil');
   document.body.classList.add('has-parent-nav');
   afficherNouveautes();
+  activerPush(true);
   startIdleWatcher();
   startPollingBulles();
 }
@@ -1196,14 +1197,65 @@ function actualitesTriees(){
    encadré bien visible en haut de l'accueil, message, vibration, et
    notification du téléphone si le parent l'a autorisée.
    --------------------------------------------------------------------- */
+/* ---------------------------------------------------------------------
+   NOTIFICATIONS PUSH (schema.sql section 52) — le téléphone du parent
+   reçoit les annonces et messages même application fermée. Clé publique
+   VAPID ci-dessous (publique par nature) ; la clé privée est seulement
+   dans les secrets du serveur.
+   --------------------------------------------------------------------- */
+const VAPID_PUBLIQUE = 'BPvimaCoVNd8hXr68GXosfSO6CsV0k5iCzaQOWFg3b_T30-z_lCbal45PtSaooq_L4Tne_XvmIgIpPNFnKAdFHw';
+function pushPossible(){ return 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window; }
+function cleVapidOctets(){
+  const b64 = VAPID_PUBLIQUE.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - VAPID_PUBLIQUE.length % 4) % 4);
+  return Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+}
+// Abonne ce téléphone et enregistre l'abonnement pour le compte connecté.
+async function activerPush(silencieux){
+  try{
+    if(!pushPossible() || !session.userId) return false;
+    if(Notification.permission !== 'granted'){
+      if(silencieux) return false;
+      if(await Notification.requestPermission() !== 'granted') return false;
+    }
+    const reg = await navigator.serviceWorker.ready;
+    let abo = await reg.pushManager.getSubscription();
+    if(!abo) abo = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: cleVapidOctets() });
+    const j = abo.toJSON();
+    // Un même téléphone peut changer de compte : le serveur remplace l'ancien enregistrement
+    const { error } = await sb.rpc('enregistrer_abonnement_push', { p_endpoint: j.endpoint, p_p256dh: j.keys.p256dh, p_auth: j.keys.auth,
+      p_appareil: (navigator.userAgent || '').slice(0, 160) });
+    if(error) throw error;
+    return true;
+  }catch(e){
+    if(!silencieux) alert('Impossible d’activer les notifications sur ce téléphone : ' + e.message);
+    return false;
+  }
+}
+async function desactiverPushAppareil(){
+  try{
+    if(!pushPossible()) return;
+    const reg = await navigator.serviceWorker.getRegistration();
+    const abo = reg && await reg.pushManager.getSubscription();
+    if(abo) await sb.from('push_abonnements').delete().eq('endpoint', abo.endpoint);
+  }catch(_e){}
+}
+// Après un message de l'école : prévient le téléphone des parents concernés
+function notifierParentsPush(eleveIds, texte){
+  const ids = [...new Set((eleveIds || []).filter(Boolean))];
+  if(!ids.length) return;
+  sb.functions.invoke('notifier-parents', { body: { eleveIds: ids, texte } }).catch(() => {});
+}
 function annonceRecente(a){
   return a && a.date === todayISO() && a.createdAt && (Date.now() - new Date(a.createdAt).getTime()) < 30 * 60 * 1000;
 }
 function renderAnnonceDuMoment(){
   const a = (DB.annoncesHoraires || []).filter(annonceRecente)
     .sort((x, y) => String(y.createdAt).localeCompare(String(x.createdAt)))[0];
-  const autoriser = ('Notification' in window) && Notification.permission === 'default'
-    ? `<button type="button" class="btn sm annonce-autoriser" onclick="autoriserAlertesTelephone()">🔔 Recevoir ces annonces comme notifications du téléphone</button>` : '';
+  const ios = /iphone|ipad|ipod/i.test(navigator.userAgent) && !window.navigator.standalone;
+  const autoriser = ios && !pushPossible()
+    ? `<div class="hint annonce-autoriser">🔔 Sur iPhone, installez d’abord l’application (Partager → Sur l’écran d’accueil) pour recevoir les notifications.</div>`
+    : (pushPossible() && Notification.permission === 'default'
+      ? `<button type="button" class="btn sm annonce-autoriser" onclick="autoriserAlertesTelephone()">🔔 Activer les notifications sur ce téléphone (même application fermée)</button>` : '');
   if(!a) return autoriser ? `<div id="annonceDuMoment">${autoriser}</div>` : '<div id="annonceDuMoment"></div>';
   const minutes = Math.max(0, Math.round((Date.now() - new Date(a.createdAt).getTime()) / 60000));
   return `<div id="annonceDuMoment">
@@ -1217,9 +1269,9 @@ function rafraichirAnnonceDuMoment(){
   if(zone) zone.outerHTML = renderAnnonceDuMoment();
 }
 async function autoriserAlertesTelephone(){
-  try{ await Notification.requestPermission(); }catch(_e){}
+  const ok = await activerPush(false);
   rafraichirAnnonceDuMoment();
-  if(Notification.permission === 'granted') toast('Les annonces de l’école s’afficheront aussi en notification');
+  if(ok) toast('Notifications activées : vous serez prévenu même application fermée');
 }
 async function notifierTelephone(texte){
   try{
@@ -1240,7 +1292,9 @@ async function verifierNouvellesAnnonces(){
   DB.annoncesHoraires = recues.concat((DB.annoncesHoraires || []).filter(a => a.date !== todayISO()));
   if(!nouvelles.length) return;
   rafraichirAnnonceDuMoment();
-  nouvelles.forEach(a => { toast(a.contenu); notifierTelephone(a.contenu); });
+  // Avec les notifications push, le téléphone est déjà prévenu par le serveur : pas de doublon
+  const pushActif = pushPossible() && Notification.permission === 'granted';
+  nouvelles.forEach(a => { toast(a.contenu); if(!pushActif) notifierTelephone(a.contenu); });
   try{ if(navigator.vibrate) navigator.vibrate([200, 100, 200]); }catch(_e){}
 }
 function renderBandeDefilanteParent(){
@@ -1580,6 +1634,8 @@ async function handleRepondreObjetPerdu(id){
     const { error } = await sb.from('objets_perdus').update({ statut, reponse_ecole: reponse, updated_at: new Date().toISOString() }).eq('id', id);
     if(error) throw error;
     DB.objetsPerdus = (DB.objetsPerdus || []).map(o => o.id === id ? { ...o, statut, reponseEcole: reponse } : o);
+    const objet = DB.objetsPerdus.find(o => o.id === id);
+    if(objet) notifierParentsPush([objet.eleveId], `🎒 ${objet.objet} : ${(STATUTS_OBJET[statut] || {}).lib || ''}${reponse ? ' — ' + reponse : ''}`);
     toast('Réponse enregistrée : le parent la verra dans son application');
     renderView('messagerie');
   }catch(e){ alert('Erreur : ' + e.message); }
@@ -1739,6 +1795,7 @@ async function handleEnvoyerMessage(ev){
     if(error) throw error;
     DB.messagesInternes = DB.messagesInternes || [];
     DB.messagesInternes.unshift(rowToCamel(data));
+    if(destinataireType === 'parent') notifierParentsPush([payload.eleve_id], '✉️ ' + payload.contenu);
     closeModal();
     toast('Message envoyé');
     rafraichirBulles();
@@ -1938,7 +1995,7 @@ async function handleNotifierPortier(eleveId){
 const VERSIONS = [
   { version: '2026.10.12', nouveautes: {
     commun: [],
-    parent: [ 'Annonces de la journée 15 minutes avant : début des cours, pauses, fin des cours et cours de renforcement — avec notification du téléphone si vous l’autorisez.', 'L’information sur l’activité à venir défile dans une bande jaune en haut de l’accueil (touchez-la pour la mettre en pause) ; les précédentes sont dans « Informations passées ».', 'Nouvel onglet « Objets perdus » : signalez une affaire de votre enfant perdue à l’école, l’école vous répond.' ],
+    parent: [ 'Notifications sur le téléphone, même application fermée : touchez « Activer les notifications » sur l’accueil.', 'Annonces de la journée 15 minutes avant : début des cours, pauses, fin des cours et cours de renforcement — avec notification du téléphone si vous l’autorisez.', 'L’information sur l’activité à venir défile dans une bande jaune en haut de l’accueil (touchez-la pour la mettre en pause) ; les précédentes sont dans « Informations passées ».', 'Nouvel onglet « Objets perdus » : signalez une affaire de votre enfant perdue à l’école, l’école vous répond.' ],
     portier: [],
     personnel: [ 'Nouveau menu « Parents ↔ Élèves » : reliez chaque élève au compte de son parent (suggestions, invitation WhatsApp).', 'Nouveau menu « Cours de renforcement » : inscriptions par classe, jours et heure, message aux seuls parents concernés.', 'Paramètres → Annonces horaires : heures réelles, pause de 10h, jours de classe, vacances ; case « cours de renforcement » sur la fiche élève.', 'Messagerie : les objets perdus signalés par les parents, avec une réponse à leur envoyer.' ],
   } },
@@ -2131,6 +2188,7 @@ async function logoutRole(){
   if(window.ESPACE_FIXE !== 'portier') document.body.classList.remove('theme-portier');
   const navParentEl = document.getElementById('parentNav'); if(navParentEl) navParentEl.remove();
   if(typeof arreterScanPointage === 'function') arreterScanPointage();
+  if(ui.role === 'parent') await desactiverPushAppareil();
   await deconnexion();
   ui.role = null;
   ui.espaceChoisi = null;
@@ -2633,6 +2691,7 @@ async function envoyerMessageRenforcement(ev){
     const { data, error } = await sb.from('messages_internes').insert(lignes).select();
     if(error) throw error;
     DB.messagesInternes = rowsToCamel(data).concat(DB.messagesInternes || []);
+    notifierParentsPush(cibles.map(e => e.id), '📘 Renforcement — ' + contenu);
     ev.target.reset();
     toast(`Message envoyé à ${cibles.length} famille(s)`);
   }catch(e){ alert('Erreur : ' + e.message); }

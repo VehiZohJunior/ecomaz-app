@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { envoyerPush, parentsDesEleves } from '../_shared/push.ts';
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -134,6 +135,12 @@ Deno.serve(async (req) => {
         await supabaseAdmin.from('messages').update({ statut: smsOk ? 'Envoyé' : 'Échec envoi' }).eq('id', msgParent.id);
       }
     }
+
+    // Notification push sur le téléphone du parent relié (même application fermée)
+    try {
+      const parents = await parentsDesEleves(supabaseAdmin, profil.ecole_id, [eleveId]);
+      await envoyerPush(supabaseAdmin, parents, { title: nomEcole, body: contenu, url: './parent.html', tag: `absence-${eleveId}-${date}` });
+    } catch (_e) { /* la notification dans l'application reste disponible */ }
 
     return new Response(JSON.stringify({ ok: true, smsEnvoye: smsOk }), {
       headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },

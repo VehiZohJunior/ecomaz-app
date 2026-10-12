@@ -6,7 +6,7 @@
    d'attente hors ligne (voir supabase-client.js) — pas ce fichier, qui ne
    s'occupe que des fichiers de l'application (HTML/CSS/JS/icônes).
    ========================================================================= */
-const CACHE_NAME = 'ecomaz-shell-v29';
+const CACHE_NAME = 'ecomaz-shell-v30';
 const SHELL_FILES = [
   './',
   './index.html',
@@ -66,5 +66,15 @@ self.addEventListener('notificationclick', (event) => {
     const ouverte = fenetres.find((f) => f.url.includes('/parent.html'));
     if (ouverte) return ouverte.focus();
     return self.clients.openWindow('./parent.html');
+  }));
+});
+
+// Notification push reçue (même application fermée) : on l'affiche
+self.addEventListener('push', (event) => {
+  let d = {};
+  try { d = event.data ? event.data.json() : {}; } catch (_e) { d = { body: event.data ? event.data.text() : '' }; }
+  event.waitUntil(self.registration.showNotification(d.title || 'EcoMaZ', {
+    body: d.body || '', icon: 'icon-192.png', badge: 'icon-192.png', tag: d.tag || undefined,
+    renotify: !!d.tag, data: { url: d.url || './parent.html' }, vibrate: [200, 100, 200],
   }));
 });

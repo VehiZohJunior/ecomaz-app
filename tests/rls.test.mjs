@@ -177,8 +177,16 @@ async function requete(accessToken, chemin, options = {}){
     verifier('Un parent ne signale pas pour un enfant qui n est pas le sien', !objAutre.ok, `statut ${objAutre.status}`);
   }
 
+  section('7ter. Notifications push — abonnements privés, envoi réservé au personnel');
+  const aboSec = await requete(tokenSecretariat, `/rest/v1/push_abonnements?select=id&limit=5`);
+  verifier('Le secrétariat ne voit pas les téléphones des parents', Array.isArray(aboSec.data) && aboSec.data.length === 0, `reçu ${JSON.stringify(aboSec.data)?.slice(0,80)}`);
+  const aboAnon = await requete(ANON_KEY, `/rest/v1/rpc/enregistrer_abonnement_push`, { method:'POST', body: JSON.stringify({ p_endpoint:'https://exemple.test/x', p_p256dh:'x', p_auth:'x', p_appareil:'' }) });
+  verifier('Un visiteur non connecté ne peut pas abonner un téléphone', !aboAnon.ok, `statut ${aboAnon.status}`);
+  const pushEns = await fetch(`${URL_BASE}/functions/v1/notifier-parents`, { method:'POST', headers:{ Authorization:`Bearer ${tokenEnseignant}`, 'Content-Type':'application/json' }, body: JSON.stringify({ eleveIds:['00000000-0000-4000-8000-000000000001'], texte:'x' }) });
+  verifier('Un enseignant ne peut pas envoyer de notification push aux parents', pushEns.status === 400);
+
   section('8. Visiteur non connecté — ne lit que les affichages publics prévus');
-  for(const table of ['eleves','enseignants_lecture','profiles','paiements_scolarite','messages','parents_eleves','presences_eleves','eleves_portier_lecture','objets_perdus']){
+  for(const table of ['eleves','enseignants_lecture','profiles','paiements_scolarite','messages','parents_eleves','presences_eleves','eleves_portier_lecture','objets_perdus','push_abonnements']){
     const r = await requete(ANON_KEY, `/rest/v1/${table}?select=*&limit=1`);
     verifier(`Sans connexion, rien à lire dans ${table}`, !r.ok || (Array.isArray(r.data) && r.data.length === 0), `reçu ${JSON.stringify(r.data)?.slice(0,80)}`);
   }

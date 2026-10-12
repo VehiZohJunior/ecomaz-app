@@ -1896,3 +1896,43 @@ create policy "lecture annonces_horaires parent" on annonces_horaires_envoyees f
 -- … dimanche = 7) : les jours sans renforcement, les parents des élèves
 -- inscrits reçoivent l'annonce normale de fin des cours.
 alter table horaires_annonces add column if not exists jours_renforcement integer[] not null default '{1,2,3,4,5}';
+
+-- =====================================================================
+-- 52. NOTIFICATIONS PUSH (2026-10-12)
+-- =====================================================================
+-- Demande de Vehi Zoh Junior : les parents reçoivent les annonces et
+-- messages même application fermée. Chaque téléphone qui accepte les
+-- notifications enregistre ici son « abonnement » (adresse du service de
+-- notification du téléphone + clés de chiffrement propres à ce téléphone).
+-- Les clés VAPID de l'école (secrets VAPID_*) ne sont jamais dans la base.
+create table if not exists push_abonnements (
+  id uuid primary key default gen_random_uuid(),
+  ecole_id uuid not null references ecoles(id) on delete cascade default mon_ecole_id(),
+  user_id uuid not null references auth.users(id) on delete cascade default auth.uid(),
+  endpoint text not null unique,
+  p256dh text not null,
+  auth text not null,
+  appareil text not null default '',
+  created_at timestamptz not null default now()
+);
+create index if not exists push_abonnements_user_idx on push_abonnements(user_id);
+alter table push_abonnements enable row level security;
+-- Chacun gère uniquement les abonnements de ses propres téléphones
+drop policy if exists "push abonnements propres" on push_abonnements;
+create policy "push abonnements propres" on push_abonnements for all
+  using (user_id = auth.uid())
+  with check (user_id = auth.uid() and ecole_id = mon_ecole_id());
+
+-- Un téléphone = un seul compte destinataire : si le téléphone change de
+-- compte, l'ancien abonnement (d'un autre compte) est remplacé.
+create or replace function enregistrer_abonnement_push(p_endpoint text, p_p256dh text, p_auth text, p_appareil text)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if auth.uid() is null or mon_ecole_id() is null then raise exception 'Non authentifié'; end if;
+  if p_endpoint !~ '^https://' or char_length(p_endpoint) > 1000 then raise exception 'Abonnement invalide'; end if;
+  delete from push_abonnements where endpoint = p_endpoint;
+  insert into push_abonnements (ecole_id, user_id, endpoint, p256dh, auth, appareil)
+  values (mon_ecole_id(), auth.uid(), p_endpoint, left(p_p256dh, 200), left(p_auth, 100), left(coalesce(p_appareil, ''), 160));
+end $$;
+revoke all on function enregistrer_abonnement_push(text, text, text, text) from public, anon;
+grant execute on function enregistrer_abonnement_push(text, text, text, text) to authenticated;
