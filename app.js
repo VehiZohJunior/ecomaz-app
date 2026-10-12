@@ -2067,6 +2067,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.10.12-2', nouveautes: {
+    commun: [],
+    parent: [ 'Nouveau : bouton « Signaler une absence à l’avance » (maladie, rendez-vous…) sur l’accueil.' ],
+    portier: [ 'L’enseignant est maintenant prévenu sur son téléphone, même application fermée.' ],
+    personnel: [ 'Appel : les absences signalées à l’avance par les parents sont déjà marquées, avec leur motif.', 'Enseignants : notification sur le téléphone quand un parent arrive au portail (même application fermée).', 'Parents ↔ Élèves : coupons d’invitation à imprimer (QR code) ; demandes d’accès avec les enfants probables cochés d’avance.' ],
+  } },
   { version: '2026.10.12', nouveautes: {
     commun: [],
     parent: [ 'Nouveau : bouton « Signaler une absence à l’avance » (maladie, rendez-vous…) sur l’accueil.', 'Notifications sur le téléphone, même application fermée : touchez « Activer les notifications » sur l’accueil.', 'Annonces de la journée 15 minutes avant : début des cours, pauses, fin des cours et cours de renforcement — avec notification du téléphone si vous l’autorisez.', 'L’information sur l’activité à venir défile dans une bande jaune en haut de l’accueil (touchez-la pour la mettre en pause) ; les précédentes sont dans « Informations passées ».', 'Nouvel onglet « Objets perdus » : signalez une affaire de votre enfant perdue à l’école, l’école vous répond.' ],
@@ -2592,6 +2598,10 @@ function renderLiensParents(){
   const parents = comptesParents().slice().sort((a, b) => (a.nomComplet||'').localeCompare(b.nomComplet||''));
   const optionsParents = sel => parents.map(p => `<option value="${p.id}" ${sel===p.id?'selected':''}>${escapeHtml(p.nomComplet || '—')}</option>`).join('');
   return `<div class="view active">
+    <div class="form-actions no-print" style="justify-content:flex-start;margin:0 0 var(--sp-3);">
+      <button class="btn" onclick="ouvrirCouponsInvitation(true)">🖨️ Coupons d’invitation (élèves sans parent relié)</button>
+      <button class="btn secondary" onclick="ouvrirCouponsInvitation(false)">Coupons pour tous les élèves</button>
+    </div>
     <div class="section-note">👪 Un élève relié au compte de son parent permet à ce parent de recevoir <strong>uniquement</strong> ce qui concerne son enfant : absences, annonces de son cycle, cours de renforcement, objets perdus et messages de l'école.</div>
     <div class="cards">
       <div class="card"><div class="num">${eleves.length - sansParent.length} / ${eleves.length}</div><div class="label">Élèves reliés à un parent</div></div>
@@ -2634,6 +2644,34 @@ function renderLiensParents(){
         }).join('')}</tbody></table></div>`}
     </div>
   </div>`;
+}
+// Coupons à imprimer et glisser dans le cahier de liaison : nom de l'élève,
+// QR code de l'application des parents, étapes d'installation.
+function ouvrirCouponsInvitation(seulementSansParent){
+  const eleves = DB.eleves.filter(e => e.statut === 'Actif' && (!seulementSansParent || !parentsDeLEleve(e.id).length))
+    .sort((a, b) => classeName(a.classeId).localeCompare(classeName(b.classeId)) || a.nom.localeCompare(b.nom));
+  if(!eleves.length) return toast('Tous les élèves ont déjà un parent relié 🎉');
+  const lien = lienApplication('parent.html');
+  let qr = '';
+  try{ const q = qrcode(0, 'M'); q.addData(lien); q.make(); qr = q.createSvgTag({ cellSize: 3, margin: 1, scalable: true }); }catch(_e){}
+  const nomApp = `EcoMaZ-PARENTS D'ELEVES ${DB.meta.nomEcole}`;
+  openModal(`Coupons d’invitation (${eleves.length})`, `
+    <div class="form-actions no-print" style="margin-top:0;"><button type="button" class="btn secondary" onclick="closeModal()">Fermer</button><button type="button" class="btn" onclick="window.print()">🖨️ Imprimer</button></div>
+    <div class="coupons">${eleves.map(e => `
+      <div class="coupon">
+        <div class="coupon-qr">${qr}</div>
+        <div class="coupon-texte">
+          <div class="coupon-titre">Parents de <strong>${escapeHtml(eleveFullName(e))}</strong> — ${escapeHtml(classeName(e.classeId))}</div>
+          <div class="coupon-app">${escapeHtml(nomApp)}</div>
+          <ol>
+            <li>Scannez le QR code avec l’appareil photo du téléphone (ou ouvrez le lien ci-dessous).</li>
+            <li>Touchez « Installer l’application », puis « Continuer avec Google ».</li>
+            <li>Dans votre demande, écrivez le nom de votre enfant : l’école valide votre accès.</li>
+          </ol>
+          <div class="coupon-lien">${escapeHtml(lien)}</div>
+        </div>
+      </div>`).join('')}
+    </div>`);
 }
 async function creerLienParentEleve(parentId, eleveId){
   const { data, error } = await sb.from('parents_eleves').insert({ parent_profile_id: parentId, eleve_id: eleveId, ecole_id: session.ecoleId }).select().single();
@@ -6535,21 +6573,39 @@ async function chargerDemandesAcces(){
   box.innerHTML = data.map(d=>{
     const parent = d.role_demande === 'parent';
     const opts = (DB.eleves||[]).filter(e=>e.statut==='Actif').map(e=>`<option value="${e.id}">${escapeHtml(e.nom)} ${escapeHtml(e.prenom)}</option>`).join('');
+    // Enfants probables : le nom du parent (ou son message) ressemble au parent
+    // noté sur la fiche, ou contient le nom / prénom de l'élève
+    const probables = parent ? enfantsProbables(d) : [];
     return `<div style="border:1px solid var(--border);border-radius:var(--r-card);padding:12px;margin-bottom:10px;">
       <strong>${parent?'👪 Parent':'🚪 Portier'} — ${escapeHtml(d.nom)}</strong>
       <div class="hint">${escapeHtml(d.email||'')}${d.message?` · « ${escapeHtml(d.message)} »`:''}</div>
-      ${parent ? `<select id="demEleve_${d.id}" style="width:100%;margin:8px 0;"><option value="">— Lier à l'enfant… —</option>${opts}</select>` : ''}
+      ${parent && probables.length ? `<div class="hint" style="margin:8px 0 4px;">Enfant(s) probable(s), d'après les noms — vérifiez avant d'approuver :</div>
+        ${probables.map(e => `<label style="display:flex;align-items:center;gap:8px;margin:2px 0;"><input type="checkbox" class="demEnfant_${d.id}" value="${e.id}" checked> ${escapeHtml(eleveFullName(e))} — ${escapeHtml(classeName(e.classeId))} <span class="hint">(parent sur la fiche : ${escapeHtml(e.parentNom || '—')})</span></label>`).join('')}` : ''}
+      ${parent ? `<select id="demEleve_${d.id}" style="width:100%;margin:8px 0;"><option value="">${probables.length ? '— Ajouter un autre enfant… —' : '— Lier à l’enfant… —'}</option>${opts}</select>` : ''}
       <button class="btn sm" onclick="traiterDemandeAcces('${d.id}', true, ${parent})">✅ Approuver</button>
       <button class="btn secondary sm" onclick="traiterDemandeAcces('${d.id}', false, ${parent})">Refuser</button>
     </div>`;
   }).join('');
 }
+function enfantsProbables(demande){
+  const mots = t => simplifierTexte(t).split(' ').filter(m => m.length >= 3);
+  const nomParent = new Set(mots(demande.nom));
+  const message = new Set(mots(demande.message));
+  return (DB.eleves || []).filter(e => e.statut === 'Actif').map(e => {
+    const parentFiche = mots(e.parentNom);
+    let score = parentFiche.filter(m => nomParent.has(m)).length * 2;                 // même nom que le parent de la fiche
+    score += mots(e.nom).filter(m => nomParent.has(m)).length;                          // même nom de famille
+    score += mots(`${e.nom} ${e.prenom}`).filter(m => message.has(m)).length * 2;       // enfant cité dans le message
+    return { e, score };
+  }).filter(x => x.score >= 2).sort((a, b) => b.score - a.score).slice(0, 4).map(x => x.e);
+}
 async function traiterDemandeAcces(id, approuver, parent){
   let eleves = [];
   if(approuver && parent){
+    const coches = $$('.demEnfant_' + id).filter(c => c.checked).map(c => c.value);
     const v = $('#demEleve_'+id).value;
-    if(!v){ toast("Choisissez l'enfant à lier à ce parent."); return; }
-    eleves = [v];
+    eleves = [...new Set(coches.concat(v ? [v] : []))];
+    if(!eleves.length){ toast("Choisissez l'enfant à lier à ce parent."); return; }
   }
   const { error } = await sb.rpc('traiter_demande_acces', { p_id: id, p_approuver: approuver, p_eleve_ids: eleves });
   if(error){ toast('Erreur : ' + error.message); return; }

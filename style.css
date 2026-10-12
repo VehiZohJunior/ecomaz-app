@@ -902,3 +902,13 @@ td:has(> .amount), th.montant{ text-align:right; }
 .annonce-moment-texte{ font-weight:800; font-size:var(--em-fs-16, 16px); line-height:1.4; }
 .annonce-moment-quand{ flex-shrink:0; font-size:var(--em-fs-12, 12px); color:#e8b04b; font-weight:800; }
 .annonce-autoriser{ width:100%; margin-bottom:var(--sp-3); }
+
+/* Coupons d'invitation des parents (impression) */
+.coupons{ display:grid; grid-template-columns:repeat(auto-fill, minmax(320px, 1fr)); gap:10px; }
+.coupon{ display:flex; gap:12px; border:1.5px dashed var(--border); border-radius:12px; padding:10px; break-inside:avoid; page-break-inside:avoid; background:#fff; color:#14392d; }
+.coupon-qr{ width:110px; flex-shrink:0; }
+.coupon-titre{ font-size:13px; }
+.coupon-app{ font-weight:900; font-size:12px; margin:2px 0 4px; }
+.coupon ol{ margin:0; padding-left:16px; font-size:11px; line-height:1.35; }
+.coupon-lien{ font-size:9px; word-break:break-all; color:#5c6b64; margin-top:4px; }
+@media print{ .coupons{ grid-template-columns:1fr 1fr; } .coupon{ border-color:#999; } }
