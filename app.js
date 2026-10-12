@@ -821,6 +821,30 @@ window.addEventListener('appinstalled', () => {
 // Boutons "Installer" des applications dédiées Parent / Portier
 function majBoutonsInstall(){
   $$('.btn-install-pwa').forEach(b=>{ b.style.display = deferredInstallPrompt ? '' : 'none'; });
+  // Le bouton remplace l'explication manuelle quand Chrome propose l'installation
+  $$('.aide-install-android').forEach(el=>{ el.hidden = !!deferredInstallPrompt; });
+}
+// Aide à l'installation selon le téléphone et le navigateur utilisé
+function aideInstallation(){
+  const ua = navigator.userAgent || '';
+  const dejaInstallee = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+  if(dejaInstallee) return '';
+  const boite = t => `<div class="sub aide-install" style="margin-top:12px;line-height:1.5;">${t}</div>`;
+  // Navigateur intégré (Facebook, Instagram, Messenger…) : installation impossible
+  if(/FBAN|FBAV|FB_IAB|Instagram|Messenger|Line\/|; wv\)/i.test(ua)){
+    return boite(/iphone|ipad|ipod/i.test(ua)
+      ? '📲 Pour installer l’application, ouvrez ce lien dans <strong>Safari</strong> : touchez <strong>⋯</strong> puis <strong>Ouvrir dans Safari</strong>.'
+      : '📲 Pour installer l’application, ouvrez ce lien dans <strong>Chrome</strong> : touchez <strong>⋮</strong> puis <strong>Ouvrir dans Chrome</strong>.');
+  }
+  if(/iphone|ipad|ipod/i.test(ua)){
+    return boite(/CriOS|FxiOS|EdgiOS/i.test(ua)
+      ? '📲 Pour installer sur iPhone : ouvrez ce lien dans <strong>Safari</strong>, puis <strong>Partager</strong> → <strong>Sur l’écran d’accueil</strong>.'
+      : '📲 Pour installer sur iPhone : touchez <strong>Partager</strong> (carré avec une flèche) puis <strong>Sur l’écran d’accueil</strong>.');
+  }
+  if(/android/i.test(ua)){
+    return `<div class="sub aide-install aide-install-android" style="margin-top:12px;line-height:1.5;" ${deferredInstallPrompt ? 'hidden' : ''}>📲 Pour installer : menu <strong>⋮</strong> de Chrome → <strong>Installer l’application</strong> (ou <strong>Ajouter à l’écran d’accueil</strong>).</div>`;
+  }
+  return '';
 }
 document.addEventListener('click', async (e) => {
   if(!e.target.closest || !e.target.closest('.btn-install-pwa') || !deferredInstallPrompt) return;
@@ -951,8 +975,7 @@ function renderLoginGate(step, error, loading){
   const titreLogin = fixe
     ? (ecoleV ? escapeHtml(nomApplication(ecoleV.nom_ecole)) : t('app_name'))
     : (espace ? t('login_espace_prefix') + t('espace_'+espace.key+'_label') : t('app_name'));
-  const iosHint = (fixe && /iphone|ipad|ipod/i.test(navigator.userAgent) && !window.navigator.standalone)
-    ? `<div class="sub" style="margin-top:12px;">📲 Pour installer sur iPhone : touchez <strong>Partager</strong> puis <strong>Sur l'écran d'accueil</strong>.</div>` : '';
+  const iosHint = fixe ? aideInstallation() : '';
   return `
     <div class="login-card">
       <div class="login-logo">${logoHtml}</div>
@@ -979,7 +1002,7 @@ function renderLoginGate(step, error, loading){
       ${fixe ? `<div class="sub" style="margin:16px 0 8px;">— ou —</div>
         <button type="button" class="btn secondary" style="width:100%;" onclick="handleGoogleLogin()">🔵 Continuer avec Google</button>
         <div class="sub" style="margin-top:6px;font-size:var(--fs-xs);">Première fois ? Connectez-vous avec Google : l'école validera votre accès.</div>` : ''}
-      ${fixe ? `<button type="button" class="btn secondary btn-install-pwa" style="display:none;width:100%;margin-top:10px;">📲 Installer l'application</button>${iosHint}` : ''}
+      ${fixe ? `<button type="button" class="btn btn-install-pwa" style="display:none;width:100%;margin-top:10px;">📲 Installer l'application sur ce téléphone</button>${iosHint}` : ''}
     </div>`;
 }
 function showEspaces(){
@@ -6107,20 +6130,42 @@ function copierLienApplication(page){
     ()=>{ window.prompt('Copiez ce lien :', lien); }
   );
 }
+// Message prêt à envoyer : le lien + comment installer l'application
+function messagePartageApplication(page){
+  const nomApp = page === 'parent.html' ? `EcoMaZ-PARENTS D'ELEVES ${DB.meta.nomEcole}` : `EcoMaZ-PORTIER ${DB.meta.nomEcole}`;
+  return `Bonjour, voici l'application ${nomApp} :\n${lienApplication(page)}\n\n`
+    + `Pour l'installer : ouvrez ce lien dans Chrome (Android) ou Safari (iPhone), puis touchez « Installer l'application sur ce téléphone » `
+    + `(sur iPhone : Partager → Sur l'écran d'accueil). Connectez-vous ensuite avec Google : l'école validera votre accès.`;
+}
+function afficherQrApplication(page){
+  const lien = lienApplication(page);
+  let image = '';
+  try{ const qr = qrcode(0, 'M'); qr.addData(lien); qr.make(); image = qr.createSvgTag({ cellSize: 6, margin: 2, scalable: true }); }catch(_e){}
+  const titre = page === 'parent.html' ? `EcoMaZ-PARENTS D'ELEVES ${DB.meta.nomEcole}` : `EcoMaZ-PORTIER ${DB.meta.nomEcole}`;
+  openModal('QR code à afficher', `
+    <div style="text-align:center;">
+      <h3 style="margin-top:0;">${escapeHtml(titre)}</h3>
+      <div style="max-width:280px;margin:0 auto;">${image}</div>
+      <p>Scannez avec l'appareil photo du téléphone pour ouvrir et installer l'application.</p>
+    </div>
+    <div class="form-actions no-print"><button type="button" class="btn secondary" onclick="closeModal()">Fermer</button><button type="button" class="btn" onclick="window.print()">🖨️ Imprimer</button></div>`);
+}
 function renderLiensApplications(){
   const bloc = (titre, page, desc) => `
     <div style="margin-bottom:14px;">
       <strong>${titre}</strong>
       <div class="hint" style="margin:4px 0 6px;">${desc}</div>
       <input type="text" readonly value="${escapeHtml(lienApplication(page))}" onfocus="this.select()" style="width:100%;margin-bottom:6px;">
+      <a class="btn sm" href="https://wa.me/?text=${encodeURIComponent(messagePartageApplication(page))}" target="_blank" rel="noopener">📲 Envoyer par WhatsApp</a>
       <button class="btn secondary sm" onclick="copierLienApplication('${page}')">📋 Copier le lien</button>
+      <button class="btn secondary sm" onclick="afficherQrApplication('${page}')">🔳 QR code</button>
       <a class="btn secondary sm" href="${escapeHtml(lienApplication(page))}" target="_blank" rel="noopener">Ouvrir</a>
     </div>`;
   return `
     ${bloc('👪 Application Parents', 'parent.html', 'À envoyer aux parents avec leurs identifiants (SMS, WhatsApp…). Ils voient les tableaux d’honneur, actualités et messages de l’école.')}
     ${bloc('🚪 Application Portier', 'portier.html', 'À ouvrir une seule fois sur le téléphone du portier. Ses signalements arrivent directement chez les enseignants.')}
     <div class="hint" style="line-height:1.6;">
-      <strong>Pour installer :</strong> ouvrir le lien sur le téléphone, puis toucher « 📲 Installer l’application » (Android) ou, sur iPhone, <em>Partager → Sur l’écran d’accueil</em>.
+      <strong>Pour installer :</strong> ouvrir le lien dans Chrome (Android) ou Safari (iPhone), puis toucher « 📲 Installer l’application sur ce téléphone » ou, sur iPhone, <em>Partager → Sur l’écran d’accueil</em>. Le message WhatsApp contient déjà ces explications.
     </div>`;
 }
 function renderGeofence(){

@@ -2,8 +2,9 @@
    EcoMaZ — Applications dédiées Parent / Portier
    Chargé par parent.html et portier.html AVANT app.js. Identifie l'école
    (paramètre ?ecole=, sinon dernière école utilisée sur cet appareil), puis
-   nomme l'application « EcoMaZ-<nom de l'école> » : titre de la page, nom sous
-   l'icône (manifeste généré à la volée) et écran de connexion.
+   nomme l'application « EcoMaZ-<nom de l'école> » : titre de la page et écran
+   de connexion. Le nom sous l'icône vient du manifeste servi par la fonction
+   serveur « manifeste-application » (lien posé dans l'en-tête de la page).
    ========================================================================= */
 (function(){
   const espace = window.ESPACE_FIXE; // 'parent' | 'portier'
@@ -24,27 +25,6 @@
     document.title = titre;
     const m = document.querySelector('meta[name="apple-mobile-web-app-title"]');
     if(m) m.setAttribute('content', titre);
-    const manifest = {
-      id: abs(page) + '?ecole=' + ecoleId,
-      name: titre,
-      short_name: titre,
-      description: espace === 'parent' ? 'Espace parents — ' + nom : 'Espace portier — ' + nom,
-      start_url: abs(page) + '?ecole=' + encodeURIComponent(ecoleId),
-      scope: base.href,
-      display: 'standalone',
-      background_color: '#ffffff',
-      theme_color: '#4f5fea',
-      orientation: 'portrait-primary',
-      icons: [
-        { src: abs('icon-192.png'), sizes: '192x192', type: 'image/png', purpose: 'any' },
-        { src: abs('icon-512.png'), sizes: '512x512', type: 'image/png', purpose: 'any' },
-        { src: abs('icon-maskable-512.png'), sizes: '512x512', type: 'image/png', purpose: 'maskable' }
-      ]
-    };
-    const url = URL.createObjectURL(new Blob([JSON.stringify(manifest)], { type: 'application/manifest+json' }));
-    let link = document.querySelector('link[rel="manifest"]');
-    if(!link){ link = document.createElement('link'); link.rel = 'manifest'; document.head.appendChild(link); }
-    link.href = url;
   }
 
   window.ESPACE_FIXE_PRET = (async function(){
