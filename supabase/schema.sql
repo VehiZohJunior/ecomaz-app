@@ -1936,3 +1936,49 @@ begin
 end $$;
 revoke all on function enregistrer_abonnement_push(text, text, text, text) from public, anon;
 grant execute on function enregistrer_abonnement_push(text, text, text, text) to authenticated;
+
+-- =====================================================================
+-- 53. ABSENCES SIGNALÉES À L'AVANCE PAR LE PARENT (2026-10-12)
+-- =====================================================================
+-- Le parent prévient depuis son application (maladie, rendez-vous…) ; à
+-- l'appel, l'enseignant / le secrétariat voit l'absence prévue, la saisie
+-- est pré-remplie et le parent ne reçoit pas d'alerte inutile.
+create table if not exists absences_signalees (
+  id uuid primary key default gen_random_uuid(),
+  ecole_id uuid not null references ecoles(id) on delete cascade default mon_ecole_id(),
+  parent_id uuid not null references auth.users(id) on delete cascade default auth.uid(),
+  parent_nom text not null default '',
+  eleve_id uuid not null references eleves(id) on delete cascade,
+  date_debut date not null,
+  date_fin date not null,
+  motif text not null check (char_length(motif) between 2 and 60),
+  commentaire text not null default '' check (char_length(commentaire) <= 500),
+  created_at timestamptz not null default now(),
+  check (date_fin >= date_debut and date_fin <= date_debut + 60)
+);
+create index if not exists absences_signalees_idx on absences_signalees(ecole_id, date_debut, date_fin);
+alter table absences_signalees enable row level security;
+
+drop policy if exists "creation absences_signalees parent" on absences_signalees;
+create policy "creation absences_signalees parent" on absences_signalees for insert
+  with check (
+    ecole_id = mon_ecole_id() and est_parent() and parent_id = auth.uid()
+    and date_debut >= current_date - 1
+    and exists (select 1 from parents_eleves pe where pe.parent_profile_id = auth.uid() and pe.eleve_id = absences_signalees.eleve_id)
+  );
+drop policy if exists "lecture absences_signalees parent" on absences_signalees;
+create policy "lecture absences_signalees parent" on absences_signalees for select
+  using (parent_id = auth.uid());
+-- Le parent peut annuler son signalement (enfant finalement présent)
+drop policy if exists "suppression absences_signalees parent" on absences_signalees;
+create policy "suppression absences_signalees parent" on absences_signalees for delete
+  using (parent_id = auth.uid());
+drop policy if exists "lecture absences_signalees personnel" on absences_signalees;
+create policy "lecture absences_signalees personnel" on absences_signalees for select
+  using (ecole_id = mon_ecole_id() and est_perso_admin());
+-- L'enseignant voit celles des élèves de ses classes (comme pour l'appel)
+drop policy if exists "lecture absences_signalees enseignant" on absences_signalees;
+create policy "lecture absences_signalees enseignant" on absences_signalees for select
+  using (ecole_id = mon_ecole_id() and mon_role() = 'enseignant' and (
+    mon_enseignant_id() is null or exists (
+      select 1 from eleves e where e.id = absences_signalees.eleve_id and e.classe_id = any(mes_classes()))));

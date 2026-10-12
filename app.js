@@ -1297,6 +1297,77 @@ async function verifierNouvellesAnnonces(){
   nouvelles.forEach(a => { toast(a.contenu); if(!pushActif) notifierTelephone(a.contenu); });
   try{ if(navigator.vibrate) navigator.vibrate([200, 100, 200]); }catch(_e){}
 }
+/* ---------------------------------------------------------------------
+   ABSENCES SIGNALÉES PAR LE PARENT (schema.sql section 53)
+   --------------------------------------------------------------------- */
+const MOTIFS_SIGNALEMENT = ['Maladie', 'Rendez-vous médical', 'Voyage familial', 'Événement familial', 'Autre'];
+async function chargerAbsencesSignalees(){
+  const depuis = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+  const { data, error } = await sb.from('absences_signalees').select('*').eq('ecole_id', session.ecoleId).gte('date_fin', depuis).order('date_debut');
+  if(error) throw error;
+  DB.absencesSignalees = rowsToCamel(data);
+  return DB.absencesSignalees;
+}
+function absenceSignalee(eleveId, date){
+  return (DB.absencesSignalees || []).find(a => a.eleveId === eleveId && a.dateDebut <= date && a.dateFin >= date);
+}
+// --- Côté parent ---
+async function ouvrirSignalerAbsence(){
+  openModal('📝 Signaler une absence', '<div class="hint">Chargement…</div>');
+  try{ await chargerAbsencesSignalees(); }catch(_e){ DB.absencesSignalees = DB.absencesSignalees || []; }
+  afficherSignalerAbsence();
+}
+function afficherSignalerAbsence(){
+  const enfants = DB.eleves || [];
+  const aVenir = (DB.absencesSignalees || []).filter(a => a.dateFin >= todayISO());
+  const demain = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+  openModal('📝 Signaler une absence', `
+    <p class="hint" style="margin-top:0;">Votre enfant ne viendra pas à l'école ? Prévenez-la ici : l'enseignant le verra au moment de l'appel.</p>
+    <form onsubmit="return handleSignalerAbsence(event)">
+      ${enfants.length > 1 ? `<div class="field"><label>Enfant</label><select name="eleveId" required>${enfants.map(e => `<option value="${e.id}">${escapeHtml(eleveFullName(e))}</option>`).join('')}</select></div>`
+        : `<input type="hidden" name="eleveId" value="${enfants[0]?.id || ''}">`}
+      <div class="form-grid">
+        <div class="field"><label>Du</label><input type="date" name="dateDebut" required min="${todayISO()}" value="${demain}"></div>
+        <div class="field"><label>Au (inclus)</label><input type="date" name="dateFin" required min="${todayISO()}" value="${demain}"></div>
+      </div>
+      <div class="field"><label>Motif</label><select name="motif" required>${MOTIFS_SIGNALEMENT.map(m => `<option>${m}</option>`).join('')}</select></div>
+      <div class="field"><label>Précision (facultatif)</label><input name="commentaire" maxlength="500" placeholder="Ex : fièvre, retour prévu lundi"></div>
+      <button class="btn" type="submit" style="width:100%;">Prévenir l'école</button>
+    </form>
+    ${aVenir.length ? `<h4 style="margin:var(--sp-4) 0 var(--sp-2);">Absences déjà signalées</h4>${aVenir.map(a => {
+      const e = enfants.find(x => x.id === a.eleveId);
+      return `<div class="actu-carte" style="justify-content:space-between;"><div class="actu-corps"><div class="actu-titre">${escapeHtml(e ? eleveFullName(e) : '')} — ${escapeHtml(a.motif)}</div>
+        <div class="actu-meta">${a.dateDebut === a.dateFin ? 'Le ' + fmtDate(a.dateDebut) : 'Du ' + fmtDate(a.dateDebut) + ' au ' + fmtDate(a.dateFin)}${a.commentaire ? ' · ' + escapeHtml(a.commentaire) : ''}</div></div>
+        <button type="button" class="btn secondary sm" onclick="annulerAbsenceSignalee('${a.id}')">Annuler</button></div>`;
+    }).join('')}` : ''}
+    <div class="form-actions"><button type="button" class="btn secondary" onclick="closeModal()">Fermer</button></div>`);
+}
+async function handleSignalerAbsence(ev){
+  ev.preventDefault();
+  const fd = new FormData(ev.target);
+  if(fd.get('dateFin') < fd.get('dateDebut')) return alert('La date de fin doit être après la date de début.'), false;
+  const bouton = ev.target.querySelector('button[type="submit"]'); bouton.disabled = true;
+  try{
+    const { data, error } = await sb.from('absences_signalees').insert({
+      eleve_id: fd.get('eleveId'), date_debut: fd.get('dateDebut'), date_fin: fd.get('dateFin'),
+      motif: fd.get('motif'), commentaire: (fd.get('commentaire') || '').trim(), parent_nom: session.nomComplet || '',
+    }).select().single();
+    if(error) throw error;
+    DB.absencesSignalees = (DB.absencesSignalees || []).concat(rowToCamel(data));
+    toast('L’école est prévenue, merci !');
+    afficherSignalerAbsence();
+  }catch(e){ bouton.disabled = false; alert('Erreur : ' + e.message); }
+  return false;
+}
+async function annulerAbsenceSignalee(id){
+  if(!confirm('Annuler ce signalement d’absence ?')) return;
+  try{
+    const { error } = await sb.from('absences_signalees').delete().eq('id', id);
+    if(error) throw error;
+    DB.absencesSignalees = (DB.absencesSignalees || []).filter(a => a.id !== id);
+    toast('Signalement annulé'); afficherSignalerAbsence();
+  }catch(e){ alert('Erreur : ' + e.message); }
+}
 function renderBandeDefilanteParent(){
   const actus = actualitesTriees().slice(0, 1);
   if(!actus.length) return '';
@@ -1486,6 +1557,7 @@ function renderParentDashboard(){
     <div class="enfants${plusieurs ? ' enfants--carrousel' : ''} em-rise" style="--i:2">
       ${mesEnfants.map(renderFicheEnfant).join('')}
     </div>
+    <div class="form-actions" style="justify-content:flex-start;margin:0 0 var(--sp-4);"><button type="button" class="btn secondary" onclick="ouvrirSignalerAbsence()">📝 Signaler une absence à l’avance</button></div>
     ${renderInformationsPassees()}
     ${renderTableauHonneurParent()}
   </div>`;
@@ -1977,6 +2049,8 @@ async function handleNotifierPortier(eleveId){
   try{
     const { error } = await sb.from('notifications_portier').insert({ eleve_id: eleveId });
     if(error) throw error;
+    // Notification push sur le téléphone de l'enseignant (même application fermée)
+    sb.functions.invoke('notifier-arrivee-parent', { body: { eleveId } }).catch(() => {});
     const d = new Date();
     const heure = `${String(d.getHours()).padStart(2,'0')}h${String(d.getMinutes()).padStart(2,'0')}`;
     ui.filters.portierRecherche = '';
@@ -1995,9 +2069,9 @@ async function handleNotifierPortier(eleveId){
 const VERSIONS = [
   { version: '2026.10.12', nouveautes: {
     commun: [],
-    parent: [ 'Notifications sur le téléphone, même application fermée : touchez « Activer les notifications » sur l’accueil.', 'Annonces de la journée 15 minutes avant : début des cours, pauses, fin des cours et cours de renforcement — avec notification du téléphone si vous l’autorisez.', 'L’information sur l’activité à venir défile dans une bande jaune en haut de l’accueil (touchez-la pour la mettre en pause) ; les précédentes sont dans « Informations passées ».', 'Nouvel onglet « Objets perdus » : signalez une affaire de votre enfant perdue à l’école, l’école vous répond.' ],
+    parent: [ 'Nouveau : bouton « Signaler une absence à l’avance » (maladie, rendez-vous…) sur l’accueil.', 'Notifications sur le téléphone, même application fermée : touchez « Activer les notifications » sur l’accueil.', 'Annonces de la journée 15 minutes avant : début des cours, pauses, fin des cours et cours de renforcement — avec notification du téléphone si vous l’autorisez.', 'L’information sur l’activité à venir défile dans une bande jaune en haut de l’accueil (touchez-la pour la mettre en pause) ; les précédentes sont dans « Informations passées ».', 'Nouvel onglet « Objets perdus » : signalez une affaire de votre enfant perdue à l’école, l’école vous répond.' ],
     portier: [],
-    personnel: [ 'Nouveau menu « Parents ↔ Élèves » : reliez chaque élève au compte de son parent (suggestions, invitation WhatsApp).', 'Nouveau menu « Cours de renforcement » : inscriptions par classe, jours et heure, message aux seuls parents concernés.', 'Paramètres → Annonces horaires : heures réelles, pause de 10h, jours de classe, vacances ; case « cours de renforcement » sur la fiche élève.', 'Messagerie : les objets perdus signalés par les parents, avec une réponse à leur envoyer.' ],
+    personnel: [ 'Appel : les absences signalées à l’avance par les parents sont déjà marquées, avec leur motif.', 'Enseignants : notification sur le téléphone quand un parent arrive au portail (même application fermée).', 'Nouveau menu « Parents ↔ Élèves » : reliez chaque élève au compte de son parent (suggestions, invitation WhatsApp).', 'Nouveau menu « Cours de renforcement » : inscriptions par classe, jours et heure, message aux seuls parents concernés.', 'Paramètres → Annonces horaires : heures réelles, pause de 10h, jours de classe, vacances ; case « cours de renforcement » sur la fiche élève.', 'Messagerie : les objets perdus signalés par les parents, avec une réponse à leur envoyer.' ],
   } },
   { version: '2026.10.11-2', nouveautes: {
     commun: [
@@ -2075,6 +2149,7 @@ function enterApp(){
   synchroniserFileAttente();
   startPollingBulles();
   afficherNouveautes();
+  if(ui.role === 'enseignant') activerPush(true);
 }
 
 /* ---------------------------------------------------------------------
@@ -2188,7 +2263,7 @@ async function logoutRole(){
   if(window.ESPACE_FIXE !== 'portier') document.body.classList.remove('theme-portier');
   const navParentEl = document.getElementById('parentNav'); if(navParentEl) navParentEl.remove();
   if(typeof arreterScanPointage === 'function') arreterScanPointage();
-  if(ui.role === 'parent') await desactiverPushAppareil();
+  if(ui.role === 'parent' || ui.role === 'enseignant') await desactiverPushAppareil();
   await deconnexion();
   ui.role = null;
   ui.espaceChoisi = null;
@@ -2361,6 +2436,7 @@ function renderDashboard(){
     ${animer ? `${(setTimeout(animerCompteursKpi, 0), '')}` : ''}
     ${(ui.role==='direction' || ui.role==='fondation') ? `<div class="form-actions no-print" style="justify-content:flex-start;margin:0 0 var(--sp-4);"><button class="btn secondary" onclick="ouvrirBilanHebdo()">📊 Bilan de la semaine</button></div>` : ''}
 
+    ${ui.role==='enseignant' && pushPossible() && Notification.permission === 'default' ? `<div class="form-actions no-print" style="justify-content:flex-start;margin:0 0 var(--sp-4);"><button class="btn" onclick="activerPush(false).then(ok => { if(ok){ toast('Notifications activées : vous serez prévenu quand un parent arrive au portail'); renderView('dashboard'); } })">🔔 Être prévenu sur ce téléphone quand un parent arrive au portail</button></div>` : ''}
     ${ui.role==='enseignant' ? renderActualitesParent() + renderTableauHonneurParent() : ''}
 
     <div class="grid-2">
@@ -3635,12 +3711,19 @@ function renderPresencesEleves(){
   if(!mesClasses.some(c=>c.id===f.classeId)) f.classeId = mesClasses[0].id;
   ui.filters.presEleves = f;
 
+  // Absences signalées par les parents (chargées une fois, puis l'appel se réaffiche)
+  if(DB.absencesSignalees === undefined){
+    DB.absencesSignalees = null;
+    chargerAbsencesSignalees().then(() => { if(ui.currentView === 'presences-eleves') renderView('presences-eleves'); }).catch(() => { DB.absencesSignalees = []; });
+  }
   const eleves = DB.eleves.filter(e=>e.classeId===f.classeId && e.statut==='Actif').sort((a,b)=>a.nom.localeCompare(b.nom));
+  const nbSignalees = eleves.filter(e => absenceSignalee(e.id, f.date)).length;
   const rows = eleves.map(e=>{
     const rec = DB.presencesEleves.find(p=>p.eleveId===e.id && p.date===f.date);
-    const statut = rec ? rec.statut : 'Présent';
+    const sig = absenceSignalee(e.id, f.date);
+    const statut = rec ? rec.statut : (sig ? 'Absent' : 'Présent');
     return `<tr>
-      <td><div class="row-name"><span class="avatar">${initials(e.prenom,e.nom)}</span>${escapeHtml(eleveFullName(e))}</div></td>
+      <td><div class="row-name"><span class="avatar">${initials(e.prenom,e.nom)}</span>${escapeHtml(eleveFullName(e))}</div>${sig ? `<span class="badge amber" title="${escapeHtml(sig.commentaire || '')}">Absence signalée par le parent : ${escapeHtml(sig.motif)}</span>` : ''}</td>
       <td>
         <select data-eleve="${e.id}" class="sel-statut">
           <option ${statut==='Présent'?'selected':''}>Présent</option>
@@ -3648,7 +3731,7 @@ function renderPresencesEleves(){
           <option ${statut==='Retard'?'selected':''}>Retard</option>
         </select>
       </td>
-      <td><input type="text" data-motif="${e.id}" placeholder="Motif (optionnel)" value="${escapeHtml(rec?rec.motif:'')}" style="width:100%;padding:7px 9px;border:1px solid var(--border);border-radius:var(--r-control);"></td>
+      <td><input type="text" data-motif="${e.id}" placeholder="Motif (optionnel)" value="${escapeHtml(rec ? rec.motif : (sig ? sig.motif + (sig.commentaire ? ' — ' + sig.commentaire : '') : ''))}" style="width:100%;padding:7px 9px;border:1px solid var(--border);border-radius:var(--r-control);"></td>
     </tr>`;
   }).join('');
 
@@ -3664,6 +3747,7 @@ function renderPresencesEleves(){
   <div class="view active">
     <div class="panel">
       <div class="panel-head"><div><h2>Feuille de présence — élèves</h2><div class="sub">Marquer la présence par classe et par date</div></div></div>
+      ${nbSignalees ? `<div class="section-note">📝 ${nbSignalees} absence(s) signalée(s) à l'avance par les parents : déjà marquée(s) « Absent » ci-dessous. Vérifiez puis enregistrez.</div>` : ''}
       <div class="filters">
         <select onchange="ui.filters.presEleves.classeId=this.value; renderView('presences-eleves')">
           ${mesClasses.map(c=>`<option value="${c.id}" ${f.classeId===c.id?'selected':''}>${c.nom}</option>`).join('')}
@@ -3736,7 +3820,7 @@ async function savePresencesEleves(){
       } else {
         DB.presencesEleves.push(await dbInsert('presences_eleves', {date:f.date, classeId:f.classeId, eleveId, statut, motif}));
       }
-      if(statut==='Absent' && !wasAbsent){ await envoyerNotificationAbsenceEleve(eleveId, f.date, motif); nbNotifs += 3; }
+      if(statut==='Absent' && !wasAbsent && !absenceSignalee(eleveId, f.date)){ await envoyerNotificationAbsenceEleve(eleveId, f.date, motif); nbNotifs += 3; }
     }
     toast(nbNotifs ? (['secretariat','direction','fondation'].includes(ui.role)
       ? 'Présence enregistrée · prévenez les parents des absents par WhatsApp (plus bas)'

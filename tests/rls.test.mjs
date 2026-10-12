@@ -185,8 +185,16 @@ async function requete(accessToken, chemin, options = {}){
   const pushEns = await fetch(`${URL_BASE}/functions/v1/notifier-parents`, { method:'POST', headers:{ Authorization:`Bearer ${tokenEnseignant}`, 'Content-Type':'application/json' }, body: JSON.stringify({ eleveIds:['00000000-0000-4000-8000-000000000001'], texte:'x' }) });
   verifier('Un enseignant ne peut pas envoyer de notification push aux parents', pushEns.status === 400);
 
+  section('7quater. Absences signalées par les parents, arrivée d un parent (portier)');
+  const absSec = await requete(tokenSecretariat, `/rest/v1/absences_signalees?select=id&limit=1`);
+  verifier('Le secrétariat peut consulter les absences signalées (requête acceptée)', absSec.ok);
+  const absFaux = await requete(tokenSecretariat, `/rest/v1/absences_signalees`, { method:'POST', body: JSON.stringify({ eleve_id:'00000000-0000-4000-8000-000000000001', date_debut:'2030-01-01', date_fin:'2030-01-01', motif:'Maladie' }) });
+  verifier('Le secrétariat ne signale pas une absence à la place d un parent', !absFaux.ok, `statut ${absFaux.status}`);
+  const arriveeSec = await fetch(`${URL_BASE}/functions/v1/notifier-arrivee-parent`, { method:'POST', headers:{ Authorization:`Bearer ${tokenSecretariat}`, 'Content-Type':'application/json' }, body: JSON.stringify({ eleveId:'00000000-0000-4000-8000-000000000001' }) });
+  verifier('Seul le portier peut déclencher la notification « parent à la porte »', arriveeSec.status === 400);
+
   section('8. Visiteur non connecté — ne lit que les affichages publics prévus');
-  for(const table of ['eleves','enseignants_lecture','profiles','paiements_scolarite','messages','parents_eleves','presences_eleves','eleves_portier_lecture','objets_perdus','push_abonnements']){
+  for(const table of ['eleves','enseignants_lecture','profiles','paiements_scolarite','messages','parents_eleves','presences_eleves','eleves_portier_lecture','objets_perdus','push_abonnements','absences_signalees']){
     const r = await requete(ANON_KEY, `/rest/v1/${table}?select=*&limit=1`);
     verifier(`Sans connexion, rien à lire dans ${table}`, !r.ok || (Array.isArray(r.data) && r.data.length === 0), `reçu ${JSON.stringify(r.data)?.slice(0,80)}`);
   }

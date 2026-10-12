@@ -6,7 +6,7 @@
    d'attente hors ligne (voir supabase-client.js) — pas ce fichier, qui ne
    s'occupe que des fichiers de l'application (HTML/CSS/JS/icônes).
    ========================================================================= */
-const CACHE_NAME = 'ecomaz-shell-v30';
+const CACHE_NAME = 'ecomaz-shell-v31';
 const SHELL_FILES = [
   './',
   './index.html',
@@ -62,10 +62,15 @@ self.addEventListener('fetch', (event) => {
 // Toucher une notification d'annonce : ramène l'application au premier plan
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
+  // Ouvre l'application concernée (parents : parent.html ; enseignants : index.html)
+  const cible = (event.notification.data && event.notification.data.url) || './parent.html';
+  const page = cible.replace('./', '/');
   event.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((fenetres) => {
-    const ouverte = fenetres.find((f) => f.url.includes('/parent.html'));
+    // Application de l'école : toute fenêtre qui n'est ni l'application parents ni portier
+    const estEcole = (u) => !u.includes('/parent.html') && !u.includes('/portier.html');
+    const ouverte = fenetres.find((f) => (page === '/index.html' ? estEcole(f.url) : f.url.includes(page)));
     if (ouverte) return ouverte.focus();
-    return self.clients.openWindow('./parent.html');
+    return self.clients.openWindow(cible);
   }));
 });
 
