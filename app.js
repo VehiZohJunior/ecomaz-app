@@ -2319,6 +2319,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.10.13-24', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Fiche élève : encadré « En un coup d’œil » — reste à payer, allergies, personnes autorisées, derniers messages (lus ou non), WhatsApp et appel du parent, certificat.' ],
+  } },
   { version: '2026.10.13-23', nouveautes: {
     commun: [],
     parent: [ 'La veille d’une sortie, d’une réunion, d’une fête ou des vacances, rappel à 18h sur votre téléphone (et « pensez à répondre » si l’école attend votre autorisation).' ],
@@ -4003,7 +4009,7 @@ function chargerSecuriteEleves(){
   if(DB.santeEleves !== undefined) return;
   DB.santeEleves = null; DB.personnesAutorisees = DB.personnesAutorisees || [];
   Promise.all([sb.from('sante_eleves').select('*').eq('ecole_id', session.ecoleId), sb.from('personnes_autorisees').select('*').eq('ecole_id', session.ecoleId)])
-    .then(([s, p]) => { DB.santeEleves = rowsToCamel(s.data || []); DB.personnesAutorisees = rowsToCamel(p.data || []); if(['dashboard'].includes(ui.currentView)) renderView(ui.currentView); })
+    .then(([s, p]) => { DB.santeEleves = rowsToCamel(s.data || []); DB.personnesAutorisees = rowsToCamel(p.data || []); if(['dashboard','eleves'].includes(ui.currentView)) renderView(ui.currentView); })
     .catch(() => { DB.santeEleves = []; });
 }
 // Console parent : résumé sur la fiche de l'enfant
@@ -5218,6 +5224,30 @@ async function retirerAccesParent(peId, eleveId){
   }catch(e){ alert('Erreur : ' + e.message); }
 }
 
+// Fiche élève (personnel) : l'essentiel pour répondre à un parent au téléphone
+function renderEleveCoupDoeil(e){
+  chargerSecuriteEleves();
+  const sante = santeDe(e.id), pers = personnesDe(e.id);
+  const admin = ['secretariat','direction','fondation'].includes(ui.role);
+  let scol = null;
+  try{ if(admin) scol = scolariteEleveParEcheance(e.id); }catch(_e){}
+  const msgs = (DB.messagesInternes || []).filter(m => m.eleveId === e.id && m.destinataireType === 'parent')
+    .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || ''))).slice(0, 3);
+  const tels = telephonesWhatsapp(e.parentTel);
+  return `<div class="panel">
+    <div class="panel-head"><div><h2>🧾 En un coup d’œil</h2></div></div>
+    <div class="grid-3">
+      ${scol && scol.total ? `<div><div class="hint">Scolarité</div><strong>${scol.reste ? 'Reste ' + fmtFCFA(scol.reste) : '✅ Soldée'}</strong><div class="hint">${fmtFCFA(scol.totalPaye)} payés sur ${fmtFCFA(scol.total)}</div></div>` : ''}
+      <div><div class="hint">Santé</div><strong>${sante && sante.allergies ? '⚕️ ' + escapeHtml(sante.allergies) : 'Aucune allergie indiquée'}</strong>${sante && sante.infos ? `<div class="hint">${escapeHtml(sante.infos.slice(0, 120))}</div>` : ''}</div>
+      <div><div class="hint">Peuvent venir le chercher</div><strong>${pers.length ? pers.map(p => escapeHtml(p.nom) + (p.lien ? ` (${escapeHtml(p.lien)})` : '')).join(', ') : 'Parents seulement (rien d’indiqué)'}</strong></div>
+    </div>
+    ${msgs.length ? `<div class="hint" style="margin:12px 0 4px;">Derniers messages envoyés au parent</div>${msgs.map(m => `<div style="padding:4px 0;border-bottom:1px solid var(--border);">${m.lu ? '<span class="badge green">✓✓ Lu</span>' : '<span class="badge">✓ Envoyé</span>'} <span class="hint">${m.createdAt ? fmtDate(String(m.createdAt).slice(0, 10)) : ''}</span> ${escapeHtml(String(m.contenu || '').slice(0, 110))}</div>`).join('')}` : ''}
+    <div class="form-actions no-print" style="justify-content:flex-start;flex-wrap:wrap;">
+      ${tels.length ? `<a class="btn sm" href="https://wa.me/${tels[0]}" target="_blank" rel="noopener">📲 WhatsApp du parent</a><a class="btn secondary sm" href="tel:+${tels[0]}">📞 Appeler</a>` : ''}
+      ${admin ? `<button class="btn secondary sm" onclick="ouvrirSecuriteEleve('${e.id}')">🛡️ Sécurité & santé</button><button class="btn secondary sm" onclick="ouvrirCertificatScolarite('${e.id}')">📄 Certificat</button>` : ''}
+    </div>
+  </div>`;
+}
 function renderEleveProfile(id){
   const e = eleveById(id);
   if(!e){ ui.eleveProfileId=null; return renderEleveListe(); }
@@ -5282,6 +5312,8 @@ function renderEleveProfile(id){
         <div><div class="hint">Taux de présence global</div><strong>${tauxPresence===null?'—':tauxPresence+'%'}</strong></div>
       </div>
     </div>
+
+    ${renderEleveCoupDoeil(e)}
 
     <div class="panel">
       <div class="panel-head">
