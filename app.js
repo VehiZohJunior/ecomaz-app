@@ -1563,6 +1563,36 @@ function renderAlerteAbsence(enfants){
     <button type="button" class="btn sm" onclick="event.stopPropagation(); toggleBulle('notif')">Voir</button>
   </div>`).join('');
 }
+// Bulletin d'un élève pour un trimestre (même calcul que la fiche élève du personnel)
+function calculBulletin(eleveId, trimestre){
+  const e = eleveById(eleveId);
+  const matieres = MATIERES_BY_CYCLE[classeCycle(e?.classeId)] || [];
+  let somme = 0, nb = 0;
+  const lignes = matieres.map(mat => {
+    const notes = (DB.notes || []).filter(n => n.eleveId === eleveId && n.matiere === mat && n.trimestre === trimestre);
+    const devoir = notes.find(n => n.type === 'Devoir'), compo = notes.find(n => n.type === 'Composition');
+    let moy = null;
+    if(devoir && compo) moy = (Number(devoir.note) + Number(compo.note) * 2) / 3; else if(devoir) moy = Number(devoir.note); else if(compo) moy = Number(compo.note);
+    if(moy !== null){ somme += moy; nb++; }
+    return { mat, devoir: devoir?.note, compo: compo?.note, moy };
+  });
+  return { lignes, moyenne: nb ? somme / nb : null };
+}
+// Console parent : bulletin de l'enfant (trimestres publiés par l'école)
+function renderBulletinEnfant(e){
+  const publies = (DB.meta?.bulletinsPublies || []).filter(t => (DB.notes || []).some(n => n.eleveId === e.id && n.trimestre === t));
+  if(!publies.length) return '';
+  const t = (ui.filters.bulletinParent || {})[e.id] || publies[publies.length - 1];
+  const b = calculBulletin(e.id, t);
+  const app = (DB.bulletinsComments || {})[`${e.id}_${t}`];
+  return `<details class="enfant-bulletin"><summary>📒 Bulletin — ${escapeHtml(t)}${b.moyenne !== null ? ` · moyenne ${b.moyenne.toFixed(2)}/20` : ''}</summary>
+    ${publies.length > 1 ? `<div class="filters" style="margin:8px 0;"><select onchange="ui.filters.bulletinParent = Object.assign(ui.filters.bulletinParent || {}, { '${e.id}': this.value }); $('#viewContainer').innerHTML = renderParentDashboard();">${publies.map(x => `<option ${x===t?'selected':''}>${escapeHtml(x)}</option>`).join('')}</select></div>` : ''}
+    <table class="eb-table"><thead><tr><th>Matière</th><th>Devoir</th><th>Compo.</th><th>Moy.</th></tr></thead>
+      <tbody>${b.lignes.filter(l => l.moy !== null).map(l => `<tr><td>${escapeHtml(l.mat)}</td><td>${l.devoir ?? '—'}</td><td>${l.compo ?? '—'}</td><td><strong>${l.moy.toFixed(1)}</strong></td></tr>`).join('')}</tbody></table>
+    ${b.moyenne !== null ? `<div class="eb-moyenne">Moyenne générale : <strong>${b.moyenne.toFixed(2)} / 20</strong> — ${escapeHtml(mentionFromAvg(b.moyenne))}</div>` : ''}
+    ${app ? `<div class="eb-appreciation"><strong>Appréciation :</strong> ${escapeHtml(app)}</div>` : ''}
+  </details>`;
+}
 // Console parent : scolarité de l'enfant (si l'école l'a rendue visible)
 function renderScolariteEnfant(e){
   if(!DB.meta?.scolariteVisibleParents) return '';
@@ -1597,6 +1627,7 @@ function renderFicheEnfant(e){
       <div><dt>Inscription</dt><dd>${fmtDate(e.dateInscription)}</dd></div>
     </dl>
     ${renderPresenceSemaine(e)}
+    ${renderBulletinEnfant(e)}
     ${renderScolariteEnfant(e)}
   </article>`;
 }
@@ -2140,7 +2171,7 @@ const VERSIONS = [
     commun: [],
     parent: [ 'Nouvel onglet « Vie de l’école » : photos et vidéos des événements, J’aime, Bravo et commentaires.' ],
     portier: [],
-    personnel: [ 'Enseignants : application « EcoMaZ-ENSEIGNANTS » — chacun s’inscrit avec Google, coche ses classes et ne voit que ses classes.', 'Parents : à l’inscription, ils cochent eux-mêmes leurs enfants ; vous n’avez plus qu’à approuver.', 'Paramètres → Scolarité : assistant « inscription + scolarité par classe ».', 'Paramètres → Scolarité : relances automatiques et polies des tranches impayées (3 jours avant, le jour même, 7 jours après).', 'Notifications sur le téléphone pour tout le personnel : demandes d’accès, absences signalées, objets perdus, appel non fait.', 'Appel rapide : « Tous présents », puis touchez le nom des absents ; rappel à 9h00 si l’appel n’est pas fait.', 'Paramètres → Scolarité : montants et tranches de paiement propres à chaque classe, copie vers d’autres classes, affichage aux parents au choix.', 'Direction : liste « Mise en route de l’école » sur le tableau de bord, avec ce qui reste à faire.', 'Nouveau menu « Vie de l’école » : publiez les photos et vidéos des événements pour les parents (toute l’école ou certaines classes).' ],
+    personnel: [ 'Notes & Bulletins : la Direction publie un trimestre, les parents voient le bulletin de leurs enfants.', 'Enseignants : application « EcoMaZ-ENSEIGNANTS » — chacun s’inscrit avec Google, coche ses classes et ne voit que ses classes.', 'Parents : à l’inscription, ils cochent eux-mêmes leurs enfants ; vous n’avez plus qu’à approuver.', 'Paramètres → Scolarité : assistant « inscription + scolarité par classe ».', 'Paramètres → Scolarité : relances automatiques et polies des tranches impayées (3 jours avant, le jour même, 7 jours après).', 'Notifications sur le téléphone pour tout le personnel : demandes d’accès, absences signalées, objets perdus, appel non fait.', 'Appel rapide : « Tous présents », puis touchez le nom des absents ; rappel à 9h00 si l’appel n’est pas fait.', 'Paramètres → Scolarité : montants et tranches de paiement propres à chaque classe, copie vers d’autres classes, affichage aux parents au choix.', 'Direction : liste « Mise en route de l’école » sur le tableau de bord, avec ce qui reste à faire.', 'Nouveau menu « Vie de l’école » : publiez les photos et vidéos des événements pour les parents (toute l’école ou certaines classes).' ],
   } },
   { version: '2026.10.12-2', nouveautes: {
     commun: [],
@@ -4036,6 +4067,21 @@ function renderEleveProfile(id){
   </div>`;
 }
 
+async function publierBulletins(trimestre, publier){
+  const actuels = DB.meta.bulletinsPublies || [];
+  if(publier && !confirm(`Publier les bulletins du ${trimestre} ? Chaque parent verra les notes et l’appréciation de ses enfants, et recevra une notification.`)){ renderView('notes'); return; }
+  const liste = publier ? [...new Set(actuels.concat(trimestre))] : actuels.filter(t => t !== trimestre);
+  try{
+    const { error } = await sb.from('ecoles').update({ bulletins_publies: liste }).eq('id', session.ecoleId);
+    if(error) throw error;
+    DB.meta.bulletinsPublies = liste;
+    if(publier){
+      const avecNotes = [...new Set((DB.notes || []).filter(n => n.trimestre === trimestre).map(n => n.eleveId))];
+      notifierParentsPush(avecNotes, `📒 Le bulletin du ${trimestre} est disponible dans votre application.`);
+    }
+    toast(publier ? `Bulletins du ${trimestre} publiés aux parents` : `Bulletins du ${trimestre} masqués aux parents`);
+  }catch(e){ alert('Erreur : ' + e.message); renderView('notes'); }
+}
 async function saveBulletinComment(eleveId, trimestre){
   const val = $('#commentBulletin').value;
   try{
@@ -4082,6 +4128,10 @@ function renderNotes(){
   return `
   <div class="view active">
     <div class="section-note">💡 Sélectionnez une classe, une matière et un trimestre pour saisir les notes de devoir et de composition, puis enregistrez. Consultez le bulletin complet d'un élève depuis sa fiche profil (menu Élèves).</div>
+    ${['direction','fondation'].includes(ui.role) ? `<div class="panel">
+      <div class="panel-head"><div><h2>📒 Bulletins visibles par les parents</h2><div class="sub">Publiez un trimestre quand toutes les notes sont saisies : chaque parent verra le bulletin de SES enfants dans son application</div></div></div>
+      <div style="display:flex;flex-wrap:wrap;gap:14px;">${TRIMESTRES.map(t => `<label style="display:flex;align-items:center;gap:8px;font-weight:700;"><input type="checkbox" ${(DB.meta.bulletinsPublies || []).includes(t) ? 'checked' : ''} onchange="publierBulletins('${t}', this.checked)"> ${t} publié</label>`).join('')}</div>
+    </div>` : ''}
 
     <div class="panel">
       <div class="panel-head"><div><h2>Saisie des notes</h2><div class="sub">${eleves.length} élève(s)</div></div></div>

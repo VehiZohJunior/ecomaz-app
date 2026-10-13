@@ -2343,3 +2343,24 @@ drop policy if exists "acces presences_eleves" on presences_eleves;
 create policy "acces presences_eleves" on presences_eleves for all using (ecole_id = mon_ecole_id() and (est_perso_admin() or presences_eleves.classe_id = any(mes_classes())));
 drop policy if exists "acces programmes" on programmes;
 create policy "acces programmes" on programmes for all using (ecole_id = mon_ecole_id() and (est_perso_admin() or classe_id = any(mes_classes())));
+
+
+-- =====================================================================
+-- 60. BULLETINS VISIBLES PAR LES PARENTS (2026-10-13)
+-- =====================================================================
+-- L'école publie un trimestre quand les notes sont complètes ; le parent
+-- voit alors les notes et l'appréciation de SES enfants pour ce trimestre.
+alter table ecoles add column if not exists bulletins_publies text[] not null default '{}';
+
+drop policy if exists "lecture notes parent" on notes;
+create policy "lecture notes parent" on notes for select using (
+  est_parent()
+  and exists (select 1 from ecoles ec where ec.id = notes.ecole_id and notes.trimestre = any(ec.bulletins_publies))
+  and exists (select 1 from parents_eleves pe where pe.parent_profile_id = auth.uid() and pe.eleve_id = notes.eleve_id)
+);
+drop policy if exists "lecture bulletins parent" on bulletins_commentaires;
+create policy "lecture bulletins parent" on bulletins_commentaires for select using (
+  est_parent()
+  and exists (select 1 from ecoles ec where ec.id = bulletins_commentaires.ecole_id and bulletins_commentaires.trimestre = any(ec.bulletins_publies))
+  and exists (select 1 from parents_eleves pe where pe.parent_profile_id = auth.uid() and pe.eleve_id = bulletins_commentaires.eleve_id)
+);

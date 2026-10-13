@@ -451,6 +451,7 @@ async function loadAllFromSupabase(){
       geofenceLatitude: ecole.geofenceLatitude ?? null,
       scolariteVisibleParents: ecole.scolariteVisibleParents === true,
       relancesScolarite: ecole.relancesScolarite === true, heureRelances: (ecole.heureRelances || '10:00').slice(0, 5),
+      bulletinsPublies: ecole.bulletinsPublies || [],
       geofenceLongitude: ecole.geofenceLongitude ?? null,
       geofenceRayonMetres: ecole.geofenceRayonMetres ?? 100,
       actif: ecole.actif !== false,
@@ -539,6 +540,18 @@ async function chargerDBParent(){
   if(tableauHonneur.error) throw tableauHonneur.error;
   if(actualitesAffichage.error) throw actualitesAffichage.error;
   const ecole = rowToCamel(ecoleRow.data);
+  // Bulletins : notes des trimestres publiés par l'école (RLS : ses enfants seulement)
+  let notesParent = [], appreciations = {};
+  if((ecole.bulletinsPublies || []).length){
+    try{
+      const [nt, bc] = await Promise.all([
+        sb.from('notes').select('eleve_id, matiere, note, note_sur, trimestre, type').eq('ecole_id', session.ecoleId),
+        sb.from('bulletins_commentaires').select('eleve_id, trimestre, commentaire').eq('ecole_id', session.ecoleId),
+      ]);
+      notesParent = rowsToCamel(nt.data || []);
+      (bc.data || []).forEach(r => { appreciations[`${r.eleve_id}_${r.trimestre}`] = r.commentaire; });
+    }catch(_e){}
+  }
   // Scolarité (reste à payer, reçus) : seulement si l'école l'a rendue visible
   let echeancesScolarite = [], paiementsScolarite = [];
   if(ecole.scolariteVisibleParents === true){
@@ -557,8 +570,9 @@ async function chargerDBParent(){
       anneeScolaire: ecole.anneeScolaire, logo: ecole.logoUrl || '',
       actif: ecole.actif !== false,
       scolariteVisibleParents: ecole.scolariteVisibleParents === true,
+      bulletinsPublies: ecole.bulletinsPublies || [],
     },
-    echeancesScolarite, paiementsScolarite,
+    echeancesScolarite, paiementsScolarite, notes: notesParent, bulletinsComments: appreciations,
     eleves: rowsToCamel(eleves.data),
     classes: rowsToCamel(classesRows.data),
     presencesSemaine,

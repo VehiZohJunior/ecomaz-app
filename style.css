@@ -991,3 +991,11 @@ td:has(> .amount), th.montant{ text-align:right; }
 .enrol-choix{ justify-content:flex-start; }
 .enrol-choix input[type=checkbox], .login-card .enrol-choix input[type=checkbox]{ width:20px !important; height:20px !important; min-height:0 !important; flex:0 0 20px; margin:0; padding:0; }
 .enrol-choix .hint{ margin:0 0 0 auto; }
+
+/* Console parent : bulletin de l'enfant */
+.enfant-bulletin{ margin-top:12px; padding-top:12px; border-top:1px solid var(--em-border, #e3e8e5); }
+.enfant-bulletin summary{ cursor:pointer; font-weight:800; font-size:14px; }
+.eb-table{ width:100%; border-collapse:collapse; margin-top:8px; font-size:13px; }
+.eb-table th, .eb-table td{ text-align:left; padding:5px 6px; border-bottom:1px dashed var(--em-border, #e3e8e5); }
+.eb-moyenne{ margin-top:8px; font-size:14px; }
+.eb-appreciation{ margin-top:6px; font-size:13px; font-style:italic; }

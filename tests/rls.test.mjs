@@ -216,6 +216,10 @@ async function requete(accessToken, chemin, options = {}){
   const elevesEns = await requete(tokenEnseignant, `/rest/v1/eleves?select=id&limit=1`);
   verifier('Un compte enseignant sans classe ne voit aucun élève', Array.isArray(elevesEns.data) && elevesEns.data.length === 0, `reçu ${JSON.stringify(elevesEns.data)?.slice(0,60)}`);
 
+  section('7octies. Bulletins — rien de visible sans publication par l école');
+  const notesAnon = await requete(ANON_KEY, `/rest/v1/notes?select=id&limit=1`);
+  verifier('Sans connexion, aucune note lisible', !notesAnon.ok || (Array.isArray(notesAnon.data) && notesAnon.data.length === 0));
+
   section('8. Visiteur non connecté — ne lit que les affichages publics prévus');
   for(const table of ['eleves','enseignants_lecture','profiles','paiements_scolarite','messages','parents_eleves','presences_eleves','eleves_portier_lecture','objets_perdus','push_abonnements','absences_signalees']){
     const r = await requete(ANON_KEY, `/rest/v1/${table}?select=*&limit=1`);
