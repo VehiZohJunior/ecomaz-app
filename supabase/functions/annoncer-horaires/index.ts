@@ -36,6 +36,58 @@ const LIBELLE: Record<Cycle, string> = { primaire: 'le Primaire', maternelle: 'l
 const enMinutes = (hhmm: string) => { const [h, m] = hhmm.split(':').map(Number); return h * 60 + m; };
 const lisible = (hhmm: string) => hhmm.slice(0, 5).replace(':', 'h');
 
+const fcfa = (n: number) => Math.round(n).toLocaleString('fr-FR').replace(/ | /g, ' ') + ' F';
+const jj = (iso: string) => iso.split('-').reverse().join('/');
+const ecartJours = (a: string, b: string) => Math.round((Date.parse(a + 'T12:00:00Z') - Date.parse(b + 'T12:00:00Z')) / 86400000);
+
+// Relance polie des tranches impayées : J-3, jour J, J+7. Envoyée par
+// notification et dans la messagerie du parent, une seule fois par étape.
+// deno-lint-ignore no-explicit-any
+async function relancesScolarite(admin: any, aujourdhui: string, minuteActuelle: number): Promise<number> {
+  const { data: ecoles } = await admin.from('ecoles').select('id, nom_ecole, heure_relances')
+    .eq('actif', true).eq('relances_scolarite', true).eq('scolarite_visible_parents', true);
+  let n = 0;
+  for (const ec of (ecoles || []) as { id: string; nom_ecole: string; heure_relances: string }[]) {
+    const h = String(ec.heure_relances || '10:00').slice(0, 5);
+    if (minuteActuelle < enMinutes(h) || minuteActuelle > enMinutes(h) + 30) continue;
+    const [{ data: ech }, { data: eleves }, { data: paiements }] = await Promise.all([
+      admin.from('echeances_scolarite').select('id, label, montant, date_echeance, classe_id').eq('ecole_id', ec.id).not('date_echeance', 'is', null),
+      admin.from('eleves').select('id, nom, prenom, classe_id').eq('ecole_id', ec.id).eq('statut', 'Actif'),
+      admin.from('paiements_scolarite').select('eleve_id, tranche, montant').eq('ecole_id', ec.id),
+    ]);
+    const toutes = (ech || []) as { id: string; label: string; montant: number; date_echeance: string; classe_id: string | null }[];
+    if (!toutes.length) continue;
+    const paye: Record<string, number> = {};
+    for (const p of (paiements || []) as { eleve_id: string; tranche: string; montant: number }[]) {
+      paye[`${p.eleve_id}|${p.tranche}`] = (paye[`${p.eleve_id}|${p.tranche}`] || 0) + Number(p.montant || 0);
+    }
+    for (const e of (eleves || []) as { id: string; nom: string; prenom: string; classe_id: string }[]) {
+      const propres = toutes.filter((t) => t.classe_id === e.classe_id);
+      const grille = propres.length ? propres : toutes.filter((t) => !t.classe_id);
+      for (const t of grille) {
+        const reste = Number(t.montant || 0) - (paye[`${e.id}|${t.label}`] || 0);
+        if (reste <= 0) continue;
+        const d = ecartJours(t.date_echeance, aujourdhui);
+        const etape = d === 3 ? 'J-3' : d === 0 ? 'J' : d === -7 ? 'J+7' : null;
+        if (!etape) continue;
+        const { error: deja } = await admin.from('rappels_envoyes').insert({ ecole_id: ec.id, type: `scol|${e.id}|${t.id}|${etape}`, date: aujourdhui });
+        if (deja) continue;
+        const enfant = `${e.prenom} ${e.nom}`;
+        const texte = etape === 'J-3'
+          ? `Petit rappel : la tranche « ${t.label} » de ${enfant} (reste ${fcfa(reste)}) est à régler avant le ${jj(t.date_echeance)}. Merci !`
+          : etape === 'J'
+            ? `La tranche « ${t.label} » de ${enfant} (reste ${fcfa(reste)}) arrive à échéance aujourd’hui. Merci de passer au secrétariat.`
+            : `La tranche « ${t.label} » de ${enfant} (reste ${fcfa(reste)}) n’est pas encore réglée (échéance du ${jj(t.date_echeance)}). Merci de passer au secrétariat ou de nous contacter.`;
+        await admin.from('messages_internes').insert({ ecole_id: ec.id, destinataire_type: 'parent', eleve_id: e.id, contenu: '🎓 ' + texte, auteur_nom: ec.nom_ecole, auteur_id: null });
+        const parents = await parentsDesEleves(admin, ec.id, [e.id]);
+        await envoyerPush(admin, parents, { title: `${ec.nom_ecole} — scolarité`, body: texte, url: './parent.html', tag: `scol-${e.id}-${t.id}` });
+        n++;
+      }
+    }
+  }
+  return n;
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS_HEADERS });
 
@@ -177,6 +229,12 @@ Deno.serve(async (req) => {
           }
         } catch (e) { erreurs.push(`rappel appel: ${(e as Error).message}`); }
       }
+    }
+
+    // Relances de scolarité (schema.sql section 58) — en semaine, une fois par jour
+    if (jourIso <= 5) {
+      try { nbEnvoyees += await relancesScolarite(supabaseAdmin, dateDuJour, minuteActuelle); }
+      catch (e) { erreurs.push(`relances: ${(e as Error).message}`); }
     }
 
     return new Response(JSON.stringify({ ok: true, nbEnvoyees, erreurs }), {

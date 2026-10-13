@@ -2178,3 +2178,13 @@ alter table rappels_envoyes enable row level security;
 drop policy if exists "lecture rappels_envoyes personnel" on rappels_envoyes;
 create policy "lecture rappels_envoyes personnel" on rappels_envoyes for select
   using (ecole_id = mon_ecole_id() and est_perso_admin());
+
+-- =====================================================================
+-- 58. RELANCES AUTOMATIQUES DE SCOLARITÉ (2026-10-13)
+-- =====================================================================
+-- Si l'école l'active (et a rendu la scolarité visible aux parents), les
+-- parents d'un élève qui n'a pas réglé une tranche reçoivent un rappel
+-- poli 3 jours avant la date limite, le jour même, puis 7 jours après.
+-- Une seule fois par élève, tranche et étape (table rappels_envoyes).
+alter table ecoles add column if not exists relances_scolarite boolean not null default false;
+alter table ecoles add column if not exists heure_relances time not null default '10:00';

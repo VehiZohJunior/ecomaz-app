@@ -450,6 +450,7 @@ async function loadAllFromSupabase(){
       heureArriveeAttendue: (ecole.heureArriveeAttendue || '07:30:00').slice(0,5),
       geofenceLatitude: ecole.geofenceLatitude ?? null,
       scolariteVisibleParents: ecole.scolariteVisibleParents === true,
+      relancesScolarite: ecole.relancesScolarite === true, heureRelances: (ecole.heureRelances || '10:00').slice(0, 5),
       geofenceLongitude: ecole.geofenceLongitude ?? null,
       geofenceRayonMetres: ecole.geofenceRayonMetres ?? 100,
       actif: ecole.actif !== false,

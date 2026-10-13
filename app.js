@@ -2100,7 +2100,7 @@ const VERSIONS = [
     commun: [],
     parent: [ 'Nouvel onglet « Vie de l’école » : photos et vidéos des événements, J’aime, Bravo et commentaires.' ],
     portier: [],
-    personnel: [ 'Notifications sur le téléphone pour tout le personnel : demandes d’accès, absences signalées, objets perdus, appel non fait.', 'Appel rapide : « Tous présents », puis touchez le nom des absents ; rappel à 9h00 si l’appel n’est pas fait.', 'Paramètres → Scolarité : montants et tranches de paiement propres à chaque classe, copie vers d’autres classes, affichage aux parents au choix.', 'Direction : liste « Mise en route de l’école » sur le tableau de bord, avec ce qui reste à faire.', 'Nouveau menu « Vie de l’école » : publiez les photos et vidéos des événements pour les parents (toute l’école ou certaines classes).' ],
+    personnel: [ 'Paramètres → Scolarité : relances automatiques et polies des tranches impayées (3 jours avant, le jour même, 7 jours après).', 'Notifications sur le téléphone pour tout le personnel : demandes d’accès, absences signalées, objets perdus, appel non fait.', 'Appel rapide : « Tous présents », puis touchez le nom des absents ; rappel à 9h00 si l’appel n’est pas fait.', 'Paramètres → Scolarité : montants et tranches de paiement propres à chaque classe, copie vers d’autres classes, affichage aux parents au choix.', 'Direction : liste « Mise en route de l’école » sur le tableau de bord, avec ce qui reste à faire.', 'Nouveau menu « Vie de l’école » : publiez les photos et vidéos des événements pour les parents (toute l’école ou certaines classes).' ],
   } },
   { version: '2026.10.12-2', nouveautes: {
     commun: [],
@@ -7558,6 +7558,9 @@ function renderEcheancesScolarite(){
       <label style="display:flex;align-items:center;gap:10px;"><input type="checkbox" ${visible?'checked':''} onchange="basculerScolariteParents(this.checked)">
         <strong>Montrer la scolarité aux parents</strong> (tranches, payé, reste à payer, dans leur application)</label>
       <div class="hint" style="margin:4px 0 0;">Activez seulement quand les montants ci-dessus sont justes et que les paiements sont enregistrés dans EcoMaZ.</div>
+      <label style="display:flex;align-items:center;gap:10px;margin-top:12px;"><input type="checkbox" ${DB.meta?.relancesScolarite?'checked':''} ${visible?'':'disabled'} onchange="reglerRelances(this.checked)">
+        <strong>Relances automatiques des tranches impayées</strong> à <input type="time" value="${DB.meta?.heureRelances || '10:00'}" ${visible?'':'disabled'} onchange="reglerRelances(null, this.value)" style="width:110px;display:inline-block;"></label>
+      <div class="hint" style="margin:4px 0 0;">Message poli au parent 3 jours avant la date limite d’une tranche, le jour même, puis 7 jours après si elle n’est pas réglée (notification + messagerie). Seulement pour les tranches qui ont une date limite${visible ? '' : ' — activez d’abord « Montrer la scolarité aux parents »'}.</div>
     </div>
   `;
 }
@@ -7653,6 +7656,18 @@ async function supprimerGrilleClasse(classeId){
     DB.echeancesScolarite = DB.echeancesScolarite.filter(e => e.classeId !== classeId);
     toast('Grille de la classe supprimée'); renderView('parametres');
   }catch(e){ alert('Erreur : ' + e.message); }
+}
+async function reglerRelances(actif, heure){
+  const patch = {};
+  if(actif !== null && actif !== undefined) patch.relances_scolarite = actif;
+  if(heure) patch.heure_relances = heure;
+  try{
+    const { error } = await sb.from('ecoles').update(patch).eq('id', session.ecoleId);
+    if(error) throw error;
+    if('relances_scolarite' in patch) DB.meta.relancesScolarite = patch.relances_scolarite;
+    if(heure) DB.meta.heureRelances = heure;
+    toast(('relances_scolarite' in patch) ? (patch.relances_scolarite ? 'Relances automatiques activées' : 'Relances automatiques désactivées') : 'Heure des relances enregistrée');
+  }catch(e){ alert('Erreur : ' + e.message); renderView('parametres'); }
 }
 async function basculerScolariteParents(visible){
   if(visible && !confirm('Les parents verront dans leur application les tranches, ce qui est payé et le reste à payer de leur enfant. Les montants et les paiements sont-ils à jour ?')){ renderView('parametres'); return; }
