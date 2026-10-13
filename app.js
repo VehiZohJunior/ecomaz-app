@@ -2319,6 +2319,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.10.13-25', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Demandes d’accès des enseignants : fiche retrouvée par le téléphone, indices de confiance (téléphone, nom, classes identiques à la fiche).' ],
+  } },
   { version: '2026.10.13-24', nouveautes: {
     commun: [],
     parent: [],
@@ -8440,10 +8446,23 @@ async function chargerDemandesAcces(){
       const libres = (DB.enseignants || []).filter(t => !(DB.profiles || []).some(p => p.enseignantId === t.id));
       const mots = t => simplifierTexte(t).split(' ').filter(m => m.length >= 3);
       const nomDem = new Set(mots(d.nom));
-      const suggere = libres.find(t => mots(`${t.prenom} ${t.nom}`).filter(m => nomDem.has(m)).length >= 1);
+      // Fiche suggérée : même téléphone d'abord (indice fort), sinon nom ressemblant
+      const chiffres = t => String(t || '').replace(/\D/g, '').replace(/^225/, '').slice(-10);
+      const telDem = chiffres(d.telephone);
+      const parTel = telDem.length >= 8 ? libres.find(t => chiffres(t.telephone) === telDem) : null;
+      const parNom = libres.find(t => mots(`${t.prenom} ${t.nom}`).filter(m => nomDem.has(m)).length >= 1);
+      const suggere = parTel || parNom;
+      const classesFiche = new Set(suggere?.classesAssignees || []);
+      const memesClasses = suggere && classesFiche.size && [...choisies].every(c => classesFiche.has(c));
+      const indices = suggere ? [
+        parTel ? '<span class="badge green">✅ Téléphone identique à la fiche ' + escapeHtml(ensFullName(suggere)) + '</span>' : '<span class="badge amber">Fiche trouvée par le nom seulement : vérifiez</span>',
+        parNom && parTel && parNom.id === parTel.id ? '<span class="badge green">✅ Nom identique</span>' : '',
+        classesFiche.size ? (memesClasses ? '<span class="badge green">✅ Classes cochées = classes de la fiche</span>' : '<span class="badge amber">⚠️ Classes cochées différentes de la fiche</span>') : '',
+      ].join(' ') : '<span class="badge">Aucune fiche enseignant correspondante : une nouvelle sera créée</span>';
       return `<div style="border:1px solid var(--border);border-radius:var(--r-card);padding:12px;margin-bottom:10px;">
         <strong>👩‍🏫 Enseignant — ${escapeHtml(d.nom)}</strong>
         <div class="hint">${escapeHtml(d.email||'')}${d.telephone ? ' · ' + escapeHtml(d.telephone) : ''}</div>
+        <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;">${indices}</div>
         <div class="hint" style="margin:8px 0 4px;">Classes cochées par l’enseignant — vérifiez :</div>
         <div style="display:flex;flex-wrap:wrap;gap:8px;">${DB.classes.map(c => `<label style="display:flex;align-items:center;gap:6px;"><input type="checkbox" class="demClasseVal_${d.id}" value="${c.id}" ${choisies.has(c.id)?'checked':''}> ${escapeHtml(c.nom)}</label>`).join('')}</div>
         <select id="demFiche_${d.id}" style="width:100%;margin:8px 0;"><option value="">Créer une nouvelle fiche enseignant</option>${libres.map(t => `<option value="${t.id}" ${suggere && suggere.id===t.id?'selected':''}>Relier à la fiche existante : ${escapeHtml(ensFullName(t))}</option>`).join('')}</select>
