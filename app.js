@@ -2097,7 +2097,7 @@ const VERSIONS = [
     commun: [],
     parent: [ 'Nouvel onglet « Vie de l’école » : photos et vidéos des événements, J’aime, Bravo et commentaires.' ],
     portier: [],
-    personnel: [ 'Paramètres → Scolarité : montants et tranches de paiement propres à chaque classe, copie vers d’autres classes, affichage aux parents au choix.', 'Direction : liste « Mise en route de l’école » sur le tableau de bord, avec ce qui reste à faire.', 'Nouveau menu « Vie de l’école » : publiez les photos et vidéos des événements pour les parents (toute l’école ou certaines classes).' ],
+    personnel: [ 'Appel rapide : « Tous présents », puis touchez le nom des absents ; rappel à 9h00 si l’appel n’est pas fait.', 'Paramètres → Scolarité : montants et tranches de paiement propres à chaque classe, copie vers d’autres classes, affichage aux parents au choix.', 'Direction : liste « Mise en route de l’école » sur le tableau de bord, avec ce qui reste à faire.', 'Nouveau menu « Vie de l’école » : publiez les photos et vidéos des événements pour les parents (toute l’école ou certaines classes).' ],
   } },
   { version: '2026.10.12-2', nouveautes: {
     commun: [],
@@ -4108,10 +4108,10 @@ function renderPresencesEleves(){
     const rec = DB.presencesEleves.find(p=>p.eleveId===e.id && p.date===f.date);
     const sig = absenceSignalee(e.id, f.date);
     const statut = rec ? rec.statut : (sig ? 'Absent' : 'Présent');
-    return `<tr>
-      <td><div class="row-name"><span class="avatar">${initials(e.prenom,e.nom)}</span>${escapeHtml(eleveFullName(e))}</div>${sig ? `<span class="badge amber" title="${escapeHtml(sig.commentaire || '')}">Absence signalée par le parent : ${escapeHtml(sig.motif)}</span>` : ''}</td>
+    return `<tr class="appel-ligne appel-${statut === 'Présent' ? 'present' : statut === 'Absent' ? 'absent' : 'retard'}" data-ligne="${e.id}">
+      <td class="appel-nom" onclick="basculerStatutAppel('${e.id}')" title="Toucher : Présent → Absent → Retard"><div class="row-name"><span class="avatar">${initials(e.prenom,e.nom)}</span>${escapeHtml(eleveFullName(e))}</div>${sig ? `<span class="badge amber" title="${escapeHtml(sig.commentaire || '')}">Absence signalée par le parent : ${escapeHtml(sig.motif)}</span>` : ''}</td>
       <td>
-        <select data-eleve="${e.id}" class="sel-statut">
+        <select data-eleve="${e.id}" class="sel-statut" onchange="majLigneAppel('${e.id}')">
           <option ${statut==='Présent'?'selected':''}>Présent</option>
           <option ${statut==='Absent'?'selected':''}>Absent</option>
           <option ${statut==='Retard'?'selected':''}>Retard</option>
@@ -4141,11 +4141,16 @@ function renderPresencesEleves(){
         <input type="date" value="${f.date}" onchange="ui.filters.presEleves.date=this.value; renderView('presences-eleves')">
       </div>
       ${eleves.length===0 ? `<div class="empty-state"><div class="em-ic">✅</div>Aucun élève actif dans cette classe.</div>` : `
+      <div class="appel-outils">
+        <button type="button" class="btn secondary sm" onclick="tousPresents()">✅ Tous présents</button>
+        <span class="hint" style="margin:0;">Puis touchez le <strong>nom</strong> des absents (2ᵉ toucher : retard).</span>
+        <span class="appel-compteur" id="appelCompteur"></span>
+      </div>
       <div class="table-wrap"><table id="tablePresences">
         <thead><tr><th>Élève</th><th style="width:160px;">Statut</th><th>Motif</th></tr></thead>
         <tbody>${rows}</tbody>
       </table></div>
-      <div class="form-actions"><button class="btn" onclick="savePresencesEleves()">Enregistrer la présence</button></div>`}
+      <div class="form-actions"><button class="btn" onclick="savePresencesEleves()">Enregistrer la présence</button></div>${(setTimeout(majCompteurAppel, 0), '')}`}
     </div>
     ${renderPrevenirParentsWhatsapp(f)}
 
@@ -4188,6 +4193,28 @@ async function prevenirParentWhatsapp(eleveId, date){
     const e = eleveById(eleveId);
     ouvrirEnvoiWhatsapp(`Absence — ${e ? eleveFullName(e) : ''}`, data.telephones || data.telephone, data.message, "WhatsApp s'ouvrira au numéro du parent avec ce message :");
   }catch(e){ alert('Erreur : ' + e.message); }
+}
+// Appel rapide : toucher le nom fait tourner Présent → Absent → Retard
+function majLigneAppel(eleveId){
+  const sel = document.querySelector(`.sel-statut[data-eleve="${eleveId}"]`), ligne = document.querySelector(`[data-ligne="${eleveId}"]`);
+  if(sel && ligne) ligne.className = 'appel-ligne appel-' + (sel.value === 'Présent' ? 'present' : sel.value === 'Absent' ? 'absent' : 'retard');
+  majCompteurAppel();
+}
+function basculerStatutAppel(eleveId){
+  const sel = document.querySelector(`.sel-statut[data-eleve="${eleveId}"]`);
+  if(!sel) return;
+  sel.value = { 'Présent':'Absent', 'Absent':'Retard', 'Retard':'Présent' }[sel.value] || 'Présent';
+  if(navigator.vibrate) try{ navigator.vibrate(10); }catch(_e){}
+  majLigneAppel(eleveId);
+}
+function tousPresents(){
+  const date = ui.filters.presEleves?.date;
+  $$('.sel-statut').forEach(sel => { if(!absenceSignalee(sel.dataset.eleve, date)){ sel.value = 'Présent'; majLigneAppel(sel.dataset.eleve); } });
+}
+function majCompteurAppel(){
+  const z = document.getElementById('appelCompteur'); if(!z) return;
+  const v = $$('.sel-statut').map(s => s.value);
+  z.textContent = `${v.filter(x => x === 'Présent').length} présent(s) · ${v.filter(x => x === 'Absent').length} absent(s) · ${v.filter(x => x === 'Retard').length} retard(s)`;
 }
 async function savePresencesEleves(){
   const f = ui.filters.presEleves;
@@ -6891,6 +6918,10 @@ function renderHorairesAnnonces(){
       <div class="field" style="margin-top:12px;"><label>Jours de classe</label>
         <div style="display:flex;flex-wrap:wrap;gap:12px;">${JOURS_COMPLETS.map((j, i) => `<label style="display:flex;align-items:center;gap:6px;font-weight:600;"><input type="checkbox" name="jour" value="${i+1}" ${jours.includes(i+1)?'checked':''}> ${j}</label>`).join('')}</div>
       </div>
+      <div class="field"><label>Rappel si l’appel n’est pas fait à</label>
+        <input type="time" name="rappelAppel" value="${(h.rappelAppel === undefined ? '09:00' : (h.rappelAppel || '')).slice(0,5)}">
+        <div class="hint" style="margin:4px 0 0;">À cette heure, la Direction, le secrétariat et l’enseignant reçoivent une notification pour chaque classe sans appel. Laissez vide pour ne pas être rappelé.</div>
+      </div>
       <div class="field"><label>Vacances : suspendre les annonces jusqu’au (inclus)</label>
         <input type="date" name="suspenduJusquau" value="${h.suspenduJusquau || ''}">
         <div class="hint" style="margin:4px 0 0;">Laissez vide pendant l’année scolaire. Les annonces reprennent toutes seules le lendemain de cette date.</div>
@@ -6907,7 +6938,8 @@ async function handleSaveHoraires(ev){
   const avance = Math.min(60, Math.max(0, parseInt(fd.get('avanceMinutes'), 10) || 0));
   const payload = { ecole_id: session.ecoleId, actif: fd.get('actif') === 'on', avance_minutes: avance,
     jours_cours: jours, suspendu_jusquau: fd.get('suspenduJusquau') || null,
-    renforcement_fin: fd.get('renforcementFin') || HORAIRES_DEFAUTS.renforcementFin };
+    renforcement_fin: fd.get('renforcementFin') || HORAIRES_DEFAUTS.renforcementFin,
+    rappel_appel: fd.get('rappelAppel') || null };
   HORAIRES_CHAMPS.forEach(c=>{
     payload[camelToSnake(c.champPrimaire)] = fd.get(c.champPrimaire) || HORAIRES_DEFAUTS[c.champPrimaire];
     payload[camelToSnake(c.champMaternelle)] = fd.get(c.champMaternelle) || HORAIRES_DEFAUTS[c.champMaternelle];

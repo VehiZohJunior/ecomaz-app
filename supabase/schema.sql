@@ -2155,3 +2155,26 @@ begin
 end $$;
 revoke all on function sante_ecoles() from public, anon;
 grant execute on function sante_ecoles() to authenticated;
+
+-- =====================================================================
+-- 57. RAPPEL « APPEL NON FAIT » (2026-10-13)
+-- =====================================================================
+-- Si l'appel d'une classe n'est pas enregistré à l'heure du rappel (9h00
+-- par défaut), la Direction, le secrétariat et l'enseignant de la classe
+-- reçoivent une notification. null = rappel désactivé.
+alter table horaires_annonces add column if not exists rappel_appel time default '09:00';
+update horaires_annonces set rappel_appel = '09:00' where rappel_appel is null;
+
+-- Trace des rappels envoyés (un seul par école, type et jour) — serveur seulement
+create table if not exists rappels_envoyes (
+  ecole_id uuid not null references ecoles(id) on delete cascade,
+  type text not null,
+  date date not null,
+  details jsonb,
+  created_at timestamptz not null default now(),
+  primary key (ecole_id, type, date)
+);
+alter table rappels_envoyes enable row level security;
+drop policy if exists "lecture rappels_envoyes personnel" on rappels_envoyes;
+create policy "lecture rappels_envoyes personnel" on rappels_envoyes for select
+  using (ecole_id = mon_ecole_id() and est_perso_admin());

@@ -139,6 +139,44 @@ Deno.serve(async (req) => {
           } catch (e) { erreurs.push(`push ${a.fonction}/${cycle}: ${(e as Error).message}`); }
         }
       }
+
+      // Rappel « appel non fait » (schema.sql section 57) : une fois par jour,
+      // dans la demi-heure qui suit l'heure du rappel.
+      const rappel = String(h.rappel_appel || '').slice(0, 5);
+      if (/^\d{2}:\d{2}$/.test(rappel) && minuteActuelle >= enMinutes(rappel) && minuteActuelle <= enMinutes(rappel) + 30) {
+        try {
+          const { data: classes } = await supabaseAdmin.from('classes').select('id, nom').eq('ecole_id', h.ecole_id);
+          const { data: inscrits } = await supabaseAdmin.from('eleves').select('classe_id').eq('ecole_id', h.ecole_id).eq('statut', 'Actif');
+          const { data: faits } = await supabaseAdmin.from('presences_eleves').select('classe_id').eq('ecole_id', h.ecole_id).eq('date', dateDuJour);
+          const avecEleves = new Set((inscrits || []).map((e: { classe_id: string }) => e.classe_id));
+          const appelFait = new Set((faits || []).map((p: { classe_id: string }) => p.classe_id));
+          const manquantes = (classes || []).filter((c: { id: string }) => avecEleves.has(c.id) && !appelFait.has(c.id));
+          if (manquantes.length) {
+            const { error: dejaEnvoye } = await supabaseAdmin.from('rappels_envoyes')
+              .insert({ ecole_id: h.ecole_id, type: 'appel', date: dateDuJour, details: { classes: manquantes.map((c: { nom: string }) => c.nom) } });
+            if (!dejaEnvoye) {
+              const noms = manquantes.map((c: { nom: string }) => c.nom);
+              const { data: comptes } = await supabaseAdmin.from('profiles').select('id, role, enseignant_id').eq('ecole_id', h.ecole_id)
+                .in('role', ['secretariat', 'direction', 'fondation', 'enseignant']);
+              const admins = (comptes || []).filter((c: { role: string }) => c.role !== 'enseignant').map((c: { id: string }) => c.id);
+              await envoyerPush(supabaseAdmin, admins, {
+                title: '📋 Appel non fait', url: './index.html', tag: 'rappel-appel',
+                body: `À ${lisible(rappel)}, l'appel n'est pas enregistré pour ${noms.length} classe(s) : ${noms.slice(0, 6).join(', ')}${noms.length > 6 ? '…' : ''}.`,
+              });
+              // Chaque enseignant : seulement ses classes
+              const profs = (comptes || []).filter((c: { role: string; enseignant_id: string | null }) => c.role === 'enseignant' && c.enseignant_id);
+              if (profs.length) {
+                const { data: fiches } = await supabaseAdmin.from('enseignants').select('id, classes_assignees').in('id', profs.map((p: { enseignant_id: string }) => p.enseignant_id));
+                for (const p of profs as { id: string; enseignant_id: string }[]) {
+                  const sesClasses = ((fiches || []).find((f: { id: string }) => f.id === p.enseignant_id)?.classes_assignees || []) as string[];
+                  const lesSiennes = manquantes.filter((c: { id: string }) => sesClasses.includes(c.id)).map((c: { nom: string }) => c.nom);
+                  if (lesSiennes.length) await envoyerPush(supabaseAdmin, [p.id], { title: '📋 Pensez à l’appel', url: './index.html', tag: 'rappel-appel', body: `L'appel n'est pas encore enregistré pour ${lesSiennes.join(', ')}.` });
+                }
+              }
+            }
+          }
+        } catch (e) { erreurs.push(`rappel appel: ${(e as Error).message}`); }
+      }
     }
 
     return new Response(JSON.stringify({ ok: true, nbEnvoyees, erreurs }), {
