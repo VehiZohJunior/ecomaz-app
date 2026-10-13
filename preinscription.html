@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pré-inscription — EcoMaZ</title>
+<meta name="description" content="Pré-inscrivez votre enfant en ligne : l'école vous rappelle.">
+<link rel="icon" href="icon-192.png">
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="ecomaz-tokens.css">
+<!-- Page PUBLIQUE (aucun compte) : la demande passe uniquement par la
+     fonction preinscrire() de la base (contrôles + limites anti-abus,
+     schema.sql section 71). -->
+<style>
+  *{ box-sizing:border-box; }
+  body{ margin:0; background:var(--em-bg); color:var(--em-text); font-family:var(--em-font); }
+  .entete{ background:var(--em-green-900); color:#fff; padding:28px 16px 56px; text-align:center; }
+  .entete img{ width:72px; height:72px; border-radius:18px; object-fit:cover; background:#fff; display:block; margin:0 auto 10px; }
+  .entete img[hidden]{ display:none; }
+  .entete h1{ margin:0; font-size:24px; font-weight:800; }
+  .entete p{ margin:6px 0 0; color:var(--em-text-on-dark); }
+  main{ max-width:560px; margin:-36px auto 32px; padding:0 16px; }
+  .carte{ background:var(--em-surface); border-radius:var(--em-radius-lg); box-shadow:var(--em-shadow-md); padding:20px; }
+  h2{ font-size:16px; margin:18px 0 8px; color:var(--em-green-700); }
+  h2:first-child{ margin-top:0; }
+  label{ display:block; font-weight:700; font-size:14px; margin:10px 0 4px; }
+  input, select, textarea{ width:100%; padding:12px; font:inherit; font-size:16px; border:1px solid var(--em-border); border-radius:var(--em-radius-sm); color:var(--em-text); }
+  input:focus, select:focus, textarea:focus{ outline:3px solid var(--em-gold-100); border-color:var(--em-gold-400); }
+  .ligne{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  @media (max-width:420px){ .ligne{ grid-template-columns:1fr; } }
+  button{ width:100%; margin-top:18px; padding:14px; font:inherit; font-size:17px; font-weight:800; color:#fff; background:var(--em-green-700); border:0; border-radius:var(--em-radius-pill); cursor:pointer; }
+  button:disabled{ opacity:.6; }
+  .note{ color:var(--em-text-muted); font-size:13px; margin-top:12px; text-align:center; }
+  .erreur{ background:var(--em-terracotta-100); color:var(--em-terracotta-800); padding:10px 12px; border-radius:var(--em-radius-sm); margin-top:12px; display:none; }
+  .merci{ text-align:center; padding:20px 4px; }
+  .merci .rond{ width:72px; height:72px; border-radius:50%; background:var(--em-green-100); display:flex; align-items:center; justify-content:center; margin:0 auto 12px; font-size:36px; }
+  footer{ text-align:center; color:var(--em-text-muted); font-size:12px; padding-bottom:24px; }
+  input, select, textarea{ background:var(--em-surface); }
+  @media (prefers-color-scheme: dark){
+    input, select, textarea{ background:#101814; color:#eef3f0; border-color:#2c3a33; }
+    h2{ color:#7cc4a4; }
+    .note, footer{ color:#9fb0a7; }
+  }
+</style>
+</head>
+<body>
+<header class="entete">
+  <img id="logo" alt="" hidden>
+  <h1 id="nomEcole">Pré-inscription</h1>
+  <p>Pré-inscrivez votre enfant en ligne : l’école vous rappelle.</p>
+</header>
+<main>
+  <div class="carte" id="carte">
+    <form id="formulaire" novalidate>
+      <h2>👧 L’enfant</h2>
+      <div class="ligne">
+        <div><label for="prenom">Prénom(s)</label><input id="prenom" required maxlength="80" autocomplete="off"></div>
+        <div><label for="nom">Nom</label><input id="nom" required maxlength="80" autocomplete="off"></div>
+      </div>
+      <div class="ligne">
+        <div><label for="naissance">Date de naissance</label><input id="naissance" type="date"></div>
+        <div><label for="sexe">Sexe</label><select id="sexe"><option value="">—</option><option value="F">Fille</option><option value="M">Garçon</option></select></div>
+      </div>
+      <label for="classe">Classe souhaitée</label>
+      <select id="classe"><option value="">Je ne sais pas encore</option></select>
+      <h2>👪 Le parent</h2>
+      <label for="parent">Nom et prénom</label><input id="parent" required maxlength="120" autocomplete="name">
+      <label for="tel">Téléphone (WhatsApp de préférence)</label><input id="tel" type="tel" required maxlength="30" autocomplete="tel" placeholder="Ex : 07 00 00 00 00">
+      <label for="message">Message (facultatif)</label><textarea id="message" rows="3" maxlength="500" placeholder="Ex : il vient d’une autre école, question sur la cantine…"></textarea>
+      <div class="erreur" id="erreur" role="alert"></div>
+      <button type="submit" id="envoyer">Envoyer la pré-inscription</button>
+      <p class="note">Ces informations sont transmises uniquement à l’école, qui vous contactera.</p>
+    </form>
+  </div>
+</main>
+<footer>Propulsé par EcoMaZ</footer>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="config.js"></script>
+<script>
+(function(){
+  var ecole = new URLSearchParams(location.search).get('ecole');
+  var sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: false } });
+  var $ = function(id){ return document.getElementById(id); };
+  function erreur(texte){ var e = $('erreur'); e.textContent = texte; e.style.display = texte ? 'block' : 'none'; }
+  if(!ecole){ $('carte').innerHTML = '<p class="merci">Lien incomplet : demandez à l’école le lien de pré-inscription.</p>'; return; }
+  $('naissance').max = new Date().toISOString().slice(0, 10);
+  sb.rpc('ecole_preinscription', { p_ecole: ecole }).then(function(r){
+    var d = r.data && r.data[0];
+    if(!d){ $('carte').innerHTML = '<p class="merci">Cette école n’accepte pas de pré-inscription en ligne pour le moment.</p>'; return; }
+    $('nomEcole').textContent = d.nom_ecole;
+    document.title = 'Pré-inscription — ' + d.nom_ecole;
+    if(d.logo_url){ $('logo').src = d.logo_url; $('logo').hidden = false; }
+    (d.classes || []).forEach(function(c){ var o = document.createElement('option'); o.value = c; o.textContent = c; $('classe').appendChild(o); });
+  });
+  $('formulaire').addEventListener('submit', function(ev){
+    ev.preventDefault(); erreur('');
+    var champs = { prenom: $('prenom').value.trim(), nom: $('nom').value.trim(), parent: $('parent').value.trim(), tel: $('tel').value.trim() };
+    if(!champs.prenom || !champs.nom) return erreur('Indiquez le prénom et le nom de l’enfant.');
+    if(champs.parent.length < 2) return erreur('Indiquez votre nom.');
+    if(champs.tel.replace(/\D/g, '').length < 8) return erreur('Indiquez un numéro de téléphone valide.');
+    $('envoyer').disabled = true; $('envoyer').textContent = 'Envoi…';
+    sb.rpc('preinscrire', {
+      p_ecole: ecole, p_enfant_prenom: champs.prenom, p_enfant_nom: champs.nom, p_date_naissance: $('naissance').value || null,
+      p_sexe: $('sexe').value, p_classe: $('classe').value, p_parent_nom: champs.parent, p_parent_tel: champs.tel, p_message: $('message').value.trim(),
+    }).then(function(r){
+      if(r.error){ $('envoyer').disabled = false; $('envoyer').textContent = 'Envoyer la pré-inscription'; return erreur(r.error.message || 'Envoi impossible, réessayez.'); }
+      $('carte').innerHTML = '<div class="merci"><div class="rond">✅</div><h2>Merci !</h2><p>La pré-inscription de <strong></strong> a bien été envoyée. L’école vous rappellera au numéro indiqué.</p></div>';
+      $('carte').querySelector('strong').textContent = champs.prenom;
+    }, function(){ $('envoyer').disabled = false; $('envoyer').textContent = 'Envoyer la pré-inscription'; erreur('Pas de connexion internet. Réessayez.'); });
+  });
+})();
+</script>
+</body>
+</html>

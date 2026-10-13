@@ -2272,6 +2272,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.10.13-13', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Nouveau : pré-inscription en ligne. Élèves & Inscriptions → « Lien à partager » (WhatsApp, Facebook) ; les demandes des familles arrivent ici, avec bouton « Inscrire » qui pré-remplit la fiche.' ],
+  } },
   { version: '2026.10.13-12', nouveautes: {
     commun: [],
     parent: [ 'Nouveau sur l’accueil : « À la cantine » — le repas et le goûter du jour et du lendemain (si l’école publie son menu).' ],
@@ -3440,6 +3446,76 @@ async function supprimerPublication(id){
   }catch(e){ alert('Erreur : ' + e.message); }
 }
 /* =====================================================================
+   PRÉ-INSCRIPTIONS EN LIGNE (schema.sql section 71, page preinscription.html)
+   ===================================================================== */
+const STATUTS_PREINSCRIPTION = { nouvelle:['Nouvelle','amber'], contactee:['Contactée','blue'], inscrite:['Inscrite','green'], refusee:['Sans suite',''] };
+function lienPreinscription(){ return new URL('preinscription.html?ecole=' + encodeURIComponent(session.ecoleId), location.href).href; }
+function partagerPreinscription(){
+  const lien = lienPreinscription();
+  const message = `📝 Pré-inscriptions ouvertes à ${DB.meta?.nomEcole || 'notre école'} ! Remplissez le formulaire en ligne, nous vous rappelons : ${lien}`;
+  openModal('📝 Lien de pré-inscription', `
+    <p>Partagez ce lien sur WhatsApp, Facebook ou par SMS. Les familles remplissent le formulaire sans créer de compte ; les demandes arrivent ici, dans Élèves & Inscriptions.</p>
+    <div class="hint" style="word-break:break-all;user-select:all;">${escapeHtml(lien)}</div>
+    <div class="form-actions" style="flex-wrap:wrap;">
+      <button class="btn secondary" onclick="navigator.clipboard && navigator.clipboard.writeText('${lien}').then(() => toast('Lien copié'))">📋 Copier le lien</button>
+      <a class="btn" href="https://wa.me/?text=${encodeURIComponent(message)}" target="_blank" rel="noopener">📲 Partager sur WhatsApp</a>
+      <a class="btn secondary" href="${lien}" target="_blank" rel="noopener">👁️ Voir le formulaire</a>
+    </div>`);
+}
+function renderPreinscriptions(){
+  if(!['secretariat','direction','fondation'].includes(ui.role)) return '';
+  if(DB.preinscriptions === undefined){
+    DB.preinscriptions = null;
+    sb.from('preinscriptions').select('*').eq('ecole_id', session.ecoleId).order('created_at', { ascending:false }).limit(200)
+      .then(({ data }) => { DB.preinscriptions = rowsToCamel(data || []); if(ui.currentView === 'eleves') renderView('eleves'); });
+  }
+  const tous = ui.filters.preinscriptionsToutes;
+  const liste = (DB.preinscriptions || []).filter(p => tous || p.statut === 'nouvelle' || p.statut === 'contactee');
+  const nouvelles = (DB.preinscriptions || []).filter(p => p.statut === 'nouvelle').length;
+  return `<div class="panel">
+    <div class="panel-head"><div><h2>📥 Pré-inscriptions en ligne${nouvelles ? ` <span class="badge amber">${nouvelles} nouvelle(s)</span>` : ''}</h2><div class="sub">Les familles remplissent le formulaire public ; rappelez-les puis « Inscrire » pour créer la fiche.</div></div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;"><button class="btn sm" onclick="partagerPreinscription()">📝 Lien à partager</button>
+      ${(DB.preinscriptions || []).length ? `<button class="btn secondary sm" onclick="ui.filters.preinscriptionsToutes=${!tous}; renderView('eleves')">${tous ? 'En cours seulement' : 'Tout afficher'}</button>` : ''}</div></div>
+    ${DB.preinscriptions === null ? '<div class="hint">Chargement…</div>' : !liste.length ? '<div class="hint">Aucune demande en cours. Partagez le lien pour recevoir des pré-inscriptions.</div>' : `<div class="table-wrap"><table>
+      <thead><tr><th>Enfant</th><th>Parent</th><th>Statut</th><th></th></tr></thead>
+      <tbody>${liste.map(p => { const st = STATUTS_PREINSCRIPTION[p.statut] || ['', '']; const tels = telephonesWhatsapp(p.parentTel); return `<tr>
+        <td><strong>${escapeHtml(p.enfantPrenom)} ${escapeHtml(p.enfantNom)}</strong><br><span class="hint">${p.classeSouhaitee ? escapeHtml(p.classeSouhaitee) + ' · ' : ''}${p.dateNaissance ? 'né(e) le ' + fmtDate(p.dateNaissance) + ' · ' : ''}reçue le ${fmtDate(String(p.createdAt).slice(0, 10))}</span>${p.message ? `<br><span class="hint">« ${escapeHtml(p.message)} »</span>` : ''}</td>
+        <td>${escapeHtml(p.parentNom)}<br><a href="tel:${escapeHtml(p.parentTel.replace(/[^\d+]/g, ''))}">${escapeHtml(p.parentTel)}</a></td>
+        <td><span class="badge ${st[1]}">${st[0]}</span></td>
+        <td style="white-space:nowrap;">
+          ${tels.length ? `<a class="btn secondary sm" target="_blank" rel="noopener" onclick="statutPreinscription('${p.id}','contactee', true)" href="https://wa.me/${tels[0]}?text=${encodeURIComponent(`Bonjour ${p.parentNom}, ici ${DB.meta?.nomEcole || 'l’école'}. Nous avons bien reçu la pré-inscription de ${p.enfantPrenom}. `)}">📲</a>` : ''}
+          ${p.statut !== 'inscrite' ? `<button class="btn sm" onclick="inscrireDepuisPreinscription('${p.id}')">Inscrire</button>` : ''}
+          ${p.statut === 'nouvelle' || p.statut === 'contactee' ? `<button class="btn secondary sm" title="Sans suite" onclick="statutPreinscription('${p.id}','refusee')">✕</button>` : ''}
+        </td></tr>`; }).join('')}</tbody></table></div>`}
+  </div>`;
+}
+async function statutPreinscription(id, statut, silencieux){
+  const p = (DB.preinscriptions || []).find(x => x.id === id);
+  if(!p || (silencieux && p.statut !== 'nouvelle')) return;
+  if(statut === 'refusee' && !confirm('Classer cette demande sans suite ?')) return;
+  try{
+    const { error } = await sb.from('preinscriptions').update({ statut }).eq('id', id);
+    if(error) throw error;
+    p.statut = statut;
+    if(!silencieux) toast('Demande mise à jour');
+    renderView('eleves');
+  }catch(e){ alert('Erreur : ' + e.message); }
+}
+function inscrireDepuisPreinscription(id){
+  const p = (DB.preinscriptions || []).find(x => x.id === id);
+  if(!p) return;
+  openEleveForm(null);
+  ui._preinscriptionId = id;
+  const f = document.getElementById('formEleve');
+  if(!f) return;
+  const mettre = (nom, v) => { const c = f.querySelector(`[name="${nom}"]`); if(c && v) c.value = v; };
+  mettre('prenom', p.enfantPrenom); mettre('nom', p.enfantNom); mettre('sexe', p.sexe); mettre('dateNaissance', p.dateNaissance);
+  mettre('parentNom', p.parentNom); mettre('parentTel', p.parentTel);
+  const classe = DB.classes.find(c => c.nom === p.classeSouhaitee);
+  if(classe) mettre('classeId', classe.id);
+  toast('Fiche pré-remplie : vérifiez puis enregistrez');
+}
+/* =====================================================================
    MENU DE LA CANTINE (schema.sql section 70)
    ===================================================================== */
 function joursSemaineCantine(decalage){
@@ -4473,6 +4549,7 @@ function renderEleveListe(){
 
   return `
   <div class="view active">
+    ${renderPreinscriptions()}
     ${renderCorrectionsParents()}
     ${renderFichesAVerifier()}
     <div class="panel">
@@ -4670,6 +4747,7 @@ function appliquerRemplissage(formId, resultat){
 }
 
 function openEleveForm(id){
+  ui._preinscriptionId = null; // remis par inscrireDepuisPreinscription() juste après, le cas échéant
   const e = id ? eleveById(id) : null;
   openModal(e ? "Modifier l'élève" : 'Nouvel élève', `
     <form id="formEleve" onsubmit="return handleSaveEleve(event)">
@@ -4788,6 +4866,8 @@ async function handleSaveEleve(ev){
       DB.eleves[idx] = {...DB.eleves[idx], ...patch};
     } else {
       DB.eleves.push(await insererAvecMatricule('eleves', patch, 'EL-', 4));
+      // Inscription faite depuis une pré-inscription en ligne : on la marque « inscrite »
+      if(ui._preinscriptionId){ const pid = ui._preinscriptionId; ui._preinscriptionId = null; await statutPreinscription(pid, 'inscrite', false).catch(() => {}); }
     }
     closeModal(); toast('Élève enregistré');
     renderView('eleves');

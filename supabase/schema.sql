@@ -2645,3 +2645,65 @@ drop policy if exists "gestion menus_cantine" on menus_cantine;
 create policy "gestion menus_cantine" on menus_cantine for all
   using (ecole_id = mon_ecole_id() and est_perso_admin())
   with check (ecole_id = mon_ecole_id() and est_perso_admin());
+
+-- =====================================================================
+-- 71. PRÉ-INSCRIPTION EN LIGNE (2026-10-13)
+-- =====================================================================
+-- Page publique preinscription.html?ecole=… : une famille (sans compte)
+-- envoie une demande. Écriture UNIQUEMENT par la fonction
+-- preinscrire() (contrôles + limites anti-abus) ; lecture et suivi par
+-- l'administration de l'école.
+create table if not exists preinscriptions (
+  id uuid primary key default gen_random_uuid(),
+  ecole_id uuid not null references ecoles(id) on delete cascade,
+  enfant_prenom text not null check (char_length(enfant_prenom) between 1 and 80),
+  enfant_nom text not null check (char_length(enfant_nom) between 1 and 80),
+  date_naissance date,
+  sexe text check (sexe in ('M','F')),
+  classe_souhaitee text not null default '' check (char_length(classe_souhaitee) <= 80),
+  parent_nom text not null check (char_length(parent_nom) between 2 and 120),
+  parent_tel text not null check (char_length(parent_tel) between 8 and 30),
+  message text not null default '' check (char_length(message) <= 500),
+  statut text not null default 'nouvelle' check (statut in ('nouvelle','contactee','inscrite','refusee')),
+  created_at timestamptz not null default now()
+);
+create index if not exists preinscriptions_idx on preinscriptions(ecole_id, created_at desc);
+alter table preinscriptions enable row level security;
+drop policy if exists "admin preinscriptions" on preinscriptions;
+create policy "admin preinscriptions" on preinscriptions for all
+  using (ecole_id = mon_ecole_id() and est_perso_admin())
+  with check (ecole_id = mon_ecole_id() and est_perso_admin());
+
+-- Informations publiques minimales pour afficher le formulaire
+create or replace function ecole_preinscription(p_ecole uuid)
+returns table (nom_ecole text, logo_url text, classes text[])
+language sql stable security definer set search_path = public as $$
+  select e.nom_ecole, coalesce(e.logo_url, ''),
+    coalesce((select array_agg(c.nom order by c.nom) from classes c where c.ecole_id = e.id), '{}')
+  from ecoles e where e.id = p_ecole and e.actif = true
+$$;
+revoke all on function ecole_preinscription(uuid) from public;
+grant execute on function ecole_preinscription(uuid) to anon, authenticated;
+
+create or replace function preinscrire(p_ecole uuid, p_enfant_prenom text, p_enfant_nom text, p_date_naissance date,
+  p_sexe text, p_classe text, p_parent_nom text, p_parent_tel text, p_message text)
+returns boolean
+language plpgsql security definer set search_path = public as $$
+declare v_tel text := regexp_replace(coalesce(p_parent_tel, ''), '\D', '', 'g');
+begin
+  if not exists (select 1 from ecoles where id = p_ecole and actif = true) then raise exception 'École introuvable'; end if;
+  if length(v_tel) < 8 then raise exception 'Numéro de téléphone invalide'; end if;
+  if p_date_naissance is not null and (p_date_naissance > current_date or p_date_naissance < current_date - interval '25 years') then
+    raise exception 'Date de naissance invalide'; end if;
+  -- Limites anti-abus : 3 demandes par numéro et par jour, 40 par école et par heure
+  if (select count(*) from preinscriptions where ecole_id = p_ecole and regexp_replace(parent_tel, '\D', '', 'g') = v_tel and created_at > now() - interval '1 day') >= 3
+    then raise exception 'Vous avez déjà envoyé plusieurs demandes aujourd’hui. L’école va vous rappeler.'; end if;
+  if (select count(*) from preinscriptions where ecole_id = p_ecole and created_at > now() - interval '1 hour') >= 40
+    then raise exception 'Trop de demandes en ce moment, réessayez plus tard.'; end if;
+  insert into preinscriptions(ecole_id, enfant_prenom, enfant_nom, date_naissance, sexe, classe_souhaitee, parent_nom, parent_tel, message)
+  values (p_ecole, trim(p_enfant_prenom), upper(trim(p_enfant_nom)), p_date_naissance, nullif(p_sexe, ''), left(trim(coalesce(p_classe, '')), 80),
+    trim(p_parent_nom), trim(p_parent_tel), left(trim(coalesce(p_message, '')), 500));
+  return true;
+end $$;
+revoke all on function preinscrire(uuid, text, text, date, text, text, text, text, text) from public;
+grant execute on function preinscrire(uuid, text, text, date, text, text, text, text, text) to anon, authenticated;

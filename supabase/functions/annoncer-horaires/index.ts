@@ -173,6 +173,27 @@ async function resumeHebdo(admin: any, aujourdhui: string, minuteActuelle: numbe
   return n;
 }
 
+// Nouvelles pré-inscriptions en ligne (schema.sql section 71) : notification
+// au secrétariat et à la direction, une seule fois par demande.
+// deno-lint-ignore no-explicit-any
+async function notifierPreinscriptions(admin: any, aujourdhui: string): Promise<number> {
+  const depuis = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+  const { data: nouvelles } = await admin.from('preinscriptions').select('id, ecole_id, enfant_prenom, enfant_nom, classe_souhaitee')
+    .eq('statut', 'nouvelle').gte('created_at', depuis);
+  let n = 0;
+  for (const p of (nouvelles || []) as { id: string; ecole_id: string; enfant_prenom: string; enfant_nom: string; classe_souhaitee: string }[]) {
+    const { error: deja } = await admin.from('rappels_envoyes').insert({ ecole_id: p.ecole_id, type: `preinsc|${p.id}`, date: aujourdhui });
+    if (deja) continue;
+    const { data: comptes } = await admin.from('profiles').select('id').eq('ecole_id', p.ecole_id).in('role', ['secretariat', 'direction']);
+    await envoyerPush(admin, (comptes || []).map((c: { id: string }) => c.id), {
+      title: '📥 Nouvelle pré-inscription', url: './index.html', tag: `preinsc-${p.id}`,
+      body: `${p.enfant_prenom} ${p.enfant_nom}${p.classe_souhaitee ? ' (' + p.classe_souhaitee + ')' : ''} — à rappeler. Voir Élèves & Inscriptions.`,
+    });
+    n++;
+  }
+  return n;
+}
+
 // Rappel des devoirs (schema.sql section 64) : à 18h, la veille d'un jour
 // de classe, les parents de chaque classe reçoivent la liste des devoirs
 // prévus pour le lendemain. Une seule fois par classe et par jour.
@@ -360,6 +381,10 @@ Deno.serve(async (req) => {
       try { nbEnvoyees += await relancesScolarite(supabaseAdmin, dateDuJour, minuteActuelle); }
       catch (e) { erreurs.push(`relances: ${(e as Error).message}`); }
     }
+
+    // Pré-inscriptions en ligne — à chaque passage
+    try { nbEnvoyees += await notifierPreinscriptions(supabaseAdmin, dateDuJour); }
+    catch (e) { erreurs.push(`preinscriptions: ${(e as Error).message}`); }
 
     // Vœux d'anniversaire — tous les jours à 8h
     try { nbEnvoyees += await voeuxAnniversaire(supabaseAdmin, dateDuJour, minuteActuelle); }
