@@ -449,6 +449,7 @@ async function loadAllFromSupabase(){
       niveaux: ecole.niveaux != null ? ecole.niveaux : ['prescolaire','primaire'], // [] explicite (nouvelle école vidée) ≠ null (colonne jamais définie)
       heureArriveeAttendue: (ecole.heureArriveeAttendue || '07:30:00').slice(0,5),
       geofenceLatitude: ecole.geofenceLatitude ?? null,
+      scolariteVisibleParents: ecole.scolariteVisibleParents === true,
       geofenceLongitude: ecole.geofenceLongitude ?? null,
       geofenceRayonMetres: ecole.geofenceRayonMetres ?? 100,
       actif: ecole.actif !== false,
@@ -537,12 +538,26 @@ async function chargerDBParent(){
   if(tableauHonneur.error) throw tableauHonneur.error;
   if(actualitesAffichage.error) throw actualitesAffichage.error;
   const ecole = rowToCamel(ecoleRow.data);
+  // Scolarité (reste à payer, reçus) : seulement si l'école l'a rendue visible
+  let echeancesScolarite = [], paiementsScolarite = [];
+  if(ecole.scolariteVisibleParents === true){
+    try{
+      const [ech, pai] = await Promise.all([
+        sb.from('echeances_scolarite').select('*').eq('ecole_id', session.ecoleId).order('ordre'),
+        sb.from('paiements_scolarite').select('*').eq('ecole_id', session.ecoleId).order('date', { ascending:false }),
+      ]);
+      echeancesScolarite = rowsToCamel(ech.data || []);
+      paiementsScolarite = rowsToCamel(pai.data || []);
+    }catch(_e){ /* la console s'affiche sans ce bloc */ }
+  }
   return {
     meta: {
       nomEcole: ecole.nomEcole, adresse: ecole.adresse, telephone: ecole.telephone,
       anneeScolaire: ecole.anneeScolaire, logo: ecole.logoUrl || '',
       actif: ecole.actif !== false,
+      scolariteVisibleParents: ecole.scolariteVisibleParents === true,
     },
+    echeancesScolarite, paiementsScolarite,
     eleves: rowsToCamel(eleves.data),
     classes: rowsToCamel(classesRows.data),
     presencesSemaine,

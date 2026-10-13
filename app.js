@@ -1521,6 +1521,24 @@ function renderAlerteAbsence(enfants){
     <button type="button" class="btn sm" onclick="event.stopPropagation(); toggleBulle('notif')">Voir</button>
   </div>`).join('');
 }
+// Console parent : scolarité de l'enfant (si l'école l'a rendue visible)
+function renderScolariteEnfant(e){
+  if(!DB.meta?.scolariteVisibleParents) return '';
+  const info = scolariteEleveParEcheance(e.id);
+  if(!info.total) return '';
+  const recus = (DB.paiementsScolarite || []).filter(p => p.eleveId === e.id);
+  const pct = Math.min(100, Math.round(100 * info.totalPaye / info.total));
+  const prochaine = info.detail.find(d => d.statut !== 'paye');
+  return `<div class="enfant-scolarite">
+    <div class="es-tete"><strong>Scolarité ${escapeHtml(DB.meta?.anneeScolaire || '')}</strong><span>${fmtFCFA(info.totalPaye)} / ${fmtFCFA(info.total)}</span></div>
+    <div class="mer-barre" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><div style="width:${pct}%"></div></div>
+    <div class="es-reste">${info.reste ? `Reste à payer : <strong>${fmtFCFA(info.reste)}</strong>${prochaine ? ` · prochaine tranche : ${escapeHtml(prochaine.label)}` : ''}` : '✅ Scolarité soldée, merci !'}</div>
+    <details class="es-detail"><summary>Voir les tranches${recus.length ? ' et les paiements' : ''}</summary>
+      <ul>${info.detail.map(d => `<li><span>${escapeHtml(d.label)}</span><span class="badge ${d.statut === 'paye' ? 'green' : d.statut === 'partiel' ? 'amber' : 'gray'}">${d.statut === 'paye' ? 'payé' : d.statut === 'partiel' ? fmtFCFA(d.paye) + ' / ' + fmtFCFA(d.montant) : fmtFCFA(d.montant)}</span></li>`).join('')}</ul>
+      ${recus.length ? `<div class="hint" style="margin:6px 0 2px;">Paiements reçus :</div><ul>${recus.map(p => `<li><span>${fmtDate(p.date)} — ${escapeHtml(p.tranche || '')}</span><span>${fmtFCFA(p.montant)} (${escapeHtml(p.modePaiement || '')})</span></li>`).join('')}</ul>` : ''}
+    </details>
+  </div>`;
+}
 function renderFicheEnfant(e){
   const ini = initials(e.prenom, e.nom);
   return `<article class="enfant-carte">
@@ -1537,6 +1555,7 @@ function renderFicheEnfant(e){
       <div><dt>Inscription</dt><dd>${fmtDate(e.dateInscription)}</dd></div>
     </dl>
     ${renderPresenceSemaine(e)}
+    ${renderScolariteEnfant(e)}
   </article>`;
 }
 function renderParentDashboard(){
@@ -2078,7 +2097,7 @@ const VERSIONS = [
     commun: [],
     parent: [ 'Nouvel onglet « Vie de l’école » : photos et vidéos des événements, J’aime, Bravo et commentaires.' ],
     portier: [],
-    personnel: [ 'Direction : liste « Mise en route de l’école » sur le tableau de bord, avec ce qui reste à faire.', 'Nouveau menu « Vie de l’école » : publiez les photos et vidéos des événements pour les parents (toute l’école ou certaines classes).' ],
+    personnel: [ 'Paramètres → Scolarité : montants et tranches de paiement propres à chaque classe, copie vers d’autres classes, affichage aux parents au choix.', 'Direction : liste « Mise en route de l’école » sur le tableau de bord, avec ce qui reste à faire.', 'Nouveau menu « Vie de l’école » : publiez les photos et vidéos des événements pour les parents (toute l’école ou certaines classes).' ],
   } },
   { version: '2026.10.12-2', nouveautes: {
     commun: [],
@@ -5077,9 +5096,20 @@ async function deleteProgramme(id){
 /* ---------------------------------------------------------------------
    12. COMPTABILITÉ GÉNÉRALE
    --------------------------------------------------------------------- */
+// Grille de scolarité d'une classe : ses propres tranches si elle en a,
+// sinon la grille commune (tranches sans classe) — schema.sql section 55.
+function echeancesDeClasse(classeId){
+  const toutes = DB.echeancesScolarite || [];
+  const propres = toutes.filter(e => e.classeId === classeId);
+  return (propres.length ? propres : toutes.filter(e => !e.classeId)).slice().sort((a,b)=>(a.ordre-b.ordre)||(a.dateEcheance||'').localeCompare(b.dateEcheance||''));
+}
+function duAnnuelClasse(classeId){
+  const ech = echeancesDeClasse(classeId);
+  return ech.length ? ech.reduce((s, e) => s + Number(e.montant || 0), 0) : ((DB.fraisScolarite || {})[classeId] || 0);
+}
 function scolariteEleveInfo(eleveId){
   const el = eleveById(eleveId);
-  const du = (el && DB.fraisScolarite[el.classeId]) || 0;
+  const du = el ? duAnnuelClasse(el.classeId) : 0;
   const paye = DB.paiementsScolarite.filter(p=>p.eleveId===eleveId).reduce((s,p)=>s+p.montant,0);
   const solde = Math.max(0, du-paye);
   let statut = 'Impayé';
@@ -5092,17 +5122,18 @@ function scolariteEleveInfo(eleveId){
 // une colonne, avec son propre statut payé/partiel/impayé, plutôt qu'un
 // unique solde global qui ne dit pas QUELLE tranche reste due.
 function scolariteEleveParEcheance(eleveId){
-  const paiements = DB.paiementsScolarite.filter(p=>p.eleveId===eleveId);
+  const paiements = (DB.paiementsScolarite||[]).filter(p=>p.eleveId===eleveId);
   const parTranche = {};
-  paiements.forEach(p=>{ parTranche[p.tranche] = (parTranche[p.tranche]||0) + p.montant; });
-  const echeances = (DB.echeancesScolarite||[]).slice().sort((a,b)=>(a.ordre-b.ordre)||(a.dateEcheance||'').localeCompare(b.dateEcheance||''));
+  paiements.forEach(p=>{ parTranche[p.tranche] = (parTranche[p.tranche]||0) + Number(p.montant||0); });
+  const el = eleveById(eleveId);
+  const echeances = el ? echeancesDeClasse(el.classeId) : [];
   const detail = echeances.map(ech=>{
     const paye = parTranche[ech.label] || 0;
     const statut = ech.montant>0 && paye>=ech.montant ? 'paye' : paye>0 ? 'partiel' : 'impaye';
     return {label:ech.label, montant:ech.montant, paye, statut};
   });
   const total = echeances.reduce((s,e)=>s+e.montant,0);
-  const totalPaye = paiements.reduce((s,p)=>s+p.montant,0);
+  const totalPaye = paiements.reduce((s,p)=>s+Number(p.montant||0),0);
   const reste = Math.max(0, total-totalPaye);
   return {detail, total, totalPaye, reste};
 }
@@ -5272,7 +5303,7 @@ function renderComptaApercu(){
   const resultat = totalRecettes - totalDepenses;
 
   const eleveActifs = DB.eleves.filter(e=>e.statut==='Actif');
-  const totalDu = eleveActifs.reduce((s,e)=> s+(DB.fraisScolarite[e.classeId]||0), 0);
+  const totalDu = eleveActifs.reduce((s,e)=> s+duAnnuelClasse(e.classeId), 0);
   const totalPayeScolarite = DB.paiementsScolarite.reduce((s,p)=>s+p.montant,0);
   const tauxRecouvrement = totalDu ? Math.round(100*Math.min(totalPayeScolarite,totalDu)/totalDu) : 0;
 
@@ -5756,10 +5787,10 @@ function renderComptaScolarite(){
   const classeId = ui.filters.comptaClasse || DB.classes[0].id;
   ui.filters.comptaClasse = classeId;
   const eleves = DB.eleves.filter(e=>e.classeId===classeId && e.statut==='Actif').sort((a,b)=>a.nom.localeCompare(b.nom));
-  const echeances = (DB.echeancesScolarite||[]).slice().sort((a,b)=>(a.ordre-b.ordre)||(a.dateEcheance||'').localeCompare(b.dateEcheance||''));
+  const echeances = echeancesDeClasse(classeId);
   const grilleActive = echeances.length > 0;
 
-  const du = DB.fraisScolarite[classeId] || 0;
+  const du = duAnnuelClasse(classeId);
   let totalDu=0, totalPaye=0;
 
   const rows = eleves.map(e=>{
@@ -5829,9 +5860,10 @@ function renderComptaScolarite(){
     </div>`;
 }
 
-function optionsEcheancesScolarite(selectedLabel){
-  if((DB.echeancesScolarite||[]).length){
-    return DB.echeancesScolarite.map(e=>`<option value="${escapeHtml(e.label)}" data-montant="${e.montant}" ${selectedLabel===e.label?'selected':''}>${escapeHtml(e.label)} — ${fmtFCFA(e.montant)}</option>`).join('');
+function optionsEcheancesScolarite(selectedLabel, classeId){
+  const grille = echeancesDeClasse(classeId);
+  if(grille.length){
+    return grille.map(e=>`<option value="${escapeHtml(e.label)}" data-montant="${e.montant}" ${selectedLabel===e.label?'selected':''}>${escapeHtml(e.label)} — ${fmtFCFA(e.montant)}</option>`).join('');
   }
   return TRANCHES_SCOLARITE.map(t=>`<option ${selectedLabel===t?'selected':''}>${t}</option>`).join('');
 }
@@ -5848,7 +5880,7 @@ function openPaiementScolariteForm(eleveId, trancheLabel){
     <form onsubmit="return handleSavePaiementScolarite(event,'${eleveId}')">
       <div class="form-grid">
         <div class="field"><label>Montant (${DEVISE})</label><input type="number" id="paiementMontant" name="montant" min="500" step="500" required value="${montantDefaut}"></div>
-        <div class="field"><label>Échéance / Tranche</label><select name="tranche" onchange="const o=this.selectedOptions[0]; if(o && o.dataset.montant) document.getElementById('paiementMontant').value = o.dataset.montant;">${optionsEcheancesScolarite(trancheLabel)}</select></div>
+        <div class="field"><label>Échéance / Tranche</label><select name="tranche" onchange="const o=this.selectedOptions[0]; if(o && o.dataset.montant) document.getElementById('paiementMontant').value = o.dataset.montant;">${optionsEcheancesScolarite(trancheLabel, e?.classeId)}</select></div>
         <div class="field"><label>Date</label><input type="date" name="date" value="${todayISO()}"></div>
         <div class="field"><label>Mode de paiement</label><select name="modePaiement">${MODES_PAIEMENT.map(m=>`<option>${m}</option>`).join('')}</select></div>
       </div>
@@ -5889,7 +5921,7 @@ function openModifierPaiementScolariteForm(paiementId){
     <form onsubmit="return handleModifierPaiementScolarite(event,'${paiementId}')">
       <div class="form-grid">
         <div class="field"><label>Montant (${DEVISE})</label><input type="number" name="montant" min="500" step="500" required value="${p.montant}"></div>
-        <div class="field"><label>Échéance / Tranche</label><select name="tranche">${optionsEcheancesScolarite(p.tranche)}</select></div>
+        <div class="field"><label>Échéance / Tranche</label><select name="tranche">${optionsEcheancesScolarite(p.tranche, eleveById(p.eleveId)?.classeId)}</select></div>
         <div class="field"><label>Date</label><input type="date" name="date" value="${p.date}"></div>
         <div class="field"><label>Mode de paiement</label><select name="modePaiement">${MODES_PAIEMENT.map(m=>`<option ${p.modePaiement===m?'selected':''}>${m}</option>`).join('')}</select></div>
       </div>
@@ -7114,7 +7146,7 @@ function renderParametres(){
     </div>
 
     <div class="panel">
-      <div class="panel-head"><div><h2>Échéances de scolarité</h2><div class="sub">Définissez les versements attendus (ex : "1er versement — Novembre — 50 000 F") — utilisés dans le formulaire d'enregistrement des paiements</div></div></div>
+      <div class="panel-head"><div><h2>🎓 Scolarité et tranches de paiement</h2><div class="sub">Montants par classe, tranches (inscription, versements) et dates limites — utilisés pour les paiements, les reçus, les impayés et l’application des parents</div></div></div>
       ${renderEcheancesScolarite()}
     </div>
 
@@ -7435,46 +7467,96 @@ async function copierLienPaiement(url){
     if(input){ input.select(); document.execCommand('copy'); toast('Lien copié'); }
   }
 }
+// Paramètres → Scolarité : chaque école règle ses montants par classe et ses
+// tranches de paiement (grille propre à une classe, ou grille commune).
+function grilleSource(classeId){
+  const toutes = DB.echeancesScolarite || [];
+  if(toutes.some(e => e.classeId === classeId)) return 'propre';
+  if(toutes.some(e => !e.classeId)) return 'commune';
+  return 'simple';
+}
 function renderEcheancesScolarite(){
-  const list = (DB.echeancesScolarite||[]).slice().sort((a,b)=> (a.ordre-b.ordre) || (a.dateEcheance||'').localeCompare(b.dateEcheance||''));
-  const rows = list.map(e=>`
-    <tr>
-      <td>${escapeHtml(e.label)}</td>
-      <td>${fmtFCFA(e.montant)}</td>
-      <td>${e.dateEcheance ? fmtDate(e.dateEcheance) : '—'}</td>
-      <td style="white-space:nowrap;">
-        <button class="icon-btn" title="Modifier" onclick="openEcheanceForm('${e.id}')">✏️</button>
-        <button class="icon-btn danger" title="Supprimer" onclick="deleteEcheance('${e.id}')">🗑️</button>
-      </td>
-    </tr>`).join('');
+  const portee = ui.filters.grillePortee || '';            // '' = grille commune, sinon id de classe
+  const liste = (DB.echeancesScolarite||[]).filter(e => (e.classeId || '') === portee)
+    .sort((a,b)=>(a.ordre-b.ordre)||(a.dateEcheance||'').localeCompare(b.dateEcheance||''));
+  const total = liste.reduce((t, e) => t + Number(e.montant || 0), 0);
+  const nomPortee = portee ? classeName(portee) : 'Grille commune (toutes les classes sans grille propre)';
+  const visible = DB.meta?.scolariteVisibleParents === true;
+  const recap = DB.classes.map(c => {
+    const src = grilleSource(c.id), du = duAnnuelClasse(c.id), fraisFiche = (DB.fraisScolarite||{})[c.id] || 0;
+    const ecart = src !== 'simple' && fraisFiche && fraisFiche !== du;
+    return `<tr>
+      <td>${escapeHtml(c.nom)}</td>
+      <td><strong>${fmtFCFA(du)}</strong>${ecart ? `<div class="hint" style="margin:0;color:var(--warning);">⚠️ différent des frais notés pour la classe (${fmtFCFA(fraisFiche)})</div>` : ''}</td>
+      <td>${src === 'propre' ? '<span class="badge green">grille de la classe</span>' : src === 'commune' ? '<span class="badge blue">grille commune</span>' : '<span class="badge gray">montant annuel seul</span>'}</td>
+      <td><button class="btn secondary sm" onclick="ui.filters.grillePortee='${c.id}'; renderView('parametres')">${src === 'propre' ? 'Modifier' : 'Créer sa grille'}</button></td>
+    </tr>`;
+  }).join('');
   return `
-    ${list.length===0 ? `<div class="hint" style="margin-bottom:14px;">Aucune échéance configurée — le formulaire de paiement utilise pour l'instant une liste générique (Inscription, Tranche 1, 2, 3…).</div>` : `
+    <div class="section-note">💡 Créez les tranches de paiement de <strong>chaque classe</strong> (frais d’inscription, 1er versement…). Une classe sans grille propre utilise la <strong>grille commune</strong>. Le total des tranches devient le montant annuel de la classe.</div>
+    <div class="table-wrap" style="margin-bottom:16px;"><table>
+      <thead><tr><th>Classe</th><th>Scolarité annuelle</th><th>Tranches utilisées</th><th></th></tr></thead>
+      <tbody>${recap}</tbody>
+    </table></div>
+
+    <div class="field"><label>Tranches de :</label>
+      <select onchange="ui.filters.grillePortee=this.value; renderView('parametres')">
+        <option value="" ${!portee?'selected':''}>Grille commune</option>
+        ${DB.classes.map(c => `<option value="${c.id}" ${portee===c.id?'selected':''}>${escapeHtml(c.nom)}${grilleSource(c.id)==='propre' ? ' ✓' : ''}</option>`).join('')}
+      </select></div>
+    <h4 style="margin:6px 0;">${escapeHtml(nomPortee)} — total ${fmtFCFA(total)}</h4>
+    ${liste.length===0 ? `<div class="hint" style="margin-bottom:14px;">${portee ? 'Cette classe n’a pas encore de grille propre : elle utilise la grille commune (ou son montant annuel).' : 'Aucune tranche dans la grille commune.'}</div>` : `
     <div class="table-wrap" style="margin-bottom:14px;"><table>
-      <thead><tr><th>Libellé</th><th>Montant</th><th>Échéance</th><th>Actions</th></tr></thead>
-      <tbody>${rows}</tbody>
+      <thead><tr><th>Tranche</th><th>Montant</th><th>Date limite</th><th>Actions</th></tr></thead>
+      <tbody>${liste.map(e=>`<tr>
+        <td>${escapeHtml(e.label)}</td><td>${fmtFCFA(e.montant)}</td><td>${e.dateEcheance ? fmtDate(e.dateEcheance) : '—'}</td>
+        <td style="white-space:nowrap;"><button class="icon-btn" title="Modifier" onclick="openEcheanceForm('${e.id}')">✏️</button>
+          <button class="icon-btn danger" title="Supprimer" onclick="deleteEcheance('${e.id}')">🗑️</button></td></tr>`).join('')}</tbody>
     </table></div>`}
-    <button class="btn secondary" onclick="openEcheanceForm()">+ Ajouter une échéance</button>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;">
+      <button class="btn secondary" onclick="openEcheanceForm()">+ Ajouter une tranche</button>
+      ${liste.length ? `<button class="btn secondary" onclick="ouvrirCopieGrille()">Copier ces tranches vers d’autres classes</button>` : ''}
+      ${portee && liste.length ? `<button class="btn secondary" onclick="supprimerGrilleClasse('${portee}')">Revenir à la grille commune</button>` : ''}
+    </div>
+
+    <div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--border);">
+      <label style="display:flex;align-items:center;gap:10px;"><input type="checkbox" ${visible?'checked':''} onchange="basculerScolariteParents(this.checked)">
+        <strong>Montrer la scolarité aux parents</strong> (tranches, payé, reste à payer, dans leur application)</label>
+      <div class="hint" style="margin:4px 0 0;">Activez seulement quand les montants ci-dessus sont justes et que les paiements sont enregistrés dans EcoMaZ.</div>
+    </div>
   `;
 }
 function openEcheanceForm(id){
   const e = id ? (DB.echeancesScolarite||[]).find(x=>x.id===id) : null;
-  openModal(e ? "Modifier l'échéance" : 'Nouvelle échéance', `
+  const portee = e ? (e.classeId || '') : (ui.filters.grillePortee || '');
+  openModal(e ? 'Modifier la tranche' : 'Nouvelle tranche', `
     <form onsubmit="return handleSaveEcheance(event,'${id||''}')">
+      <div class="hint" style="margin-top:0;">Pour : <strong>${escapeHtml(portee ? classeName(portee) : 'grille commune')}</strong></div>
+      <input type="hidden" name="classeId" value="${portee}">
       <div class="form-grid">
-        <div class="field span2"><label>Libellé</label><input name="label" required placeholder="Ex : 1er versement" value="${e?escapeHtml(e.label):''}"></div>
+        <div class="field span2"><label>Libellé</label><input name="label" required placeholder="Ex : Frais d’inscription, 1er versement" value="${e?escapeHtml(e.label):''}"></div>
         <div class="field"><label>Montant (${DEVISE})</label><input type="number" name="montant" min="0" step="500" required value="${e?e.montant:50000}"></div>
-        <div class="field"><label>Échéance (optionnel)</label><input type="date" name="dateEcheance" value="${e&&e.dateEcheance?e.dateEcheance:''}"></div>
+        <div class="field"><label>Date limite (facultatif)</label><input type="date" name="dateEcheance" value="${e&&e.dateEcheance?e.dateEcheance:''}"></div>
       </div>
       <div class="form-actions"><button type="button" class="btn secondary" onclick="closeModal()">Annuler</button><button type="submit" class="btn">Enregistrer</button></div>
     </form>`);
 }
+// Le total des tranches d'une classe devient son montant annuel (cohérence des écrans)
+async function synchroniserFraisClasse(classeId){
+  if(!classeId) return;
+  const total = (DB.echeancesScolarite||[]).filter(e => e.classeId === classeId).reduce((t, e) => t + Number(e.montant||0), 0);
+  if(!total) return;
+  try{ await sb.from('classes').update({ frais_scolarite: total }).eq('id', classeId).eq('ecole_id', session.ecoleId); DB.fraisScolarite[classeId] = total; }catch(_e){}
+}
 async function handleSaveEcheance(ev, id){
   ev.preventDefault();
   const fd = new FormData(ev.target);
+  const classeId = fd.get('classeId') || null;
   const patch = {
     label: fd.get('label').trim(),
     montant: Math.max(0, parseInt(fd.get('montant'))||0),
     dateEcheance: fd.get('dateEcheance') || null,
+    classeId,
   };
   try{
     if(id){
@@ -7482,23 +7564,69 @@ async function handleSaveEcheance(ev, id){
       const idx = DB.echeancesScolarite.findIndex(e=>e.id===id);
       DB.echeancesScolarite[idx] = {...DB.echeancesScolarite[idx], ...patch};
     } else {
-      patch.ordre = (DB.echeancesScolarite||[]).length;
+      patch.ordre = (DB.echeancesScolarite||[]).filter(e => (e.classeId||null) === classeId).length;
       DB.echeancesScolarite = DB.echeancesScolarite || [];
       DB.echeancesScolarite.push(await dbInsert('echeances_scolarite', patch));
     }
-    closeModal(); toast('Échéance enregistrée');
+    await synchroniserFraisClasse(classeId);
+    closeModal(); toast('Tranche enregistrée');
     renderView('parametres');
-  }catch(e){ alert('Erreur : ' + e.message + (e.message?.includes('does not exist') ? " — la migration du module Pointage/Échéances n'a peut-être pas été appliquée." : '')); }
+  }catch(e){ alert('Erreur : ' + e.message); }
   return false;
 }
 async function deleteEcheance(id){
-  if(!confirm('Supprimer cette échéance ?')) return;
+  if(!confirm('Supprimer cette tranche ?')) return;
   try{
+    const ech = DB.echeancesScolarite.find(e => e.id === id);
     await dbDelete('echeances_scolarite', id);
     DB.echeancesScolarite = DB.echeancesScolarite.filter(e=>e.id!==id);
-    toast('Échéance supprimée');
+    await synchroniserFraisClasse(ech?.classeId);
+    toast('Tranche supprimée');
     renderView('parametres');
   }catch(e){ alert('Erreur : ' + e.message); }
+}
+function ouvrirCopieGrille(){
+  const portee = ui.filters.grillePortee || '';
+  openModal('Copier les tranches', `
+    <p class="hint" style="margin-top:0;">Les tranches de <strong>${escapeHtml(portee ? classeName(portee) : 'la grille commune')}</strong> remplaceront celles des classes cochées (vous pourrez ensuite ajuster les montants).</p>
+    <div style="display:flex;flex-wrap:wrap;gap:10px;">${DB.classes.filter(c => c.id !== portee).map(c => `<label style="display:flex;align-items:center;gap:6px;"><input type="checkbox" class="copieClasse" value="${c.id}"> ${escapeHtml(c.nom)}</label>`).join('')}</div>
+    <div class="form-actions"><button type="button" class="btn secondary" onclick="closeModal()">Annuler</button><button type="button" class="btn" onclick="copierGrille()">Copier</button></div>`);
+}
+async function copierGrille(){
+  const portee = ui.filters.grillePortee || '';
+  const cibles = $$('.copieClasse').filter(c => c.checked).map(c => c.value);
+  if(!cibles.length) return alert('Cochez au moins une classe.');
+  const modele = (DB.echeancesScolarite||[]).filter(e => (e.classeId || '') === portee);
+  try{
+    for(const cid of cibles){
+      const { error: errDel } = await sb.from('echeances_scolarite').delete().eq('ecole_id', session.ecoleId).eq('classe_id', cid);
+      if(errDel) throw errDel;
+      const lignes = modele.map((e, i) => ({ label: e.label, montant: e.montant, date_echeance: e.dateEcheance || null, ordre: i, classe_id: cid, ecole_id: session.ecoleId }));
+      const { data, error } = await sb.from('echeances_scolarite').insert(lignes).select();
+      if(error) throw error;
+      DB.echeancesScolarite = DB.echeancesScolarite.filter(e => e.classeId !== cid).concat(rowsToCamel(data));
+      await synchroniserFraisClasse(cid);
+    }
+    closeModal(); toast(`Tranches copiées vers ${cibles.length} classe(s)`); renderView('parametres');
+  }catch(e){ alert('Erreur : ' + e.message); }
+}
+async function supprimerGrilleClasse(classeId){
+  if(!confirm(`Supprimer la grille propre de ${classeName(classeId)} ? La classe utilisera la grille commune.`)) return;
+  try{
+    const { error } = await sb.from('echeances_scolarite').delete().eq('ecole_id', session.ecoleId).eq('classe_id', classeId);
+    if(error) throw error;
+    DB.echeancesScolarite = DB.echeancesScolarite.filter(e => e.classeId !== classeId);
+    toast('Grille de la classe supprimée'); renderView('parametres');
+  }catch(e){ alert('Erreur : ' + e.message); }
+}
+async function basculerScolariteParents(visible){
+  if(visible && !confirm('Les parents verront dans leur application les tranches, ce qui est payé et le reste à payer de leur enfant. Les montants et les paiements sont-ils à jour ?')){ renderView('parametres'); return; }
+  try{
+    const { error } = await sb.from('ecoles').update({ scolarite_visible_parents: visible }).eq('id', session.ecoleId);
+    if(error) throw error;
+    DB.meta.scolariteVisibleParents = visible;
+    toast(visible ? 'Scolarité visible par les parents' : 'Scolarité masquée aux parents');
+  }catch(e){ alert('Erreur : ' + e.message); renderView('parametres'); }
 }
 
 function handleLogoUpload(ev){

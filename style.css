@@ -968,3 +968,11 @@ td:has(> .amount), th.montant{ text-align:right; }
 .mer-liste li .btn{ flex-shrink:0; }
 @media (max-width:560px){ .mer-liste li .btn{ width:100%; margin-left:40px; width:calc(100% - 40px); } }
 .mer-txt span{ font-size:var(--fs-xs, 12px); color:var(--text-dim); }
+
+/* Console parent : scolarité de l'enfant */
+.enfant-scolarite{ margin-top:12px; padding-top:12px; border-top:1px solid var(--em-border, #e3e8e5); }
+.es-tete{ display:flex; justify-content:space-between; gap:8px; font-size:14px; margin-bottom:6px; }
+.es-reste{ font-size:13px; margin:-4px 0 6px; }
+.es-detail summary{ cursor:pointer; font-weight:700; font-size:13px; color:var(--em-green-900, #14392d); }
+.es-detail ul{ list-style:none; margin:6px 0 0; padding:0; }
+.es-detail li{ display:flex; justify-content:space-between; gap:8px; font-size:13px; padding:4px 0; border-bottom:1px dashed var(--em-border, #e3e8e5); }

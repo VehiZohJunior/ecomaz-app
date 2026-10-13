@@ -2102,3 +2102,23 @@ create policy "publications ajout personnel" on storage.objects for insert to au
 drop policy if exists "publications suppression personnel" on storage.objects;
 create policy "publications suppression personnel" on storage.objects for delete to authenticated
   using (bucket_id = 'publications' and (storage.foldername(name))[1] = mon_ecole_id()::text and est_perso_admin());
+
+-- =====================================================================
+-- 55. SCOLARITÉ PARAMÉTRABLE PAR CLASSE (2026-10-13)
+-- =====================================================================
+-- Demande de Vehi Zoh Junior : chaque école cliente paramètre elle-même
+-- sa scolarité et ses tranches de paiement, qui varient selon la classe.
+-- Une tranche avec classe_id appartient à cette classe ; sans classe_id,
+-- elle fait partie de la « grille commune », utilisée par les classes qui
+-- n'ont pas leur propre grille.
+alter table echeances_scolarite add column if not exists classe_id text references classes(id) on delete cascade;
+create index if not exists echeances_scolarite_classe_idx on echeances_scolarite(ecole_id, classe_id, ordre);
+
+-- L'école décide quand montrer la scolarité aux parents (désactivé par défaut)
+alter table ecoles add column if not exists scolarite_visible_parents boolean not null default false;
+
+-- Un parent lit les paiements de SES enfants (reçus, reste à payer)
+drop policy if exists "lecture paiements_scolarite parent" on paiements_scolarite;
+create policy "lecture paiements_scolarite parent" on paiements_scolarite for select
+  using (est_parent() and exists (
+    select 1 from parents_eleves pe where pe.parent_profile_id = auth.uid() and pe.eleve_id = paiements_scolarite.eleve_id));
