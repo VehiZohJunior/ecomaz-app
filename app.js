@@ -2319,6 +2319,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.10.13-23', nouveautes: {
+    commun: [],
+    parent: [ 'La veille d’une sortie, d’une réunion, d’une fête ou des vacances, rappel à 18h sur votre téléphone (et « pensez à répondre » si l’école attend votre autorisation).' ],
+    portier: [],
+    personnel: [ 'Agenda : rappel automatique aux parents concernés la veille à 18h ; ceux qui n’ont pas répondu à une autorisation sont relancés.' ],
+  } },
   { version: '2026.10.13-22', nouveautes: {
     commun: [],
     parent: [ 'Bulletin : bouton « Imprimer / enregistrer en PDF » pour le garder ou l’envoyer.' ],

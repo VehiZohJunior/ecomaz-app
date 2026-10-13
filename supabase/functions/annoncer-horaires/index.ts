@@ -194,6 +194,48 @@ async function notifierPreinscriptions(admin: any, aujourdhui: string): Promise<
   return n;
 }
 
+// Rappel de l'agenda (schema.sql sections 61 et 67) : à 18h, la veille
+// d'une date de l'agenda, les parents concernés sont prévenus ; ceux qui
+// n'ont pas encore répondu à une autorisation reçoivent « pensez à répondre ».
+// Une seule fois par événement.
+const ICONES_AGENDA: Record<string, string> = { vacances: '🏖️', examen: '📝', reunion: '👪', fete: '🎉', sortie: '🚌', autre: '📌' };
+// deno-lint-ignore no-explicit-any
+async function rappelAgenda(admin: any, aujourdhui: string, minuteActuelle: number): Promise<number> {
+  if (minuteActuelle < 18 * 60 || minuteActuelle > 18 * 60 + 30) return 0;
+  const d = new Date(aujourdhui + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + 1);
+  const demain = d.toISOString().slice(0, 10);
+  const { data: evs } = await admin.from('evenements_agenda').select('id, ecole_id, titre, type, date_fin, classe_ids, demande_reponse').eq('date_debut', demain);
+  let n = 0;
+  for (const ev of (evs || []) as { id: string; ecole_id: string; titre: string; type: string; date_fin: string; classe_ids: string[] | null; demande_reponse: string | null }[]) {
+    const { data: ec } = await admin.from('ecoles').select('nom_ecole, actif').eq('id', ev.ecole_id).single();
+    if (!ec || ec.actif === false) continue;
+    const { error: deja } = await admin.from('rappels_envoyes').insert({ ecole_id: ev.ecole_id, type: `agenda|${ev.id}`, date: aujourdhui });
+    if (deja) continue;
+    let requete = admin.from('eleves').select('id').eq('ecole_id', ev.ecole_id).eq('statut', 'Actif');
+    if (ev.classe_ids && ev.classe_ids.length) requete = requete.in('classe_id', ev.classe_ids);
+    const { data: eleves } = await requete;
+    const ids = (eleves || []).map((e: { id: string }) => e.id);
+    if (!ids.length) continue;
+    const ic = ICONES_AGENDA[ev.type] || '📌';
+    const fin = ev.date_fin !== demain ? ` (jusqu’au ${ev.date_fin.split('-').reverse().slice(0, 2).join('/')})` : '';
+    const base = ev.type === 'vacances' ? `${ic} Demain : ${ev.titre}${fin} — pas de cours.` : `${ic} Demain : ${ev.titre}${fin}.`;
+    let sansReponse: string[] = [];
+    if (ev.demande_reponse) {
+      const { data: reps } = await admin.from('reponses_agenda').select('eleve_id').eq('evenement_id', ev.id);
+      const repondu = new Set((reps || []).map((r: { eleve_id: string }) => r.eleve_id));
+      sansReponse = ids.filter((id: string) => !repondu.has(id));
+    }
+    const parentsRelance = await parentsDesEleves(admin, ev.ecole_id, sansReponse);
+    const tous = await parentsDesEleves(admin, ev.ecole_id, ids);
+    const autres = tous.filter((p) => !parentsRelance.includes(p));
+    if (autres.length) await envoyerPush(admin, autres, { title: ec.nom_ecole, body: base, url: './parent.html', tag: `agenda-${ev.id}` });
+    if (parentsRelance.length) await envoyerPush(admin, parentsRelance, { title: ec.nom_ecole, url: './parent.html', tag: `agenda-${ev.id}`,
+      body: `${base} ✍️ Pensez à répondre dans l’application (${ev.demande_reponse === 'autorisation' ? 'autorisation parentale' : 'présence'}).` });
+    n++;
+  }
+  return n;
+}
+
 // Rappel des devoirs (schema.sql section 64) : à 18h, la veille d'un jour
 // de classe, les parents de chaque classe reçoivent la liste des devoirs
 // prévus pour le lendemain. Une seule fois par classe et par jour.
@@ -395,6 +437,10 @@ Deno.serve(async (req) => {
       try { nbEnvoyees += await resumeHebdo(supabaseAdmin, dateDuJour, minuteActuelle); }
       catch (e) { erreurs.push(`resume: ${(e as Error).message}`); }
     }
+
+    // Rappel de l'agenda — la veille, tous les jours à 18h
+    try { nbEnvoyees += await rappelAgenda(supabaseAdmin, dateDuJour, minuteActuelle); }
+    catch (e) { erreurs.push(`agenda: ${(e as Error).message}`); }
 
     // Rappel des devoirs du lendemain — dimanche à jeudi soir
     if (jourIso === 7 || jourIso <= 4) {
