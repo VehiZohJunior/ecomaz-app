@@ -185,6 +185,7 @@ const VIEW_TITLES = {
   'liens-parents': 'Parents ↔ Élèves',
   'vie-ecole': 'Vie de l’école',
   agenda: 'Agenda de l’école',
+  devoirs: 'Cahier de textes',
   renforcement: 'Cours de renforcement',
 };
 
@@ -220,8 +221,8 @@ const COMPTA_TABS = [
 
 /* --- Rôles / Interfaces --- */
 const ROLES = {
-  enseignant:  {label:'Enseignant(e)', icon:'👩‍🏫', desc:'Notes, présences, emploi du temps', nav:['dashboard','notes','presences-eleves','emploi-temps','programmes','vie-ecole','agenda']},
-  secretariat: {label:'Secrétariat', icon:'🗂️', desc:'Gestion administrative & scolarité', nav:['dashboard','eleves','liens-parents','renforcement','vie-ecole','agenda','notes','presences-eleves','emploi-temps','programmes','pointage-scan','enseignants','presences-enseignants','comptabilite','messagerie']},
+  enseignant:  {label:'Enseignant(e)', icon:'👩‍🏫', desc:'Notes, présences, emploi du temps', nav:['dashboard','notes','presences-eleves','devoirs','emploi-temps','programmes','vie-ecole','agenda']},
+  secretariat: {label:'Secrétariat', icon:'🗂️', desc:'Gestion administrative & scolarité', nav:['dashboard','eleves','liens-parents','renforcement','vie-ecole','agenda','devoirs','notes','presences-eleves','emploi-temps','programmes','pointage-scan','enseignants','presences-enseignants','comptabilite','messagerie']},
   direction:   {label:'Direction', icon:'🎩', desc:'Accès complet', nav:'all'},
   fondation:   {label:'Fondation', icon:'🏛️', desc:'Accès complet', nav:'all'},
   parent:      {label:'Parent', icon:'👪', desc:"Suivi de l'enfant", nav:[]},
@@ -797,6 +798,7 @@ function renderView(view){
     'liens-parents': renderLiensParents,
     'vie-ecole': renderVieEcole,
     agenda: renderAgenda,
+    devoirs: renderDevoirs,
     renforcement: renderRenforcement,
   };
   // Données pas encore chargées, ou déjà effacées par une déconnexion (fin
@@ -1654,6 +1656,7 @@ function renderParentDashboard(){
       ${mesEnfants.map(renderFicheEnfant).join('')}
     </div>
     <div class="form-actions" style="justify-content:flex-start;margin:0 0 var(--sp-4);"><button type="button" class="btn secondary" onclick="ouvrirSignalerAbsence()">📝 Signaler une absence à l’avance</button></div>
+    ${renderDevoirsParent(mesEnfants)}
     ${renderAgendaParent()}
     ${renderInformationsPassees()}
     ${renderTableauHonneurParent()}
@@ -2227,6 +2230,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.10.13-3', nouveautes: {
+    commun: [],
+    parent: [ 'Nouveau : « Devoirs » sur l’accueil — le travail à faire noté par l’enseignant de votre enfant, avec une notification.' ],
+    portier: [],
+    personnel: [ 'Nouveau menu « Cahier de textes » : notez les devoirs de vos classes, les parents les voient aussitôt (notification au choix).' ],
+  } },
   { version: '2026.10.13-2', nouveautes: {
     commun: [],
     parent: [ 'Chaque paiement de scolarité vous est confirmé dans vos messages, avec le reste à payer.', 'Nouveau : « Écrire à l’école » dans vos messages — l’école vous répond ici.', 'Nouveau : « À venir » sur l’accueil — vacances, compositions, réunions et fêtes de l’école.', 'Nouvel onglet « Vie de l’école » : photos et vidéos des événements, J’aime, Bravo et commentaires.' ],
@@ -3325,6 +3334,114 @@ async function supprimerPublication(id){
     DB.fil.pubs = DB.fil.pubs.filter(p => p.id !== id);
     rafraichirFil(); toast('Publication supprimée');
   }catch(e){ alert('Erreur : ' + e.message); }
+}
+/* =====================================================================
+   CAHIER DE TEXTES — devoirs par classe (schema.sql section 64)
+   L'enseignant note les devoirs de ses classes ; chaque parent voit ceux
+   de la classe de ses enfants (accueil de la console parent).
+   ===================================================================== */
+// Prochain jour de classe (le lundi si l'on est vendredi ou le week-end)
+function isoDansJours(n, ouvre){
+  const d = new Date(); d.setDate(d.getDate() + n);
+  while(ouvre && (d.getDay() === 0 || d.getDay() === 6)) d.setDate(d.getDate() + 1);
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+function prochainJourClasse(){ return isoDansJours(1, true); }
+function quandDevoir(iso){
+  if(iso === todayISO()) return 'pour aujourd’hui';
+  if(iso === isoDansJours(1)) return 'pour demain';
+  const jour = new Date(iso + 'T12:00:00');
+  if(iso === prochainJourClasse()) return 'pour ' + jour.toLocaleDateString('fr-FR', {weekday:'long'});
+  return 'pour le ' + jour.toLocaleDateString('fr-FR', {weekday:'long', day:'numeric', month:'long'});
+}
+function renderDevoirs(){
+  if(DB.devoirs === undefined){
+    DB.devoirs = null;
+    const depuis = new Date(); depuis.setDate(depuis.getDate() - 14);
+    sb.from('devoirs').select('*').eq('ecole_id', session.ecoleId).gte('pour_le', depuis.toISOString().slice(0, 10)).order('pour_le')
+      .then(({ data }) => { DB.devoirs = rowsToCamel(data || []); if(ui.currentView === 'devoirs') renderView('devoirs'); });
+  }
+  const classes = classesVisibles();
+  const idsClasses = classes.map(c => c.id);
+  if(!classes.length) return `<div class="view active"><div class="panel"><div class="hint">Aucune classe ne vous est attribuée : demandez à la direction de valider votre inscription.</div></div></div>`;
+  const choix = ui.filters.devoirsClasse && idsClasses.includes(ui.filters.devoirsClasse) ? ui.filters.devoirsClasse : '';
+  const tous = ui.filters.devoirsPasses;
+  const liste = (DB.devoirs || []).filter(d => idsClasses.includes(d.classeId) && (!choix || d.classeId === choix) && (tous || d.pourLe >= todayISO()));
+  const t = session.enseignantId ? enseignantById(session.enseignantId) : null;
+  const matieres = [...new Set([...(t?.matieres || []), ...classes.flatMap(c => MATIERES_BY_CYCLE[c.cycle] || [])])];
+  return `<div class="view active">
+    <div class="panel">
+      <div class="panel-head"><div><h2>📒 Noter un devoir</h2><div class="sub">Les parents de la classe le voient aussitôt dans leur application, avec une notification s’ils le souhaitent.</div></div></div>
+      <form onsubmit="return ajouterDevoir(event)">
+        <div class="form-grid">
+          <div class="field"><label>Classe</label><select name="classeId" required>${classes.map(c => `<option value="${c.id}"${c.id === choix ? ' selected' : ''}>${escapeHtml(c.nom)}</option>`).join('')}</select></div>
+          <div class="field"><label>Matière</label><input name="matiere" maxlength="80" list="listeMatieresDevoirs" placeholder="Ex : Mathématiques"><datalist id="listeMatieresDevoirs">${matieres.map(m => `<option value="${escapeHtml(m)}">`).join('')}</datalist></div>
+          <div class="field"><label>Pour le</label><input type="date" name="pourLe" required value="${prochainJourClasse()}"></div>
+          <div class="field span2"><label>Travail à faire</label><textarea name="travail" required minlength="2" maxlength="1000" rows="3" placeholder="Ex : Apprendre la leçon 4, faire les exercices 2 et 3 page 18"></textarea></div>
+        </div>
+        <label style="display:flex;align-items:center;gap:8px;margin-top:8px;"><input type="checkbox" name="prevenir" checked> Prévenir les parents de la classe par une notification</label>
+        <div class="form-actions"><button class="btn" type="submit">Enregistrer le devoir</button></div>
+      </form>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><div><h2>${tous ? 'Devoirs des 2 dernières semaines' : 'Devoirs à venir'}</h2></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <select onchange="ui.filters.devoirsClasse=this.value; renderView('devoirs')"><option value="">Toutes mes classes</option>${classes.map(c => `<option value="${c.id}"${c.id === choix ? ' selected' : ''}>${escapeHtml(c.nom)}</option>`).join('')}</select>
+          <button class="btn secondary sm" onclick="ui.filters.devoirsPasses=${!tous}; renderView('devoirs')">${tous ? 'À venir seulement' : 'Voir aussi les passés'}</button></div></div>
+      ${DB.devoirs === null ? '<div class="hint">Chargement…</div>' : !liste.length ? '<div class="empty-state"><div class="em-ic">📒</div>Aucun devoir noté pour l’instant.</div>' : `<div class="table-wrap"><table>
+        <thead><tr><th>Pour le</th><th>Classe</th><th>Travail</th><th></th></tr></thead>
+        <tbody>${liste.map(d => `<tr>
+          <td style="white-space:nowrap;">${fmtDate(d.pourLe)}<br><span class="hint">${d.pourLe >= todayISO() ? quandDevoir(d.pourLe) : 'passé'}</span></td>
+          <td>${escapeHtml(classeName(d.classeId))}</td>
+          <td>${d.matiere ? `<strong>${escapeHtml(d.matiere)}</strong><br>` : ''}${escapeHtml(d.travail).replace(/\n/g, '<br>')}</td>
+          <td><button class="icon-btn danger" title="Supprimer" onclick="supprimerDevoir('${d.id}')">🗑️</button></td>
+        </tr>`).join('')}</tbody></table></div>`}
+    </div>
+  </div>`;
+}
+async function ajouterDevoir(ev){
+  ev.preventDefault();
+  const fd = new FormData(ev.target);
+  const ligne = { classe_id: fd.get('classeId'), matiere: (fd.get('matiere') || '').trim(), travail: fd.get('travail').trim(), pour_le: fd.get('pourLe') };
+  if(ligne.pour_le < todayISO()) return alert('Choisissez une date à partir d’aujourd’hui.'), false;
+  const bouton = ev.target.querySelector('button[type="submit"]'); if(bouton) bouton.disabled = true;
+  try{
+    const { data, error } = await sb.from('devoirs').insert(ligne).select().single();
+    if(error) throw error;
+    const d = rowToCamel(data);
+    DB.devoirs = (DB.devoirs || []).concat(d).sort((a, b) => a.pourLe.localeCompare(b.pourLe));
+    if(fd.get('prevenir') === 'on'){
+      const eleves = DB.eleves.filter(e => e.statut === 'Actif' && e.classeId === d.classeId).map(e => e.id);
+      notifierParentsPush(eleves, `📒 Devoir ${quandDevoir(d.pourLe)} (${classeName(d.classeId)})${d.matiere ? ' — ' + d.matiere : ''} : ${d.travail}`);
+    }
+    ui.filters.devoirsClasse = d.classeId;
+    toast('Devoir enregistré'); renderView('devoirs');
+  }catch(e){ alert('Erreur : ' + e.message); if(bouton) bouton.disabled = false; }
+  return false;
+}
+async function supprimerDevoir(id){
+  if(!confirm('Supprimer ce devoir ? Les parents ne le verront plus.')) return;
+  try{
+    const { error } = await sb.from('devoirs').delete().eq('id', id);
+    if(error) throw error;
+    DB.devoirs = (DB.devoirs || []).filter(d => d.id !== id);
+    toast('Devoir supprimé'); renderView('devoirs');
+  }catch(e){ alert('Erreur : ' + e.message); }
+}
+// Console parent : devoirs à venir de chaque enfant
+function renderDevoirsParent(enfants){
+  const blocs = enfants.map(e => ({ e, ds: (DB.devoirs || []).filter(d => d.classeId === e.classeId && d.pourLe >= todayISO()) })).filter(x => x.ds.length);
+  if(!blocs.length) return '';
+  const plusieurs = enfants.length > 1;
+  return `<section class="panel actus-panel" aria-labelledby="titreDevoirs">
+    <div class="panel-head"><div><h2 id="titreDevoirs">📒 Devoirs</h2></div></div>
+    ${blocs.map(({ e, ds }) => `${plusieurs ? `<div class="hint" style="margin:6px 0 4px;font-weight:600;">${escapeHtml(e.prenom)} — ${escapeHtml(classeName(e.classeId))}</div>` : ''}
+      <div class="actu-liste">${ds.map(d => `<article class="actu-carte">
+        <div class="actu-date" aria-hidden="true"><span class="actu-jour">${new Date(d.pourLe + 'T12:00:00').getDate()}</span><span class="actu-mois">${new Date(d.pourLe + 'T12:00:00').toLocaleDateString('fr-FR', {month:'short'}).replace('.', '').toUpperCase()}</span></div>
+        <div class="actu-corps"><div class="actu-titre">${d.matiere ? escapeHtml(d.matiere) : 'Travail à faire'} <span class="hint" style="font-weight:600;">· ${quandDevoir(d.pourLe)}</span></div>
+          <div class="actu-meta">${escapeHtml(d.travail).replace(/\n/g, '<br>')}</div></div>
+      </article>`).join('')}</div>`).join('')}
+  </section>`;
 }
 /* =====================================================================
    AGENDA DE L'ÉCOLE (schema.sql section 61)

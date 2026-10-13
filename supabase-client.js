@@ -547,6 +547,13 @@ async function chargerDBParent(){
     const r = await sb.from('evenements_agenda').select('*').eq('ecole_id', session.ecoleId).gte('date_fin', iso).order('date_debut').limit(10);
     agenda = rowsToCamel(r.data || []);
   }catch(_e){}
+  // Cahier de textes : devoirs à venir de la classe de ses enfants (RLS)
+  let devoirs = [];
+  try{
+    const d = new Date(); const iso = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    const r = await sb.from('devoirs').select('*').eq('ecole_id', session.ecoleId).gte('pour_le', iso).order('pour_le').limit(40);
+    devoirs = rowsToCamel(r.data || []);
+  }catch(_e){}
   // Bulletins : notes des trimestres publiés par l'école (RLS : ses enfants seulement)
   let notesParent = [], appreciations = {};
   if((ecole.bulletinsPublies || []).length){
@@ -579,7 +586,7 @@ async function chargerDBParent(){
       scolariteVisibleParents: ecole.scolariteVisibleParents === true,
       bulletinsPublies: ecole.bulletinsPublies || [],
     },
-    echeancesScolarite, paiementsScolarite, notes: notesParent, bulletinsComments: appreciations, agenda,
+    echeancesScolarite, paiementsScolarite, notes: notesParent, bulletinsComments: appreciations, agenda, devoirs,
     eleves: rowsToCamel(eleves.data),
     classes: rowsToCamel(classesRows.data),
     presencesSemaine,

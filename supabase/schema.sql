@@ -2435,3 +2435,29 @@ begin
 end $$;
 revoke all on function erreurs_recentes(int) from public, anon;
 grant execute on function erreurs_recentes(int) to authenticated;
+
+-- =====================================================================
+-- 64. CAHIER DE TEXTES — devoirs par classe (2026-10-13)
+-- =====================================================================
+-- L'enseignant note les devoirs de SES classes (le secrétariat et la
+-- direction aussi, pour toutes). Les parents ne voient que les devoirs
+-- de la classe de leurs enfants (peut_voir_publication).
+create table if not exists devoirs (
+  id uuid primary key default gen_random_uuid(),
+  ecole_id uuid not null references ecoles(id) on delete cascade default mon_ecole_id(),
+  classe_id text not null references classes(id) on delete cascade,
+  matiere text not null default '' check (char_length(matiere) <= 80),
+  travail text not null check (char_length(travail) between 2 and 1000),
+  pour_le date not null,
+  auteur_id uuid references auth.users(id) on delete set null default auth.uid(),
+  created_at timestamptz not null default now()
+);
+create index if not exists devoirs_idx on devoirs(ecole_id, pour_le);
+alter table devoirs enable row level security;
+drop policy if exists "lecture devoirs" on devoirs;
+create policy "lecture devoirs" on devoirs for select using (peut_voir_publication(ecole_id, array[classe_id]));
+drop policy if exists "gestion devoirs" on devoirs;
+create policy "gestion devoirs" on devoirs for all
+  using (ecole_id = mon_ecole_id() and (est_perso_admin() or (mon_role() = 'enseignant' and classe_id = any(mes_classes()))))
+  with check (ecole_id = mon_ecole_id() and (est_perso_admin() or (mon_role() = 'enseignant' and classe_id = any(mes_classes())))
+    and exists (select 1 from classes c where c.id = devoirs.classe_id and c.ecole_id = devoirs.ecole_id));
