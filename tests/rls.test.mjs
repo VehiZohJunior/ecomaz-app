@@ -260,6 +260,11 @@ async function requete(accessToken, chemin, options = {}){
     }
   }
 
+  const demoSec = await requete(tokenSecretariat, `/rest/v1/rpc/preparer_ecole_demo`, { method:'POST', body: JSON.stringify({ p_ecole: FAUX }) });
+  verifier('Le secrétariat ne peut pas transformer une école en école démo', !demoSec.ok, `statut ${demoSec.status}`);
+  const remplirSec = await requete(tokenSecretariat, `/rest/v1/rpc/remplir_ecole_demo`, { method:'POST', body: JSON.stringify({ p_ecole: FAUX }) });
+  verifier('Le secrétariat ne peut pas remplir une école de données fictives', !remplirSec.ok, `statut ${remplirSec.status}`);
+
   section('8. Visiteur non connecté — ne lit que les affichages publics prévus');
   for(const table of ['eleves','enseignants_lecture','profiles','paiements_scolarite','messages','parents_eleves','presences_eleves','eleves_portier_lecture','objets_perdus','push_abonnements','absences_signalees','evenements_agenda','devoirs','personnes_autorisees','sante_eleves','reponses_agenda','corrections_fiches','menus_cantine','preinscriptions','demandes_documents']){
     const r = await requete(ANON_KEY, `/rest/v1/${table}?select=*&limit=1`);

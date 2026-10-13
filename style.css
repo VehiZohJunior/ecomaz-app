@@ -1015,6 +1015,7 @@ td:has(> .amount), th.montant{ text-align:right; }
 @media print{ .affiche-a4{ padding-top:20mm; } .affiche-titre{ font-size:30pt; } .affiche-qr{ width:110mm; } .affiche-etapes{ font-size:15pt; } }
 .contact-ecole-boutons{ display:flex; flex-wrap:wrap; gap:8px; }
 .contact-ecole-boutons .btn{ flex:1 1 140px; justify-content:center; text-align:center; }
+.bandeau-demo{ background:#fbf0d9; color:#8a5a0c; border:1px dashed #e8b04b; border-radius:12px; padding:8px 12px; margin-bottom:12px; font-weight:700; text-align:center; }
 .maj-autres{ margin-top:8px; }
 .maj-autres summary{ cursor:pointer; font-weight:700; color:var(--primary); }
 .a-traiter-liste{ display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:8px; }

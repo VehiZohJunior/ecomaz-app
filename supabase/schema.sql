@@ -2795,3 +2795,136 @@ begin
 end $$;
 revoke all on function sante_ecoles() from public, anon;
 grant execute on function sante_ecoles() to authenticated;
+
+-- =====================================================================
+-- 75. ÉCOLE DE DÉMONSTRATION (2026-10-13)
+-- =====================================================================
+-- Accord de Vehi Zoh Junior (2026-10-13) : une école entièrement fictive
+-- pour présenter EcoMaZ aux autres écoles sans montrer de vraies données.
+-- ecoles.est_demo = true l'identifie (bandeau « démonstration » dans
+-- l'application). remplir_ecole_demo() REFUSE toute école qui n'est pas
+-- marquée démo ou qui a déjà des élèves : une vraie école ne peut jamais
+-- être touchée. Téléphones fictifs non attribuables (« 00 00 … »).
+alter table ecoles add column if not exists est_demo boolean not null default false;
+
+create or replace function remplir_ecole_demo(p_ecole uuid) returns text
+language plpgsql security definer set search_path = public as $$
+declare
+  v_ecole ecoles%rowtype;
+  pre text := 'demo-' || left(replace(p_ecole::text, '-', ''), 6) || '-';
+  prenoms_f text[] := array['Awa','Aya','Mariam','Fatou','Adjoua','Affoué','Amenan','Grâce','Esther','Christelle','Divine','Océane','Prisca','Naomi','Ange','Emmanuella'];
+  prenoms_m text[] := array['Yao','Koffi','Kouamé','Ibrahim','Moussa','Junior','Emmanuel','Jean-Marc','Ismaël','Christ','Daniel','Samuel','Boris','Ange','Elie','Prince'];
+  noms text[] := array['KOUASSI','KONÉ','TRAORÉ','YAO','BAMBA','N''GUESSAN','OUATTARA','COULIBALY','KOFFI','DIABATÉ','TOURÉ','ASSI','BROU','KACOU','ZADI','GNAHORÉ','SANOGO','DIARRA','AKA','TANOH'];
+  classes text[][] := array[['ps','Petite Section','Maternelle'],['ms','Moyenne Section','Maternelle'],['gs','Grande Section','Maternelle'],
+                            ['cp1','CP1','Primaire'],['cp2','CP2','Primaire'],['ce1','CE1','Primaire'],['ce2','CE2','Primaire'],['cm1','CM1','Primaire'],['cm2','CM2','Primaire']];
+  mat_mat text[] := array['Langage','Graphisme','Éveil Scientifique','Activités Numériques'];
+  mat_pri text[] := array['Français','Mathématiques','Sciences d''Observation','Histoire-Géographie','Anglais'];
+  i int; j int; k int; n int := 0; age int; v_ens uuid; v_el uuid; v_cl text; v_cycle text; v_sexe text; v_nom text; v_jour date; v_r float; v_mat text;
+  ens_ids uuid[] := '{}';
+begin
+  if not (est_developpeur() or session_user = 'postgres') then raise exception 'Réservé au compte développeur'; end if;
+  select * into v_ecole from ecoles where id = p_ecole;
+  if not found then raise exception 'École introuvable'; end if;
+  if not v_ecole.est_demo then raise exception 'Refusé : cette école n''est pas une école de démonstration'; end if;
+  if exists (select 1 from eleves where ecole_id = p_ecole) then raise exception 'Refusé : cette école a déjà des élèves'; end if;
+  perform setseed(0.42);
+
+  update ecoles set directeur_nom = coalesce(nullif(directeur_nom, ''), 'M. Directeur Démo'),
+    telephone = coalesce(nullif(telephone, ''), '00 00 00 00 00'), adresse = coalesce(nullif(adresse, ''), 'Abidjan — école de démonstration')
+  where id = p_ecole;
+
+  -- Classes et enseignants (un titulaire par classe)
+  for i in 1 .. array_length(classes, 1) loop
+    v_cl := pre || classes[i][1];
+    insert into classes(id, ecole_id, nom, cycle) values (v_cl, p_ecole, classes[i][2], classes[i][3]);
+    insert into enseignants(ecole_id, matricule, nom, prenom, sexe, telephone, classes_assignees, matieres, date_embauche, statut)
+    values (p_ecole, 'ENS-' || lpad(i::text, 3, '0'), noms[1 + (i * 7) % array_length(noms, 1)],
+      case when i % 2 = 0 then prenoms_m[1 + i] else prenoms_f[1 + i] end, case when i % 2 = 0 then 'M' else 'F' end,
+      '00 00 00 01 ' || lpad(i::text, 2, '0'), array[v_cl], case when classes[i][3] = 'Maternelle' then mat_mat else mat_pri end,
+      date '2021-09-01' + (i * 37), 'Actif') returning id into v_ens;
+    update classes set titulaire_id = v_ens where id = v_cl;
+    ens_ids := ens_ids || v_ens;
+  end loop;
+
+  -- Grille de scolarité commune
+  insert into echeances_scolarite(ecole_id, label, montant, date_echeance, ordre) values
+    (p_ecole, 'Inscription', 50000, current_date - 40, 1),
+    (p_ecole, '1re tranche', 150000, current_date + 10, 2),
+    (p_ecole, '2e tranche', 125000, current_date + 75, 3),
+    (p_ecole, '3e tranche', 125000, current_date + 150, 4);
+
+  -- Élèves (8 par classe), présences des 10 derniers jours de classe, notes, paiements
+  for i in 1 .. array_length(classes, 1) loop
+    v_cl := pre || classes[i][1]; v_cycle := classes[i][3];
+    age := case classes[i][1] when 'ps' then 3 when 'ms' then 4 when 'gs' then 5 when 'cp1' then 6 when 'cp2' then 7 when 'ce1' then 8 when 'ce2' then 9 when 'cm1' then 10 else 11 end;
+    for j in 1 .. 8 loop
+      n := n + 1;
+      v_sexe := case when random() < 0.5 then 'F' else 'M' end;
+      v_nom := noms[1 + floor(random() * array_length(noms, 1))::int];
+      insert into eleves(ecole_id, matricule, nom, prenom, sexe, date_naissance, classe_id, parent_nom, parent_tel, parent_adresse, date_inscription, statut)
+      values (p_ecole, 'EL-' || lpad(n::text, 4, '0'), v_nom,
+        case when v_sexe = 'F' then prenoms_f[1 + floor(random() * 16)::int] else prenoms_m[1 + floor(random() * 16)::int] end, v_sexe,
+        (current_date - make_interval(years => age))::date - (floor(random() * 300))::int,
+        v_cl, initcap(lower(v_nom)) || ' ' || case when random() < 0.5 then prenoms_f[1 + floor(random() * 16)::int] else prenoms_m[1 + floor(random() * 16)::int] end,
+        '00 00 00 ' || lpad((n / 100)::text, 2, '0') || ' ' || lpad((n % 100)::text, 2, '0'), 'Abidjan', current_date - 40 - (n % 10), 'Actif')
+      returning id into v_el;
+      -- présences
+      for k in 0 .. 13 loop
+        v_jour := current_date - k;
+        continue when extract(isodow from v_jour) > 5;
+        v_r := random();
+        insert into presences_eleves(ecole_id, date, classe_id, eleve_id, statut, motif)
+        values (p_ecole, v_jour, v_cl, v_el, case when v_r < 0.05 then 'Absent' when v_r < 0.08 then 'Retard' else 'Présent' end,
+                case when v_r < 0.03 then 'Maladie' else null end);
+      end loop;
+      -- notes du 1er trimestre
+      foreach v_mat in array (case when v_cycle = 'Maternelle' then mat_mat else mat_pri end) loop
+        insert into notes(ecole_id, eleve_id, matiere, note, note_sur, trimestre, type, date)
+        values (p_ecole, v_el, v_mat, round((8 + random() * 11)::numeric, 1), 20, 'Trimestre 1', 'Devoir', current_date - 20),
+               (p_ecole, v_el, v_mat, round((7 + random() * 12)::numeric, 1), 20, 'Trimestre 1', 'Composition', current_date - 5);
+      end loop;
+      -- paiements : inscription pour tous, 1re tranche pour 70 %
+      insert into paiements_scolarite(ecole_id, eleve_id, montant, tranche, date, mode_paiement)
+      values (p_ecole, v_el, 50000, 'Inscription', current_date - 30 - (n % 15), case when n % 3 = 0 then 'Mobile Money' else 'Espèces' end);
+      if random() < 0.7 then
+        insert into paiements_scolarite(ecole_id, eleve_id, montant, tranche, date, mode_paiement)
+        values (p_ecole, v_el, 150000, '1re tranche', current_date - (n % 20), case when n % 2 = 0 then 'Mobile Money' else 'Espèces' end);
+      end if;
+    end loop;
+  end loop;
+
+  -- Pointage des enseignants (aujourd'hui)
+  insert into presences_enseignants(ecole_id, date, enseignant_id, statut)
+  select p_ecole, current_date, x, case when random() < 0.9 then 'Présent' else 'Retard' end from unnest(ens_ids) x;
+
+  -- Devoirs, agenda, cantine
+  insert into devoirs(ecole_id, classe_id, matiere, travail, pour_le) values
+    (p_ecole, pre || 'cp1', 'Mathématiques', 'Exercices 2 et 3 page 18', current_date + 1),
+    (p_ecole, pre || 'ce2', 'Français', 'Apprendre la poésie « Le petit oiseau »', current_date + 2),
+    (p_ecole, pre || 'cm2', 'Histoire-Géographie', 'Réviser la leçon sur les régions de Côte d’Ivoire', current_date + 3);
+  insert into evenements_agenda(ecole_id, titre, description, type, date_debut, date_fin, classe_ids, demande_reponse) values
+    (p_ecole, 'Réunion des parents', 'Présentation des résultats du 1er trimestre', 'reunion', current_date + 5, current_date + 5, null, 'presence'),
+    (p_ecole, 'Sortie au Parc national du Banco', 'Prévoir casquette et gourde', 'sortie', current_date + 12, current_date + 12, array[pre || 'ce2', pre || 'cm1'], 'autorisation'),
+    (p_ecole, 'Compositions du 1er trimestre', '', 'examen', current_date + 20, current_date + 24, null, null);
+  insert into menus_cantine(ecole_id, date, repas, gouter)
+  select p_ecole, d::date, (array['Riz sauce graine, poisson','Attiéké poisson braisé','Riz gras au poulet','Foutou sauce arachide','Spaghetti à la viande'])[extract(isodow from d)::int],
+    (array['Banane','Bouillie de mil','Mangue','Yaourt','Biscuits'])[extract(isodow from d)::int]
+  from generate_series(date_trunc('week', current_date), date_trunc('week', current_date) + interval '4 days', interval '1 day') d;
+
+  return format('%s élèves, %s classes, %s enseignants créés (fictifs)', n, array_length(classes, 1), array_length(ens_ids, 1));
+end $$;
+revoke all on function remplir_ecole_demo(uuid) from public, anon;
+grant execute on function remplir_ecole_demo(uuid) to authenticated;
+
+-- Console Développeur : transformer une école NEUVE (sans aucun élève) en
+-- école de démonstration et la remplir de données fictives, en un geste.
+create or replace function preparer_ecole_demo(p_ecole uuid) returns text
+language plpgsql security definer set search_path = public as $$
+begin
+  if not est_developpeur() then raise exception 'Réservé au compte développeur'; end if;
+  if exists (select 1 from eleves where ecole_id = p_ecole) then raise exception 'Refusé : cette école a déjà des élèves (ce n''est pas une école neuve)'; end if;
+  update ecoles set est_demo = true where id = p_ecole;
+  return remplir_ecole_demo(p_ecole);
+end $$;
+revoke all on function preparer_ecole_demo(uuid) from public, anon;
+grant execute on function preparer_ecole_demo(uuid) to authenticated;
