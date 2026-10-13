@@ -2624,3 +2624,24 @@ create policy "admin corrections_fiches" on corrections_fiches for all
 -- de ses enfants (présences, devoirs de la semaine suivante, dates à
 -- venir) par notification — fonction annoncer-horaires. Désactivable.
 alter table ecoles add column if not exists resume_hebdo boolean not null default true;
+
+-- =====================================================================
+-- 70. MENU DE LA CANTINE (2026-10-13)
+-- =====================================================================
+-- Un menu par jour (repas + goûter), saisi par l'administration, lu par
+-- tout le personnel et les parents de l'école.
+create table if not exists menus_cantine (
+  ecole_id uuid not null references ecoles(id) on delete cascade default mon_ecole_id(),
+  date date not null,
+  repas text not null default '' check (char_length(repas) <= 300),
+  gouter text not null default '' check (char_length(gouter) <= 200),
+  maj_at timestamptz not null default now(),
+  primary key (ecole_id, date)
+);
+alter table menus_cantine enable row level security;
+drop policy if exists "lecture menus_cantine" on menus_cantine;
+create policy "lecture menus_cantine" on menus_cantine for select using (peut_voir_publication(ecole_id, null));
+drop policy if exists "gestion menus_cantine" on menus_cantine;
+create policy "gestion menus_cantine" on menus_cantine for all
+  using (ecole_id = mon_ecole_id() and est_perso_admin())
+  with check (ecole_id = mon_ecole_id() and est_perso_admin());

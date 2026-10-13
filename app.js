@@ -186,6 +186,7 @@ const VIEW_TITLES = {
   'vie-ecole': 'Vie de l’école',
   agenda: 'Agenda de l’école',
   devoirs: 'Cahier de textes',
+  cantine: 'Menu de la cantine',
   renforcement: 'Cours de renforcement',
 };
 
@@ -222,7 +223,7 @@ const COMPTA_TABS = [
 /* --- Rôles / Interfaces --- */
 const ROLES = {
   enseignant:  {label:'Enseignant(e)', icon:'👩‍🏫', desc:'Notes, présences, emploi du temps', nav:['dashboard','notes','presences-eleves','devoirs','emploi-temps','programmes','vie-ecole','agenda']},
-  secretariat: {label:'Secrétariat', icon:'🗂️', desc:'Gestion administrative & scolarité', nav:['dashboard','eleves','liens-parents','renforcement','vie-ecole','agenda','devoirs','notes','presences-eleves','emploi-temps','programmes','pointage-scan','enseignants','presences-enseignants','comptabilite','messagerie']},
+  secretariat: {label:'Secrétariat', icon:'🗂️', desc:'Gestion administrative & scolarité', nav:['dashboard','eleves','liens-parents','renforcement','vie-ecole','agenda','devoirs','cantine','notes','presences-eleves','emploi-temps','programmes','pointage-scan','enseignants','presences-enseignants','comptabilite','messagerie']},
   direction:   {label:'Direction', icon:'🎩', desc:'Accès complet', nav:'all'},
   fondation:   {label:'Fondation', icon:'🏛️', desc:'Accès complet', nav:'all'},
   parent:      {label:'Parent', icon:'👪', desc:"Suivi de l'enfant", nav:[]},
@@ -799,6 +800,7 @@ function renderView(view){
     'vie-ecole': renderVieEcole,
     agenda: renderAgenda,
     devoirs: renderDevoirs,
+    cantine: renderCantine,
     renforcement: renderRenforcement,
   };
   // Données pas encore chargées, ou déjà effacées par une déconnexion (fin
@@ -1693,6 +1695,7 @@ function renderParentDashboard(){
       ${mesEnfants.map(renderFicheEnfant).join('')}
     </div>
     <div class="form-actions" style="justify-content:flex-start;margin:0 0 var(--sp-4);"><button type="button" class="btn secondary" onclick="ouvrirSignalerAbsence()">📝 Signaler une absence à l’avance</button></div>
+    ${renderMenuParent()}
     ${renderDevoirsParent(mesEnfants)}
     ${renderAgendaParent()}
     ${renderInformationsPassees()}
@@ -2269,6 +2272,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.10.13-12', nouveautes: {
+    commun: [],
+    parent: [ 'Nouveau sur l’accueil : « À la cantine » — le repas et le goûter du jour et du lendemain (si l’école publie son menu).' ],
+    portier: [],
+    personnel: [ 'Nouveau menu « Menu de la cantine » : saisissez les repas et goûters de la semaine, copiez la semaine précédente, prévenez les parents.' ],
+  } },
   { version: '2026.10.13-11', nouveautes: {
     commun: [],
     parent: [],
@@ -3429,6 +3438,95 @@ async function supprimerPublication(id){
     DB.fil.pubs = DB.fil.pubs.filter(p => p.id !== id);
     rafraichirFil(); toast('Publication supprimée');
   }catch(e){ alert('Erreur : ' + e.message); }
+}
+/* =====================================================================
+   MENU DE LA CANTINE (schema.sql section 70)
+   ===================================================================== */
+function joursSemaineCantine(decalage){
+  const lundi = debutSemaine(new Date()); lundi.setDate(lundi.getDate() + 7 * (decalage || 0));
+  return [0, 1, 2, 3, 4].map(i => { const d = new Date(lundi); d.setDate(lundi.getDate() + i); return isoLocal(d); });
+}
+function renderCantine(){
+  const dec = ui.filters.cantineSemaine || 0;
+  const jours = joursSemaineCantine(dec);
+  const cle = jours[0];
+  DB.menusCantine = (DB.menusCantine && !Array.isArray(DB.menusCantine)) ? DB.menusCantine : {};
+  if(DB.menusCantine[cle] === undefined){
+    DB.menusCantine[cle] = null;
+    sb.from('menus_cantine').select('*').eq('ecole_id', session.ecoleId).gte('date', jours[0]).lte('date', jours[4])
+      .then(({ data }) => { DB.menusCantine[cle] = rowsToCamel(data || []); if(ui.currentView === 'cantine') renderView('cantine'); });
+  }
+  const menus = DB.menusCantine[cle];
+  const gestion = ['secretariat','direction','fondation'].includes(ui.role);
+  const jourLong = (iso) => new Date(iso + 'T12:00:00').toLocaleDateString('fr-FR', { weekday:'long', day:'numeric', month:'long' });
+  return `<div class="view active"><div class="panel">
+    <div class="panel-head"><div><h2>🍽️ Menu de la semaine</h2><div class="sub">Du ${fmtDate(jours[0])} au ${fmtDate(jours[4])} — les parents voient le menu du jour et du lendemain sur l’accueil de leur application.</div></div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">
+        <button class="btn secondary sm" onclick="ui.filters.cantineSemaine=${dec - 1}; renderView('cantine')">← Semaine précédente</button>
+        ${dec !== 0 ? `<button class="btn secondary sm" onclick="ui.filters.cantineSemaine=0; renderView('cantine')">Cette semaine</button>` : ''}
+        <button class="btn secondary sm" onclick="ui.filters.cantineSemaine=${dec + 1}; renderView('cantine')">Semaine suivante →</button></div></div>
+    ${menus === null ? '<div class="hint">Chargement…</div>' : `<form onsubmit="return enregistrerMenusCantine(event, '${cle}')">
+      <div class="table-wrap"><table>
+        <thead><tr><th>Jour</th><th>Repas</th><th>Goûter</th></tr></thead>
+        <tbody>${jours.map(iso => { const m = menus.find(x => x.date === iso) || {}; return `<tr>
+          <td style="white-space:nowrap;text-transform:capitalize;">${jourLong(iso)}</td>
+          <td><input name="repas_${iso}" maxlength="300" value="${escapeHtml(m.repas || '')}" placeholder="Ex : Riz sauce graine, poisson" ${gestion ? '' : 'disabled'}></td>
+          <td><input name="gouter_${iso}" maxlength="200" value="${escapeHtml(m.gouter || '')}" placeholder="Ex : Banane, bouillie" ${gestion ? '' : 'disabled'}></td>
+        </tr>`; }).join('')}</tbody></table></div>
+      ${gestion ? `<label style="display:flex;align-items:center;gap:8px;margin-top:8px;"><input type="checkbox" name="prevenir"> Prévenir les parents par une notification (« le menu de la semaine est en ligne »)</label>
+      <div class="form-actions"><button type="button" class="btn secondary" onclick="copierMenusSemainePrecedente()">Copier la semaine précédente</button><button class="btn" type="submit">Enregistrer le menu</button></div>` : ''}
+    </form>`}
+  </div></div>`;
+}
+async function enregistrerMenusCantine(ev, cle){
+  ev.preventDefault();
+  const fd = new FormData(ev.target);
+  const jours = joursSemaineCantine(ui.filters.cantineSemaine || 0);
+  const pleins = [], vides = [];
+  jours.forEach(iso => {
+    const repas = (fd.get('repas_' + iso) || '').trim(), gouter = (fd.get('gouter_' + iso) || '').trim();
+    if(repas || gouter) pleins.push({ date: iso, repas, gouter, maj_at: new Date().toISOString() }); else vides.push(iso);
+  });
+  try{
+    if(pleins.length){ const { error } = await sb.from('menus_cantine').upsert(pleins.map(p => ({ ...p, ecole_id: session.ecoleId }))); if(error) throw error; }
+    if(vides.length){ const { error } = await sb.from('menus_cantine').delete().eq('ecole_id', session.ecoleId).in('date', vides); if(error) throw error; }
+    DB.menusCantine[cle] = pleins.map(p => ({ date: p.date, repas: p.repas, gouter: p.gouter }));
+    if(fd.get('prevenir') === 'on' && pleins.length){
+      notifierParentsPush(DB.eleves.filter(e => e.statut === 'Actif').map(e => e.id), `🍽️ Le menu de la cantine du ${fmtDate(jours[0])} au ${fmtDate(jours[4])} est en ligne dans l’application.`);
+    }
+    toast('Menu enregistré'); renderView('cantine');
+  }catch(e){ alert('Erreur : ' + e.message); }
+  return false;
+}
+async function copierMenusSemainePrecedente(){
+  const dec = ui.filters.cantineSemaine || 0;
+  const avant = joursSemaineCantine(dec - 1), cible = joursSemaineCantine(dec);
+  try{
+    const { data, error } = await sb.from('menus_cantine').select('*').eq('ecole_id', session.ecoleId).gte('date', avant[0]).lte('date', avant[4]);
+    if(error) throw error;
+    if(!data || !data.length) return alert('La semaine précédente n’a pas de menu.');
+    data.forEach(m => {
+      const i = avant.indexOf(m.date); if(i < 0) return;
+      const r = document.querySelector(`[name="repas_${cible[i]}"]`), g = document.querySelector(`[name="gouter_${cible[i]}"]`);
+      if(r && !r.value) r.value = m.repas || '';
+      if(g && !g.value) g.value = m.gouter || '';
+    });
+    toast('Menus copiés — vérifiez puis enregistrez');
+  }catch(e){ alert('Erreur : ' + e.message); }
+}
+// Console parent : menu du jour et du prochain jour de classe
+function renderMenuParent(){
+  const menus = DB.menusCantine;
+  if(!Array.isArray(menus) || !menus.length) return '';
+  const auj = todayISO(), demain = prochainJourClasse();
+  const libDemain = demain === isoDansJours(1) ? 'Demain' : new Date(demain + 'T12:00:00').toLocaleDateString('fr-FR', { weekday:'long' });
+  const liste = [[auj, 'Aujourd’hui'], [demain, libDemain]].map(([iso, lib]) => ({ lib, m: menus.find(x => x.date === iso) })).filter(x => x.m);
+  if(!liste.length) return '';
+  return `<section class="panel actus-panel" aria-labelledby="titreMenu">
+    <div class="panel-head"><div><h2 id="titreMenu">🍽️ À la cantine</h2></div></div>
+    ${liste.map(({ lib, m }) => `<div class="menu-jour"><span class="menu-lib">${escapeHtml(lib)}</span>
+      <div>${m.repas ? `🍛 ${escapeHtml(m.repas)}` : ''}${m.gouter ? `<div class="hint" style="margin:2px 0 0;">🍌 Goûter : ${escapeHtml(m.gouter)}</div>` : ''}</div></div>`).join('')}
+  </section>`;
 }
 /* =====================================================================
    ÉLÈVES À SURVEILLER : absences répétées (tableau de bord)

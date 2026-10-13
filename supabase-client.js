@@ -571,6 +571,13 @@ async function chargerDBParent(){
     ]);
     personnesAutorisees = rowsToCamel(pa.data || []); santeEleves = rowsToCamel(se.data || []);
   }catch(_e){}
+  // Menu de la cantine des prochains jours
+  let menusCantine = [];
+  try{
+    const d = new Date(); const iso = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    const r = await sb.from('menus_cantine').select('date, repas, gouter').eq('ecole_id', session.ecoleId).gte('date', iso).order('date').limit(7);
+    menusCantine = r.data || [];
+  }catch(_e){}
   // Cahier de textes : devoirs à venir de la classe de ses enfants (RLS)
   let devoirs = [];
   try{
@@ -610,7 +617,7 @@ async function chargerDBParent(){
       scolariteVisibleParents: ecole.scolariteVisibleParents === true,
       bulletinsPublies: ecole.bulletinsPublies || [],
     },
-    echeancesScolarite, paiementsScolarite, notes: notesParent, bulletinsComments: appreciations, agenda, reponsesAgenda, devoirs, correctionsFiches, personnesAutorisees, santeEleves,
+    echeancesScolarite, paiementsScolarite, notes: notesParent, bulletinsComments: appreciations, agenda, reponsesAgenda, devoirs, correctionsFiches, menusCantine, personnesAutorisees, santeEleves,
     eleves: rowsToCamel(eleves.data),
     classes: rowsToCamel(classesRows.data),
     presencesSemaine,
