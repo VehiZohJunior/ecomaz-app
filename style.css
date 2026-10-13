@@ -1000,3 +1000,9 @@ td:has(> .amount), th.montant{ text-align:right; }
 .eb-moyenne{ margin-top:8px; font-size:14px; }
 .eb-appreciation{ margin-top:6px; font-size:13px; font-style:italic; }
 .bulle-item.msg-envoye{ background:var(--em-green-100, #e6efe9); margin-left:18px; }
+
+/* Tableau de bord enseignant : ma journée */
+.mj-grille{ display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:10px; }
+.mj-classe{ border:1px solid var(--border); border-radius:var(--r-card); padding:10px 12px; }
+.mj-tete{ display:flex; justify-content:space-between; align-items:baseline; margin-bottom:6px; }
+.mj-ligne{ font-size:var(--fs-sm, 14px); margin-top:6px; display:flex; flex-wrap:wrap; gap:6px; align-items:center; }

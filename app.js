@@ -2231,7 +2231,7 @@ const VERSIONS = [
     commun: [],
     parent: [ 'Chaque paiement de scolarité vous est confirmé dans vos messages, avec le reste à payer.', 'Nouveau : « Écrire à l’école » dans vos messages — l’école vous répond ici.', 'Nouveau : « À venir » sur l’accueil — vacances, compositions, réunions et fêtes de l’école.', 'Nouvel onglet « Vie de l’école » : photos et vidéos des événements, J’aime, Bravo et commentaires.' ],
     portier: [],
-    personnel: [ 'Paiement de scolarité : le parent reçoit automatiquement la confirmation (application + notification), avec bouton WhatsApp sous le reçu.', 'Exports Excel : liste des élèves (une feuille par classe) et état de la scolarité avec les impayés.', 'Messagerie : les parents peuvent vous écrire ; bouton « Répondre » et notification à chaque message.', 'Nouveau menu « Agenda de l’école » : vacances, compositions, réunions ; les vacances arrêtent les annonces automatiquement.', 'Notes & Bulletins : la Direction publie un trimestre, les parents voient le bulletin de leurs enfants.', 'Enseignants : application « EcoMaZ-ENSEIGNANTS » — chacun s’inscrit avec Google, coche ses classes et ne voit que ses classes.', 'Parents : à l’inscription, ils cochent eux-mêmes leurs enfants ; vous n’avez plus qu’à approuver.', 'Paramètres → Scolarité : assistant « inscription + scolarité par classe ».', 'Paramètres → Scolarité : relances automatiques et polies des tranches impayées (3 jours avant, le jour même, 7 jours après).', 'Notifications sur le téléphone pour tout le personnel : demandes d’accès, absences signalées, objets perdus, appel non fait.', 'Appel rapide : « Tous présents », puis touchez le nom des absents ; rappel à 9h00 si l’appel n’est pas fait.', 'Paramètres → Scolarité : montants et tranches de paiement propres à chaque classe, copie vers d’autres classes, affichage aux parents au choix.', 'Direction : liste « Mise en route de l’école » sur le tableau de bord, avec ce qui reste à faire.', 'Nouveau menu « Vie de l’école » : publiez les photos et vidéos des événements pour les parents (toute l’école ou certaines classes).' ],
+    personnel: [ 'Enseignants : encadré « Ma journée » (appel, absences signalées, renforcement, parents arrivés, agenda) pour vos classes.', 'Paiement de scolarité : le parent reçoit automatiquement la confirmation (application + notification), avec bouton WhatsApp sous le reçu.', 'Exports Excel : liste des élèves (une feuille par classe) et état de la scolarité avec les impayés.', 'Messagerie : les parents peuvent vous écrire ; bouton « Répondre » et notification à chaque message.', 'Nouveau menu « Agenda de l’école » : vacances, compositions, réunions ; les vacances arrêtent les annonces automatiquement.', 'Notes & Bulletins : la Direction publie un trimestre, les parents voient le bulletin de leurs enfants.', 'Enseignants : application « EcoMaZ-ENSEIGNANTS » — chacun s’inscrit avec Google, coche ses classes et ne voit que ses classes.', 'Parents : à l’inscription, ils cochent eux-mêmes leurs enfants ; vous n’avez plus qu’à approuver.', 'Paramètres → Scolarité : assistant « inscription + scolarité par classe ».', 'Paramètres → Scolarité : relances automatiques et polies des tranches impayées (3 jours avant, le jour même, 7 jours après).', 'Notifications sur le téléphone pour tout le personnel : demandes d’accès, absences signalées, objets perdus, appel non fait.', 'Appel rapide : « Tous présents », puis touchez le nom des absents ; rappel à 9h00 si l’appel n’est pas fait.', 'Paramètres → Scolarité : montants et tranches de paiement propres à chaque classe, copie vers d’autres classes, affichage aux parents au choix.', 'Direction : liste « Mise en route de l’école » sur le tableau de bord, avec ce qui reste à faire.', 'Nouveau menu « Vie de l’école » : publiez les photos et vidéos des événements pour les parents (toute l’école ou certaines classes).' ],
   } },
   { version: '2026.10.12-2', nouveautes: {
     commun: [],
@@ -2605,6 +2605,7 @@ function renderDashboard(){
     </div>
     ${animer ? `${(setTimeout(animerCompteursKpi, 0), '')}` : ''}
     ${renderMiseEnRoute()}
+    ${renderMaJournee()}
     ${(ui.role==='direction' || ui.role==='fondation') ? `<div class="form-actions no-print" style="justify-content:flex-start;margin:0 0 var(--sp-4);"><button class="btn secondary" onclick="ouvrirBilanHebdo()">📊 Bilan de la semaine</button></div>` : ''}
 
     ${pushPossible() && Notification.permission === 'default' ? `<div class="form-actions no-print" style="justify-content:flex-start;margin:0 0 var(--sp-4);"><button class="btn" onclick="activerPush(false).then(ok => { if(ok){ toast('Notifications activées sur ce téléphone'); renderView('dashboard'); } })">🔔 Activer les notifications sur ce téléphone${ui.role==='enseignant' ? ' (parent au portail, appel, absences)' : ' (appel non fait, demandes d’accès, absences, objets perdus)'}</button></div>` : ''}
@@ -2763,6 +2764,40 @@ function etapesMiseEnRoute(){
     { ok: m.geofenceLatitude != null, titre: 'Zone de l’école (pointage GPS)', detail: m.geofenceLatitude != null ? 'définie' : 'non définie', vue: 'parametres', bouton: 'Paramètres' },
     { ok: !!m.logo, titre: 'Logo de l’école', detail: m.logo ? 'ajouté' : 'non ajouté (apparaît sur les reçus et les applications)', vue: 'parametres', bouton: 'Paramètres' },
   ];
+}
+// Tableau de bord ENSEIGNANT : « Ma journée », classe par classe
+function renderMaJournee(){
+  if(ui.role !== 'enseignant') return '';
+  if(!session.enseignantId) return `<div class="panel"><div class="hint">Votre compte n’est relié à aucune classe : demandez à la direction de valider votre inscription (application EcoMaZ-ENSEIGNANTS).</div></div>`;
+  // Données chargées une fois (absences signalées, agenda), puis le tableau de bord se réaffiche
+  if(DB.absencesSignalees === undefined){ DB.absencesSignalees = null; chargerAbsencesSignalees().then(() => { if(ui.currentView === 'dashboard') renderView('dashboard'); }).catch(() => { DB.absencesSignalees = []; }); }
+  if(DB.agenda === undefined){ DB.agenda = null; sb.from('evenements_agenda').select('*').eq('ecole_id', session.ecoleId).gte('date_fin', todayISO()).order('date_debut').limit(20)
+    .then(({ data }) => { DB.agenda = rowsToCamel(data || []); if(ui.currentView === 'dashboard') renderView('dashboard'); }); }
+  const aujourd = todayISO(), jourIso = ((new Date().getDay() + 6) % 7) + 1;
+  const renfAujourdhui = (DB.horairesAnnonces?.joursRenforcement || [1,2,3,4,5]).includes(jourIso);
+  const classes = classesVisibles();
+  const cartes = classes.map(c => {
+    const eleves = DB.eleves.filter(e => e.classeId === c.id && e.statut === 'Actif');
+    const appel = DB.presencesEleves.filter(p => p.classeId === c.id && p.date === aujourd);
+    const absents = appel.filter(p => p.statut === 'Absent').length;
+    const signales = eleves.map(e => ({ e, a: absenceSignalee(e.id, aujourd) })).filter(x => x.a);
+    const renf = renfAujourdhui ? eleves.filter(e => e.renforcement) : [];
+    const arrivees = (DB.notificationsPortier || []).filter(n => n.classeId === c.id && String(n.createdAt || '').slice(0, 10) === aujourd);
+    return `<div class="mj-classe">
+      <div class="mj-tete"><strong>${escapeHtml(c.nom)}</strong><span class="hint" style="margin:0;">${eleves.length} élève(s)</span></div>
+      <div class="mj-ligne">${appel.length ? `<span class="badge green">✓ Appel fait</span> ${absents} absent(s)` : `<span class="badge red">Appel non fait</span> <button class="btn sm" onclick="ui.filters.presEleves={classeId:'${c.id}', date:'${aujourd}'}; go('presences-eleves')">Faire l’appel</button>`}</div>
+      ${signales.length ? `<div class="mj-ligne">📝 Absences signalées : ${signales.map(x => `${escapeHtml(eleveFullName(x.e))} <span class="hint">(${escapeHtml(x.a.motif)})</span>`).join(', ')}</div>` : ''}
+      ${renf.length ? `<div class="mj-ligne">📘 Renforcement ce soir : ${renf.map(e => escapeHtml(eleveFullName(e))).join(', ')}</div>` : ''}
+      ${arrivees.length ? `<div class="mj-ligne">🚪 Parents arrivés : ${arrivees.map(n => `${escapeHtml(n.eleveNom)} <span class="hint">(${new Date(n.createdAt).toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'})})</span>`).join(', ')}</div>` : ''}
+    </div>`;
+  }).join('');
+  const ids = new Set(classes.map(c => c.id));
+  const dates = (DB.agenda || []).filter(ev => ev.dateFin >= aujourd && (!ev.classeIds || ev.classeIds.some(id => ids.has(id)))).slice(0, 3);
+  return `<div class="panel">
+    <div class="panel-head"><div><h2>☀️ Ma journée — ${new Date().toLocaleDateString('fr-FR', {weekday:'long', day:'numeric', month:'long'})}</h2><div class="sub">Vos classes uniquement</div></div></div>
+    <div class="mj-grille">${cartes || '<div class="hint">Aucune classe.</div>'}</div>
+    ${dates.length ? `<div class="mj-ligne" style="margin-top:10px;">📅 À venir : ${dates.map(ev => `${escapeHtml(ev.titre)} <span class="hint">(${delaiAgenda(ev)})</span>`).join(' · ')}</div>` : ''}
+  </div>`;
 }
 function renderMiseEnRoute(){
   if(!['direction','fondation'].includes(ui.role)) return '';
