@@ -1416,7 +1416,7 @@ async function handleSignalerAbsence(ev){
 async function annulerAbsenceSignalee(id){
   if(!confirm('Annuler ce signalement d’absence ?')) return;
   try{
-    const { error } = await sb.from('absences_signalees').delete().eq('id', id);
+    const { error } = await exigerEffet(sb.from('absences_signalees').delete().eq('id', id));
     if(error) throw error;
     DB.absencesSignalees = (DB.absencesSignalees || []).filter(a => a.id !== id);
     toast('Signalement annulé'); afficherSignalerAbsence();
@@ -1878,7 +1878,7 @@ async function handleRepondreObjetPerdu(id){
   const statut = document.getElementById('objStatut-' + id).value;
   const reponse = document.getElementById('objRep-' + id).value.trim();
   try{
-    const { error } = await sb.from('objets_perdus').update({ statut, reponse_ecole: reponse, updated_at: new Date().toISOString() }).eq('id', id);
+    const { error } = await exigerEffet(sb.from('objets_perdus').update({ statut, reponse_ecole: reponse, updated_at: new Date().toISOString() }).eq('id', id));
     if(error) throw error;
     DB.objetsPerdus = (DB.objetsPerdus || []).map(o => o.id === id ? { ...o, statut, reponseEcole: reponse } : o);
     const objet = DB.objetsPerdus.find(o => o.id === id);
@@ -1991,7 +1991,7 @@ function renderDropdownNotifications(){
 }
 async function handleMarquerVuPortier(id){
   try{
-    const { error } = await sb.from('notifications_portier').update({ vue: true }).eq('id', id);
+    const { error } = await exigerEffet(sb.from('notifications_portier').update({ vue: true }).eq('id', id));
     if(error) throw error;
     DB.notificationsPortier = (DB.notificationsPortier||[]).map(n=>n.id===id?{...n,vue:true}:n);
     rafraichirBulles();
@@ -2052,7 +2052,7 @@ async function envoyerMessageEcole(ev){
 }
 async function marquerMessageParentLu(id){
   try{
-    const { error } = await sb.from('messages_internes').update({ lu: true }).eq('id', id);
+    const { error } = await exigerEffet(sb.from('messages_internes').update({ lu: true }).eq('id', id));
     if(error) throw error;
     DB.messagesInternes = (DB.messagesInternes || []).map(m => m.id === id ? { ...m, lu: true } : m);
     rafraichirBulles(); if(ui.currentView === 'messagerie') renderView('messagerie');
@@ -2127,7 +2127,7 @@ async function handleEnvoyerMessage(ev){
 }
 async function handleMarquerMessageLu(id){
   try{
-    const { error } = await sb.from('messages_internes').update({ lu:true }).eq('id', id);
+    const { error } = await exigerEffet(sb.from('messages_internes').update({ lu:true }).eq('id', id));
     if(error) throw error;
     DB.messagesInternes = (DB.messagesInternes||[]).map(m=>m.id===id?{...m,lu:true}:m);
     rafraichirBulles();
@@ -2176,7 +2176,7 @@ async function handleEnvoyerSuggestion(ev){
 }
 async function handleMarquerSuggestionLue(id){
   try{
-    const { error } = await sb.from('suggestions').update({ lu:true }).eq('id', id);
+    const { error } = await exigerEffet(sb.from('suggestions').update({ lu:true }).eq('id', id));
     if(error) throw error;
     DB.suggestions = (DB.suggestions||[]).map(s=>s.id===id?{...s,lu:true}:s);
     rafraichirBulles();
@@ -2320,6 +2320,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.10.14-1', nouveautes: {
+    commun: [ 'Correction : une suppression ou une modification refusée n’affiche plus « enregistré » à tort ; un message clair explique pourquoi.' ],
+    parent: [],
+    portier: [],
+    personnel: [],
+  } },
   { version: '2026.10.13-25', nouveautes: {
     commun: [],
     parent: [],
@@ -2738,22 +2744,6 @@ function stopPollingBulles(){
   bullesPollTimer = null;
 }
 
-async function clearEcoleData(){
-  if(!confirm("Vider toutes les données opérationnelles (élèves, enseignants, pédagogie ET comptabilité) pour configurer une nouvelle école cliente ?\n\nLes informations de l'établissement déjà renseignées (nom, logo, directeur, fondateur) seront conservées.\n\nCette action supprime définitivement ces données de la base.")) return;
-  const tables = ['messages','depenses','paiements_salaires','personnel_autre','ventes_gadgets',
-    'gadgets','paiements_cotisations','inscriptions_activites','activites','paiements_scolarite',
-    'bulletins_commentaires','programmes','emploi_temps','alertes_pointage','presences_enseignants','presences_eleves',
-    'notes','eleves','enseignants','classes'];
-  try{
-    for(const t of tables){ await sb.from(t).delete().eq('ecole_id', session.ecoleId); }
-    await sb.from('ecoles').update({ niveaux: [] }).eq('id', session.ecoleId); // les classes ayant été supprimées, on libère les niveaux pour pouvoir les recréer
-    DB = await chargerDB();
-    toast('Données vidées — application prête pour une nouvelle école');
-    renderView(ui.currentView);
-  }catch(e){
-    alert('Erreur lors de la suppression : ' + e.message);
-  }
-}
 
 /* ---------------------------------------------------------------------
    4. TABLEAU DE BORD
@@ -3185,7 +3175,7 @@ async function relierEnfantAuParent(parentId){
 async function retirerAccesParentLiens(peId){
   if(!confirm("Retirer le lien entre ce parent et cet élève ? Le parent ne verra plus rien de cet enfant.")) return;
   try{
-    const { error } = await sb.from('parents_eleves').delete().eq('id', peId);
+    const { error } = await exigerEffet(sb.from('parents_eleves').delete().eq('id', peId));
     if(error) throw error;
     DB.parentsEleves = (DB.parentsEleves || []).filter(pe => pe.id !== peId);
     toast('Lien retiré'); renderView('liens-parents');
@@ -3437,7 +3427,7 @@ async function envoyerCommentaire(ev, pubId){
 async function supprimerCommentaire(pubId, comId){
   if(!confirm('Supprimer ce commentaire ?')) return;
   try{
-    const { error } = await sb.from('publication_commentaires').delete().eq('id', comId);
+    const { error } = await exigerEffet(sb.from('publication_commentaires').delete().eq('id', comId));
     if(error) throw error;
     DB.fil.commentaires[pubId] = (DB.fil.commentaires[pubId] || []).filter(c => c.id !== comId);
     rafraichirPublication(pubId);
@@ -3569,7 +3559,7 @@ async function supprimerPublication(id){
   try{
     const chemins = (DB.fil.medias[id] || []).filter(m => m.type !== 'youtube').map(m => m.chemin);
     if(chemins.length) await sb.storage.from('publications').remove(chemins);
-    const { error } = await sb.from('publications').delete().eq('id', id);
+    const { error } = await exigerEffet(sb.from('publications').delete().eq('id', id));
     if(error) throw error;
     DB.fil.pubs = DB.fil.pubs.filter(p => p.id !== id);
     rafraichirFil(); toast('Publication supprimée');
@@ -3669,7 +3659,7 @@ async function statutDemandeDocument(id, statut){
   let motif = '';
   if(statut === 'refuse'){ motif = prompt('Expliquez brièvement au parent pourquoi (il recevra ce message) :', ''); if(motif === null) return; }
   try{
-    const { error } = await sb.from('demandes_documents').update({ statut, traite_at: new Date().toISOString() }).eq('id', id);
+    const { error } = await exigerEffet(sb.from('demandes_documents').update({ statut, traite_at: new Date().toISOString() }).eq('id', id));
     if(error) throw error;
     d.statut = statut;
     const e = eleveById(d.eleveId);
@@ -3771,7 +3761,7 @@ async function statutPreinscription(id, statut, silencieux){
   if(!p || (silencieux && p.statut !== 'nouvelle')) return;
   if(statut === 'refusee' && !confirm('Classer cette demande sans suite ?')) return;
   try{
-    const { error } = await sb.from('preinscriptions').update({ statut }).eq('id', id);
+    const { error } = await exigerEffet(sb.from('preinscriptions').update({ statut }).eq('id', id));
     if(error) throw error;
     p.statut = statut;
     if(!silencieux) toast('Demande mise à jour');
@@ -3995,12 +3985,12 @@ async function traiterCorrectionFiche(id, appliquer){
     if(appliquer){
       const champs = {};
       Object.entries(c.champs || {}).forEach(([k, v]) => { if(CHAMPS_CORRECTION[k]) champs[k] = v; });
-      const { error } = await sb.from('eleves').update(champs).eq('id', c.eleveId);
+      const { error } = await exigerEffet(sb.from('eleves').update(champs).eq('id', c.eleveId));
       if(error) throw error;
       const e = eleveById(c.eleveId);
       if(e) Object.entries(champs).forEach(([k, v]) => { e[CHAMPS_CORRECTION[k].cle] = v; });
     }
-    const { error: err2 } = await sb.from('corrections_fiches').update({ statut: appliquer ? 'appliquee' : 'refusee', traite_at: new Date().toISOString() }).eq('id', id);
+    const { error: err2 } = await exigerEffet(sb.from('corrections_fiches').update({ statut: appliquer ? 'appliquee' : 'refusee', traite_at: new Date().toISOString() }).eq('id', id));
     if(err2) throw err2;
     c.statut = appliquer ? 'appliquee' : 'refusee';
     toast(appliquer ? 'Fiche mise à jour' : 'Correction refusée'); renderView('eleves');
@@ -4089,7 +4079,7 @@ async function supprimerPersonneAutorisee(id, eleveId){
   if(!confirm('Retirer cette personne de la liste ?')) return;
   const e = (DB.eleves || []).find(x => x.id === eleveId) || { id: eleveId };
   try{
-    const { error } = await sb.from('personnes_autorisees').delete().eq('id', id);
+    const { error } = await exigerEffet(sb.from('personnes_autorisees').delete().eq('id', id));
     if(error) throw error;
     DB.personnesAutorisees = (DB.personnesAutorisees || []).filter(p => p.id !== id);
     toast('Personne retirée'); apresMajSecurite(e);
@@ -4162,7 +4152,7 @@ function renderAnniversaireEnfant(e){
 }
 async function reglerOptionEcole(colonne, cle, actif, libelle){
   try{
-    const { error } = await sb.from('ecoles').update({ [colonne]: actif }).eq('id', session.ecoleId);
+    const { error } = await exigerEffet(sb.from('ecoles').update({ [colonne]: actif }).eq('id', session.ecoleId));
     if(error) throw error;
     DB.meta[cle] = actif;
     toast(`${libelle} : ${actif ? 'activé' : 'désactivé'}`);
@@ -4170,7 +4160,7 @@ async function reglerOptionEcole(colonne, cle, actif, libelle){
 }
 async function reglerVoeuxAnniversaire(actif){
   try{
-    const { error } = await sb.from('ecoles').update({ voeux_anniversaire: actif }).eq('id', session.ecoleId);
+    const { error } = await exigerEffet(sb.from('ecoles').update({ voeux_anniversaire: actif }).eq('id', session.ecoleId));
     if(error) throw error;
     DB.meta.voeuxAnniversaire = actif;
     toast(actif ? 'Vœux d’anniversaire activés' : 'Vœux d’anniversaire désactivés');
@@ -4263,7 +4253,7 @@ async function ajouterDevoir(ev){
 async function supprimerDevoir(id){
   if(!confirm('Supprimer ce devoir ? Les parents ne le verront plus.')) return;
   try{
-    const { error } = await sb.from('devoirs').delete().eq('id', id);
+    const { error } = await exigerEffet(sb.from('devoirs').delete().eq('id', id));
     if(error) throw error;
     DB.devoirs = (DB.devoirs || []).filter(d => d.id !== id);
     toast('Devoir supprimé'); renderView('devoirs');
@@ -4467,7 +4457,7 @@ async function ajouterEvenementAgenda(ev){
 async function supprimerEvenementAgenda(id){
   if(!confirm('Supprimer cette date de l’agenda ?')) return;
   try{
-    const { error } = await sb.from('evenements_agenda').delete().eq('id', id);
+    const { error } = await exigerEffet(sb.from('evenements_agenda').delete().eq('id', id));
     if(error) throw error;
     DB.agenda = (DB.agenda || []).filter(e => e.id !== id);
     toast('Date supprimée'); renderView('agenda');
@@ -5227,7 +5217,7 @@ async function handleCreerCompteParent(ev, eleveId){
 async function retirerAccesParent(peId, eleveId){
   if(!confirm("Retirer l'accès de ce parent à cet élève ?")) return;
   try{
-    const { error } = await sb.from('parents_eleves').delete().eq('id', peId);
+    const { error } = await exigerEffet(sb.from('parents_eleves').delete().eq('id', peId));
     if(error) throw error;
     DB.parentsEleves = (DB.parentsEleves||[]).filter(pe=>pe.id!==peId);
     toast('Accès retiré');
@@ -5394,7 +5384,7 @@ async function publierBulletins(trimestre, publier){
   if(publier && !confirm(`Publier les bulletins du ${trimestre} ? Chaque parent verra les notes et l’appréciation de ses enfants, et recevra une notification.`)){ renderView('notes'); return; }
   const liste = publier ? [...new Set(actuels.concat(trimestre))] : actuels.filter(t => t !== trimestre);
   try{
-    const { error } = await sb.from('ecoles').update({ bulletins_publies: liste }).eq('id', session.ecoleId);
+    const { error } = await exigerEffet(sb.from('ecoles').update({ bulletins_publies: liste }).eq('id', session.ecoleId));
     if(error) throw error;
     DB.meta.bulletinsPublies = liste;
     if(publier){
@@ -8032,7 +8022,7 @@ async function handleSaveLoyerConfig(ev){
   const fd = new FormData(ev.target);
   const loyerMensuel = Math.max(0, parseInt(fd.get('loyerMensuel'))||0);
   try{
-    const { error } = await sb.from('ecoles').update({ loyer_mensuel: loyerMensuel }).eq('id', session.ecoleId);
+    const { error } = await exigerEffet(sb.from('ecoles').update({ loyer_mensuel: loyerMensuel }).eq('id', session.ecoleId));
     if(error) throw error;
     DB.meta.loyerMensuel = loyerMensuel;
     closeModal(); toast('Loyer mensuel mis à jour');
@@ -8336,7 +8326,7 @@ async function handleAjouterActualite(ev){
 async function handleSupprimerActualite(id){
   if(!confirm('Supprimer cette actualité ?')) return;
   try{
-    const { error } = await sb.from('actualites_affichage').delete().eq('id', id);
+    const { error } = await exigerEffet(sb.from('actualites_affichage').delete().eq('id', id));
     if(error) throw error;
     DB.actualitesAffichage = (DB.actualitesAffichage||[]).filter(a=>a.id!==id);
     toast('Actualité supprimée');
@@ -8665,7 +8655,7 @@ async function handleSaveGeofence(ev){
     geofence_rayon_metres: Math.max(10, parseInt(fd.get('rayon'))||100),
   };
   try{
-    const { error } = await sb.from('ecoles').update(patch).eq('id', session.ecoleId);
+    const { error } = await exigerEffet(sb.from('ecoles').update(patch).eq('id', session.ecoleId));
     if(error) throw error;
     DB.meta.geofenceLatitude = patch.geofence_latitude;
     DB.meta.geofenceLongitude = patch.geofence_longitude;
@@ -8861,7 +8851,7 @@ async function handleSaveMeta(ev){
     heureArriveeAttendue: fd.get('heureArriveeAttendue') || DB.meta.heureArriveeAttendue,
   };
   try{
-    const { error } = await sb.from('ecoles').update(objToSnake(patch)).eq('id', session.ecoleId);
+    const { error } = await exigerEffet(sb.from('ecoles').update(objToSnake(patch)).eq('id', session.ecoleId));
     if(error) throw error;
     Object.assign(DB.meta, patch);
     toast('Informations enregistrées');
@@ -8872,7 +8862,7 @@ async function handleSaveMeta(ev){
 
 async function handleToggleAccesSupportDev(actif){
   try{
-    const { error } = await sb.from('ecoles').update({ acces_support_developpeur: actif }).eq('id', session.ecoleId);
+    const { error } = await exigerEffet(sb.from('ecoles').update({ acces_support_developpeur: actif }).eq('id', session.ecoleId));
     if(error) throw error;
     DB.meta.accesSupportDeveloppeur = actif;
     toast(actif ? 'Accès technique développeur activé' : 'Accès technique développeur désactivé');
@@ -8902,7 +8892,7 @@ async function handleSaveNiveaux(ev){
       if(error) throw error;
     }
     const niveaux = coches;
-    const { error: err2 } = await sb.from('ecoles').update({ niveaux }).eq('id', session.ecoleId);
+    const { error: err2 } = await exigerEffet(sb.from('ecoles').update({ niveaux }).eq('id', session.ecoleId));
     if(err2) throw err2;
     DB = await chargerDB();
     const parts = [];
@@ -9010,7 +9000,7 @@ async function handleSaveTva(ev){
   const assujettiTva = fd.get('assujetti')==='oui';
   const tauxTva = Math.max(0, parseFloat(fd.get('taux'))||0);
   try{
-    const { error } = await sb.from('ecoles').update({assujetti_tva: assujettiTva, taux_tva: tauxTva}).eq('id', session.ecoleId);
+    const { error } = await exigerEffet(sb.from('ecoles').update({assujetti_tva: assujettiTva, taux_tva: tauxTva}).eq('id', session.ecoleId));
     if(error) throw error;
     DB.meta.assujettiTva = assujettiTva;
     DB.meta.tauxTva = tauxTva;
@@ -9293,7 +9283,7 @@ async function reglerRelances(actif, heure){
   if(actif !== null && actif !== undefined) patch.relances_scolarite = actif;
   if(heure) patch.heure_relances = heure;
   try{
-    const { error } = await sb.from('ecoles').update(patch).eq('id', session.ecoleId);
+    const { error } = await exigerEffet(sb.from('ecoles').update(patch).eq('id', session.ecoleId));
     if(error) throw error;
     if('relances_scolarite' in patch) DB.meta.relancesScolarite = patch.relances_scolarite;
     if(heure) DB.meta.heureRelances = heure;
@@ -9303,7 +9293,7 @@ async function reglerRelances(actif, heure){
 async function basculerScolariteParents(visible){
   if(visible && !confirm('Les parents verront dans leur application les tranches, ce qui est payé et le reste à payer de leur enfant. Les montants et les paiements sont-ils à jour ?')){ renderView('parametres'); return; }
   try{
-    const { error } = await sb.from('ecoles').update({ scolarite_visible_parents: visible }).eq('id', session.ecoleId);
+    const { error } = await exigerEffet(sb.from('ecoles').update({ scolarite_visible_parents: visible }).eq('id', session.ecoleId));
     if(error) throw error;
     DB.meta.scolariteVisibleParents = visible;
     toast(visible ? 'Scolarité visible par les parents' : 'Scolarité masquée aux parents');
@@ -9318,7 +9308,7 @@ function handleLogoUpload(ev){
   const reader = new FileReader();
   reader.onload = async () => {
     try{
-      const { error } = await sb.from('ecoles').update({ logo_url: reader.result }).eq('id', session.ecoleId);
+      const { error } = await exigerEffet(sb.from('ecoles').update({ logo_url: reader.result }).eq('id', session.ecoleId));
       if(error) throw error;
       DB.meta.logo = reader.result;
       applyBranding();
@@ -9332,7 +9322,7 @@ function handleLogoUpload(ev){
 async function removeLogo(){
   if(!confirm('Retirer le logo de l\'école ?')) return;
   try{
-    const { error } = await sb.from('ecoles').update({ logo_url: '' }).eq('id', session.ecoleId);
+    const { error } = await exigerEffet(sb.from('ecoles').update({ logo_url: '' }).eq('id', session.ecoleId));
     if(error) throw error;
     DB.meta.logo = '';
     applyBranding();

@@ -319,22 +319,43 @@ async function dbInsertMany(table, objsCamel){
     return rowsToCamel(rows);
   }
 }
+/* Erreurs de la base traduites en français clair (au lieu des messages
+   techniques) — utilisé par toutes les modifications et suppressions. */
+function erreurLisible(e){
+  if(!e) return new Error('Action impossible.');
+  const code = e.code || '', msg = String(e.message || '');
+  if(code === '23503' || /foreign key/i.test(msg)) return new Error('Impossible : cet élément est encore utilisé ailleurs (par exemple des élèves sont encore inscrits dans cette classe, ou des paiements y sont liés). Déplacez ou supprimez d’abord ce qui en dépend.');
+  if(code === '23505' || /duplicate key|unique/i.test(msg)) return new Error('Cet élément existe déjà (doublon refusé).');
+  if(code === '42501' || /row-level security|permission denied/i.test(msg)) return new Error('Action refusée : votre profil n’a pas le droit de faire cette opération.');
+  if(code === '23514' || /check constraint/i.test(msg)) return new Error('Valeur refusée : vérifiez les champs saisis (texte trop long, date ou montant impossible).');
+  return e instanceof Error ? e : new Error(msg || 'Action impossible.');
+}
+const MESSAGE_SANS_EFFET = 'Action refusée : rien n’a été modifié (élément déjà supprimé, ou votre profil n’a pas le droit de le faire). Actualisez la page.';
+/* Exige qu'une modification / suppression ait réellement touché une ligne.
+   Sans cela, une règle de sécurité qui refuse en silence donnait « Supprimé »
+   à l'écran alors que rien n'avait changé (l'élément réapparaissait). */
+async function exigerEffet(requete){
+  const r = await requete.select();
+  if(r.error) return { data: null, error: erreurLisible(r.error) };
+  if(!r.data || !r.data.length) return { data: null, error: new Error(MESSAGE_SANS_EFFET) };
+  return { data: r.data, error: null };
+}
 async function dbUpdate(table, id, patchCamel){
   const patch = objToSnake(patchCamel);
   try{
-    const { error } = await sb.from(table).update(patch).eq('id', id).eq('ecole_id', session.ecoleId);
+    const { error } = await exigerEffet(sb.from(table).update(patch).eq('id', id).eq('ecole_id', session.ecoleId));
     if(error) throw error;
   }catch(e){
-    if(!erreurReseau(e)) throw e;
+    if(!erreurReseau(e)) throw erreurLisible(e);
     await mettreEnFileAttente('update', table, { id, ecole_id: session.ecoleId, ...patch });
   }
 }
 async function dbDelete(table, id){
   try{
-    const { error } = await sb.from(table).delete().eq('id', id).eq('ecole_id', session.ecoleId);
+    const { error } = await exigerEffet(sb.from(table).delete().eq('id', id).eq('ecole_id', session.ecoleId));
     if(error) throw error;
   }catch(e){
-    if(!erreurReseau(e)) throw e;
+    if(!erreurReseau(e)) throw erreurLisible(e);
     await mettreEnFileAttente('delete', table, { id, ecole_id: session.ecoleId });
   }
 }
@@ -631,80 +652,3 @@ async function chargerDBPortier(){
   };
 }
 
-/* ---------------------------------------------------------------------
-   Envoi des données de démonstration générées par buildSeed() vers
-   Supabase (utilisé par le bouton "Recharger les données démo").
-   buildSeed() reste inchangée : elle fabrique un objet en mémoire ;
-   cette fonction se contente de le téléverser table par table.
-   --------------------------------------------------------------------- */
-async function pousserSeedVersSupabase(seed){
-  // 1) École (mise à jour des infos, on garde l'ecole_id existant)
-  await sb.from('ecoles').update(objToSnake({
-    nomEcole: seed.meta.nomEcole, adresse: seed.meta.adresse, telephone: seed.meta.telephone,
-    anneeScolaire: seed.meta.anneeScolaire, directeurNom: seed.meta.directeurNom,
-    fondateurNom: seed.meta.fondateurNom, loyerMensuel: seed.meta.loyerMensuel,
-    niveaux: seed.meta.niveaux,
-  })).eq('id', session.ecoleId);
-
-  // 2) Purge des anciennes données opérationnelles de cette école
-  const tables = ['messages','depenses','paiements_salaires','personnel_autre','ventes_gadgets',
-    'gadgets','paiements_cotisations','inscriptions_activites','activites','paiements_scolarite',
-    'bulletins_commentaires','programmes','emploi_temps','presences_enseignants','presences_eleves',
-    'notes','eleves','enseignants','classes'];
-  for(const t of tables){ await sb.from(t).delete().eq('ecole_id', session.ecoleId); }
-
-  // 3) Ré-insertion classes (avec frais_scolarite fusionné) — id texte fixe, pas d'uuid auto
-  const classesRows = seed.classes.map(c => objToSnake({
-    id: c.id, ecoleId: session.ecoleId, nom: c.nom, cycle: c.cycle,
-    fraisScolarite: seed.fraisScolarite[c.id] || 0,
-  }));
-  await sb.from('classes').insert(classesRows);
-
-  // 4) Enseignants (on capture le mapping ancien id -> nouvel id Supabase)
-  const ensMap = {};
-  for(const t of seed.enseignants){
-    const { id, classesAssignees, matieres, ...rest } = t;
-    const inserted = await dbInsert('enseignants', { ...rest, classesAssignees, matieres });
-    ensMap[id] = inserted.id;
-  }
-  // Titulaires de classe (maintenant que les enseignants ont un id définitif)
-  for(const c of seed.classes){
-    if(c.titulaireId) await dbUpdate('classes', c.id, { titulaireId: ensMap[c.titulaireId] });
-  }
-
-  // 5) Élèves
-  const elMap = {};
-  for(const e of seed.eleves){
-    const { id, ...rest } = e;
-    const inserted = await dbInsert('eleves', rest);
-    elMap[id] = inserted.id;
-  }
-
-  // 6) Notes, présences, emploi du temps, programmes (dépendent des maps ci-dessus)
-  await dbInsertMany('notes', seed.notes.map(n => ({ ...n, eleveId: elMap[n.eleveId] })));
-  await dbInsertMany('presences_eleves', seed.presencesEleves.map(p => ({ ...p, eleveId: elMap[p.eleveId] })));
-  await dbInsertMany('presences_enseignants', seed.presencesEnseignants.map(p => ({ ...p, enseignantId: ensMap[p.enseignantId] })));
-  await dbInsertMany('emploi_temps', seed.emploiTemps.map(s => ({ ...s, enseignantId: ensMap[s.enseignantId] })));
-  await dbInsertMany('programmes', seed.programmes.map(p => ({ ...p, enseignantId: ensMap[p.enseignantId] })));
-
-  // 7) Comptabilité
-  await dbInsertMany('paiements_scolarite', seed.paiementsScolarite.map(p => ({ ...p, eleveId: elMap[p.eleveId] })));
-  const actMap = {};
-  for(const a of seed.activites){ const { id, ...rest } = a; const inserted = await dbInsert('activites', rest); actMap[id] = inserted.id; }
-  await dbInsertMany('inscriptions_activites', seed.inscriptionsActivites.map(i => ({ ...i, eleveId: elMap[i.eleveId], activiteId: actMap[i.activiteId] })));
-  await dbInsertMany('paiements_cotisations', seed.paiementsCotisations.map(p => ({ ...p, eleveId: elMap[p.eleveId], activiteId: actMap[p.activiteId] })));
-  const gadMap = {};
-  for(const g of seed.gadgets){ const { id, ...rest } = g; const inserted = await dbInsert('gadgets', rest); gadMap[id] = inserted.id; }
-  await dbInsertMany('ventes_gadgets', seed.ventesGadgets.map(v => ({ ...v, gadgetId: gadMap[v.gadgetId], eleveId: v.eleveId ? elMap[v.eleveId] : null })));
-  const persMap = {};
-  for(const p of seed.personnelAutre){ const { id, ...rest } = p; const inserted = await dbInsert('personnel_autre', rest); persMap[id] = inserted.id; }
-  await dbInsertMany('paiements_salaires', seed.paiementsSalaires.map(p => ({
-    ...p, personnelId: p.personnelType==='enseignant' ? ensMap[p.personnelId] : persMap[p.personnelId],
-  })));
-  await dbInsertMany('depenses', seed.depenses);
-
-  // 8) Messagerie
-  await dbInsertMany('messages', seed.messages.map(m => ({
-    ...m, eleveId: m.eleveId ? elMap[m.eleveId] : null, enseignantId: m.enseignantId ? ensMap[m.enseignantId] : null,
-  })));
-}
