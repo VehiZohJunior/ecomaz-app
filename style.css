@@ -954,3 +954,17 @@ td:has(> .amount), th.montant{ text-align:right; }
 .vis-prec{ left:10px; top:50%; transform:translateY(-50%); }
 .vis-suiv{ right:10px; top:50%; transform:translateY(-50%); }
 .vis-compteur{ position:absolute; bottom:18px; left:50%; transform:translateX(-50%); color:#fff; font-weight:800; }
+
+/* Tableau de bord : mise en route de l'école */
+.mer-barre{ height:10px; border-radius:6px; background:var(--em-green-100, #e6efe9); overflow:hidden; margin-bottom:var(--sp-3); }
+.mer-barre > div{ height:100%; background:linear-gradient(90deg, #1f5442, #e8b04b); border-radius:6px; }
+.mer-liste{ list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:8px; }
+.mer-liste li{ display:flex; align-items:center; gap:12px; padding:10px 12px; border:1px solid var(--border); border-radius:var(--r-card); }
+.mer-liste li.fait{ opacity:.65; }
+.mer-ic{ width:28px; height:28px; border-radius:50%; display:flex; align-items:center; justify-content:center; flex-shrink:0; font-weight:900; background:var(--em-gold-100, #fbf0d9); color:#8a5a00; }
+.mer-liste li.fait .mer-ic{ background:#14392d; color:#e8b04b; }
+.mer-txt{ display:flex; flex-direction:column; min-width:0; flex:1 1 180px; }
+.mer-liste li{ flex-wrap:wrap; }
+.mer-liste li .btn{ flex-shrink:0; }
+@media (max-width:560px){ .mer-liste li .btn{ width:100%; margin-left:40px; width:calc(100% - 40px); } }
+.mer-txt span{ font-size:var(--fs-xs, 12px); color:var(--text-dim); }

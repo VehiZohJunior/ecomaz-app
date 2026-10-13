@@ -2078,7 +2078,7 @@ const VERSIONS = [
     commun: [],
     parent: [ 'Nouvel onglet « Vie de l’école » : photos et vidéos des événements, J’aime, Bravo et commentaires.' ],
     portier: [],
-    personnel: [ 'Nouveau menu « Vie de l’école » : publiez les photos et vidéos des événements pour les parents (toute l’école ou certaines classes).' ],
+    personnel: [ 'Direction : liste « Mise en route de l’école » sur le tableau de bord, avec ce qui reste à faire.', 'Nouveau menu « Vie de l’école » : publiez les photos et vidéos des événements pour les parents (toute l’école ou certaines classes).' ],
   } },
   { version: '2026.10.12-2', nouveautes: {
     commun: [],
@@ -2453,6 +2453,7 @@ function renderDashboard(){
       ${kpi(3, '🕘', 'var(--blue-bg)', tauxEns===null ? null : tauxEns+'%', "Présence enseignants aujourd'hui", ['Aucun pointage aujourd’hui', lien('presences-enseignants', 'Voir le journal')])}
     </div>
     ${animer ? `${(setTimeout(animerCompteursKpi, 0), '')}` : ''}
+    ${renderMiseEnRoute()}
     ${(ui.role==='direction' || ui.role==='fondation') ? `<div class="form-actions no-print" style="justify-content:flex-start;margin:0 0 var(--sp-4);"><button class="btn secondary" onclick="ouvrirBilanHebdo()">📊 Bilan de la semaine</button></div>` : ''}
 
     ${ui.role==='enseignant' && pushPossible() && Notification.permission === 'default' ? `<div class="form-actions no-print" style="justify-content:flex-start;margin:0 0 var(--sp-4);"><button class="btn" onclick="activerPush(false).then(ok => { if(ok){ toast('Notifications activées : vous serez prévenu quand un parent arrive au portail'); renderView('dashboard'); } })">🔔 Être prévenu sur ce téléphone quand un parent arrive au portail</button></div>` : ''}
@@ -2587,6 +2588,49 @@ function ouvrirBilanHebdo(lundi){
       <a class="btn secondary" href="${lienWa}" target="_blank" rel="noopener">📲 Partager par WhatsApp</a>
       <button type="button" class="btn" onclick="window.print()">🖨️ Imprimer</button>
     </div>`);
+}
+/* ---------------------------------------------------------------------
+   MISE EN ROUTE DE L'ÉCOLE — tableau de bord Direction / Fondation.
+   Liste d'étapes calculée sur les vraies données : ce qui est fait, ce
+   qui manque, et un bouton pour y aller. Se replie quand tout est fait.
+   --------------------------------------------------------------------- */
+function etapesMiseEnRoute(){
+  const actifs = (DB.eleves || []).filter(e => e.statut === 'Actif');
+  const relies = actifs.filter(e => (DB.parentsEleves || []).some(pe => pe.eleveId === e.id)).length;
+  const ensActifs = (DB.enseignants || []).filter(t => t.statut === 'Actif').length;
+  const semaine = decalerJours(todayISO(), -7);
+  const appelsRecents = (DB.presencesEleves || []).filter(p => p.date >= semaine).length;
+  const m = DB.meta || {};
+  return [
+    { ok: (DB.classes || []).length > 0, titre: 'Classes créées', detail: `${(DB.classes || []).length} classe(s)`, vue: 'parametres', bouton: 'Paramètres' },
+    { ok: actifs.length > 0, titre: 'Élèves inscrits', detail: `${actifs.length} élève(s) actif(s)`, vue: 'eleves', bouton: 'Élèves' },
+    { ok: ensActifs > 0, titre: 'Enseignants saisis', detail: ensActifs ? `${ensActifs} enseignant(s)` : 'Aucun enseignant : pas de pointage, ni d’appel par les enseignants', vue: 'enseignants', bouton: 'Ajouter les enseignants' },
+    { ok: actifs.length > 0 && relies / actifs.length >= 0.8, titre: 'Parents reliés à leur enfant', detail: `${relies} / ${actifs.length} — sans lien, le parent ne reçoit ni annonces ni alertes`, vue: 'liens-parents', bouton: 'Relier les parents' },
+    { ok: appelsRecents > 0, titre: 'Appel fait cette semaine', detail: appelsRecents ? `${appelsRecents} présence(s) enregistrée(s) en 7 jours` : 'Aucun appel depuis 7 jours : les parents ne sont pas prévenus des absences', vue: 'presences-eleves', bouton: 'Faire l’appel' },
+    { ok: (DB.paiementsScolarite || []).length > 0, titre: 'Paiements de scolarité enregistrés', detail: (DB.paiementsScolarite || []).length ? `${DB.paiementsScolarite.length} paiement(s)` : 'Aucun paiement saisi : pas de reçus, ni de suivi des impayés', vue: 'comptabilite', bouton: 'Comptabilité' },
+    { ok: (DB.emploiTemps || []).length > 0, titre: 'Emploi du temps', detail: (DB.emploiTemps || []).length ? 'rempli' : 'vide', vue: 'emploi-temps', bouton: 'Emploi du temps' },
+    { ok: m.geofenceLatitude != null, titre: 'Zone de l’école (pointage GPS)', detail: m.geofenceLatitude != null ? 'définie' : 'non définie', vue: 'parametres', bouton: 'Paramètres' },
+    { ok: !!m.logo, titre: 'Logo de l’école', detail: m.logo ? 'ajouté' : 'non ajouté (apparaît sur les reçus et les applications)', vue: 'parametres', bouton: 'Paramètres' },
+  ];
+}
+function renderMiseEnRoute(){
+  if(!['direction','fondation'].includes(ui.role)) return '';
+  const etapes = etapesMiseEnRoute(), faites = etapes.filter(e => e.ok).length;
+  if(faites === etapes.length) return '';
+  const pct = Math.round(100 * faites / etapes.length);
+  const ouvert = ui.filters.miseEnRouteOuvert !== false;
+  return `<div class="panel mise-en-route">
+    <div class="panel-head">
+      <div><h2>🚀 Mise en route de l’école — ${faites} / ${etapes.length}</h2><div class="sub">Plus ces étapes sont faites, plus EcoMaZ travaille pour vous (alertes, annonces, bilans)</div></div>
+      <button class="btn secondary sm" onclick="ui.filters.miseEnRouteOuvert=${!ouvert}; renderView('dashboard')">${ouvert ? 'Replier' : 'Afficher'}</button>
+    </div>
+    <div class="mer-barre" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><div style="width:${pct}%"></div></div>
+    ${ouvert ? `<ul class="mer-liste">${etapes.map(e => `<li class="${e.ok ? 'fait' : ''}">
+      <span class="mer-ic" aria-hidden="true">${e.ok ? '✓' : '•'}</span>
+      <div class="mer-txt"><strong>${e.titre}</strong><span>${escapeHtml(e.detail)}</span></div>
+      ${e.ok ? '' : `<button class="btn sm" onclick="go('${e.vue}')">${e.bouton}</button>`}
+    </li>`).join('')}</ul>` : ''}
+  </div>`;
 }
 /* =====================================================================
    PARENTS ↔ ÉLÈVES — relier chaque élève au compte de son parent, pour
