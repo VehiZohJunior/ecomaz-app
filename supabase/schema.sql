@@ -1982,3 +1982,123 @@ create policy "lecture absences_signalees enseignant" on absences_signalees for 
   using (ecole_id = mon_ecole_id() and mon_role() = 'enseignant' and (
     mon_enseignant_id() is null or exists (
       select 1 from eleves e where e.id = absences_signalees.eleve_id and e.classe_id = any(mes_classes()))));
+
+-- =====================================================================
+-- 54. VIE DE L'ÉCOLE — photos et vidéos des événements (2026-10-13)
+-- =====================================================================
+-- Demande de Vehi Zoh Junior : un fil « comme un réseau social » dans la
+-- console parent (publications, photos, vidéos, J'aime / Bravo,
+-- commentaires). Les photos d'enfants restent PRIVÉES : stockage non
+-- public, lisible seulement par les comptes de l'école.
+create table if not exists publications (
+  id uuid primary key default gen_random_uuid(),
+  ecole_id uuid not null references ecoles(id) on delete cascade default mon_ecole_id(),
+  auteur_id uuid references auth.users(id) on delete set null default auth.uid(),
+  auteur_nom text not null default '',
+  titre text not null check (char_length(titre) between 2 and 150),
+  texte text not null default '' check (char_length(texte) <= 3000),
+  date_evenement date,
+  classe_ids text[],                       -- null = toute l'école
+  created_at timestamptz not null default now()
+);
+create index if not exists publications_ecole_idx on publications(ecole_id, created_at desc);
+
+create table if not exists publication_medias (
+  id uuid primary key default gen_random_uuid(),
+  publication_id uuid not null references publications(id) on delete cascade,
+  ecole_id uuid not null references ecoles(id) on delete cascade default mon_ecole_id(),
+  type text not null check (type in ('photo','video','youtube')),
+  chemin text not null check (char_length(chemin) <= 500),   -- chemin dans le stockage, ou identifiant YouTube
+  ordre integer not null default 0
+);
+create index if not exists publication_medias_pub_idx on publication_medias(publication_id, ordre);
+
+create table if not exists publication_reactions (
+  publication_id uuid not null references publications(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade default auth.uid(),
+  type text not null default 'coeur' check (type in ('coeur','bravo')),
+  created_at timestamptz not null default now(),
+  primary key (publication_id, user_id, type)
+);
+
+create table if not exists publication_commentaires (
+  id uuid primary key default gen_random_uuid(),
+  publication_id uuid not null references publications(id) on delete cascade,
+  ecole_id uuid not null references ecoles(id) on delete cascade default mon_ecole_id(),
+  user_id uuid not null references auth.users(id) on delete cascade default auth.uid(),
+  auteur_nom text not null default '',
+  texte text not null check (char_length(texte) between 1 and 500),
+  created_at timestamptz not null default now()
+);
+create index if not exists publication_commentaires_pub_idx on publication_commentaires(publication_id, created_at);
+
+alter table publications enable row level security;
+alter table publication_medias enable row level security;
+alter table publication_reactions enable row level security;
+alter table publication_commentaires enable row level security;
+
+-- Qui voit une publication : le personnel de l'école ; un parent si elle
+-- concerne toute l'école ou la classe d'un de ses enfants.
+create or replace function peut_voir_publication(p_ecole uuid, p_classes text[]) returns boolean
+language sql stable security definer set search_path = public as $$
+  select p_ecole = mon_ecole_id() and (
+    mon_role() in ('enseignant','secretariat','direction','fondation')
+    or (est_parent() and (p_classes is null or exists (
+      select 1 from parents_eleves pe join eleves e on e.id = pe.eleve_id
+      where pe.parent_profile_id = auth.uid() and e.classe_id = any(p_classes))))
+  )
+$$;
+revoke all on function peut_voir_publication(uuid, text[]) from public, anon;
+grant execute on function peut_voir_publication(uuid, text[]) to authenticated;
+
+drop policy if exists "lecture publications" on publications;
+create policy "lecture publications" on publications for select using (peut_voir_publication(ecole_id, classe_ids));
+drop policy if exists "gestion publications" on publications;
+create policy "gestion publications" on publications for all
+  using (ecole_id = mon_ecole_id() and est_perso_admin())
+  with check (ecole_id = mon_ecole_id() and est_perso_admin());
+
+drop policy if exists "lecture publication_medias" on publication_medias;
+create policy "lecture publication_medias" on publication_medias for select
+  using (exists (select 1 from publications p where p.id = publication_medias.publication_id));
+drop policy if exists "gestion publication_medias" on publication_medias;
+create policy "gestion publication_medias" on publication_medias for all
+  using (ecole_id = mon_ecole_id() and est_perso_admin())
+  with check (ecole_id = mon_ecole_id() and est_perso_admin());
+
+drop policy if exists "lecture publication_reactions" on publication_reactions;
+create policy "lecture publication_reactions" on publication_reactions for select
+  using (exists (select 1 from publications p where p.id = publication_reactions.publication_id));
+drop policy if exists "ajout publication_reactions" on publication_reactions;
+create policy "ajout publication_reactions" on publication_reactions for insert
+  with check (user_id = auth.uid() and exists (select 1 from publications p where p.id = publication_reactions.publication_id));
+drop policy if exists "retrait publication_reactions" on publication_reactions;
+create policy "retrait publication_reactions" on publication_reactions for delete using (user_id = auth.uid());
+
+drop policy if exists "lecture publication_commentaires" on publication_commentaires;
+create policy "lecture publication_commentaires" on publication_commentaires for select
+  using (exists (select 1 from publications p where p.id = publication_commentaires.publication_id));
+drop policy if exists "ajout publication_commentaires" on publication_commentaires;
+create policy "ajout publication_commentaires" on publication_commentaires for insert
+  with check (user_id = auth.uid() and ecole_id = mon_ecole_id()
+    and exists (select 1 from publications p where p.id = publication_commentaires.publication_id));
+-- Chacun retire son commentaire ; le personnel administratif modère tout
+drop policy if exists "retrait publication_commentaires" on publication_commentaires;
+create policy "retrait publication_commentaires" on publication_commentaires for delete
+  using (user_id = auth.uid() or (ecole_id = mon_ecole_id() and est_perso_admin()));
+
+-- Stockage privé des photos / vidéos : dossier = identifiant de l'école
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('publications', 'publications', false, 26214400,
+  array['image/jpeg','image/png','image/webp','video/mp4','video/quicktime','video/webm'])
+on conflict (id) do update set public = false, file_size_limit = excluded.file_size_limit, allowed_mime_types = excluded.allowed_mime_types;
+
+drop policy if exists "publications lecture ecole" on storage.objects;
+create policy "publications lecture ecole" on storage.objects for select to authenticated
+  using (bucket_id = 'publications' and (storage.foldername(name))[1] = mon_ecole_id()::text);
+drop policy if exists "publications ajout personnel" on storage.objects;
+create policy "publications ajout personnel" on storage.objects for insert to authenticated
+  with check (bucket_id = 'publications' and (storage.foldername(name))[1] = mon_ecole_id()::text and est_perso_admin());
+drop policy if exists "publications suppression personnel" on storage.objects;
+create policy "publications suppression personnel" on storage.objects for delete to authenticated
+  using (bucket_id = 'publications' and (storage.foldername(name))[1] = mon_ecole_id()::text and est_perso_admin());

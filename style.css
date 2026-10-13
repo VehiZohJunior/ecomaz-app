@@ -912,3 +912,45 @@ td:has(> .amount), th.montant{ text-align:right; }
 .coupon ol{ margin:0; padding-left:16px; font-size:11px; line-height:1.35; }
 .coupon-lien{ font-size:9px; word-break:break-all; color:#5c6b64; margin-top:4px; }
 @media print{ .coupons{ grid-template-columns:1fr 1fr; } .coupon{ border-color:#999; } }
+
+/* Vie de l'école : fil de publications façon réseau social */
+.fil-colonne{ max-width:640px; margin:0 auto; }
+.fil-carte{ background:var(--em-surface, #fff); border:1px solid var(--em-border, #e3e8e5); border-radius:18px; margin-bottom:var(--sp-4); overflow:hidden; box-shadow:0 2px 10px rgba(20,57,45,.06); }
+.fil-tete{ display:flex; align-items:center; gap:10px; padding:12px 14px 6px; }
+.fil-avatar{ width:40px; height:40px; border-radius:50%; background:#14392d; color:#e8b04b; display:flex; align-items:center; justify-content:center; font-weight:900; overflow:hidden; flex-shrink:0; }
+.fil-avatar img{ width:100%; height:100%; object-fit:cover; }
+.fil-qui{ display:flex; flex-direction:column; min-width:0; flex:1; }
+.fil-qui span{ font-size:12px; color:var(--em-text-muted, #5c6b64); }
+.fil-titre{ margin:4px 14px 2px; font-size:var(--em-fs-17, 17px); }
+.fil-texte{ margin:2px 14px 10px; white-space:pre-wrap; line-height:1.5; }
+.fil-medias{ display:grid; gap:2px; background:#000; }
+.fil-medias-1{ grid-template-columns:1fr; }
+.fil-medias-2{ grid-template-columns:1fr 1fr; }
+.fil-medias-3{ grid-template-columns:2fr 1fr; grid-template-rows:1fr 1fr; }
+.fil-medias-3 .fil-media:first-child{ grid-row:span 2; }
+.fil-medias-4{ grid-template-columns:1fr 1fr; }
+.fil-media{ position:relative; border:none; padding:0; margin:0; cursor:pointer; background:#111; aspect-ratio:1/1; overflow:hidden; display:block; width:100%; }
+.fil-medias-1 .fil-media{ aspect-ratio:4/3; }
+.fil-media img, .fil-media video{ width:100%; height:100%; object-fit:cover; display:block; }
+.fil-play{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:#fff; font-size:42px; text-shadow:0 2px 12px rgba(0,0,0,.6); }
+.fil-plus{ position:absolute; inset:0; background:rgba(0,0,0,.55); color:#fff; font-size:30px; font-weight:900; display:flex; align-items:center; justify-content:center; }
+.fil-actions{ display:flex; border-top:1px solid var(--em-border, #e3e8e5); }
+.fil-btn{ flex:1; border:none; background:none; padding:11px 6px; font:700 14px var(--em-font, inherit); color:var(--em-text-muted, #5c6b64); cursor:pointer; }
+.fil-btn.actif{ color:#a4532f; }
+.fil-btn:hover{ background:var(--em-green-100, #e6efe9); }
+.fil-commentaires{ border-top:1px solid var(--em-border, #e3e8e5); padding:10px 14px; background:var(--surface-2, #f7f8f6); }
+.fil-com{ font-size:14px; margin-bottom:6px; line-height:1.4; }
+.fil-com-date{ font-size:11px; color:var(--em-text-muted, #5c6b64); margin-left:6px; }
+.fil-com-suppr{ border:none; background:none; cursor:pointer; color:var(--em-text-muted, #5c6b64); }
+.fil-com-form{ display:flex; gap:6px; margin-top:6px; }
+.fil-com-form input{ flex:1; min-width:0; }
+.visionneuse{ position:fixed; inset:0; background:rgba(0,0,0,.94); z-index:300; display:none; align-items:center; justify-content:center; }
+.visionneuse.ouverte{ display:flex; }
+.vis-scene{ width:100%; height:100%; display:flex; align-items:center; justify-content:center; }
+.vis-scene img, .vis-scene video{ max-width:100%; max-height:100%; object-fit:contain; }
+.vis-scene iframe{ width:min(100vw, 960px); aspect-ratio:16/9; border:0; }
+.vis-fermer, .vis-nav{ position:absolute; border:none; background:rgba(255,255,255,.14); color:#fff; border-radius:50%; width:46px; height:46px; font-size:24px; cursor:pointer; }
+.vis-fermer{ top:14px; right:14px; }
+.vis-prec{ left:10px; top:50%; transform:translateY(-50%); }
+.vis-suiv{ right:10px; top:50%; transform:translateY(-50%); }
+.vis-compteur{ position:absolute; bottom:18px; left:50%; transform:translateX(-50%); color:#fff; font-weight:800; }

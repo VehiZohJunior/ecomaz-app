@@ -6,7 +6,7 @@
    d'attente hors ligne (voir supabase-client.js) — pas ce fichier, qui ne
    s'occupe que des fichiers de l'application (HTML/CSS/JS/icônes).
    ========================================================================= */
-const CACHE_NAME = 'ecomaz-shell-v32';
+const CACHE_NAME = 'ecomaz-shell-v33';
 const SHELL_FILES = [
   './',
   './index.html',
@@ -48,6 +48,10 @@ self.addEventListener('activate', (event) => {
 // une mise à jour). Le cache ne sert que de repli si le réseau échoue.
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
+  // Seuls les fichiers de l'application sont gardés en copie : pas les données
+  // du serveur ni les photos / vidéos de « Vie de l'école » (qui rempliraient
+  // le téléphone), ni les lectures partielles de vidéo.
+  if (new URL(event.request.url).origin !== self.location.origin || event.request.headers.has('range')) return;
   event.respondWith(
     fetch(event.request)
       .then((response) => {

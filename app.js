@@ -183,6 +183,7 @@ const VIEW_TITLES = {
   'tableau-affichage': "Tableau d'affichage",
   parametres: 'Paramètres',
   'liens-parents': 'Parents ↔ Élèves',
+  'vie-ecole': 'Vie de l’école',
   renforcement: 'Cours de renforcement',
 };
 
@@ -218,8 +219,8 @@ const COMPTA_TABS = [
 
 /* --- Rôles / Interfaces --- */
 const ROLES = {
-  enseignant:  {label:'Enseignant(e)', icon:'👩‍🏫', desc:'Notes, présences, emploi du temps', nav:['dashboard','notes','presences-eleves','emploi-temps','programmes']},
-  secretariat: {label:'Secrétariat', icon:'🗂️', desc:'Gestion administrative & scolarité', nav:['dashboard','eleves','liens-parents','renforcement','notes','presences-eleves','emploi-temps','programmes','pointage-scan','enseignants','presences-enseignants','comptabilite','messagerie']},
+  enseignant:  {label:'Enseignant(e)', icon:'👩‍🏫', desc:'Notes, présences, emploi du temps', nav:['dashboard','notes','presences-eleves','emploi-temps','programmes','vie-ecole']},
+  secretariat: {label:'Secrétariat', icon:'🗂️', desc:'Gestion administrative & scolarité', nav:['dashboard','eleves','liens-parents','renforcement','vie-ecole','notes','presences-eleves','emploi-temps','programmes','pointage-scan','enseignants','presences-enseignants','comptabilite','messagerie']},
   direction:   {label:'Direction', icon:'🎩', desc:'Accès complet', nav:'all'},
   fondation:   {label:'Fondation', icon:'🏛️', desc:'Accès complet', nav:'all'},
   parent:      {label:'Parent', icon:'👪', desc:"Suivi de l'enfant", nav:[]},
@@ -792,6 +793,7 @@ function renderView(view){
     'tableau-affichage': renderTableauAffichage,
     parametres: renderParametres,
     'liens-parents': renderLiensParents,
+    'vie-ecole': renderVieEcole,
     renforcement: renderRenforcement,
   };
   // Données pas encore chargées, ou déjà effacées par une déconnexion (fin
@@ -1565,7 +1567,7 @@ function renderParentDashboard(){
 const NAV_PARENT = [
   {id:'accueil', ic:'house', lib:'Accueil'},
   {id:'msg', ic:'mail', lib:'Messages'},
-  {id:'sugg', ic:'lightbulb', lib:'Suggestions'},
+  {id:'vie', ic:'camera', lib:'Vie de l’école'},
   {id:'objets', ic:'backpack', lib:'Objets perdus'},
   {id:'profil', ic:'user', lib:'Profil'},
 ];
@@ -1590,7 +1592,12 @@ function navParent(id, ev){
       if(i === idx) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
     });
   }
-  if(id === 'accueil'){ $$('.bulle-dropdown').forEach(el=>el.style.display='none'); window.scrollTo({top:0, behavior: (window.EmMotion && EmMotion.prefersReducedMotion()) ? 'auto' : 'smooth'}); }
+  if(id === 'accueil'){
+    $$('.bulle-dropdown').forEach(el=>el.style.display='none');
+    if(ui.vueParent === 'vie'){ ui.vueParent = 'accueil'; $('#viewContainer').innerHTML = renderParentDashboard(); }
+    window.scrollTo({top:0, behavior: (window.EmMotion && EmMotion.prefersReducedMotion()) ? 'auto' : 'smooth'});
+  }
+  else if(id === 'vie'){ ui.vueParent = 'vie'; $('#viewContainer').innerHTML = renderFilParent(); window.scrollTo({top:0}); demarrerFil(); }
   else if(id === 'msg' || id === 'sugg'){ window.scrollTo({top:0}); toggleBulle(id); }
   else if(id === 'objets'){ ouvrirObjetsPerdus(); }
   else if(id === 'profil'){ ouvrirProfilParent(); }
@@ -2067,6 +2074,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.10.13', nouveautes: {
+    commun: [],
+    parent: [ 'Nouvel onglet « Vie de l’école » : photos et vidéos des événements, J’aime, Bravo et commentaires.' ],
+    portier: [],
+    personnel: [ 'Nouveau menu « Vie de l’école » : publiez les photos et vidéos des événements pour les parents (toute l’école ou certaines classes).' ],
+  } },
   { version: '2026.10.12-2', nouveautes: {
     commun: [],
     parent: [ 'Nouveau : bouton « Signaler une absence à l’avance » (maladie, rendez-vous…) sur l’accueil.' ],
@@ -2810,6 +2823,278 @@ async function envoyerMessageRenforcement(ev){
     toast(`Message envoyé à ${cibles.length} famille(s)`);
   }catch(e){ alert('Erreur : ' + e.message); }
   return false;
+}
+/* =====================================================================
+   VIE DE L'ÉCOLE (schema.sql section 54) — fil de publications avec
+   photos et vidéos des événements, J'aime / Bravo et commentaires.
+   Les fichiers sont dans un stockage PRIVÉ : on les affiche avec des
+   liens temporaires (1 h) réservés aux comptes de l'école.
+   ===================================================================== */
+const FIL_PAGE = 8;
+const VIDEO_MAX_OCTETS = 25 * 1024 * 1024;
+function estGestionnaireFil(){ return ['secretariat','direction','fondation'].includes(ui.role); }
+function nouveauFil(){ return { pubs: [], medias: {}, urls: {}, reactions: {}, commentaires: {}, fin: false, charge: false, ouverts: {} }; }
+async function chargerFil(suite){
+  if(!DB.fil || !suite) DB.fil = nouveauFil();
+  const f = DB.fil;
+  const { data: pubs, error } = await sb.from('publications').select('*').eq('ecole_id', session.ecoleId)
+    .order('created_at', { ascending: false }).range(f.pubs.length, f.pubs.length + FIL_PAGE - 1);
+  if(error) throw error;
+  const nouvelles = rowsToCamel(pubs);
+  f.fin = nouvelles.length < FIL_PAGE;
+  f.charge = true;
+  if(!nouvelles.length) return;
+  const ids = nouvelles.map(p => p.id);
+  const [medias, reactions, commentaires] = await Promise.all([
+    sb.from('publication_medias').select('*').in('publication_id', ids).order('ordre'),
+    sb.from('publication_reactions').select('publication_id, user_id, type').in('publication_id', ids),
+    sb.from('publication_commentaires').select('*').in('publication_id', ids).order('created_at'),
+  ]);
+  rowsToCamel(medias.data || []).forEach(m => (f.medias[m.publicationId] = f.medias[m.publicationId] || []).push(m));
+  rowsToCamel(reactions.data || []).forEach(r => (f.reactions[r.publicationId] = f.reactions[r.publicationId] || []).push(r));
+  rowsToCamel(commentaires.data || []).forEach(c => (f.commentaires[c.publicationId] = f.commentaires[c.publicationId] || []).push(c));
+  const chemins = rowsToCamel(medias.data || []).filter(m => m.type !== 'youtube').map(m => m.chemin);
+  if(chemins.length){
+    const { data: liens } = await sb.storage.from('publications').createSignedUrls(chemins, 3600);
+    (liens || []).forEach(l => { if(l.signedUrl) f.urls[l.path] = l.signedUrl; });
+  }
+  f.pubs = f.pubs.concat(nouvelles);
+}
+function urlMedia(m){ return m.type === 'youtube' ? `https://img.youtube.com/vi/${encodeURIComponent(m.chemin)}/hqdefault.jpg` : (DB.fil.urls[m.chemin] || ''); }
+function renderMediasPublication(p){
+  const medias = DB.fil.medias[p.id] || [];
+  if(!medias.length) return '';
+  const visibles = medias.slice(0, 4), reste = medias.length - 4;
+  return `<div class="fil-medias fil-medias-${Math.min(medias.length, 4)}">${visibles.map((m, i) => `
+    <button type="button" class="fil-media" onclick="ouvrirVisionneuse('${p.id}', ${i})" aria-label="Agrandir">
+      ${m.type === 'photo' ? `<img src="${escapeHtml(urlMedia(m))}" alt="" loading="lazy">`
+        : m.type === 'youtube' ? `<img src="${escapeHtml(urlMedia(m))}" alt="" loading="lazy"><span class="fil-play" aria-hidden="true">▶</span>`
+        : `<video src="${escapeHtml(urlMedia(m))}#t=0.5" preload="metadata" muted playsinline></video><span class="fil-play" aria-hidden="true">▶</span>`}
+      ${i === 3 && reste > 0 ? `<span class="fil-plus">+${reste}</span>` : ''}
+    </button>`).join('')}</div>`;
+}
+function renderCommentaires(p){
+  const coms = DB.fil.commentaires[p.id] || [];
+  return `<div class="fil-commentaires">
+    ${coms.map(c => `<div class="fil-com"><strong>${escapeHtml(c.auteurNom || 'Parent')}</strong> ${escapeHtml(c.texte)}
+      <span class="fil-com-date">${new Date(c.createdAt).toLocaleDateString('fr-FR', {day:'numeric', month:'short'})}</span>
+      ${(c.userId === session.userId || estGestionnaireFil()) ? `<button type="button" class="fil-com-suppr" onclick="supprimerCommentaire('${p.id}','${c.id}')" aria-label="Supprimer">✕</button>` : ''}</div>`).join('')}
+    <form class="fil-com-form" onsubmit="return envoyerCommentaire(event, '${p.id}')">
+      <input name="texte" maxlength="500" required placeholder="Écrire un commentaire…" autocomplete="off">
+      <button class="btn sm" type="submit">Publier</button>
+    </form>
+  </div>`;
+}
+function renderPublication(p){
+  const f = DB.fil;
+  const reacs = f.reactions[p.id] || [];
+  const nb = t => reacs.filter(r => r.type === t).length;
+  const moi = t => reacs.some(r => r.type === t && r.userId === session.userId);
+  const coms = (f.commentaires[p.id] || []).length;
+  const cible = p.classeIds && p.classeIds.length ? p.classeIds.map(classeName).join(', ') : 'Toute l’école';
+  return `<article class="fil-carte" id="pub-${p.id}">
+    <header class="fil-tete">
+      <div class="fil-avatar" aria-hidden="true">${DB.meta?.logo ? `<img src="${escapeHtml(DB.meta.logo)}" alt="">` : 'E'}</div>
+      <div class="fil-qui"><strong>${escapeHtml(DB.meta?.nomEcole || 'École')}</strong>
+        <span>${new Date(p.createdAt).toLocaleDateString('fr-FR', {day:'numeric', month:'long'})}${p.dateEvenement ? ' · événement du ' + fmtDate(p.dateEvenement) : ''} · ${escapeHtml(cible)}</span></div>
+      ${estGestionnaireFil() ? `<button type="button" class="btn secondary sm" onclick="supprimerPublication('${p.id}')">Supprimer</button>` : ''}
+    </header>
+    <h3 class="fil-titre">${escapeHtml(p.titre)}</h3>
+    ${p.texte ? `<p class="fil-texte">${escapeHtml(p.texte)}</p>` : ''}
+    ${renderMediasPublication(p)}
+    <div class="fil-actions">
+      <button type="button" class="fil-btn ${moi('coeur') ? 'actif' : ''}" onclick="basculerReaction('${p.id}','coeur')" aria-pressed="${moi('coeur')}">❤️ <span>${nb('coeur') || ''}</span> J’aime</button>
+      <button type="button" class="fil-btn ${moi('bravo') ? 'actif' : ''}" onclick="basculerReaction('${p.id}','bravo')" aria-pressed="${moi('bravo')}">👏 <span>${nb('bravo') || ''}</span> Bravo</button>
+      <button type="button" class="fil-btn" onclick="basculerCommentaires('${p.id}')">💬 ${coms || ''} Commenter</button>
+    </div>
+    ${f.ouverts[p.id] ? renderCommentaires(p) : ''}
+  </article>`;
+}
+function renderFilContenu(){
+  const f = DB.fil;
+  if(!f || !f.charge) return '<div class="hint">Chargement des publications…</div>';
+  if(!f.pubs.length) return `<div class="empty-state"><div class="em-ic">📷</div>Aucune publication pour l’instant.${estGestionnaireFil() ? ' Publiez le premier événement ci-dessus.' : ' Les photos et vidéos des événements de l’école apparaîtront ici.'}</div>`;
+  return f.pubs.map(renderPublication).join('') + (f.fin ? '' : `<div class="form-actions" style="justify-content:center;"><button class="btn secondary" onclick="chargerFil(true).then(rafraichirFil)">Voir plus de publications</button></div>`);
+}
+function rafraichirFil(){ const z = document.getElementById('filContenu'); if(z) z.innerHTML = renderFilContenu(); }
+function rafraichirPublication(id){
+  const el = document.getElementById('pub-' + id), p = (DB.fil?.pubs || []).find(x => x.id === id);
+  if(el && p) el.outerHTML = renderPublication(p);
+}
+function demarrerFil(){
+  if(DB.fil && DB.fil.charge) return;
+  chargerFil(false).then(rafraichirFil).catch(e => { const z = document.getElementById('filContenu'); if(z) z.innerHTML = `<div class="hint">Erreur : ${escapeHtml(e.message)}</div>`; });
+}
+async function basculerReaction(pubId, type){
+  const f = DB.fil, liste = f.reactions[pubId] = f.reactions[pubId] || [];
+  const deja = liste.find(r => r.type === type && r.userId === session.userId);
+  try{
+    if(deja){
+      const { error } = await sb.from('publication_reactions').delete().eq('publication_id', pubId).eq('user_id', session.userId).eq('type', type);
+      if(error) throw error;
+      f.reactions[pubId] = liste.filter(r => r !== deja);
+    } else {
+      const { error } = await sb.from('publication_reactions').insert({ publication_id: pubId, type });
+      if(error) throw error;
+      liste.push({ publicationId: pubId, userId: session.userId, type });
+      if(navigator.vibrate) try{ navigator.vibrate(15); }catch(_e){}
+    }
+    rafraichirPublication(pubId);
+  }catch(e){ toast('Erreur : ' + e.message); }
+}
+function basculerCommentaires(pubId){ DB.fil.ouverts[pubId] = !DB.fil.ouverts[pubId]; rafraichirPublication(pubId); }
+async function envoyerCommentaire(ev, pubId){
+  ev.preventDefault();
+  const champ = ev.target.querySelector('input'), texte = champ.value.trim();
+  if(!texte) return false;
+  try{
+    const { data, error } = await sb.from('publication_commentaires').insert({ publication_id: pubId, texte, auteur_nom: session.nomComplet || '' }).select().single();
+    if(error) throw error;
+    (DB.fil.commentaires[pubId] = DB.fil.commentaires[pubId] || []).push(rowToCamel(data));
+    rafraichirPublication(pubId);
+  }catch(e){ toast('Erreur : ' + e.message); }
+  return false;
+}
+async function supprimerCommentaire(pubId, comId){
+  if(!confirm('Supprimer ce commentaire ?')) return;
+  try{
+    const { error } = await sb.from('publication_commentaires').delete().eq('id', comId);
+    if(error) throw error;
+    DB.fil.commentaires[pubId] = (DB.fil.commentaires[pubId] || []).filter(c => c.id !== comId);
+    rafraichirPublication(pubId);
+  }catch(e){ toast('Erreur : ' + e.message); }
+}
+// --- Visionneuse plein écran (photos, vidéos, YouTube), glisser pour changer ---
+let visionneuse = null;
+function ouvrirVisionneuse(pubId, index){
+  visionneuse = { medias: DB.fil.medias[pubId] || [], index };
+  let el = document.getElementById('visionneuse');
+  if(!el){ el = document.createElement('div'); el.id = 'visionneuse'; el.className = 'visionneuse'; document.body.appendChild(el);
+    let x0 = null;
+    el.addEventListener('touchstart', e => { x0 = e.touches[0].clientX; }, { passive: true });
+    el.addEventListener('touchend', e => { if(x0 === null) return; const dx = e.changedTouches[0].clientX - x0; if(Math.abs(dx) > 50) changerMedia(dx < 0 ? 1 : -1); x0 = null; });
+    document.addEventListener('keydown', e => { if(!visionneuse) return; if(e.key === 'Escape') fermerVisionneuse(); if(e.key === 'ArrowRight') changerMedia(1); if(e.key === 'ArrowLeft') changerMedia(-1); });
+  }
+  afficherVisionneuse();
+}
+function afficherVisionneuse(){
+  const el = document.getElementById('visionneuse'), { medias, index } = visionneuse, m = medias[index];
+  el.innerHTML = `
+    <button type="button" class="vis-fermer" onclick="fermerVisionneuse()" aria-label="Fermer">✕</button>
+    <div class="vis-scene">${m.type === 'photo' ? `<img src="${escapeHtml(urlMedia(m))}" alt="">`
+      : m.type === 'youtube' ? `<iframe src="https://www.youtube-nocookie.com/embed/${encodeURIComponent(m.chemin)}?autoplay=1&rel=0" allow="autoplay; encrypted-media; fullscreen" allowfullscreen title="Vidéo"></iframe>`
+      : `<video src="${escapeHtml(urlMedia(m))}" controls autoplay playsinline></video>`}</div>
+    ${medias.length > 1 ? `<button type="button" class="vis-nav vis-prec" onclick="changerMedia(-1)" aria-label="Précédent">‹</button>
+      <button type="button" class="vis-nav vis-suiv" onclick="changerMedia(1)" aria-label="Suivant">›</button>
+      <div class="vis-compteur">${index + 1} / ${medias.length}</div>` : ''}`;
+  el.classList.add('ouverte');
+}
+function changerMedia(sens){ if(!visionneuse) return; const n = visionneuse.medias.length; visionneuse.index = (visionneuse.index + sens + n) % n; afficherVisionneuse(); }
+function fermerVisionneuse(){ const el = document.getElementById('visionneuse'); if(el){ el.classList.remove('ouverte'); el.innerHTML = ''; } visionneuse = null; }
+
+// --- Console parent : onglet « Vie de l'école » ---
+function renderFilParent(){
+  return `<div class="view active parent-accueil">
+    <h2 class="parent-greeting" style="margin-bottom:var(--sp-3);">📸 Vie de l’école</h2>
+    <div id="filContenu">${renderFilContenu()}</div>
+  </div>`;
+}
+// --- Application école : page « Vie de l'école » (publier + gérer) ---
+function renderVieEcole(){
+  setTimeout(demarrerFil, 0);
+  const classes = DB.classes || [];
+  return `<div class="view active">
+    ${estGestionnaireFil() ? `<div class="panel">
+      <div class="panel-head"><div><h2>📸 Publier un événement</h2><div class="sub">Photos et vidéos visibles uniquement par les parents et le personnel de l’école</div></div></div>
+      <form onsubmit="return publierEvenement(event)">
+        <div class="form-grid">
+          <div class="field"><label>Titre</label><input name="titre" required minlength="2" maxlength="150" placeholder="Ex : Fête de fin d’année"></div>
+          <div class="field"><label>Date de l’événement</label><input type="date" name="dateEvenement" value="${todayISO()}"></div>
+          <div class="field span2"><label>Texte (facultatif)</label><textarea name="texte" rows="3" maxlength="3000" placeholder="Racontez l’événement…"></textarea></div>
+          <div class="field span2"><label>Photos et vidéos</label><input type="file" name="fichiers" accept="image/*,video/mp4,video/quicktime,video/webm" multiple>
+            <div class="hint" style="margin:4px 0 0;">Les photos sont allégées automatiquement. Vidéos : 25 Mo maximum (environ 1 minute) ; pour une vidéo plus longue, mettez-la sur YouTube en « non répertoriée » et collez le lien ci-dessous.</div></div>
+          <div class="field span2"><label>Lien YouTube (facultatif)</label><input name="youtube" placeholder="https://youtu.be/…"></div>
+          <div class="field span2"><label>Qui peut voir ?</label>
+            <select name="cible" onchange="document.getElementById('choixClassesPub').style.display = this.value === 'classes' ? 'flex' : 'none'"><option value="tous">Toute l’école</option><option value="classes">Certaines classes seulement</option></select>
+            <div id="choixClassesPub" style="display:none;flex-wrap:wrap;gap:10px;margin-top:8px;">${classes.map(c => `<label style="display:flex;align-items:center;gap:6px;"><input type="checkbox" name="classe" value="${c.id}"> ${escapeHtml(c.nom)}</label>`).join('')}</div></div>
+        </div>
+        <div class="hint">🔒 Droit à l’image : ne publiez que des enfants dont les parents sont d’accord.</div>
+        <div id="progressionPub" class="hint"></div>
+        <div class="form-actions"><button class="btn" type="submit" id="btnPublier">Publier</button></div>
+      </form>
+    </div>` : ''}
+    <div class="fil-colonne"><div id="filContenu">${renderFilContenu()}</div></div>
+  </div>`;
+}
+function idYoutube(lien){
+  const m = String(lien || '').match(/(?:youtu\.be\/|v=|shorts\/|embed\/)([A-Za-z0-9_-]{11})/);
+  return m ? m[1] : null;
+}
+async function compresserPhoto(fichier){
+  const img = await new Promise((ok, ko) => { const i = new Image(); i.onload = () => ok(i); i.onerror = ko; i.src = URL.createObjectURL(fichier); });
+  const max = 1600, r = Math.min(1, max / Math.max(img.width, img.height));
+  const c = document.createElement('canvas'); c.width = Math.round(img.width * r); c.height = Math.round(img.height * r);
+  c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+  URL.revokeObjectURL(img.src);
+  return await new Promise(ok => c.toBlob(ok, 'image/jpeg', 0.82));
+}
+async function publierEvenement(ev){
+  ev.preventDefault();
+  const fd = new FormData(ev.target), bouton = document.getElementById('btnPublier'), prog = document.getElementById('progressionPub');
+  const fichiers = Array.from(ev.target.querySelector('input[name=fichiers]').files || []);
+  const yt = fd.get('youtube') ? idYoutube(fd.get('youtube')) : null;
+  if(fd.get('youtube') && !yt) return alert('Ce lien YouTube n’est pas reconnu.'), false;
+  const tropGrosses = fichiers.filter(f => f.type.startsWith('video/') && f.size > VIDEO_MAX_OCTETS);
+  if(tropGrosses.length) return alert(`Vidéo trop lourde (${tropGrosses.map(f => f.name).join(', ')}) : 25 Mo maximum. Raccourcissez-la, ou mettez-la sur YouTube et collez le lien.`), false;
+  const classeIds = fd.get('cible') === 'classes' ? fd.getAll('classe') : null;
+  if(classeIds && !classeIds.length) return alert('Cochez au moins une classe.'), false;
+  bouton.disabled = true;
+  let pubId = null; const chemins = [];
+  try{
+    const { data: pub, error } = await sb.from('publications').insert({ titre: fd.get('titre').trim(), texte: (fd.get('texte') || '').trim(),
+      date_evenement: fd.get('dateEvenement') || null, classe_ids: classeIds, auteur_nom: session.nomComplet || '' }).select().single();
+    if(error) throw error;
+    pubId = pub.id;
+    const lignes = [];
+    for(const [i, f] of fichiers.entries()){
+      prog.textContent = `Envoi ${i + 1} / ${fichiers.length}…`;
+      const video = f.type.startsWith('video/');
+      const contenu = video ? f : await compresserPhoto(f);
+      const ext = video ? (f.name.split('.').pop() || 'mp4').toLowerCase() : 'jpg';
+      const chemin = `${session.ecoleId}/${pubId}/${crypto.randomUUID()}.${ext}`;
+      const { error: errUp } = await sb.storage.from('publications').upload(chemin, contenu, { contentType: video ? f.type : 'image/jpeg', upsert: false });
+      if(errUp) throw errUp;
+      chemins.push(chemin);
+      lignes.push({ publication_id: pubId, type: video ? 'video' : 'photo', chemin, ordre: i });
+    }
+    if(yt) lignes.push({ publication_id: pubId, type: 'youtube', chemin: yt, ordre: lignes.length });
+    if(lignes.length){ const { error: errM } = await sb.from('publication_medias').insert(lignes); if(errM) throw errM; }
+    // Notification aux parents concernés
+    const eleves = DB.eleves.filter(e => e.statut === 'Actif' && (!classeIds || classeIds.includes(e.classeId))).map(e => e.id);
+    notifierParentsPush(eleves, `📸 Nouvelle publication : ${fd.get('titre').trim()}`);
+    prog.textContent = '';
+    toast('Publication en ligne ✅');
+    DB.fil = null;
+    renderView('vie-ecole');
+  }catch(e){
+    // Annulation propre : rien de publié à moitié
+    if(chemins.length) await sb.storage.from('publications').remove(chemins).catch(() => {});
+    if(pubId) await sb.from('publications').delete().eq('id', pubId);
+    bouton.disabled = false; prog.textContent = '';
+    alert('Erreur : ' + e.message);
+  }
+  return false;
+}
+async function supprimerPublication(id){
+  if(!confirm('Supprimer cette publication et ses photos / vidéos ?')) return;
+  try{
+    const chemins = (DB.fil.medias[id] || []).filter(m => m.type !== 'youtube').map(m => m.chemin);
+    if(chemins.length) await sb.storage.from('publications').remove(chemins);
+    const { error } = await sb.from('publications').delete().eq('id', id);
+    if(error) throw error;
+    DB.fil.pubs = DB.fil.pubs.filter(p => p.id !== id);
+    rafraichirFil(); toast('Publication supprimée');
+  }catch(e){ alert('Erreur : ' + e.message); }
 }
 /* ---------------------------------------------------------------------
    IMPORT DES ÉLÈVES DEPUIS EXCEL (.xlsx, .xls ou .csv)
