@@ -1002,6 +1002,8 @@ td:has(> .amount), th.montant{ text-align:right; }
 .bulle-item.msg-envoye{ background:var(--em-green-100, #e6efe9); margin-left:18px; }
 
 /* Tableau de bord enseignant : ma journée */
+.contact-ecole-boutons{ display:flex; flex-wrap:wrap; gap:8px; }
+.contact-ecole-boutons .btn{ flex:1 1 140px; justify-content:center; text-align:center; }
 .a-traiter-liste{ display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:8px; }
 .a-traiter-item{ display:flex; align-items:center; gap:8px; text-align:left; padding:12px 14px; border:1px solid var(--border); border-radius:var(--r-card, 12px); background:var(--surface-1, #fff); color:var(--text); font:inherit; cursor:pointer; }
 .a-traiter-item:hover{ border-color:var(--primary); }

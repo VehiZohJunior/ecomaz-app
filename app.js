@@ -1700,6 +1700,7 @@ function renderParentDashboard(){
     ${renderAgendaParent()}
     ${renderInformationsPassees()}
     ${renderTableauHonneurParent()}
+    ${renderContactEcole()}
   </div>`;
 }
 const NAV_PARENT = [
@@ -1857,6 +1858,25 @@ async function handleRepondreObjetPerdu(id){
     toast('Réponse enregistrée : le parent la verra dans son application');
     renderView('messagerie');
   }catch(e){ alert('Erreur : ' + e.message); }
+}
+// Console parent : appeler l'école, lui écrire sur WhatsApp, s'y rendre
+function renderContactEcole(){
+  const m = DB.meta || {};
+  const tels = telephonesWhatsapp(m.telephone);
+  const appel = String(m.telephone || '').split(/[\/;,|]/)[0].replace(/[^\d+]/g, '');
+  const carte = (m.geofenceLatitude != null && m.geofenceLongitude != null)
+    ? `https://www.google.com/maps/dir/?api=1&destination=${m.geofenceLatitude},${m.geofenceLongitude}`
+    : (m.adresse ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent((m.nomEcole || '') + ' ' + m.adresse)}` : '');
+  if(!appel && !tels.length && !carte) return '';
+  return `<section class="panel contact-ecole" aria-labelledby="titreContactEcole">
+    <div class="panel-head"><div><h2 id="titreContactEcole">📞 Contacter ${escapeHtml(m.nomEcole || 'l’école')}</h2>${m.adresse ? `<div class="sub">${escapeHtml(m.adresse)}</div>` : ''}</div></div>
+    <div class="contact-ecole-boutons">
+      ${appel ? `<a class="btn secondary" href="tel:${escapeHtml(appel)}">📞 Appeler</a>` : ''}
+      ${tels.length ? `<a class="btn secondary" href="https://wa.me/${tels[0]}" target="_blank" rel="noopener">💬 WhatsApp</a>` : ''}
+      ${carte ? `<a class="btn secondary" href="${carte}" target="_blank" rel="noopener">🗺️ Itinéraire</a>` : ''}
+      <button type="button" class="btn secondary" onclick="ouvrirEcrireEcole && ouvrirEcrireEcole()">✉️ Écrire dans l’application</button>
+    </div>
+  </section>`;
 }
 function ouvrirProfilParent(){
   const enfants = (DB.eleves||[]).map(e => `<li>${escapeHtml(eleveFullName(e))} — ${escapeHtml(classeName(e.classeId))}</li>`).join('');
@@ -2272,6 +2292,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.10.13-18', nouveautes: {
+    commun: [],
+    parent: [ 'En bas de l’accueil : « Contacter l’école » — appeler, WhatsApp, itinéraire jusqu’à l’école, écrire dans l’application.' ],
+    portier: [],
+    personnel: [],
+  } },
   { version: '2026.10.13-17', nouveautes: {
     commun: [],
     parent: [],

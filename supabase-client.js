@@ -588,6 +588,7 @@ async function chargerDBParent(){
       actif: ecole.actif !== false,
       scolariteVisibleParents: ecole.scolariteVisibleParents === true,
       bulletinsPublies: ecole.bulletinsPublies || [],
+      geofenceLatitude: ecole.geofenceLatitude ?? null, geofenceLongitude: ecole.geofenceLongitude ?? null,
     },
     echeancesScolarite, paiementsScolarite, notes: notesParent, bulletinsComments: appreciations, agenda, reponsesAgenda, devoirs, correctionsFiches, menusCantine, demandesDocuments, personnesAutorisees, santeEleves,
     eleves: rowsToCamel(eleves.data),
