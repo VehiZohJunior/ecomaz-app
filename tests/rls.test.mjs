@@ -265,6 +265,19 @@ async function requete(accessToken, chemin, options = {}){
   const remplirSec = await requete(tokenSecretariat, `/rest/v1/rpc/remplir_ecole_demo`, { method:'POST', body: JSON.stringify({ p_ecole: FAUX }) });
   verifier('Le secrétariat ne peut pas remplir une école de données fictives', !remplirSec.ok, `statut ${remplirSec.status}`);
 
+  section('7decies. Durcissement du 13/10 — listes protégées, écran du hall par identifiant');
+  if(ENV.PARENT_EMAIL){
+    const tokenParent4 = (await connecter(ENV.PARENT_EMAIL, ENV.PARENT_PASSWORD)).accessToken;
+    const listeParent = await requete(tokenParent4, `/rest/v1/eleves_portier_lecture?select=id`);
+    verifier('Un parent ne voit pas la liste des élèves de l école', Array.isArray(listeParent.data) && listeParent.data.length === 0, `reçu ${JSON.stringify(listeParent.data)?.slice(0,60)}`);
+  }
+  const hallFaux = await requete(ANON_KEY, `/rest/v1/rpc/affichage_ecole`, { method:'POST', body: JSON.stringify({ p_ecole: FAUX }) });
+  verifier('Écran du hall : rien pour une école inconnue', hallFaux.ok && hallFaux.data === null);
+  for(const vue of ['tableau_honneur_public','actualites_affichage_public','ecoles_vitrine']){
+    const r = await requete(ANON_KEY, `/rest/v1/${vue}?select=*&limit=1`);
+    verifier(`Sans connexion, impossible de lister ${vue} (toutes écoles)`, !r.ok || (Array.isArray(r.data) && r.data.length === 0));
+  }
+
   section('8. Visiteur non connecté — ne lit que les affichages publics prévus');
   for(const table of ['eleves','enseignants_lecture','profiles','paiements_scolarite','messages','parents_eleves','presences_eleves','eleves_portier_lecture','objets_perdus','push_abonnements','absences_signalees','evenements_agenda','devoirs','personnes_autorisees','sante_eleves','reponses_agenda','corrections_fiches','menus_cantine','preinscriptions','demandes_documents']){
     const r = await requete(ANON_KEY, `/rest/v1/${table}?select=*&limit=1`);

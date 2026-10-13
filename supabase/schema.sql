@@ -2935,3 +2935,68 @@ grant execute on function preparer_ecole_demo(uuid) to authenticated;
 alter table usage_remplissage_intelligent drop constraint if exists usage_remplissage_intelligent_type_source_check;
 alter table usage_remplissage_intelligent add constraint usage_remplissage_intelligent_type_source_check
   check (type_source in ('photo','audio','texte'));
+
+-- =====================================================================
+-- 77. DURCISSEMENT DE SÉCURITÉ — audit Supabase du 13/10/2026
+-- =====================================================================
+-- Demande de Vehi Zoh Junior : « très sécurisée, protection blindée ».
+-- Constats de l'outil d'audit officiel (supabase db advisors) et corrections :
+-- 1. eleves_portier_lecture : lisible par TOUT compte de l'école, y compris
+--    les parents (liste complète des élèves) → réservée au portier et au
+--    personnel.
+-- 2. tableau_honneur_public / actualites_affichage_public / ecoles_vitrine :
+--    lisibles par n'importe qui sur internet, pour TOUTES les écoles à la
+--    fois → les visiteurs passent désormais par des fonctions qui exigent
+--    l'identifiant exact de l'école (impossible de tout lister) ; les vues
+--    ne montrent plus que l'école du compte connecté.
+-- 3. Vues internes et fonctions d'aide inutiles aux visiteurs non connectés
+--    → droits retirés au rôle « anon ».
+
+-- 1.
+create or replace view eleves_portier_lecture as
+select id, prenom, nom, classe_id, matricule, statut
+from eleves
+where ecole_id = mon_ecole_id() and statut = 'Actif'
+  and mon_role() in ('portier','enseignant','secretariat','direction','fondation');
+
+-- 2. Vues limitées à l'école du compte connecté
+create or replace view tableau_honneur_public as
+select ecole_id, categorie, periode, nom_affiche, classe_ou_matiere, libelle_periode, commentaire, updated_at
+from tableau_honneur where ecole_id = mon_ecole_id();
+create or replace view actualites_affichage_public as
+select ecole_id, id, texte, created_at from actualites_affichage where ecole_id = mon_ecole_id();
+
+-- Écran du hall (affichage.html, sans connexion) : tout en une fois, pour UNE école dont on connaît l'identifiant
+create or replace function affichage_ecole(p_ecole uuid) returns json
+language sql stable security definer set search_path = public as $$
+  select case when e.id is null then null else json_build_object(
+    'ecole', json_build_object('id', e.id, 'nom_ecole', e.nom_ecole, 'logo_url', coalesce(e.logo_url, '')),
+    'honneurs', coalesce((select json_agg(json_build_object('ecole_id', t.ecole_id, 'categorie', t.categorie, 'periode', t.periode, 'nom_affiche', t.nom_affiche,
+        'classe_ou_matiere', t.classe_ou_matiere, 'libelle_periode', t.libelle_periode, 'commentaire', t.commentaire, 'updated_at', t.updated_at))
+        from tableau_honneur t where t.ecole_id = e.id), '[]'::json),
+    'actualites', coalesce((select json_agg(json_build_object('ecole_id', a.ecole_id, 'id', a.id, 'texte', a.texte, 'created_at', a.created_at) order by a.created_at desc)
+        from actualites_affichage a where a.ecole_id = e.id), '[]'::json)) end
+  from (select 1) x left join ecoles e on e.id = p_ecole and e.actif = true
+$$;
+revoke all on function affichage_ecole(uuid) from public;
+grant execute on function affichage_ecole(uuid) to anon, authenticated;
+
+-- Nom et logo d'UNE école (titre des applications avant connexion)
+create or replace function ecole_vitrine(p_ecole uuid) returns table (id uuid, nom_ecole text, logo_url text)
+language sql stable security definer set search_path = public as $$
+  select e.id, e.nom_ecole, coalesce(e.logo_url, '') from ecoles e where e.id = p_ecole and e.actif = true
+$$;
+revoke all on function ecole_vitrine(uuid) from public;
+grant execute on function ecole_vitrine(uuid) to anon, authenticated;
+
+-- 3. Les visiteurs non connectés n'ont plus accès aux vues internes
+revoke select on eleves_portier_lecture, enseignants_lecture, fne_config_lecture, paiement_en_ligne_config_lecture,
+  tva_categories_lecture, tableau_honneur_public, actualites_affichage_public, ecoles_vitrine from anon;
+
+-- … ni aux fonctions d'aide (elles servent aux règles des comptes connectés)
+revoke execute on function est_admin(), est_perso_admin(), est_developpeur(), est_parent(), est_portier(), mon_role(),
+  mon_ecole_id(), mon_enseignant_id(), mes_classes() from anon, public;
+grant execute on function est_admin(), est_perso_admin(), est_developpeur(), est_parent(), est_portier(), mon_role(),
+  mon_ecole_id(), mon_enseignant_id(), mes_classes() to authenticated;
+revoke execute on function developpeur_a_acces(uuid) from anon, public;
+grant execute on function developpeur_a_acces(uuid) to authenticated;
