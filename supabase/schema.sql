@@ -2707,3 +2707,33 @@ begin
 end $$;
 revoke all on function preinscrire(uuid, text, text, date, text, text, text, text, text) from public;
 grant execute on function preinscrire(uuid, text, text, date, text, text, text, text, text) to anon, authenticated;
+
+-- =====================================================================
+-- 72. DEMANDES DE DOCUMENTS PAR LES PARENTS (2026-10-13)
+-- =====================================================================
+-- Le parent demande un document pour SON enfant (certificat de
+-- scolarité…) ; le secrétariat le prépare et le marque « prêt » (le
+-- parent est prévenu), puis « remis ».
+create table if not exists demandes_documents (
+  id uuid primary key default gen_random_uuid(),
+  ecole_id uuid not null references ecoles(id) on delete cascade default mon_ecole_id(),
+  eleve_id uuid not null references eleves(id) on delete cascade,
+  type text not null check (type in ('certificat_scolarite','autre')),
+  precision text not null default '' check (char_length(precision) <= 300),
+  statut text not null default 'en_attente' check (statut in ('en_attente','pret','remis','refuse')),
+  demande_par uuid references auth.users(id) on delete set null default auth.uid(),
+  created_at timestamptz not null default now(),
+  traite_at timestamptz
+);
+create index if not exists demandes_documents_idx on demandes_documents(ecole_id, statut);
+alter table demandes_documents enable row level security;
+drop policy if exists "parent demandes_documents lecture" on demandes_documents;
+create policy "parent demandes_documents lecture" on demandes_documents for select
+  using (ecole_id = mon_ecole_id() and est_parent_de(eleve_id));
+drop policy if exists "parent demandes_documents ajout" on demandes_documents;
+create policy "parent demandes_documents ajout" on demandes_documents for insert
+  with check (ecole_id = mon_ecole_id() and demande_par = auth.uid() and statut = 'en_attente' and traite_at is null and est_parent_de(eleve_id));
+drop policy if exists "admin demandes_documents" on demandes_documents;
+create policy "admin demandes_documents" on demandes_documents for all
+  using (ecole_id = mon_ecole_id() and est_perso_admin())
+  with check (ecole_id = mon_ecole_id() and est_perso_admin());

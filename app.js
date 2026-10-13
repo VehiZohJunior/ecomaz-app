@@ -1694,7 +1694,7 @@ function renderParentDashboard(){
     <div class="enfants${plusieurs ? ' enfants--carrousel' : ''} em-rise" style="--i:2">
       ${mesEnfants.map(renderFicheEnfant).join('')}
     </div>
-    <div class="form-actions" style="justify-content:flex-start;margin:0 0 var(--sp-4);"><button type="button" class="btn secondary" onclick="ouvrirSignalerAbsence()">📝 Signaler une absence à l’avance</button></div>
+    <div class="form-actions" style="justify-content:flex-start;margin:0 0 var(--sp-4);"><button type="button" class="btn secondary" onclick="ouvrirSignalerAbsence()">📝 Signaler une absence à l’avance</button><button type="button" class="btn secondary" onclick="ouvrirDemandeDocument()">📄 Demander un document</button></div>
     ${renderMenuParent()}
     ${renderDevoirsParent(mesEnfants)}
     ${renderAgendaParent()}
@@ -2272,6 +2272,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.10.13-15', nouveautes: {
+    commun: [],
+    parent: [ 'Nouveau sur l’accueil : « Demander un document » (certificat de scolarité…) — vous êtes prévenu(e) dès qu’il est prêt à retirer.' ],
+    portier: [],
+    personnel: [ 'Élèves & Inscriptions : « Documents demandés par les parents » — Préparer (certificat), Prêt (le parent est prévenu), Remis.' ],
+  } },
   { version: '2026.10.13-14', nouveautes: {
     commun: [],
     parent: [],
@@ -3452,6 +3458,84 @@ async function supprimerPublication(id){
   }catch(e){ alert('Erreur : ' + e.message); }
 }
 /* =====================================================================
+   DEMANDES DE DOCUMENTS PAR LES PARENTS (schema.sql section 72)
+   ===================================================================== */
+const TYPES_DOCUMENT = { certificat_scolarite: 'Certificat de scolarité', autre: 'Autre document' };
+const STATUTS_DOCUMENT = { en_attente:['En préparation','amber'], pret:['Prêt à retirer','green'], remis:['Remis',''], refuse:['Non disponible','red'] };
+// --- Console parent ---
+function ouvrirDemandeDocument(){
+  const enfants = DB.eleves || [];
+  const demandes = (DB.demandesDocuments || []).slice().sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+  openModal('📄 Demander un document', `
+    <p class="hint" style="margin-top:0;">Le secrétariat prépare le document ; vous êtes prévenu(e) dès qu’il est prêt à retirer.</p>
+    <form onsubmit="return envoyerDemandeDocument(event)">
+      ${enfants.length > 1 ? `<div class="field"><label>Enfant</label><select name="eleveId" required>${enfants.map(e => `<option value="${e.id}">${escapeHtml(eleveFullName(e))}</option>`).join('')}</select></div>`
+        : `<input type="hidden" name="eleveId" value="${enfants[0]?.id || ''}">`}
+      <div class="field"><label>Document</label><select name="type">${Object.entries(TYPES_DOCUMENT).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select></div>
+      <div class="field"><label>Précision (facultatif)</label><input name="precision" maxlength="300" placeholder="Ex : 2 exemplaires, pour la CNPS, attestation de fréquentation…"></div>
+      <button class="btn" type="submit" style="width:100%;">Envoyer la demande</button>
+    </form>
+    ${demandes.length ? `<h4 style="margin:var(--sp-4) 0 var(--sp-2);">Vos demandes</h4>${demandes.map(d => { const e = enfants.find(x => x.id === d.eleveId); const st = STATUTS_DOCUMENT[d.statut] || ['', '']; return `<div class="actu-carte" style="justify-content:space-between;margin-bottom:6px;"><div class="actu-corps"><div class="actu-titre">${escapeHtml(TYPES_DOCUMENT[d.type] || d.type)} — ${escapeHtml(e ? e.prenom : '')}</div><div class="actu-meta">Demandé le ${fmtDate(String(d.createdAt).slice(0, 10))}${d.precision ? ' · ' + escapeHtml(d.precision) : ''}</div></div><span class="badge ${st[1]}">${st[0]}</span></div>`; }).join('')}` : ''}`);
+}
+async function envoyerDemandeDocument(ev){
+  ev.preventDefault();
+  const fd = new FormData(ev.target);
+  try{
+    const { data, error } = await sb.from('demandes_documents').insert({ eleve_id: fd.get('eleveId'), type: fd.get('type'), precision: (fd.get('precision') || '').trim() }).select().single();
+    if(error) throw error;
+    DB.demandesDocuments = (DB.demandesDocuments || []).concat(rowToCamel(data));
+    sb.functions.invoke('notifier-personnel', { body: { type: 'document' } }).catch(() => {});
+    toast('Demande envoyée au secrétariat'); ouvrirDemandeDocument();
+  }catch(err){ alert('Erreur : ' + err.message); }
+  return false;
+}
+// --- École : Élèves & Inscriptions ---
+function renderDemandesDocuments(){
+  if(!['secretariat','direction','fondation'].includes(ui.role)) return '';
+  if(DB.demandesDocuments === undefined){
+    DB.demandesDocuments = null;
+    sb.from('demandes_documents').select('*').eq('ecole_id', session.ecoleId).in('statut', ['en_attente','pret']).order('created_at')
+      .then(({ data }) => { DB.demandesDocuments = rowsToCamel(data || []); if(ui.currentView === 'eleves' && DB.demandesDocuments.length) renderView('eleves'); });
+  }
+  const liste = (DB.demandesDocuments || []).filter(d => d.statut === 'en_attente' || d.statut === 'pret');
+  if(!liste.length) return '';
+  return `<div class="panel">
+    <div class="panel-head"><div><h2>📄 Documents demandés par les parents (${liste.length})</h2><div class="sub">Préparez le document, marquez-le « prêt » (le parent est prévenu), puis « remis » quand il est retiré.</div></div></div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Élève</th><th>Document</th><th>Statut</th><th></th></tr></thead>
+      <tbody>${liste.map(d => { const e = eleveById(d.eleveId); const st = STATUTS_DOCUMENT[d.statut] || ['', '']; return `<tr>
+        <td>${e ? `<strong>${escapeHtml(eleveFullName(e))}</strong><br><span class="hint">${escapeHtml(classeName(e.classeId))}</span>` : '—'}</td>
+        <td>${escapeHtml(TYPES_DOCUMENT[d.type] || d.type)}${d.precision ? `<br><span class="hint">« ${escapeHtml(d.precision)} »</span>` : ''}<br><span class="hint">demandé le ${fmtDate(String(d.createdAt).slice(0, 10))}</span></td>
+        <td><span class="badge ${st[1]}">${st[0]}</span></td>
+        <td style="white-space:nowrap;">
+          ${d.type === 'certificat_scolarite' && e ? `<button class="btn secondary sm" onclick="ouvrirCertificatScolarite('${e.id}')">📄 Préparer</button>` : ''}
+          ${d.statut === 'en_attente' ? `<button class="btn sm" onclick="statutDemandeDocument('${d.id}','pret')">✓ Prêt</button> <button class="btn secondary sm" title="Document non disponible" onclick="statutDemandeDocument('${d.id}','refuse')">✕</button>` : `<button class="btn sm" onclick="statutDemandeDocument('${d.id}','remis')">Remis</button>`}
+        </td></tr>`; }).join('')}</tbody></table></div>
+  </div>`;
+}
+async function statutDemandeDocument(id, statut){
+  const d = (DB.demandesDocuments || []).find(x => x.id === id);
+  if(!d) return;
+  let motif = '';
+  if(statut === 'refuse'){ motif = prompt('Expliquez brièvement au parent pourquoi (il recevra ce message) :', ''); if(motif === null) return; }
+  try{
+    const { error } = await sb.from('demandes_documents').update({ statut, traite_at: new Date().toISOString() }).eq('id', id);
+    if(error) throw error;
+    d.statut = statut;
+    const e = eleveById(d.eleveId);
+    const doc = TYPES_DOCUMENT[d.type] || 'document';
+    if(statut === 'pret' || statut === 'refuse'){
+      const texte = statut === 'pret'
+        ? `📄 Le ${doc.toLowerCase()} de ${e ? e.prenom : 'votre enfant'} est prêt : vous pouvez le retirer au secrétariat.`
+        : `📄 Votre demande (${doc.toLowerCase()} de ${e ? e.prenom : 'votre enfant'}) n’a pas pu être satisfaite${motif ? ' : ' + motif : '.'}`;
+      await sb.from('messages_internes').insert({ destinataire_type: 'parent', eleve_id: d.eleveId, contenu: texte, auteur_nom: DB.meta?.nomEcole || '' });
+      notifierParentsPush([d.eleveId], texte);
+    }
+    toast(statut === 'pret' ? 'Parent prévenu : document prêt' : statut === 'remis' ? 'Document remis' : 'Parent prévenu');
+    renderView('eleves');
+  }catch(err){ alert('Erreur : ' + err.message); }
+}
+/* =====================================================================
    CERTIFICAT DE SCOLARITÉ (imprimable, depuis la fiche élève)
    ===================================================================== */
 function ouvrirCertificatScolarite(eleveId){
@@ -4592,6 +4676,7 @@ function renderEleveListe(){
   return `
   <div class="view active">
     ${renderPreinscriptions()}
+    ${renderDemandesDocuments()}
     ${renderCorrectionsParents()}
     ${renderFichesAVerifier()}
     <div class="panel">

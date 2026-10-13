@@ -74,6 +74,14 @@ Deno.serve(async (req) => {
       ecoleId = c.ecole_id; roles = ['secretariat', 'direction'];
       titre = '✏️ Correction de fiche proposée';
       texte = `Un parent propose de corriger la fiche de ${e ? e.prenom + ' ' + e.nom : 'son enfant'}. À valider dans Élèves & Inscriptions.`;
+    } else if (type === 'document') {
+      const { data: d } = await admin.from('demandes_documents').select('ecole_id, eleve_id, type')
+        .eq('demande_par', user.id).eq('statut', 'en_attente').gte('created_at', depuis).order('created_at', { ascending: false }).limit(1).maybeSingle();
+      if (!d) throw new Error('Demande introuvable');
+      const { data: e } = await admin.from('eleves').select('nom, prenom').eq('id', d.eleve_id).single();
+      ecoleId = d.ecole_id; roles = ['secretariat', 'direction'];
+      titre = '📄 Document demandé par un parent';
+      texte = `${d.type === 'certificat_scolarite' ? 'Certificat de scolarité' : 'Document'} pour ${e ? e.prenom + ' ' + e.nom : 'un élève'}. À préparer dans Élèves & Inscriptions.`;
     } else {
       throw new Error('Type inconnu');
     }

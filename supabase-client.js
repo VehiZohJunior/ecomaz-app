@@ -505,7 +505,7 @@ async function chargerDBParent(){
   const vendredi = new Date(lundi); vendredi.setDate(lundi.getDate() + 4);
   const E = session.ecoleId;
   const [ecoleRow, eleves, classesRows, messages, annoncesHoraires, messagesInternes, tableauHonneur, actualitesAffichage,
-    presences, applaudis, agendaRows, correctionsRows, persRows, santeRows, menusRows, devoirsRows] = await Promise.all([
+    presences, applaudis, agendaRows, correctionsRows, persRows, santeRows, menusRows, demandesDocsRows, devoirsRows] = await Promise.all([
     sb.from('ecoles').select('*').eq('id', E).single(),
     // RLS restreint déjà aux enfants liés à ce parent (voir policy
     // "lecture eleves par parent", schema.sql section 31) — pas besoin de
@@ -540,6 +540,8 @@ async function chargerDBParent(){
     sur(sb.from('sante_eleves').select('*').eq('ecole_id', E), []),
     // Menu de la cantine des prochains jours
     sur(sb.from('menus_cantine').select('date, repas, gouter').eq('ecole_id', E).gte('date', aujourdhui).order('date').limit(7), []),
+    // Demandes de documents de ce parent (RLS : ses enfants)
+    sur(sb.from('demandes_documents').select('*').eq('ecole_id', E).order('created_at', { ascending:false }).limit(10), []),
     // Cahier de textes : devoirs à venir de la classe de ses enfants (RLS)
     sur(sb.from('devoirs').select('*').eq('ecole_id', E).gte('pour_le', aujourdhui).order('pour_le').limit(40), []),
   ]);
@@ -559,6 +561,7 @@ async function chargerDBParent(){
   const personnesAutorisees = rowsToCamel(persRows), santeEleves = rowsToCamel(santeRows);
   const menusCantine = menusRows || [];
   const devoirs = rowsToCamel(devoirsRows);
+  const demandesDocuments = rowsToCamel(demandesDocsRows);
   // 2e vague, selon les réglages de l'école et l'agenda
   const avecReponse = agenda.filter(a => a.demandeReponse).map(a => a.id);
   const bulletins = (ecole.bulletinsPublies || []).length > 0;
@@ -586,7 +589,7 @@ async function chargerDBParent(){
       scolariteVisibleParents: ecole.scolariteVisibleParents === true,
       bulletinsPublies: ecole.bulletinsPublies || [],
     },
-    echeancesScolarite, paiementsScolarite, notes: notesParent, bulletinsComments: appreciations, agenda, reponsesAgenda, devoirs, correctionsFiches, menusCantine, personnesAutorisees, santeEleves,
+    echeancesScolarite, paiementsScolarite, notes: notesParent, bulletinsComments: appreciations, agenda, reponsesAgenda, devoirs, correctionsFiches, menusCantine, demandesDocuments, personnesAutorisees, santeEleves,
     eleves: rowsToCamel(eleves.data),
     classes: rowsToCamel(classesRows.data),
     presencesSemaine,
