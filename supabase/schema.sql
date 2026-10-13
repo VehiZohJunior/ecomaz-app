@@ -2414,3 +2414,24 @@ drop policy if exists "maj messages_internes personnel" on messages_internes;
 create policy "maj messages_internes personnel" on messages_internes for update
   using (destinataire_type = 'ecole' and ecole_id = mon_ecole_id() and est_perso_admin())
   with check (destinataire_type = 'ecole' and ecole_id = mon_ecole_id() and est_perso_admin());
+
+-- =====================================================================
+-- 63. ERREURS RÉCENTES — Console Développeur (2026-10-13)
+-- =====================================================================
+-- Les erreurs rencontrées dans les applications (déjà enregistrées dans
+-- erreurs_client) regroupées par message, pour le compte développeur.
+create or replace function erreurs_recentes(p_jours int default 14)
+returns table (ecole_id uuid, role text, message text, page text, nombre int, premiere timestamptz, derniere timestamptz)
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if not est_developpeur() then raise exception 'Réservé au compte développeur'; end if;
+  return query
+  select e.ecole_id, e.role::text, left(e.message, 300), left(coalesce(e.page, ''), 120), count(*)::int, min(e.created_at), max(e.created_at)
+  from erreurs_client e
+  where e.created_at >= now() - make_interval(days => greatest(1, least(p_jours, 90)))
+  group by 1, 2, 3, 4
+  order by max(e.created_at) desc
+  limit 50;
+end $$;
+revoke all on function erreurs_recentes(int) from public, anon;
+grant execute on function erreurs_recentes(int) to authenticated;

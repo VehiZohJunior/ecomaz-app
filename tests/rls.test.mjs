@@ -220,6 +220,9 @@ async function requete(accessToken, chemin, options = {}){
   const notesAnon = await requete(ANON_KEY, `/rest/v1/notes?select=id&limit=1`);
   verifier('Sans connexion, aucune note lisible', !notesAnon.ok || (Array.isArray(notesAnon.data) && notesAnon.data.length === 0));
 
+  const errSec = await requete(tokenSecretariat, `/rest/v1/rpc/erreurs_recentes`, { method:'POST', body:'{}' });
+  verifier('Les erreurs techniques sont réservées au développeur', !errSec.ok, `statut ${errSec.status}`);
+
   section('8. Visiteur non connecté — ne lit que les affichages publics prévus');
   for(const table of ['eleves','enseignants_lecture','profiles','paiements_scolarite','messages','parents_eleves','presences_eleves','eleves_portier_lecture','objets_perdus','push_abonnements','absences_signalees','evenements_agenda']){
     const r = await requete(ANON_KEY, `/rest/v1/${table}?select=*&limit=1`);
