@@ -395,6 +395,7 @@ function nomApplication(nomEcole){
   const n = nomEcole || (typeof DB !== 'undefined' && DB && DB.meta && DB.meta.nomEcole) || (window.ECOLE_VITRINE && window.ECOLE_VITRINE.nom_ecole) || '';
   if(window.ESPACE_FIXE === 'parent') return "EcoMaZ-PARENTS D'ELEVES" + (n ? ' ' + n : '');
   if(window.ESPACE_FIXE === 'portier') return 'EcoMaZ-PORTIER' + (n ? ' ' + n : '');
+  if(window.ESPACE_FIXE === 'enseignant') return 'EcoMaZ-ENSEIGNANTS' + (n ? ' ' + n : '');
   return n ? 'EcoMaZ-' + n : 'EcoMaZ';
 }
 // Le nom sous l'icône du téléphone vient du manifeste : on le génère à la volée
@@ -1057,24 +1058,63 @@ async function showDemandeAcces(){
     return;
   }
   const nomDefaut = (user.user_metadata && (user.user_metadata.full_name || user.user_metadata.name)) || '';
-  const parent = fixe === 'parent';
-  $('#loginGate').innerHTML = `<div class="login-card"><div class="login-logo">${parent?'👪':'🚪'}</div><h1>${escapeHtml(nomApplication(window.ECOLE_VITRINE.nom_ecole))}</h1>
-    <div class="sub" style="font-weight:700;">Demande d'accès ${parent?'parent':'portier'}</div>
+  const parent = fixe === 'parent', enseignant = fixe === 'enseignant';
+  window.__enfantsChoisis = new Map();
+  let classesHtml = '';
+  if(enseignant){
+    const { data: classes } = await sb.rpc('classes_demande', { p_ecole: ecoleId });
+    classesHtml = (classes || []).map(c => `<label class="enrol-choix"><input type="checkbox" class="demClasse" value="${escapeHtml(c.id)}"> ${escapeHtml(c.nom)}</label>`).join('') || '<div class="hint">Aucune classe n’est encore créée par l’école.</div>';
+  }
+  $('#loginGate').innerHTML = `<div class="login-card"><div class="login-logo">${parent?'👪':enseignant?'👩‍🏫':'🚪'}</div><h1>${escapeHtml(nomApplication(window.ECOLE_VITRINE.nom_ecole))}</h1>
+    <div class="sub" style="font-weight:700;">${parent ? 'Inscription parent' : enseignant ? 'Inscription enseignant' : 'Demande d’accès portier'}</div>
     <div class="sub">Compte Google : <strong>${escapeHtml(user.email||'')}</strong></div>
     <form class="pin-pad" onsubmit="return handleDemandeAcces(event)">
-      <div class="field" style="text-align:left;margin-bottom:10px;"><label>Votre nom complet</label><input type="text" id="demNom" required value="${escapeHtml(nomDefaut)}"></div>
-      <div class="field" style="text-align:left;"><label>${parent?"Nom de votre enfant (et sa classe)":"Message pour la direction (facultatif)"}</label><input type="text" id="demMsg" ${parent?'required':''} placeholder="${parent?'Ex : Yepri BOKRA, CP1':''}"></div>
+      <div class="field" style="text-align:left;margin-bottom:10px;"><label>Votre nom complet (prénom et nom)</label><input type="text" id="demNom" required minlength="3" value="${escapeHtml(nomDefaut)}"></div>
+      ${enseignant ? `<div class="field" style="text-align:left;margin-bottom:10px;"><label>Votre numéro WhatsApp</label><input type="tel" id="demTel" required placeholder="07 00 00 00 00"></div>
+        <div class="field" style="text-align:left;"><label>Cochez la ou les classes dont vous êtes l’enseignant(e)</label><div class="enrol-liste">${classesHtml}</div></div>` : ''}
+      ${parent ? `<div class="field" style="text-align:left;"><label>Cherchez et cochez votre enfant (ou vos enfants)</label>
+          <input type="search" id="demRecherche" placeholder="Tapez au moins 3 lettres du nom" oninput="rechercherEnfantDemande(this.value)" autocomplete="off">
+          <div class="enrol-liste" id="demResultats"></div>
+          <div id="demChoisis" class="enrol-choisis"></div></div>` : ''}
+      ${!parent && !enseignant ? `<div class="field" style="text-align:left;"><label>Message pour la direction (facultatif)</label><input type="text" id="demMsg"></div>` : ''}
       <div class="pin-error" id="demErr"></div>
       <button class="btn" type="submit" style="width:100%;margin-top:10px;">Envoyer ma demande</button>
       <button type="button" class="pin-back" onclick="logoutDemande()">Changer de compte</button>
     </form></div>`;
 }
+// Recherche d'un enfant pendant l'inscription du parent (3 lettres minimum)
+let __minuteurRechercheEnfant = null;
+function rechercherEnfantDemande(texte){
+  clearTimeout(__minuteurRechercheEnfant);
+  __minuteurRechercheEnfant = setTimeout(async () => {
+    const zone = document.getElementById('demResultats'); if(!zone) return;
+    if(texte.trim().length < 3){ zone.innerHTML = ''; return; }
+    const { data } = await sb.rpc('rechercher_eleves_demande', { p_ecole: window.ECOLE_VITRINE.id, p_texte: texte });
+    zone.innerHTML = (data || []).map(e => `<label class="enrol-choix"><input type="checkbox" ${window.__enfantsChoisis.has(e.id) ? 'checked' : ''}
+      onchange="choisirEnfantDemande('${e.id}', this.checked, ${escapeHtml(JSON.stringify(`${e.prenom} ${e.nom} — ${e.classe || ''}`))})"> ${escapeHtml(e.prenom + ' ' + e.nom)} <span class="hint">${escapeHtml(e.classe || '')}</span></label>`).join('')
+      || '<div class="hint">Aucun élève trouvé : vérifiez l’orthographe.</div>';
+  }, 300);
+}
+function choisirEnfantDemande(id, coche, libelle){
+  if(coche) window.__enfantsChoisis.set(id, libelle); else window.__enfantsChoisis.delete(id);
+  const z = document.getElementById('demChoisis');
+  if(z) z.innerHTML = [...window.__enfantsChoisis.values()].map(l => `<span class="badge green">✓ ${escapeHtml(l)}</span>`).join(' ');
+}
 async function handleDemandeAcces(ev){
   ev.preventDefault();
-  const { error } = await sb.from('demandes_acces').insert({
-    ecole_id: window.ECOLE_VITRINE.id, role_demande: window.ESPACE_FIXE,
-    nom: $('#demNom').value.trim(), message: $('#demMsg').value.trim(),
-  });
+  const fixe = window.ESPACE_FIXE;
+  const ligne = { ecole_id: window.ECOLE_VITRINE.id, role_demande: fixe, nom: $('#demNom').value.trim(), message: ($('#demMsg')?.value || '').trim() };
+  if(fixe === 'parent'){
+    ligne.eleve_ids = [...(window.__enfantsChoisis || new Map()).keys()];
+    if(!ligne.eleve_ids.length){ $('#demErr').textContent = 'Cherchez et cochez au moins un enfant.'; return false; }
+    ligne.message = [...window.__enfantsChoisis.values()].join(' ; ');
+  }
+  if(fixe === 'enseignant'){
+    ligne.classe_ids = $$('.demClasse').filter(c => c.checked).map(c => c.value);
+    ligne.telephone = $('#demTel').value.trim();
+    if(!ligne.classe_ids.length){ $('#demErr').textContent = 'Cochez au moins une classe.'; return false; }
+  }
+  const { error } = await sb.from('demandes_acces').insert(ligne);
   if(error){ $('#demErr').textContent = "Envoi impossible : " + error.message; return false; }
   sb.functions.invoke('notifier-personnel', { body: { type: 'demande_acces' } }).catch(() => {});
   showDemandeAcces();
@@ -2100,7 +2140,7 @@ const VERSIONS = [
     commun: [],
     parent: [ 'Nouvel onglet « Vie de l’école » : photos et vidéos des événements, J’aime, Bravo et commentaires.' ],
     portier: [],
-    personnel: [ 'Paramètres → Scolarité : relances automatiques et polies des tranches impayées (3 jours avant, le jour même, 7 jours après).', 'Notifications sur le téléphone pour tout le personnel : demandes d’accès, absences signalées, objets perdus, appel non fait.', 'Appel rapide : « Tous présents », puis touchez le nom des absents ; rappel à 9h00 si l’appel n’est pas fait.', 'Paramètres → Scolarité : montants et tranches de paiement propres à chaque classe, copie vers d’autres classes, affichage aux parents au choix.', 'Direction : liste « Mise en route de l’école » sur le tableau de bord, avec ce qui reste à faire.', 'Nouveau menu « Vie de l’école » : publiez les photos et vidéos des événements pour les parents (toute l’école ou certaines classes).' ],
+    personnel: [ 'Enseignants : application « EcoMaZ-ENSEIGNANTS » — chacun s’inscrit avec Google, coche ses classes et ne voit que ses classes.', 'Parents : à l’inscription, ils cochent eux-mêmes leurs enfants ; vous n’avez plus qu’à approuver.', 'Paramètres → Scolarité : assistant « inscription + scolarité par classe ».', 'Paramètres → Scolarité : relances automatiques et polies des tranches impayées (3 jours avant, le jour même, 7 jours après).', 'Notifications sur le téléphone pour tout le personnel : demandes d’accès, absences signalées, objets perdus, appel non fait.', 'Appel rapide : « Tous présents », puis touchez le nom des absents ; rappel à 9h00 si l’appel n’est pas fait.', 'Paramètres → Scolarité : montants et tranches de paiement propres à chaque classe, copie vers d’autres classes, affichage aux parents au choix.', 'Direction : liste « Mise en route de l’école » sur le tableau de bord, avec ce qui reste à faire.', 'Nouveau menu « Vie de l’école » : publiez les photos et vidéos des événements pour les parents (toute l’école ou certaines classes).' ],
   } },
   { version: '2026.10.12-2', nouveautes: {
     commun: [],
@@ -2245,9 +2285,7 @@ async function entrerSelonRole(){
   if(fixe && session.role !== fixe){
     await deconnexion();
     ui.role = null;
-    const err = new Error(fixe === 'parent'
-      ? "Ce compte n'est pas un compte parent. Utilisez l'application qui correspond à votre profil."
-      : "Ce compte n'est pas un compte portier. Utilisez l'application qui correspond à votre profil.");
+    const err = new Error(`Ce compte n'est pas un compte ${fixe === 'parent' ? 'parent' : fixe === 'enseignant' ? 'enseignant' : 'portier'}. Utilisez l'application qui correspond à votre profil.`);
     err.suspendu = true;
     throw err;
   }
@@ -6967,15 +7005,33 @@ async function chargerDemandesAcces(){
   if(error){ box.innerHTML = `<div class="hint">Erreur : ${escapeHtml(error.message)}</div>`; return; }
   if(!data.length){ box.innerHTML = '<div class="hint">Aucune demande en attente.</div>'; return; }
   box.innerHTML = data.map(d=>{
-    const parent = d.role_demande === 'parent';
+    const parent = d.role_demande === 'parent', enseignant = d.role_demande === 'enseignant';
     const opts = (DB.eleves||[]).filter(e=>e.statut==='Actif').map(e=>`<option value="${e.id}">${escapeHtml(e.nom)} ${escapeHtml(e.prenom)}</option>`).join('');
+    if(enseignant){
+      const choisies = new Set(d.classe_ids || []);
+      const libres = (DB.enseignants || []).filter(t => !(DB.profiles || []).some(p => p.enseignantId === t.id));
+      const mots = t => simplifierTexte(t).split(' ').filter(m => m.length >= 3);
+      const nomDem = new Set(mots(d.nom));
+      const suggere = libres.find(t => mots(`${t.prenom} ${t.nom}`).filter(m => nomDem.has(m)).length >= 1);
+      return `<div style="border:1px solid var(--border);border-radius:var(--r-card);padding:12px;margin-bottom:10px;">
+        <strong>👩‍🏫 Enseignant — ${escapeHtml(d.nom)}</strong>
+        <div class="hint">${escapeHtml(d.email||'')}${d.telephone ? ' · ' + escapeHtml(d.telephone) : ''}</div>
+        <div class="hint" style="margin:8px 0 4px;">Classes cochées par l’enseignant — vérifiez :</div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;">${DB.classes.map(c => `<label style="display:flex;align-items:center;gap:6px;"><input type="checkbox" class="demClasseVal_${d.id}" value="${c.id}" ${choisies.has(c.id)?'checked':''}> ${escapeHtml(c.nom)}</label>`).join('')}</div>
+        <select id="demFiche_${d.id}" style="width:100%;margin:8px 0;"><option value="">Créer une nouvelle fiche enseignant</option>${libres.map(t => `<option value="${t.id}" ${suggere && suggere.id===t.id?'selected':''}>Relier à la fiche existante : ${escapeHtml(ensFullName(t))}</option>`).join('')}</select>
+        <button class="btn sm" onclick="traiterDemandeAcces('${d.id}', true, 'enseignant')">✅ Approuver</button>
+        <button class="btn secondary sm" onclick="traiterDemandeAcces('${d.id}', false, 'enseignant')">Refuser</button>
+      </div>`;
+    }
+    // Enfants cochés par le parent lui-même lors de son inscription
     // Enfants probables : le nom du parent (ou son message) ressemble au parent
     // noté sur la fiche, ou contient le nom / prénom de l'élève
-    const probables = parent ? enfantsProbables(d) : [];
+    const choisisParParent = (d.eleve_ids || []).map(id => eleveById(id)).filter(Boolean);
+    const probables = parent ? (choisisParParent.length ? choisisParParent : enfantsProbables(d)) : [];
     return `<div style="border:1px solid var(--border);border-radius:var(--r-card);padding:12px;margin-bottom:10px;">
       <strong>${parent?'👪 Parent':'🚪 Portier'} — ${escapeHtml(d.nom)}</strong>
       <div class="hint">${escapeHtml(d.email||'')}${d.message?` · « ${escapeHtml(d.message)} »`:''}</div>
-      ${parent && probables.length ? `<div class="hint" style="margin:8px 0 4px;">Enfant(s) probable(s), d'après les noms — vérifiez avant d'approuver :</div>
+      ${parent && probables.length ? `<div class="hint" style="margin:8px 0 4px;">${choisisParParent.length ? 'Enfant(s) coché(s) par le parent' : 'Enfant(s) probable(s), d’après les noms'} — vérifiez avant d'approuver :</div>
         ${probables.map(e => `<label style="display:flex;align-items:center;gap:8px;margin:2px 0;"><input type="checkbox" class="demEnfant_${d.id}" value="${e.id}" checked> ${escapeHtml(eleveFullName(e))} — ${escapeHtml(classeName(e.classeId))} <span class="hint">(parent sur la fiche : ${escapeHtml(e.parentNom || '—')})</span></label>`).join('')}` : ''}
       ${parent ? `<select id="demEleve_${d.id}" style="width:100%;margin:8px 0;"><option value="">${probables.length ? '— Ajouter un autre enfant… —' : '— Lier à l’enfant… —'}</option>${opts}</select>` : ''}
       <button class="btn sm" onclick="traiterDemandeAcces('${d.id}', true, ${parent})">✅ Approuver</button>
@@ -6996,6 +7052,17 @@ function enfantsProbables(demande){
   }).filter(x => x.score >= 2).sort((a, b) => b.score - a.score).slice(0, 4).map(x => x.e);
 }
 async function traiterDemandeAcces(id, approuver, parent){
+  if(parent === 'enseignant'){
+    const classes = $$('.demClasseVal_' + id).filter(c => c.checked).map(c => c.value);
+    if(approuver && !classes.length){ toast('Cochez au moins une classe pour cet enseignant.'); return; }
+    const fiche = $('#demFiche_' + id)?.value || null;
+    const { error } = await sb.rpc('traiter_demande_acces', { p_id: id, p_approuver: approuver, p_eleve_ids: [], p_classe_ids: classes, p_enseignant_id: approuver ? fiche : null });
+    if(error){ toast('Erreur : ' + error.message); return; }
+    toast(approuver ? 'Enseignant validé ✅ : il ne voit que ses classes' : 'Demande refusée');
+    if(approuver){ try{ DB.enseignants = await dbSelectAll('enseignants_lecture'); DB.profiles = await dbSelectAll('profiles'); }catch(_e){} }
+    chargerDemandesAcces();
+    return;
+  }
   let eleves = [];
   if(approuver && parent){
     const coches = $$('.demEnfant_' + id).filter(c => c.checked).map(c => c.value);
@@ -7003,7 +7070,7 @@ async function traiterDemandeAcces(id, approuver, parent){
     eleves = [...new Set(coches.concat(v ? [v] : []))];
     if(!eleves.length){ toast("Choisissez l'enfant à lier à ce parent."); return; }
   }
-  const { error } = await sb.rpc('traiter_demande_acces', { p_id: id, p_approuver: approuver, p_eleve_ids: eleves });
+  const { error } = await sb.rpc('traiter_demande_acces', { p_id: id, p_approuver: approuver, p_eleve_ids: eleves, p_classe_ids: [], p_enseignant_id: null });
   if(error){ toast('Erreur : ' + error.message); return; }
   toast(approuver ? 'Accès accordé ✅' : 'Demande refusée');
   chargerDemandesAcces();
@@ -7021,7 +7088,9 @@ function copierLienApplication(page){
 }
 // Message prêt à envoyer : le lien + comment installer l'application
 function messagePartageApplication(page){
-  const nomApp = page === 'parent.html' ? `EcoMaZ-PARENTS D'ELEVES ${DB.meta.nomEcole}` : `EcoMaZ-PORTIER ${DB.meta.nomEcole}`;
+  const nomApp = page === 'parent.html' ? `EcoMaZ-PARENTS D'ELEVES ${DB.meta.nomEcole}` : page === 'enseignant.html' ? `EcoMaZ-ENSEIGNANTS ${DB.meta.nomEcole}` : `EcoMaZ-PORTIER ${DB.meta.nomEcole}`;
+  if(page === 'enseignant.html') return `Bonjour, voici l'application ${nomApp} :\n${lienApplication(page)}\n\n`
+    + `Ouvrez-la dans Chrome (Android) ou Safari (iPhone), touchez « Continuer avec Google », écrivez votre nom et cochez votre ou vos classes. La direction validera votre inscription.`;
   return `Bonjour, voici l'application ${nomApp} :\n${lienApplication(page)}\n\n`
     + `Pour l'installer : ouvrez ce lien dans Chrome (Android) ou Safari (iPhone), puis touchez « Installer l'application sur ce téléphone » `
     + `(sur iPhone : Partager → Sur l'écran d'accueil). Connectez-vous ensuite avec Google : l'école validera votre accès.`;
@@ -7030,7 +7099,7 @@ function afficherQrApplication(page){
   const lien = lienApplication(page);
   let image = '';
   try{ const qr = qrcode(0, 'M'); qr.addData(lien); qr.make(); image = qr.createSvgTag({ cellSize: 6, margin: 2, scalable: true }); }catch(_e){}
-  const titre = page === 'parent.html' ? `EcoMaZ-PARENTS D'ELEVES ${DB.meta.nomEcole}` : `EcoMaZ-PORTIER ${DB.meta.nomEcole}`;
+  const titre = page === 'parent.html' ? `EcoMaZ-PARENTS D'ELEVES ${DB.meta.nomEcole}` : page === 'enseignant.html' ? `EcoMaZ-ENSEIGNANTS ${DB.meta.nomEcole}` : `EcoMaZ-PORTIER ${DB.meta.nomEcole}`;
   openModal('QR code à afficher', `
     <div style="text-align:center;">
       <h3 style="margin-top:0;">${escapeHtml(titre)}</h3>
@@ -7052,6 +7121,7 @@ function renderLiensApplications(){
     </div>`;
   return `
     ${bloc('👪 Application Parents', 'parent.html', 'À envoyer aux parents avec leurs identifiants (SMS, WhatsApp…). Ils voient les tableaux d’honneur, actualités et messages de l’école.')}
+    ${bloc('👩‍🏫 Application Enseignants', 'enseignant.html', 'Chaque enseignant s’inscrit lui-même avec Google et coche ses classes ; vous validez dans Demandes d’accès. Il ne voit ensuite que ses classes.')}
     ${bloc('🚪 Application Portier', 'portier.html', 'À ouvrir une seule fois sur le téléphone du portier. Ses signalements arrivent directement chez les enseignants.')}
     <div class="hint" style="line-height:1.6;">
       <strong>Pour installer :</strong> ouvrir le lien dans Chrome (Android) ou Safari (iPhone), puis toucher « 📲 Installer l’application sur ce téléphone » ou, sur iPhone, <em>Partager → Sur l’écran d’accueil</em>. Le message WhatsApp contient déjà ces explications.
@@ -7230,7 +7300,7 @@ function renderParametres(){
     </div>
 
     <div class="panel">
-      <div class="panel-head"><div><h2>📲 Applications Parents &amp; Portier</h2><div class="sub">Deux applications séparées, installables sur le téléphone, nommées « EcoMaZ-PARENTS D'ELEVES ${escapeHtml(DB.meta.nomEcole)} » et « EcoMaZ-PORTIER ${escapeHtml(DB.meta.nomEcole)} »</div></div></div>
+      <div class="panel-head"><div><h2>📲 Applications Parents, Enseignants &amp; Portier</h2><div class="sub">Trois applications séparées, installables sur le téléphone : « EcoMaZ-PARENTS D'ELEVES ${escapeHtml(DB.meta.nomEcole)} », « EcoMaZ-ENSEIGNANTS ${escapeHtml(DB.meta.nomEcole)} » et « EcoMaZ-PORTIER ${escapeHtml(DB.meta.nomEcole)} »</div></div></div>
       ${renderLiensApplications()}
     </div>
 
@@ -7528,6 +7598,7 @@ function renderEcheancesScolarite(){
     </tr>`;
   }).join('');
   return `
+    <div class="form-actions" style="justify-content:flex-start;margin-top:0;"><button class="btn" onclick="ouvrirAssistantScolarite()">⚡ Assistant : inscription + scolarité par classe</button></div>
     <div class="section-note">💡 Créez les tranches de paiement de <strong>chaque classe</strong> (frais d’inscription, 1er versement…). Une classe sans grille propre utilise la <strong>grille commune</strong>. Le total des tranches devient le montant annuel de la classe.</div>
     <div class="table-wrap" style="margin-bottom:16px;"><table>
       <thead><tr><th>Classe</th><th>Scolarité annuelle</th><th>Tranches utilisées</th><th></th></tr></thead>
@@ -7563,6 +7634,53 @@ function renderEcheancesScolarite(){
       <div class="hint" style="margin:4px 0 0;">Message poli au parent 3 jours avant la date limite d’une tranche, le jour même, puis 7 jours après si elle n’est pas réglée (notification + messagerie). Seulement pour les tranches qui ont une date limite${visible ? '' : ' — activez d’abord « Montrer la scolarité aux parents »'}.</div>
     </div>
   `;
+}
+// Assistant : pour une ou plusieurs classes, frais d'inscription + scolarité
+// annuelle répartie en N versements (montants égaux, arrondis à 500 F, le
+// reste sur le dernier) → la grille de chaque classe est créée d'un coup.
+function lignesDatesAssistant(n){
+  return Array.from({ length: n }, (_, i) => `<div class="field"><label>${i + 1}${i ? 'e' : 'er'} versement — date limite</label><input type="date" name="date${i}"></div>`).join('');
+}
+function ouvrirAssistantScolarite(){
+  const lignesDates = lignesDatesAssistant;
+  openModal('⚡ Inscription et scolarité par classe', `
+    <form onsubmit="return appliquerAssistantScolarite(event)">
+      <div class="field"><label>Classe(s) concernée(s) — même montant</label>
+        <div style="display:flex;flex-wrap:wrap;gap:10px;">${DB.classes.map(c => `<label style="display:flex;align-items:center;gap:6px;"><input type="checkbox" name="classe" value="${c.id}"> ${escapeHtml(c.nom)}</label>`).join('')}</div></div>
+      <div class="form-grid">
+        <div class="field"><label>Frais d’inscription (${DEVISE})</label><input type="number" name="inscription" min="0" step="500" value="0"></div>
+        <div class="field"><label>Date limite de l’inscription</label><input type="date" name="dateInscription"></div>
+        <div class="field"><label>Scolarité annuelle, hors inscription (${DEVISE})</label><input type="number" name="scolarite" min="0" step="500" required></div>
+        <div class="field"><label>Nombre de versements</label><select name="nb" onchange="document.getElementById('assistantDates').innerHTML = lignesDatesAssistant(Number(this.value))">${[1,2,3,4,5,6].map(n => `<option ${n===3?'selected':''}>${n}</option>`).join('')}</select></div>
+      </div>
+      <div class="form-grid" id="assistantDates">${lignesDates(3)}</div>
+      <div class="hint">La grille actuelle des classes cochées sera remplacée. Vous pourrez ensuite modifier chaque tranche.</div>
+      <div class="form-actions"><button type="button" class="btn secondary" onclick="closeModal()">Annuler</button><button class="btn" type="submit">Créer les grilles</button></div>
+    </form>`);
+}
+async function appliquerAssistantScolarite(ev){
+  ev.preventDefault();
+  const fd = new FormData(ev.target);
+  const classes = fd.getAll('classe');
+  if(!classes.length) return alert('Cochez au moins une classe.'), false;
+  const inscription = Math.max(0, parseInt(fd.get('inscription')) || 0), total = Math.max(0, parseInt(fd.get('scolarite')) || 0), nb = Number(fd.get('nb')) || 1;
+  const part = Math.floor(total / nb / 500) * 500;
+  const modele = [];
+  if(inscription) modele.push({ label: 'Frais d’inscription', montant: inscription, date_echeance: fd.get('dateInscription') || null });
+  for(let i = 0; i < nb; i++) modele.push({ label: nb === 1 ? 'Scolarité' : `${i + 1}${i ? 'e' : 'er'} versement`, montant: i === nb - 1 ? total - part * (nb - 1) : part, date_echeance: fd.get('date' + i) || null });
+  if(!confirm(`Créer pour ${classes.length} classe(s) : ${modele.map(m => `${m.label} ${fmtFCFA(m.montant)}`).join(' + ')} = ${fmtFCFA(inscription + total)} ?`)) return false;
+  try{
+    for(const cid of classes){
+      const { error: errDel } = await sb.from('echeances_scolarite').delete().eq('ecole_id', session.ecoleId).eq('classe_id', cid);
+      if(errDel) throw errDel;
+      const { data, error } = await sb.from('echeances_scolarite').insert(modele.map((m, i) => ({ ...m, ordre: i, classe_id: cid, ecole_id: session.ecoleId }))).select();
+      if(error) throw error;
+      DB.echeancesScolarite = (DB.echeancesScolarite || []).filter(e => e.classeId !== cid).concat(rowsToCamel(data));
+      await synchroniserFraisClasse(cid);
+    }
+    closeModal(); toast(`Grilles créées pour ${classes.length} classe(s)`); renderView('parametres');
+  }catch(e){ alert('Erreur : ' + e.message); }
+  return false;
 }
 function openEcheanceForm(id){
   const e = id ? (DB.echeancesScolarite||[]).find(x=>x.id===id) : null;

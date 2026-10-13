@@ -983,3 +983,11 @@ td:has(> .amount), th.montant{ text-align:right; }
 .appel-nom{ cursor:pointer; user-select:none; }
 .appel-ligne.appel-absent td{ background:var(--danger-soft, #fbe3e0); }
 .appel-ligne.appel-retard td{ background:var(--warning-soft, #fbf0d9); }
+
+/* Enrôlement parent / enseignant */
+.enrol-liste{ display:flex; flex-direction:column; gap:6px; margin-top:6px; max-height:240px; overflow:auto; }
+.enrol-choix{ display:flex; align-items:center; gap:8px; padding:8px 10px; border:1px solid var(--border); border-radius:var(--r-card); text-align:left; font-weight:600; }
+.enrol-choisis{ display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+.enrol-choix{ justify-content:flex-start; }
+.enrol-choix input[type=checkbox], .login-card .enrol-choix input[type=checkbox]{ width:20px !important; height:20px !important; min-height:0 !important; flex:0 0 20px; margin:0; padding:0; }
+.enrol-choix .hint{ margin:0 0 0 auto; }

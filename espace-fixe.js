@@ -7,7 +7,7 @@
    serveur « manifeste-application » (lien posé dans l'en-tête de la page).
    ========================================================================= */
 (function(){
-  const espace = window.ESPACE_FIXE; // 'parent' | 'portier'
+  const espace = window.ESPACE_FIXE; // 'parent' | 'portier' | 'enseignant'
   // Le portier travaille toujours en thème sombre dédié, dès l'écran de connexion
   if(espace === 'portier' && document.body) document.body.classList.add('theme-portier');
   const page = espace + '.html';
@@ -21,7 +21,7 @@
   }catch(_e){}
 
   function appliquerNom(nom){
-    const titre = espace === 'parent' ? "EcoMaZ-PARENTS D'ELEVES " + nom : 'EcoMaZ-PORTIER ' + nom;
+    const titre = espace === 'parent' ? "EcoMaZ-PARENTS D'ELEVES " + nom : espace === 'enseignant' ? 'EcoMaZ-ENSEIGNANTS ' + nom : 'EcoMaZ-PORTIER ' + nom;
     document.title = titre;
     const m = document.querySelector('meta[name="apple-mobile-web-app-title"]');
     if(m) m.setAttribute('content', titre);

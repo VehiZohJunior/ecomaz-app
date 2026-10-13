@@ -2188,3 +2188,158 @@ create policy "lecture rappels_envoyes personnel" on rappels_envoyes for select
 -- Une seule fois par élève, tranche et étape (table rappels_envoyes).
 alter table ecoles add column if not exists relances_scolarite boolean not null default false;
 alter table ecoles add column if not exists heure_relances time not null default '10:00';
+
+-- =====================================================================
+-- 59. ENRÔLEMENT DES PARENTS ET DES ENSEIGNANTS (2026-10-13)
+-- =====================================================================
+-- Demande de Vehi Zoh Junior :
+-- - le parent s'enrôle en cochant le nom de son ou ses enfants ;
+-- - l'enseignant s'enrôle en écrivant son nom et en cochant sa ou ses
+--   classes, puis ne voit QUE ses classes.
+-- La direction (ou le secrétariat) valide toujours : sinon n'importe qui
+-- pourrait cocher l'enfant d'un autre.
+alter table demandes_acces drop constraint if exists demandes_acces_role_demande_check;
+alter table demandes_acces add constraint demandes_acces_role_demande_check check (role_demande in ('parent','portier','enseignant'));
+alter table demandes_acces add column if not exists eleve_ids uuid[];
+alter table demandes_acces add column if not exists classe_ids text[];
+alter table demandes_acces add column if not exists telephone text not null default '';
+
+-- Recherche d'un élève pendant l'enrôlement (compte Google connecté, pas
+-- encore validé) : au moins 3 lettres, élèves actifs de l'école, 8 réponses
+-- au plus, uniquement prénom, nom et classe.
+create or replace function rechercher_eleves_demande(p_ecole uuid, p_texte text)
+returns table (id uuid, prenom text, nom text, classe text)
+language plpgsql stable security definer set search_path = public as $$
+declare t text := lower(trim(coalesce(p_texte, '')));
+begin
+  if auth.uid() is null then raise exception 'Non authentifié'; end if;
+  if char_length(t) < 3 then return; end if;
+  return query
+    select e.id, e.prenom, e.nom, c.nom
+    from eleves e join ecoles ec on ec.id = e.ecole_id and ec.actif
+    left join classes c on c.id = e.classe_id
+    where e.ecole_id = p_ecole and e.statut = 'Actif'
+      and (lower(e.nom || ' ' || e.prenom) like '%' || t || '%' or lower(e.prenom || ' ' || e.nom) like '%' || t || '%')
+    order by e.nom, e.prenom limit 8;
+end $$;
+revoke all on function rechercher_eleves_demande(uuid, text) from public, anon;
+grant execute on function rechercher_eleves_demande(uuid, text) to authenticated;
+
+-- Liste des classes pour l'enrôlement d'un enseignant (noms seulement)
+create or replace function classes_demande(p_ecole uuid)
+returns table (id text, nom text)
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if auth.uid() is null then raise exception 'Non authentifié'; end if;
+  return query select c.id, c.nom from classes c join ecoles ec on ec.id = c.ecole_id and ec.actif where c.ecole_id = p_ecole order by c.nom;
+end $$;
+revoke all on function classes_demande(uuid) from public, anon;
+grant execute on function classes_demande(uuid) to authenticated;
+
+-- Validation : parent (enfants), portier, ENSEIGNANT (classes ; fiche
+-- enseignant créée, ou fiche existante reliée)
+drop function if exists traiter_demande_acces(uuid, boolean, uuid[]);
+create or replace function traiter_demande_acces(p_id uuid, p_approuver boolean, p_eleve_ids uuid[] default '{}',
+                                                 p_classe_ids text[] default '{}', p_enseignant_id uuid default null)
+returns void language plpgsql security definer set search_path = public as $$
+declare d demandes_acces%rowtype; e uuid; v_ens uuid; v_mat text; v_prenom text; v_nom text;
+begin
+  select * into d from demandes_acces where id = p_id for update;
+  if not found or d.ecole_id is distinct from mon_ecole_id() or not est_perso_admin() then
+    raise exception 'Demande introuvable ou accès refusé';
+  end if;
+  if d.statut <> 'en_attente' then raise exception 'Demande déjà traitée'; end if;
+  if not p_approuver then
+    update demandes_acces set statut='refusee', traite_par=auth.uid() where id=p_id;
+    return;
+  end if;
+  if d.role_demande = 'portier' and not est_admin() then
+    raise exception 'Seule la direction peut approuver un portier';
+  end if;
+  if d.role_demande = 'parent' and coalesce(array_length(p_eleve_ids,1),0) = 0 then
+    raise exception 'Choisissez au moins un enfant pour ce parent';
+  end if;
+  if d.role_demande = 'enseignant' and coalesce(array_length(p_classe_ids,1),0) = 0 then
+    raise exception 'Choisissez au moins une classe pour cet enseignant';
+  end if;
+  if exists (select 1 from profiles where id = d.user_id) then
+    raise exception 'Ce compte a déjà un profil';
+  end if;
+
+  if d.role_demande = 'enseignant' then
+    if exists (select 1 from unnest(p_classe_ids) c where not exists (select 1 from classes where id = c and ecole_id = d.ecole_id)) then
+      raise exception 'Classe invalide';
+    end if;
+    if p_enseignant_id is not null then
+      -- fiche déjà créée par l'école : on la relie (si elle n'a pas déjà un compte)
+      if not exists (select 1 from enseignants where id = p_enseignant_id and ecole_id = d.ecole_id)
+         or exists (select 1 from profiles where enseignant_id = p_enseignant_id) then
+        raise exception 'Fiche enseignant invalide ou déjà reliée à un compte';
+      end if;
+      update enseignants set classes_assignees = p_classe_ids, statut = 'Actif',
+        telephone = coalesce(nullif(d.telephone, ''), telephone) where id = p_enseignant_id;
+      v_ens := p_enseignant_id;
+    else
+      v_nom := upper(split_part(trim(d.nom), ' ', array_length(string_to_array(trim(d.nom), ' '), 1)));
+      v_prenom := trim(regexp_replace(trim(d.nom), '\s+\S+$', ''));
+      if v_prenom = '' then v_prenom := v_nom; end if;
+      select 'ENS-' || lpad((coalesce(max(nullif(regexp_replace(matricule, '\D', '', 'g'), '')::int), 0) + 1)::text, 3, '0')
+        into v_mat from enseignants where ecole_id = d.ecole_id and matricule like 'ENS-%';
+      insert into enseignants (ecole_id, matricule, nom, prenom, telephone, classes_assignees, statut, date_embauche)
+        values (d.ecole_id, v_mat, v_nom, v_prenom, d.telephone, p_classe_ids, 'Actif', current_date)
+        returning id into v_ens;
+    end if;
+    insert into profiles (id, ecole_id, role, nom_complet, enseignant_id)
+      values (d.user_id, d.ecole_id, 'enseignant', d.nom, v_ens);
+  else
+    insert into profiles (id, ecole_id, role, nom_complet)
+      values (d.user_id, d.ecole_id, d.role_demande::role_utilisateur, d.nom);
+  end if;
+
+  if d.role_demande = 'parent' then
+    foreach e in array p_eleve_ids loop
+      if not exists (select 1 from eleves where id = e and ecole_id = d.ecole_id) then
+        raise exception 'Élève invalide';
+      end if;
+      insert into parents_eleves (ecole_id, parent_profile_id, eleve_id) values (d.ecole_id, d.user_id, e);
+    end loop;
+  end if;
+  update demandes_acces set statut='approuvee', traite_par=auth.uid() where id=p_id;
+end $$;
+revoke all on function traiter_demande_acces(uuid,boolean,uuid[],text[],uuid) from public, anon;
+grant execute on function traiter_demande_acces(uuid,boolean,uuid[],text[],uuid) to authenticated;
+
+-- Fin de l'« accès total » des comptes enseignants non reliés à une fiche :
+-- un enseignant ne voit QUE ses classes.
+drop policy if exists "lecture absences_signalees enseignant" on absences_signalees;
+create policy "lecture absences_signalees enseignant" on absences_signalees for select
+  using (ecole_id = mon_ecole_id() and mon_role() = 'enseignant' and exists (
+    select 1 from eleves e where e.id = absences_signalees.eleve_id and e.classe_id = any(mes_classes())));
+drop policy if exists "acces bulletins" on bulletins_commentaires;
+create policy "acces bulletins" on bulletins_commentaires for all using (ecole_id = mon_ecole_id() and (est_perso_admin()
+  or exists (select 1 from eleves e where e.id = bulletins_commentaires.eleve_id and e.classe_id = any(mes_classes()))));
+drop policy if exists "lecture eleves" on eleves;
+create policy "lecture eleves" on eleves for select using (ecole_id = mon_ecole_id() and (est_perso_admin() or classe_id = any(mes_classes())));
+drop policy if exists "lecture emploi_temps" on emploi_temps;
+create policy "lecture emploi_temps" on emploi_temps for select using (ecole_id = mon_ecole_id() and (est_perso_admin() or classe_id = any(mes_classes())));
+drop policy if exists "lecture messages_internes enseignant" on messages_internes;
+create policy "lecture messages_internes enseignant" on messages_internes for select
+  using (destinataire_type = 'enseignant' and mon_role() = 'enseignant' and enseignant_id = mon_enseignant_id());
+drop policy if exists "maj messages_internes enseignant" on messages_internes;
+create policy "maj messages_internes enseignant" on messages_internes for update
+  using (destinataire_type = 'enseignant' and mon_role() = 'enseignant' and enseignant_id = mon_enseignant_id())
+  with check (destinataire_type = 'enseignant' and mon_role() = 'enseignant' and enseignant_id = mon_enseignant_id());
+drop policy if exists "acces notes" on notes;
+create policy "acces notes" on notes for all using (ecole_id = mon_ecole_id() and (est_perso_admin()
+  or exists (select 1 from eleves e where e.id = notes.eleve_id and e.classe_id = any(mes_classes()))));
+drop policy if exists "lecture notifications_portier enseignant" on notifications_portier;
+create policy "lecture notifications_portier enseignant" on notifications_portier for select
+  using (mon_role() = 'enseignant' and classe_id = any(mes_classes()));
+drop policy if exists "maj notifications_portier enseignant" on notifications_portier;
+create policy "maj notifications_portier enseignant" on notifications_portier for update
+  using (mon_role() = 'enseignant' and classe_id = any(mes_classes()))
+  with check (mon_role() = 'enseignant' and classe_id = any(mes_classes()));
+drop policy if exists "acces presences_eleves" on presences_eleves;
+create policy "acces presences_eleves" on presences_eleves for all using (ecole_id = mon_ecole_id() and (est_perso_admin() or presences_eleves.classe_id = any(mes_classes())));
+drop policy if exists "acces programmes" on programmes;
+create policy "acces programmes" on programmes for all using (ecole_id = mon_ecole_id() and (est_perso_admin() or classe_id = any(mes_classes())));

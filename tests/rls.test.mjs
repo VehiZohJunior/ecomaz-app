@@ -205,6 +205,17 @@ async function requete(accessToken, chemin, options = {}){
   const notifType = await fetch(`${URL_BASE}/functions/v1/notifier-personnel`, { method:'POST', headers:{ Authorization:`Bearer ${tokenSecretariat}`, 'Content-Type':'application/json' }, body: JSON.stringify({ type:'nimporte' }) });
   verifier('Type de notification inconnu refusé', notifType.status === 400);
 
+  section('7septies. Enrôlement — recherche d élèves protégée, enseignant limité à ses classes');
+  const ecoleSec = (await requete(tokenSecretariat, `/rest/v1/profiles?select=ecole_id&limit=1`)).data?.[0]?.ecole_id;
+  const rechAnon = await requete(ANON_KEY, `/rest/v1/rpc/rechercher_eleves_demande`, { method:'POST', body: JSON.stringify({ p_ecole: ecoleSec, p_texte:'kon' }) });
+  verifier('Sans connexion, impossible de chercher des élèves', !rechAnon.ok || (Array.isArray(rechAnon.data) && rechAnon.data.length === 0), `statut ${rechAnon.status}`);
+  const rechCourt = await requete(tokenSecretariat, `/rest/v1/rpc/rechercher_eleves_demande`, { method:'POST', body: JSON.stringify({ p_ecole: ecoleSec, p_texte:'ko' }) });
+  verifier('Moins de 3 lettres : aucune réponse', rechCourt.ok && Array.isArray(rechCourt.data) && rechCourt.data.length === 0);
+  const rechChamps = await requete(tokenSecretariat, `/rest/v1/rpc/rechercher_eleves_demande`, { method:'POST', body: JSON.stringify({ p_ecole: ecoleSec, p_texte:'aaa' }) });
+  verifier('La recherche ne renvoie que prénom, nom et classe', rechChamps.ok && (rechChamps.data||[]).every(r => Object.keys(r).sort().join(',') === 'classe,id,nom,prenom'));
+  const elevesEns = await requete(tokenEnseignant, `/rest/v1/eleves?select=id&limit=1`);
+  verifier('Un compte enseignant sans classe ne voit aucun élève', Array.isArray(elevesEns.data) && elevesEns.data.length === 0, `reçu ${JSON.stringify(elevesEns.data)?.slice(0,60)}`);
+
   section('8. Visiteur non connecté — ne lit que les affichages publics prévus');
   for(const table of ['eleves','enseignants_lecture','profiles','paiements_scolarite','messages','parents_eleves','presences_eleves','eleves_portier_lecture','objets_perdus','push_abonnements','absences_signalees']){
     const r = await requete(ANON_KEY, `/rest/v1/${table}?select=*&limit=1`);

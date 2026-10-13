@@ -25,7 +25,8 @@ const ENTETES = {
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: { 'Access-Control-Allow-Origin': '*' } });
   const url = new URL(req.url);
-  const espace = url.searchParams.get('espace') === 'portier' ? 'portier' : 'parent';
+  const demande = url.searchParams.get('espace');
+  const espace = demande === 'portier' ? 'portier' : demande === 'enseignant' ? 'enseignant' : 'parent';
   const ecoleId = url.searchParams.get('ecole') || '';
 
   let nomEcole = '';
@@ -40,13 +41,14 @@ Deno.serve(async (req) => {
   const page = `${espace}.html`;
   const nom = espace === 'parent'
     ? `EcoMaZ-PARENTS D'ELEVES${nomEcole ? ' ' + nomEcole : ''}`
+    : espace === 'enseignant' ? `EcoMaZ-ENSEIGNANTS${nomEcole ? ' ' + nomEcole : ''}`
     : `EcoMaZ-PORTIER${nomEcole ? ' ' + nomEcole : ''}`;
   const suffixe = UUID.test(ecoleId) ? `?ecole=${ecoleId}` : '';
   const manifeste = {
     id: `${SITE}${page}${suffixe}`,
     name: nom,
     short_name: nom,
-    description: espace === 'parent' ? `Espace parents${nomEcole ? ' — ' + nomEcole : ''}` : `Espace portier${nomEcole ? ' — ' + nomEcole : ''}`,
+    description: `Espace ${espace === 'parent' ? 'parents' : espace === 'enseignant' ? 'enseignants' : 'portier'}${nomEcole ? ' — ' + nomEcole : ''}`,
     start_url: `${SITE}${page}${suffixe}`,
     scope: SITE,
     display: 'standalone',
