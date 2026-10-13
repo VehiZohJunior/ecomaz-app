@@ -88,6 +88,41 @@ async function relancesScolarite(admin: any, aujourdhui: string, minuteActuelle:
   return n;
 }
 
+// Rappel des devoirs (schema.sql section 64) : à 18h, la veille d'un jour
+// de classe, les parents de chaque classe reçoivent la liste des devoirs
+// prévus pour le lendemain. Une seule fois par classe et par jour.
+// deno-lint-ignore no-explicit-any
+async function rappelDevoirs(admin: any, aujourdhui: string, minuteActuelle: number): Promise<number> {
+  if (minuteActuelle < 18 * 60 || minuteActuelle > 18 * 60 + 30) return 0;
+  const d = new Date(aujourdhui + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + 1);
+  const demain = d.toISOString().slice(0, 10);
+  const { data: devoirs } = await admin.from('devoirs').select('ecole_id, classe_id, matiere, travail').eq('pour_le', demain);
+  const parClasse: Record<string, { ecole: string; classe: string; lignes: string[] }> = {};
+  for (const dv of (devoirs || []) as { ecole_id: string; classe_id: string; matiere: string; travail: string }[]) {
+    const k = `${dv.ecole_id}|${dv.classe_id}`;
+    (parClasse[k] ||= { ecole: dv.ecole_id, classe: dv.classe_id, lignes: [] }).lignes.push(dv.matiere ? `${dv.matiere} : ${dv.travail}` : dv.travail);
+  }
+  let n = 0;
+  for (const g of Object.values(parClasse)) {
+    const { data: ec } = await admin.from('ecoles').select('nom_ecole, actif').eq('id', g.ecole).single();
+    if (!ec || ec.actif === false) continue;
+    const { error: deja } = await admin.from('rappels_envoyes').insert({ ecole_id: g.ecole, type: `devoirs|${g.classe}`, date: aujourdhui });
+    if (deja) continue;
+    const [{ data: classe }, { data: eleves }] = await Promise.all([
+      admin.from('classes').select('nom').eq('id', g.classe).single(),
+      admin.from('eleves').select('id').eq('ecole_id', g.ecole).eq('classe_id', g.classe).eq('statut', 'Actif'),
+    ]);
+    const parents = await parentsDesEleves(admin, g.ecole, (eleves || []).map((e: { id: string }) => e.id));
+    if (!parents.length) continue;
+    await envoyerPush(admin, parents, {
+      title: `📒 Devoirs pour demain — ${classe?.nom || ''}`.trim(),
+      body: g.lignes.join(' · ').slice(0, 300), url: './parent.html', tag: `devoirs-${g.classe}`,
+    });
+    n++;
+  }
+  return n;
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS_HEADERS });
 
@@ -239,6 +274,12 @@ Deno.serve(async (req) => {
     if (jourIso <= 5) {
       try { nbEnvoyees += await relancesScolarite(supabaseAdmin, dateDuJour, minuteActuelle); }
       catch (e) { erreurs.push(`relances: ${(e as Error).message}`); }
+    }
+
+    // Rappel des devoirs du lendemain — dimanche à jeudi soir
+    if (jourIso === 7 || jourIso <= 4) {
+      try { nbEnvoyees += await rappelDevoirs(supabaseAdmin, dateDuJour, minuteActuelle); }
+      catch (e) { erreurs.push(`devoirs: ${(e as Error).message}`); }
     }
 
     return new Response(JSON.stringify({ ok: true, nbEnvoyees, erreurs }), {

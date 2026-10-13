@@ -2230,6 +2230,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.10.13-4', nouveautes: {
+    commun: [],
+    parent: [ 'Chaque soir à 18h, rappel des devoirs pour le lendemain sur votre téléphone.' ],
+    portier: [],
+    personnel: [ 'Chaque soir à 18h (dimanche au jeudi), les parents reçoivent automatiquement le rappel des devoirs du lendemain.', '« Ma journée » : rappel des devoirs notés pour le prochain jour de classe, bouton « Noter un devoir ».' ],
+  } },
   { version: '2026.10.13-3', nouveautes: {
     commun: [],
     parent: [ 'Nouveau : « Devoirs » sur l’accueil — le travail à faire noté par l’enseignant de votre enfant, avec une notification.' ],
@@ -2782,6 +2788,9 @@ function renderMaJournee(){
   if(DB.absencesSignalees === undefined){ DB.absencesSignalees = null; chargerAbsencesSignalees().then(() => { if(ui.currentView === 'dashboard') renderView('dashboard'); }).catch(() => { DB.absencesSignalees = []; }); }
   if(DB.agenda === undefined){ DB.agenda = null; sb.from('evenements_agenda').select('*').eq('ecole_id', session.ecoleId).gte('date_fin', todayISO()).order('date_debut').limit(20)
     .then(({ data }) => { DB.agenda = rowsToCamel(data || []); if(ui.currentView === 'dashboard') renderView('dashboard'); }); }
+  if(DB.devoirs === undefined){ DB.devoirs = null; sb.from('devoirs').select('*').eq('ecole_id', session.ecoleId).gte('pour_le', todayISO()).order('pour_le')
+    .then(({ data }) => { DB.devoirs = rowsToCamel(data || []); if(ui.currentView === 'dashboard') renderView('dashboard'); }); }
+  const prochain = prochainJourClasse();
   const aujourd = todayISO(), jourIso = ((new Date().getDay() + 6) % 7) + 1;
   const renfAujourdhui = (DB.horairesAnnonces?.joursRenforcement || [1,2,3,4,5]).includes(jourIso);
   const classes = classesVisibles();
@@ -2796,6 +2805,7 @@ function renderMaJournee(){
       <div class="mj-tete"><strong>${escapeHtml(c.nom)}</strong><span class="hint" style="margin:0;">${eleves.length} élève(s)</span></div>
       <div class="mj-ligne">${appel.length ? `<span class="badge green">✓ Appel fait</span> ${absents} absent(s)` : `<span class="badge red">Appel non fait</span> <button class="btn sm" onclick="ui.filters.presEleves={classeId:'${c.id}', date:'${aujourd}'}; go('presences-eleves')">Faire l’appel</button>`}</div>
       ${signales.length ? `<div class="mj-ligne">📝 Absences signalées : ${signales.map(x => `${escapeHtml(eleveFullName(x.e))} <span class="hint">(${escapeHtml(x.a.motif)})</span>`).join(', ')}</div>` : ''}
+      ${DB.devoirs ? (() => { const dv = DB.devoirs.filter(d => d.classeId === c.id && d.pourLe === prochain); return `<div class="mj-ligne">📒 ${dv.length ? `Devoirs ${quandDevoir(prochain)} : ${dv.map(d => escapeHtml(d.matiere || 'travail')).join(', ')}` : `Aucun devoir noté ${quandDevoir(prochain)}`} <button class="btn secondary sm" onclick="ui.filters.devoirsClasse='${c.id}'; go('devoirs')">${dv.length ? 'Voir' : 'Noter un devoir'}</button></div>`; })() : ''}
       ${renf.length ? `<div class="mj-ligne">📘 Renforcement ce soir : ${renf.map(e => escapeHtml(eleveFullName(e))).join(', ')}</div>` : ''}
       ${arrivees.length ? `<div class="mj-ligne">🚪 Parents arrivés : ${arrivees.map(n => `${escapeHtml(n.eleveNom)} <span class="hint">(${new Date(n.createdAt).toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'})})</span>`).join(', ')}</div>` : ''}
     </div>`;
