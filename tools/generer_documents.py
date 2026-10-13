@@ -48,3 +48,4 @@ def produire(source, pdf):
 APERCU = sys.argv[sys.argv.index('--apercu') + 1] if '--apercu' in sys.argv else None
 produire('plaquette-source.html', 'EcoMaZ-Plaquette.pdf')
 produire('guide-personnel-source.html', 'EcoMaZ-Guide-du-personnel.pdf')
+produire('prise-en-main-source.html', 'EcoMaZ-Prise-en-main.pdf')

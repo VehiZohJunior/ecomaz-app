@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>EcoMaZ — Prise en main en 1 heure</title>
+<link rel="stylesheet" href="documents.css">
+<style>
+  .etapes{ display:grid; grid-template-columns:1fr 1fr; gap:3mm; }
+  .etape{ background:#fff; border:0.3mm solid var(--ligne); border-radius:3mm; padding:3mm 4mm; break-inside:avoid; }
+  .etape h3{ display:flex; align-items:baseline; gap:2mm; font-size:11pt; }
+  .etape .num{ color:var(--or); font-weight:900; font-size:14pt; }
+  .etape .duree{ margin-left:auto; font-size:8.5pt; color:var(--terre); font-weight:800; }
+  .etape p, .etape li{ font-size:9.5pt; color:var(--texte); margin:0; }
+  .etape ul{ margin:1mm 0 0; padding-left:4.5mm; }
+  .case{ display:inline-block; width:3.5mm; height:3.5mm; border:0.4mm solid var(--vert); border-radius:0.8mm; margin-right:1.5mm; vertical-align:-0.5mm; }
+</style>
+</head>
+<body>
+<section class="page">
+  <div class="bandeau" style="padding:10mm 15mm 8mm;">
+    <div class="sur-titre" style="color:var(--or);">Séance avec l’équipe de l’école</div>
+    <h1 style="font-size:24pt;">Prise en main en 1 heure</h1>
+    <div class="trait"></div>
+    <div class="accroche" style="font-size:12pt;">À faire ensemble, sur place, avec la Direction, la secrétaire et les enseignants. Cochez chaque étape terminée.</div>
+  </div>
+  <div class="corps" style="padding-top:8mm;">
+    <div class="etapes">
+      <div class="etape"><h3><span class="num">1</span><span class="case"></span>Installer et activer les notifications<span class="duree">10 min</span></h3>
+        <ul><li>Sur le téléphone de chacun : ouvrir le lien dans Chrome, se connecter, <b>Installer l’application</b>.</li>
+        <li>Tableau de bord → <b>Activer les notifications</b> → Autoriser.</li></ul></div>
+      <div class="etape"><h3><span class="num">2</span><span class="case"></span>Saisir les enseignants<span class="duree">10 min</span></h3>
+        <ul><li><b>Enseignants</b> → + Nouvel enseignant : nom, numéro WhatsApp, classes.</li>
+        <li>Imprimer les <b>badges QR</b> (Scanner un badge).</li></ul></div>
+      <div class="etape"><h3><span class="num">3</span><span class="case"></span>Faire un premier appel<span class="duree">5 min</span></h3>
+        <ul><li><b>Pointage élèves (Appel)</b> → Tous présents → toucher les absents → Enregistrer.</li>
+        <li>Chaque enseignant le fait dans sa classe, chaque matin avant 9h00.</li></ul></div>
+      <div class="etape"><h3><span class="num">4</span><span class="case"></span>Vérifier les fiches élèves<span class="duree">5 min</span></h3>
+        <ul><li><b>Élèves &amp; Inscriptions</b> → encadré <b>Fiches à vérifier</b> → Corriger (dates, numéros des parents).</li></ul></div>
+      <div class="etape"><h3><span class="num">5</span><span class="case"></span>Paramétrer la scolarité<span class="duree">10 min</span></h3>
+        <ul><li><b>Paramètres → Scolarité et tranches</b> : créer la grille d’une classe par niveau, puis la copier.</li>
+        <li>Enregistrer les paiements déjà reçus (Comptabilité → Scolarité).</li></ul></div>
+      <div class="etape"><h3><span class="num">6</span><span class="case"></span>Inviter les parents<span class="duree">5 min</span></h3>
+        <ul><li><b>Parents ↔ Élèves</b> → imprimer les <b>coupons d’invitation</b> → les glisser dans les cahiers.</li>
+        <li>La Direction valide chaque demande (Paramètres → Demandes d’accès).</li></ul></div>
+      <div class="etape"><h3><span class="num">7</span><span class="case"></span>Renforcement et horaires<span class="duree">5 min</span></h3>
+        <ul><li><b>Cours de renforcement</b> : cocher les élèves concernés.</li>
+        <li>Vérifier les horaires et les jours de classe (Paramètres → Annonces horaires).</li></ul></div>
+      <div class="etape"><h3><span class="num">8</span><span class="case"></span>Première publication<span class="duree">5 min</span></h3>
+        <ul><li><b>Vie de l’école</b> : publier quelques photos d’une activité récente (avec l’accord des parents).</li>
+        <li>Ajouter le <b>logo de l’école</b> (Paramètres).</li></ul></div>
+    </div>
+
+    <div class="section encadre" style="margin-top:5mm;">
+      <h3>Ensuite, chaque jour</h3>
+      <p style="margin:0;"><b>Matin :</b> appel avant 9h00. <b>Dans la journée :</b> encaisser et imprimer les reçus, répondre aux parents. <b>Vendredi :</b> Tableau de bord → <b>Bilan de la semaine</b>. La liste <b>Mise en route de l’école</b> du tableau de bord montre ce qui reste à faire.</p>
+    </div>
+    <div class="section encadre" style="margin-top:3mm;background:var(--vert-clair);border-left-color:var(--vert);">
+      <h3>Une question ?</h3>
+      <p style="margin:0;">EcoMaZ : {{telephone}} · WhatsApp {{whatsapp}}</p>
+    </div>
+  </div>
+  <div class="pied"><span>EcoMaZ — conçu à Abidjan</span><span>Prise en main</span></div>
+</section>
+</body>
+</html>

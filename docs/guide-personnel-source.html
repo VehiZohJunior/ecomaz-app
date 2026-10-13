@@ -9,7 +9,7 @@
 <body>
 <section class="page auto">
   <div class="bandeau">
-    <div class="sur-titre" style="color:var(--or);">Guide pas à pas</div>
+    <div class="sur-titre" style="color:var(--or);">Guide pas à pas — mis à jour le 13 octobre 2026</div>
     <h1>EcoMaZ au quotidien</h1>
     <div class="trait"></div>
     <div class="accroche">Les gestes de chaque jour, pour le secrétariat, la direction, les enseignants et le portier.</div>
@@ -23,51 +23,86 @@
     <!-- POUR TOUS -->
     <div class="role">
       <div class="role-tete">{{ico:smartphone}}<h2>Pour tout le monde</h2></div>
-      <div class="tache"><h3><span class="num">1</span>Se connecter</h3>
+      <div class="tache"><h3><span class="num">1</span>Se connecter et installer l’application</h3>
         <ol>
-          <li>Ouvrez le lien de l'application de votre école (donné par la direction).</li>
+          <li>Ouvrez le lien de l'application de votre école (donné par la direction) dans <b>Chrome</b> (Android) ou <b>Safari</b> (iPhone).</li>
           <li>Choisissez votre espace (Enseignant, Secrétariat, Direction…), puis entrez votre adresse e-mail et votre mot de passe.</li>
-          <li>Pour l'avoir sur l'écran d'accueil du téléphone : <span class="chemin">Installer l'application</span>, en bas du menu.</li>
+          <li>Pour l'avoir sur l'écran d'accueil : <span class="chemin">Installer l'application</span> en bas du menu (iPhone : Partager → Sur l’écran d’accueil).</li>
         </ol>
         <div class="astuce"><b>Important :</b> ne donnez jamais votre mot de passe. Pour quitter, utilisez <span class="chemin">Déconnexion</span> en bas du menu.</div>
       </div>
-      <div class="tache"><h3><span class="num">2</span>Retrouver vite un élève ou une page</h3>
+      <div class="tache"><h3><span class="num">2</span>Activer les notifications (une seule fois)</h3>
+        <ol>
+          <li>Sur le <span class="chemin">Tableau de bord</span> : <span class="chemin">Activer les notifications sur ce téléphone</span>, puis <b>Autoriser</b>.</li>
+          <li>Vous serez prévenu même application fermée : parent au portail (enseignant), appel non fait à 9h00, demandes d’accès, absences et objets perdus signalés par les parents.</li>
+        </ol>
+      </div>
+      <div class="tache"><h3><span class="num">3</span>Retrouver vite un élève ou une page</h3>
         <ol><li>Touchez la <b>loupe</b> en haut de l'écran (ou <b>Ctrl + K</b> sur ordinateur) et tapez quelques lettres du nom.</li></ol>
         <div class="astuce"><b>Sans internet ?</b> Continuez à travailler : vos saisies sont gardées et envoyées dès que la connexion revient.</div>
       </div>
     </div>
 
+    <!-- APPEL -->
+    <div class="role">
+      <div class="role-tete">{{ico:clipboard}}<h2>L’appel du matin</h2><span class="qui">enseignants, secrétariat</span></div>
+      <div class="tache"><h3><span class="num">4</span>Faire l’appel en 20 secondes</h3>
+        <ol>
+          <li><span class="chemin">Pointage élèves (Appel)</span> : la classe et la date du jour s'affichent.</li>
+          <li>Touchez <span class="chemin">Tous présents</span>, puis touchez le <b>nom</b> de chaque absent (ligne rouge). Un 2ᵉ toucher : retard.</li>
+          <li><span class="chemin">Enregistrer la présence</span>.</li>
+        </ol>
+        <div class="astuce"><b>Automatique :</b> les absences signalées à l’avance par les parents sont déjà marquées ; les parents des absents sont prévenus dans leur application ; à 9h00, un rappel arrive si l’appel n’est pas fait.</div>
+      </div>
+      <div class="tache"><h3><span class="num">5</span>Prévenir un parent par WhatsApp (secrétariat)</h3>
+        <ol>
+          <li>Sous la feuille d’appel : <span class="chemin">Prévenir les parents des absents</span> → <span class="chemin">Prévenir le parent</span> → <span class="chemin">Envoyer par WhatsApp</span>.</li>
+          <li>WhatsApp s'ouvre avec le message déjà écrit (un bouton par numéro) : appuyez sur <b>Envoyer</b>.</li>
+        </ol>
+      </div>
+    </div>
+
     <!-- SECRÉTARIAT -->
     <div class="role">
-      <div class="role-tete">{{ico:clipboard}}<h2>Secrétariat</h2><span class="qui">et Direction</span></div>
-      <div class="tache"><h3><span class="num">3</span>Inscrire un élève</h3>
+      <div class="role-tete">{{ico:folder-open}}<h2>Secrétariat</h2><span class="qui">et Direction</span></div>
+      <div class="tache"><h3><span class="num">6</span>Inscrire des élèves</h3>
         <ol>
-          <li><span class="chemin">Élèves &amp; Inscriptions</span> → <span class="chemin">+ Nouvel élève</span>.</li>
-          <li>Remplissez nom, prénom, date de naissance (sur l'acte de naissance), classe, et le <b>nom et le numéro WhatsApp du parent</b>.</li>
-          <li>Enregistrez : le matricule (EL-…) est donné automatiquement.</li>
+          <li>Un par un : <span class="chemin">Élèves &amp; Inscriptions</span> → <span class="chemin">+ Nouvel élève</span> (nom, date de naissance, classe, nom et numéro WhatsApp du parent).</li>
+          <li>Toute une liste : <span class="chemin">Importer depuis Excel</span> → téléchargez le modèle ou utilisez votre fichier → vérifiez l’aperçu → <span class="chemin">Importer</span>.</li>
+          <li>L’encadré <span class="chemin">Fiches à vérifier</span> liste les dates ou numéros mal saisis : <span class="chemin">Corriger</span>.</li>
         </ol>
-        <div class="astuce"><b>Attention :</b> si l'application signale une date impossible (naissance dans le futur, enfant de moins de 6 mois), vérifiez le document.</div>
       </div>
-      <div class="tache"><h3><span class="num">4</span>Encaisser la scolarité et imprimer le reçu</h3>
+      <div class="tache"><h3><span class="num">7</span>Relier chaque élève à son parent</h3>
         <ol>
-          <li><span class="chemin">Comptabilité</span> → onglet <span class="chemin">Scolarité</span>.</li>
-          <li>Sur la ligne de l'élève : <span class="chemin">+ Paiement</span>, saisissez le montant et le mode (espèces, Mobile Money…), puis enregistrez.</li>
+          <li><span class="chemin">Parents ↔ Élèves</span> : la liste des élèves sans parent relié s’affiche.</li>
+          <li>Imprimez les <span class="chemin">Coupons d’invitation</span> (QR code) et glissez-les dans les cahiers, ou <span class="chemin">Envoyer par WhatsApp</span>.</li>
+          <li>Le parent se connecte avec Google ; la Direction valide sa demande (n° 12).</li>
+        </ol>
+        <div class="astuce"><b>Essentiel :</b> un parent non relié ne reçoit ni annonces, ni alertes d’absence, ni messages.</div>
+      </div>
+      <div class="tache"><h3><span class="num">8</span>Encaisser la scolarité et imprimer le reçu</h3>
+        <ol>
+          <li><span class="chemin">Comptabilité</span> → onglet <span class="chemin">Scolarité</span> → choisissez la classe.</li>
+          <li>Sur la ligne de l'élève, touchez la tranche (➕) ou <span class="chemin">+ Paiement</span> : montant, mode (espèces, Mobile Money…), enregistrer.</li>
           <li><span class="chemin">Imprimer le reçu</span> et remettez-le au parent.</li>
         </ol>
       </div>
-      <div class="tache"><h3><span class="num">5</span>Prévenir les parents des absents</h3>
+      <div class="tache"><h3><span class="num">9</span>Cours de renforcement</h3>
         <ol>
-          <li><span class="chemin">Pointage élèves (Appel)</span> : choisissez la classe et la date, marquez les absents, puis <span class="chemin">Enregistrer la présence</span>.</li>
-          <li>Plus bas, dans <span class="chemin">Prévenir les parents des absents</span> : <span class="chemin">Prévenir le parent</span> → <span class="chemin">Envoyer par WhatsApp</span>.</li>
-          <li>WhatsApp s'ouvre avec le message déjà écrit : appuyez sur <b>Envoyer</b>.</li>
+          <li><span class="chemin">Cours de renforcement</span> → choisissez la classe → cochez les élèves → <span class="chemin">Enregistrer</span>.</li>
+          <li>Leurs parents sont prévenus automatiquement (« enfant retenu », puis fin du renforcement). Un message ne concernant que ces familles : <span class="chemin">Message aux parents des inscrits</span>.</li>
         </ol>
-        <div class="astuce"><b>Gratuit :</b> aucun SMS n'est facturé. Le parent voit aussi l'absence dans son application.</div>
       </div>
-      <div class="tache"><h3><span class="num">6</span>Pointer l'arrivée des enseignants</h3>
+      <div class="tache"><h3><span class="num">10</span>Publier les photos d’un événement</h3>
         <ol>
-          <li><b>Par badge :</b> <span class="chemin">Scanner un badge</span>, puis présentez le badge QR de l'enseignant à la caméra. Les badges s'impriment depuis la même page : <span class="chemin">Imprimer les badges QR</span>.</li>
-          <li><b>Par lien GPS</b> (enseignant pas devant le scanner) : <span class="chemin">Pointage enseignants — Journal</span> → <span class="chemin">Pointage GPS</span> → <span class="chemin">Arrivée</span> (ou <span class="chemin">Départ</span>) à côté de son nom → <span class="chemin">Envoyer par WhatsApp</span>.</li>
-          <li>L'enseignant ouvre le lien, autorise sa position et appuie sur <b>Valider ma présence</b>. Le lien est valable 30 minutes, une seule fois.</li>
+          <li><span class="chemin">Vie de l’école</span> → titre, texte, photos et vidéos (25 Mo max, sinon lien YouTube « non répertorié ») → toute l’école ou certaines classes → <span class="chemin">Publier</span>.</li>
+          <li>Les parents sont notifiés et peuvent aimer et commenter. Ne publiez que des enfants dont les parents sont d’accord.</li>
+        </ol>
+      </div>
+      <div class="tache"><h3><span class="num">11</span>Répondre aux parents</h3>
+        <ol>
+          <li><span class="chemin">Messagerie</span> : <span class="chemin">Objets perdus signalés par les parents</span> → choisissez l’état (retrouvé, rendu…) et écrivez un mot → <span class="chemin">Enregistrer</span>.</li>
+          <li>Pointer les enseignants : <span class="chemin">Scanner un badge</span>, ou par lien GPS dans <span class="chemin">Pointage enseignants — Journal</span> → <span class="chemin">Envoyer par WhatsApp</span>.</li>
         </ol>
       </div>
     </div>
@@ -75,23 +110,26 @@
     <!-- DIRECTION -->
     <div class="role">
       <div class="role-tete">{{ico:landmark}}<h2>Direction</h2><span class="qui">et Fondation</span></div>
-      <div class="tache"><h3><span class="num">7</span>Valider les parents et le portier qui demandent l'accès</h3>
+      <div class="tache"><h3><span class="num">12</span>Valider les parents et le portier</h3>
         <ol>
           <li><span class="chemin">Paramètres</span> → <span class="chemin">Demandes d'accès (Parents &amp; Portier)</span>.</li>
-          <li>Pour un parent : cochez son ou ses enfants, puis approuvez. Refusez toute demande inconnue.</li>
+          <li>Les enfants probables sont déjà cochés : vérifiez, ajoutez un frère ou une sœur si besoin, puis <span class="chemin">Approuver</span>. Refusez toute demande inconnue.</li>
         </ol>
       </div>
-      <div class="tache"><h3><span class="num">8</span>Définir la zone de l'école (une seule fois, sur place)</h3>
+      <div class="tache"><h3><span class="num">13</span>Paramétrer la scolarité</h3>
         <ol>
-          <li>Debout dans la cour : <span class="chemin">Paramètres</span> → <span class="chemin">Zone de l'établissement</span> → <span class="chemin">Utiliser ma position actuelle</span> (autorisez la position).</li>
-          <li><span class="chemin">Enregistrer la zone</span>. Elle sert au pointage GPS des enseignants.</li>
+          <li><span class="chemin">Paramètres</span> → <span class="chemin">Scolarité et tranches de paiement</span> : pour chaque classe, <span class="chemin">Créer sa grille</span> (inscription, versements, dates limites).</li>
+          <li><span class="chemin">Copier ces tranches vers d’autres classes</span> du même niveau, puis ajustez.</li>
+          <li>Quand tout est juste : cochez <span class="chemin">Montrer la scolarité aux parents</span>.</li>
         </ol>
       </div>
-      <div class="tache"><h3><span class="num">9</span>Suivre l'école</h3>
+      <div class="tache"><h3><span class="num">14</span>Horaires, annonces et vacances</h3>
+        <ol><li><span class="chemin">Paramètres</span> → <span class="chemin">Annonces horaires automatiques</span> : heures réelles, jours de classe, rappel de l’appel (9h00), vacances (« suspendre jusqu’au »).</li></ol>
+      </div>
+      <div class="tache"><h3><span class="num">15</span>Suivre l'école</h3>
         <ol>
-          <li><span class="chemin">Tableau de bord</span> : présences du jour, alertes, scolarité.</li>
+          <li><span class="chemin">Tableau de bord</span> : <span class="chemin">Mise en route de l’école</span> (ce qui reste à faire), présences du jour, <span class="chemin">Bilan de la semaine</span> (à imprimer ou partager par WhatsApp).</li>
           <li><span class="chemin">Comptabilité</span> : recettes, dépenses, salaires (réservés à la direction), impayés.</li>
-          <li><span class="chemin">Tableau d'affichage</span> : tableau d'honneur et actualités de l'écran de l'école.</li>
         </ol>
       </div>
     </div>
@@ -99,28 +137,21 @@
     <!-- ENSEIGNANTS -->
     <div class="role">
       <div class="role-tete">{{ico:presentation}}<h2>Enseignants</h2></div>
-      <div class="tache"><h3><span class="num">10</span>Faire l'appel</h3>
+      <div class="tache"><h3><span class="num">16</span>Notes, emploi du temps, vie de l’école</h3>
         <ol>
-          <li><span class="chemin">Pointage élèves (Appel)</span> : votre classe et la date du jour s'affichent.</li>
-          <li>Marquez chaque élève (Présent, Absent, Retard…), ajoutez un motif si vous le connaissez, puis <span class="chemin">Enregistrer la présence</span>.</li>
+          <li><span class="chemin">Notes &amp; Bulletins</span> : classe, matière, notes, enregistrer — les bulletins se calculent seuls.</li>
+          <li><span class="chemin">Emploi du temps</span>, <span class="chemin">Programmes pédagogiques</span> et <span class="chemin">Vie de l’école</span> en consultation.</li>
         </ol>
-        <div class="astuce">La direction et le parent (dans son application) sont informés des absences.</div>
-      </div>
-      <div class="tache"><h3><span class="num">11</span>Saisir les notes</h3>
-        <ol><li><span class="chemin">Notes &amp; Bulletins</span> : choisissez la classe et la matière, saisissez les notes, enregistrez. Les bulletins sont calculés automatiquement.</li></ol>
-      </div>
-      <div class="tache"><h3><span class="num">12</span>Consulter son emploi du temps et les programmes</h3>
-        <ol><li><span class="chemin">Emploi du temps</span> et <span class="chemin">Programmes pédagogiques</span>.</li></ol>
       </div>
     </div>
 
     <!-- PORTIER -->
     <div class="role">
       <div class="role-tete">{{ico:door-open}}<h2>Portier</h2><span class="qui">application « PORTIER »</span></div>
-      <div class="tache"><h3><span class="num">13</span>Signaler l'arrivée d'un parent</h3>
+      <div class="tache"><h3><span class="num">17</span>Signaler l'arrivée d'un parent</h3>
         <ol>
           <li>Écran <b>« Le parent d'un élève est arrivé »</b> : tapez le nom de l'élève, ou choisissez sa classe.</li>
-          <li>Touchez le nom de l'élève : l'enseignant est prévenu. Une confirmation s'affiche avec l'heure.</li>
+          <li>Touchez le nom : l'enseignant est prévenu sur son téléphone. Une confirmation s'affiche avec l'heure.</li>
         </ol>
       </div>
     </div>
