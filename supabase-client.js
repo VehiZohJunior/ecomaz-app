@@ -493,45 +493,56 @@ function debutSemaine(d){
   return x;
 }
 async function chargerDBParent(){
-  const [ecoleRow, eleves, classesRows, messages, annoncesHoraires, messagesInternes, tableauHonneur, actualitesAffichage] = await Promise.all([
-    sb.from('ecoles').select('*').eq('id', session.ecoleId).single(),
+  // Tout est demandé EN MÊME TEMPS (3 vagues au lieu d'une dizaine d'allers-
+  // retours successifs) : ouverture bien plus rapide sur un téléphone en 3G.
+  // Les blocs facultatifs passent par sur() : en cas d'échec, la console
+  // s'affiche quand même, sans ce bloc.
+  const sur = (requete, defaut) => Promise.resolve(requete).then(r => (r && !r.error ? r.data : defaut), () => defaut);
+  const d = new Date();
+  const isoJ = x => `${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,'0')}-${String(x.getDate()).padStart(2,'0')}`;
+  const aujourdhui = isoJ(d);
+  const lundi = debutSemaine(new Date());
+  const vendredi = new Date(lundi); vendredi.setDate(lundi.getDate() + 4);
+  const E = session.ecoleId;
+  const [ecoleRow, eleves, classesRows, messages, annoncesHoraires, messagesInternes, tableauHonneur, actualitesAffichage,
+    presences, applaudis, agendaRows, correctionsRows, persRows, santeRows, menusRows, devoirsRows] = await Promise.all([
+    sb.from('ecoles').select('*').eq('id', E).single(),
     // RLS restreint déjà aux enfants liés à ce parent (voir policy
     // "lecture eleves par parent", schema.sql section 31) — pas besoin de
     // filtrer côté client.
-    sb.from('eleves').select('*').eq('ecole_id', session.ecoleId),
-    sb.from('classes').select('*').eq('ecole_id', session.ecoleId),
+    sb.from('eleves').select('*').eq('ecole_id', E),
+    sb.from('classes').select('*').eq('ecole_id', E),
     // Notifications concernant son/ses enfant(s) uniquement (RLS — voir
     // policy "lecture messages par parent", schema.sql section 33).
-    sb.from('messages').select('*').eq('ecole_id', session.ecoleId).order('date', {ascending:false}).order('heure', {ascending:false}),
+    sb.from('messages').select('*').eq('ecole_id', E).order('date', {ascending:false}).order('heure', {ascending:false}),
     // Annonces horaires (RLS restreint déjà au cycle de son/ses enfant(s) —
     // voir policy "lecture annonces_horaires parent", schema.sql section 35).
-    sb.from('annonces_horaires_envoyees').select('*').eq('ecole_id', session.ecoleId).order('created_at', {ascending:false}),
+    sb.from('annonces_horaires_envoyees').select('*').eq('ecole_id', E).order('created_at', {ascending:false}),
     // Messages écrits par le personnel (RLS — schema.sql section 38).
-    sb.from('messages_internes').select('*').eq('ecole_id', session.ecoleId).order('created_at', {ascending:false}),
+    sb.from('messages_internes').select('*').eq('ecole_id', E).order('created_at', {ascending:false}),
     // Tableaux d'honneur / actualités : mêmes vues publiques que l'écran
     // du hall (affichage.html, schema.sql section 34) — déjà accessibles
     // à "authenticated", aucune donnée sensible (noms déjà destinés à un
     // affichage public).
-    sb.from('tableau_honneur_public').select('*').eq('ecole_id', session.ecoleId),
-    sb.from('actualites_affichage_public').select('*').eq('ecole_id', session.ecoleId).order('created_at', {ascending:false}),
+    sb.from('tableau_honneur_public').select('*').eq('ecole_id', E),
+    sb.from('actualites_affichage_public').select('*').eq('ecole_id', E).order('created_at', {ascending:false}),
+    // Présences de la semaine (lundi → vendredi) de SES enfants uniquement
+    // (RLS : policy "lecture presences_eleves parent", schema.sql section 43).
+    sur(sb.from('presences_eleves').select('eleve_id,date,statut').eq('ecole_id', E).gte('date', isoJ(lundi)).lte('date', isoJ(vendredi)), null),
+    // Applaudissements du tableau d'honneur (totaux + « déjà applaudi par moi »)
+    sur(sb.rpc('compter_applaudissements'), []),
+    // Agenda : événements à venir (toute l'école ou la classe de ses enfants — RLS)
+    sur(sb.from('evenements_agenda').select('*').eq('ecole_id', E).gte('date_fin', aujourdhui).order('date_debut').limit(10), []),
+    // Corrections de fiche en attente envoyées par ce parent
+    sur(sb.from('corrections_fiches').select('*').eq('ecole_id', E).eq('statut', 'en_attente'), []),
+    // Sécurité et santé de ses enfants (RLS : ses enfants seulement)
+    sur(sb.from('personnes_autorisees').select('*').eq('ecole_id', E).order('created_at'), []),
+    sur(sb.from('sante_eleves').select('*').eq('ecole_id', E), []),
+    // Menu de la cantine des prochains jours
+    sur(sb.from('menus_cantine').select('date, repas, gouter').eq('ecole_id', E).gte('date', aujourdhui).order('date').limit(7), []),
+    // Cahier de textes : devoirs à venir de la classe de ses enfants (RLS)
+    sur(sb.from('devoirs').select('*').eq('ecole_id', E).gte('pour_le', aujourdhui).order('pour_le').limit(40), []),
   ]);
-  // Présences de la semaine (lundi → vendredi) de SES enfants uniquement
-  // (RLS : policy "lecture presences_eleves parent", schema.sql section 43).
-  // En cas d'échec, la console s'affiche quand même, sans ce bloc.
-  let presencesSemaine = null;
-  try{
-    const lundi = debutSemaine(new Date());
-    const vendredi = new Date(lundi); vendredi.setDate(lundi.getDate() + 4);
-    const iso = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-    const res = await sb.from('presences_eleves').select('eleve_id,date,statut').eq('ecole_id', session.ecoleId).gte('date', iso(lundi)).lte('date', iso(vendredi));
-    if(!res.error) presencesSemaine = rowsToCamel(res.data);
-  }catch(_e){ presencesSemaine = null; }
-  // Applaudissements du tableau d'honneur (totaux + « déjà applaudi par moi »)
-  let applaudissements = [];
-  try{
-    const res = await sb.rpc('compter_applaudissements');
-    if(!res.error) applaudissements = rowsToCamel(res.data || []);
-  }catch(_e){ applaudissements = []; }
   if(ecoleRow.error) throw ecoleRow.error;
   if(eleves.error) throw eleves.error;
   if(classesRows.error) throw classesRows.error;
@@ -541,74 +552,32 @@ async function chargerDBParent(){
   if(tableauHonneur.error) throw tableauHonneur.error;
   if(actualitesAffichage.error) throw actualitesAffichage.error;
   const ecole = rowToCamel(ecoleRow.data);
-  // Agenda : événements à venir (toute l'école ou la classe de ses enfants — RLS)
-  let agenda = [];
-  try{
-    const d = new Date(); const iso = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-    const r = await sb.from('evenements_agenda').select('*').eq('ecole_id', session.ecoleId).gte('date_fin', iso).order('date_debut').limit(10);
-    agenda = rowsToCamel(r.data || []);
-  }catch(_e){}
-  // Réponses déjà données aux dates de l'agenda (RLS : ses enfants)
-  let reponsesAgenda = [];
-  if(agenda.some(a => a.demandeReponse)){
-    try{
-      const r = await sb.from('reponses_agenda').select('*').in('evenement_id', agenda.filter(a => a.demandeReponse).map(a => a.id));
-      reponsesAgenda = rowsToCamel(r.data || []);
-    }catch(_e){}
-  }
-  // Corrections de fiche en attente envoyées par ce parent
-  let correctionsFiches = [];
-  try{
-    const r = await sb.from('corrections_fiches').select('*').eq('ecole_id', session.ecoleId).eq('statut', 'en_attente');
-    correctionsFiches = rowsToCamel(r.data || []);
-  }catch(_e){}
-  // Sécurité et santé de ses enfants (RLS : ses enfants seulement)
-  let personnesAutorisees = [], santeEleves = [];
-  try{
-    const [pa, se] = await Promise.all([
-      sb.from('personnes_autorisees').select('*').eq('ecole_id', session.ecoleId).order('created_at'),
-      sb.from('sante_eleves').select('*').eq('ecole_id', session.ecoleId),
-    ]);
-    personnesAutorisees = rowsToCamel(pa.data || []); santeEleves = rowsToCamel(se.data || []);
-  }catch(_e){}
-  // Menu de la cantine des prochains jours
-  let menusCantine = [];
-  try{
-    const d = new Date(); const iso = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-    const r = await sb.from('menus_cantine').select('date, repas, gouter').eq('ecole_id', session.ecoleId).gte('date', iso).order('date').limit(7);
-    menusCantine = r.data || [];
-  }catch(_e){}
-  // Cahier de textes : devoirs à venir de la classe de ses enfants (RLS)
-  let devoirs = [];
-  try{
-    const d = new Date(); const iso = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-    const r = await sb.from('devoirs').select('*').eq('ecole_id', session.ecoleId).gte('pour_le', iso).order('pour_le').limit(40);
-    devoirs = rowsToCamel(r.data || []);
-  }catch(_e){}
-  // Bulletins : notes des trimestres publiés par l'école (RLS : ses enfants seulement)
-  let notesParent = [], appreciations = {};
-  if((ecole.bulletinsPublies || []).length){
-    try{
-      const [nt, bc] = await Promise.all([
-        sb.from('notes').select('eleve_id, matiere, note, note_sur, trimestre, type').eq('ecole_id', session.ecoleId),
-        sb.from('bulletins_commentaires').select('eleve_id, trimestre, commentaire').eq('ecole_id', session.ecoleId),
-      ]);
-      notesParent = rowsToCamel(nt.data || []);
-      (bc.data || []).forEach(r => { appreciations[`${r.eleve_id}_${r.trimestre}`] = r.commentaire; });
-    }catch(_e){}
-  }
-  // Scolarité (reste à payer, reçus) : seulement si l'école l'a rendue visible
-  let echeancesScolarite = [], paiementsScolarite = [];
-  if(ecole.scolariteVisibleParents === true){
-    try{
-      const [ech, pai] = await Promise.all([
-        sb.from('echeances_scolarite').select('*').eq('ecole_id', session.ecoleId).order('ordre'),
-        sb.from('paiements_scolarite').select('*').eq('ecole_id', session.ecoleId).order('date', { ascending:false }),
-      ]);
-      echeancesScolarite = rowsToCamel(ech.data || []);
-      paiementsScolarite = rowsToCamel(pai.data || []);
-    }catch(_e){ /* la console s'affiche sans ce bloc */ }
-  }
+  const presencesSemaine = presences ? rowsToCamel(presences) : null;
+  const applaudissements = rowsToCamel(applaudis || []);
+  const agenda = rowsToCamel(agendaRows);
+  const correctionsFiches = rowsToCamel(correctionsRows);
+  const personnesAutorisees = rowsToCamel(persRows), santeEleves = rowsToCamel(santeRows);
+  const menusCantine = menusRows || [];
+  const devoirs = rowsToCamel(devoirsRows);
+  // 2e vague, selon les réglages de l'école et l'agenda
+  const avecReponse = agenda.filter(a => a.demandeReponse).map(a => a.id);
+  const bulletins = (ecole.bulletinsPublies || []).length > 0;
+  const scolarite = ecole.scolariteVisibleParents === true;
+  const [reponsesRows, notesRows, commentairesRows, echeancesRows, paiementsRows] = await Promise.all([
+    // Réponses déjà données aux dates de l'agenda (RLS : ses enfants)
+    avecReponse.length ? sur(sb.from('reponses_agenda').select('*').in('evenement_id', avecReponse), []) : [],
+    // Bulletins : notes des trimestres publiés par l'école (RLS : ses enfants seulement)
+    bulletins ? sur(sb.from('notes').select('eleve_id, matiere, note, note_sur, trimestre, type').eq('ecole_id', E), []) : [],
+    bulletins ? sur(sb.from('bulletins_commentaires').select('eleve_id, trimestre, commentaire').eq('ecole_id', E), []) : [],
+    // Scolarité (reste à payer, reçus) : seulement si l'école l'a rendue visible
+    scolarite ? sur(sb.from('echeances_scolarite').select('*').eq('ecole_id', E).order('ordre'), []) : [],
+    scolarite ? sur(sb.from('paiements_scolarite').select('*').eq('ecole_id', E).order('date', { ascending:false }), []) : [],
+  ]);
+  const reponsesAgenda = rowsToCamel(reponsesRows);
+  const notesParent = rowsToCamel(notesRows);
+  const appreciations = {};
+  (commentairesRows || []).forEach(r => { appreciations[`${r.eleve_id}_${r.trimestre}`] = r.commentaire; });
+  const echeancesScolarite = rowsToCamel(echeancesRows), paiementsScolarite = rowsToCamel(paiementsRows);
   return {
     meta: {
       nomEcole: ecole.nomEcole, adresse: ecole.adresse, telephone: ecole.telephone,
