@@ -5,6 +5,7 @@
 //   - une demande d'accès (compte Google pas encore validé) → Direction / Fondation
 //   - une absence signalée à l'avance → secrétariat, Direction et enseignant(s) de la classe
 //   - un objet perdu signalé → secrétariat et Direction
+//   - un message écrit à l'école → secrétariat, Direction, Fondation
 // Sécurité : la fonction ne fait confiance à rien de ce que le navigateur
 // envoie, sauf le type. Elle retrouve elle-même le DERNIER enregistrement
 // fait par l'appelant (moins de 5 minutes) et compose le message.
@@ -57,6 +58,14 @@ Deno.serve(async (req) => {
       ecoleId = o.ecole_id; roles = ['secretariat', 'direction'];
       titre = '🎒 Objet perdu signalé';
       texte = `${o.objet} — ${e ? e.prenom + ' ' + e.nom : 'un élève'}. À traiter dans la Messagerie.`;
+    } else if (type === 'message') {
+      const { data: m } = await admin.from('messages_internes').select('ecole_id, eleve_id, contenu, auteur_nom')
+        .eq('auteur_id', user.id).eq('destinataire_type', 'ecole').gte('created_at', depuis).order('created_at', { ascending: false }).limit(1).maybeSingle();
+      if (!m) throw new Error('Message introuvable');
+      const { data: e } = await admin.from('eleves').select('nom, prenom').eq('id', m.eleve_id).single();
+      ecoleId = m.ecole_id; roles = ['secretariat', 'direction', 'fondation'];
+      titre = `✉️ Message de ${m.auteur_nom || 'un parent'}`;
+      texte = `${e ? '(' + e.prenom + ' ' + e.nom + ') ' : ''}${String(m.contenu).slice(0, 160)}`;
     } else {
       throw new Error('Type inconnu');
     }

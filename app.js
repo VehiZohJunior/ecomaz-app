@@ -1668,7 +1668,7 @@ const NAV_PARENT = [
 ];
 function renderNavParent(actif){
   const idx = Math.max(0, NAV_PARENT.findIndex(n => n.id === actif));
-  const nbMsg = (DB.messagesInternes||[]).filter(m=>!m.lu).length;
+  const nbMsg = (DB.messagesInternes||[]).filter(m=>!m.lu && m.destinataireType !== 'ecole').length;
   return `<div class="pn-pastille" style="transform:translateX(${idx*100}%)" aria-hidden="true"></div>
     ${NAV_PARENT.map((n, i) => `<button type="button" class="pn-item em-press${i === idx ? ' actif' : ''}" ${i === idx ? 'aria-current="page"' : ''} onclick="navParent('${n.id}', event)">
       <span class="pn-ic" aria-hidden="true">${window.EmIcones ? EmIcones.svg(n.ic) : ''}${n.id === 'msg' && nbMsg ? `<span class="pn-badge">${nbMsg>9?'9+':nbMsg}</span>` : ''}</span>
@@ -1841,7 +1841,8 @@ function rafraichirBulles(){
 function renderBulles(){
   const estAdmin = ui.role==='direction' || ui.role==='fondation';
   const nbNotif = calculerNotificationsBulle().filter(it=>it.nonLu).length;
-  const nbMsg = (ui.role==='parent'||ui.role==='enseignant') ? (DB.messagesInternes||[]).filter(m=>!m.lu).length : 0;
+  const nbMsg = (ui.role==='parent'||ui.role==='enseignant') ? (DB.messagesInternes||[]).filter(m=>!m.lu && m.destinataireType !== 'ecole').length
+    : ['secretariat','direction','fondation'].includes(ui.role) ? (DB.messagesInternes||[]).filter(m=>!m.lu && m.destinataireType === 'ecole').length : 0;
   const nbSugg = estAdmin ? (DB.suggestions||[]).filter(s=>!s.lu).length : 0;
   const badge = n => n ? `<span class="bulle-badge">${n>9?'9+':n}</span>` : '';
   return `
@@ -1907,20 +1908,76 @@ async function handleMarquerVuPortier(id){
 }
 function renderDropdownMessages(){
   const estStaff = ['secretariat','direction','fondation'].includes(ui.role);
-  const liste = (DB.messagesInternes||[]).slice(0,20);
+  const liste = (DB.messagesInternes||[]).slice().sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||''))).slice(0,30);
+  const quand = m => m.createdAt ? new Date(m.createdAt).toLocaleString('fr-FR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '';
+  const nomEleve = id => eleveById(id) ? eleveFullName(eleveById(id)) : '—';
   return `<h4>✉️ Messages</h4>
     ${estStaff ? `<button class="btn sm" style="width:100%;margin-bottom:10px;" onclick="ouvrirComposerMessage()">+ Nouveau message</button>` : ''}
+    ${ui.role === 'parent' ? `<button class="btn sm" style="width:100%;margin-bottom:10px;" onclick="ouvrirEcrireEcole()">✉️ Écrire à l’école</button>` : ''}
     ${!liste.length ? `<div class="empty">Aucun message.</div>` : liste.map(m=>{
-      const dest = m.destinataireType==='parent'
-        ? 'À : parent de ' + (eleveById(m.eleveId) ? eleveFullName(eleveById(m.eleveId)) : '—')
-        : 'À : enseignant(e)';
-      return `<div class="bulle-item ${!estStaff && !m.lu ?'non-lu':''}">
-        ${estStaff ? `<div class="hint">${escapeHtml(dest)}</div>` : ''}
+      const deParent = m.destinataireType === 'ecole';
+      if(estStaff){
+        const entete = deParent ? `📩 De : ${escapeHtml(m.auteurNom || 'parent')} (parent de ${escapeHtml(nomEleve(m.eleveId))})`
+          : m.destinataireType==='parent' ? 'À : parent de ' + escapeHtml(nomEleve(m.eleveId)) : 'À : enseignant(e)';
+        return `<div class="bulle-item ${deParent && !m.lu ? 'non-lu' : ''}">
+          <div class="hint">${entete}</div>${escapeHtml(m.contenu)}
+          <div class="bulle-meta">${quand(m)}</div>
+          ${deParent ? `<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;"><button class="btn sm" onclick="repondreParent('${m.id}')">Répondre</button>${!m.lu ? `<button class="btn secondary sm" onclick="marquerMessageParentLu('${m.id}')">Marquer comme lu</button>` : ''}</div>` : ''}
+        </div>`;
+      }
+      if(deParent) return `<div class="bulle-item msg-envoye"><div class="hint">Vous (au sujet de ${escapeHtml(nomEleve(m.eleveId))})</div>${escapeHtml(m.contenu)}<div class="bulle-meta">${quand(m)} · envoyé</div></div>`;
+      return `<div class="bulle-item ${!m.lu ?'non-lu':''}">
+        ${ui.role === 'parent' ? `<div class="hint">${escapeHtml(m.auteurNom || 'L’école')}</div>` : ''}
         ${escapeHtml(m.contenu)}
-        <div class="bulle-meta">${m.createdAt?new Date(m.createdAt).toLocaleString('fr-FR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):''}</div>
-        ${!estStaff && !m.lu ? `<div style="margin-top:6px;"><button class="btn secondary sm" onclick="handleMarquerMessageLu('${m.id}')">Marquer comme lu</button></div>`:''}
+        <div class="bulle-meta">${quand(m)}</div>
+        ${!m.lu ? `<div style="margin-top:6px;"><button class="btn secondary sm" onclick="handleMarquerMessageLu('${m.id}')">Marquer comme lu</button></div>`:''}
       </div>`;
     }).join('')}`;
+}
+// Le parent écrit à l'école au sujet d'un de ses enfants
+function ouvrirEcrireEcole(){
+  const enfants = DB.eleves || [];
+  openModal('✉️ Écrire à l’école', `
+    <form onsubmit="return envoyerMessageEcole(event)">
+      ${enfants.length > 1 ? `<div class="field"><label>Au sujet de</label><select name="eleveId" required>${enfants.map(e => `<option value="${e.id}">${escapeHtml(eleveFullName(e))}</option>`).join('')}</select></div>`
+        : `<input type="hidden" name="eleveId" value="${enfants[0]?.id || ''}">`}
+      <div class="field"><label>Votre message</label><textarea name="contenu" rows="5" required maxlength="2000" placeholder="Ex : Bonjour, mon enfant aura un rendez-vous médical jeudi matin…"></textarea></div>
+      <div class="hint">Lu par le secrétariat et la direction. La réponse arrive ici, dans vos messages.</div>
+      <button class="btn" type="submit" style="width:100%;margin-top:10px;">Envoyer</button>
+    </form>`);
+}
+async function envoyerMessageEcole(ev){
+  ev.preventDefault();
+  const fd = new FormData(ev.target), bouton = ev.target.querySelector('button[type=submit]');
+  bouton.disabled = true;
+  try{
+    const { data, error } = await sb.from('messages_internes').insert({ destinataire_type: 'ecole', eleve_id: fd.get('eleveId'), contenu: fd.get('contenu').trim(), auteur_nom: session.nomComplet || '' }).select().single();
+    if(error) throw error;
+    DB.messagesInternes = [rowToCamel(data)].concat(DB.messagesInternes || []);
+    sb.functions.invoke('notifier-personnel', { body: { type: 'message' } }).catch(() => {});
+    closeModal(); toast('Message envoyé à l’école'); rafraichirBulles();
+  }catch(e){ bouton.disabled = false; alert('Erreur : ' + e.message); }
+  return false;
+}
+async function marquerMessageParentLu(id){
+  try{
+    const { error } = await sb.from('messages_internes').update({ lu: true }).eq('id', id);
+    if(error) throw error;
+    DB.messagesInternes = (DB.messagesInternes || []).map(m => m.id === id ? { ...m, lu: true } : m);
+    rafraichirBulles(); if(ui.currentView === 'messagerie') renderView('messagerie');
+  }catch(e){ toast('Erreur : ' + e.message); }
+}
+// L'école répond : composeur pré-rempli (parent de l'élève concerné)
+function repondreParent(id){
+  const m = (DB.messagesInternes || []).find(x => x.id === id);
+  if(!m) return;
+  ouvrirComposerMessage();
+  const sel = document.querySelector('#modalBody select[name=eleveId]');
+  if(sel) sel.value = m.eleveId;
+  const zone = document.querySelector('#modalBody textarea[name=contenu]');
+  if(zone){ zone.placeholder = 'Votre réponse…'; zone.focus(); }
+  const titre = document.getElementById('modalTitle'); if(titre) titre.textContent = `✉️ Répondre à ${m.auteurNom || 'ce parent'}`;
+  if(!m.lu) marquerMessageParentLu(id);
 }
 function renderSelectEleveMessage(){
   return `<div class="field"><label>Élève (le message ira à son/ses parent(s))</label>
@@ -2172,9 +2229,9 @@ async function handleNotifierPortier(eleveId){
 const VERSIONS = [
   { version: '2026.10.13-2', nouveautes: {
     commun: [],
-    parent: [ 'Nouveau : « À venir » sur l’accueil — vacances, compositions, réunions et fêtes de l’école.', 'Nouvel onglet « Vie de l’école » : photos et vidéos des événements, J’aime, Bravo et commentaires.' ],
+    parent: [ 'Nouveau : « Écrire à l’école » dans vos messages — l’école vous répond ici.', 'Nouveau : « À venir » sur l’accueil — vacances, compositions, réunions et fêtes de l’école.', 'Nouvel onglet « Vie de l’école » : photos et vidéos des événements, J’aime, Bravo et commentaires.' ],
     portier: [],
-    personnel: [ 'Nouveau menu « Agenda de l’école » : vacances, compositions, réunions ; les vacances arrêtent les annonces automatiquement.', 'Notes & Bulletins : la Direction publie un trimestre, les parents voient le bulletin de leurs enfants.', 'Enseignants : application « EcoMaZ-ENSEIGNANTS » — chacun s’inscrit avec Google, coche ses classes et ne voit que ses classes.', 'Parents : à l’inscription, ils cochent eux-mêmes leurs enfants ; vous n’avez plus qu’à approuver.', 'Paramètres → Scolarité : assistant « inscription + scolarité par classe ».', 'Paramètres → Scolarité : relances automatiques et polies des tranches impayées (3 jours avant, le jour même, 7 jours après).', 'Notifications sur le téléphone pour tout le personnel : demandes d’accès, absences signalées, objets perdus, appel non fait.', 'Appel rapide : « Tous présents », puis touchez le nom des absents ; rappel à 9h00 si l’appel n’est pas fait.', 'Paramètres → Scolarité : montants et tranches de paiement propres à chaque classe, copie vers d’autres classes, affichage aux parents au choix.', 'Direction : liste « Mise en route de l’école » sur le tableau de bord, avec ce qui reste à faire.', 'Nouveau menu « Vie de l’école » : publiez les photos et vidéos des événements pour les parents (toute l’école ou certaines classes).' ],
+    personnel: [ 'Messagerie : les parents peuvent vous écrire ; bouton « Répondre » et notification à chaque message.', 'Nouveau menu « Agenda de l’école » : vacances, compositions, réunions ; les vacances arrêtent les annonces automatiquement.', 'Notes & Bulletins : la Direction publie un trimestre, les parents voient le bulletin de leurs enfants.', 'Enseignants : application « EcoMaZ-ENSEIGNANTS » — chacun s’inscrit avec Google, coche ses classes et ne voit que ses classes.', 'Parents : à l’inscription, ils cochent eux-mêmes leurs enfants ; vous n’avez plus qu’à approuver.', 'Paramètres → Scolarité : assistant « inscription + scolarité par classe ».', 'Paramètres → Scolarité : relances automatiques et polies des tranches impayées (3 jours avant, le jour même, 7 jours après).', 'Notifications sur le téléphone pour tout le personnel : demandes d’accès, absences signalées, objets perdus, appel non fait.', 'Appel rapide : « Tous présents », puis touchez le nom des absents ; rappel à 9h00 si l’appel n’est pas fait.', 'Paramètres → Scolarité : montants et tranches de paiement propres à chaque classe, copie vers d’autres classes, affichage aux parents au choix.', 'Direction : liste « Mise en route de l’école » sur le tableau de bord, avec ce qui reste à faire.', 'Nouveau menu « Vie de l’école » : publiez les photos et vidéos des événements pour les parents (toute l’école ou certaines classes).' ],
   } },
   { version: '2026.10.12-2', nouveautes: {
     commun: [],
@@ -2427,7 +2484,7 @@ function startPollingBulles(){
       // Messages/suggestions ne sont pas poussés en temps réel (pas de
       // websocket) : on les re-interroge au même rythme que le sondage
       // portier, pour les rôles concernés seulement.
-      if(['parent','enseignant'].includes(ui.role)){
+      if(['parent','enseignant','secretariat','direction','fondation'].includes(ui.role)){
         const { data, error } = await sb.from('messages_internes').select('*').order('created_at', {ascending:false});
         if(!error) DB.messagesInternes = rowsToCamel(data);
       }
@@ -4729,6 +4786,23 @@ function renderPointagesGpsDuJour(date){
     </tbody>
   </table></div>`;
 }
+function renderMessagesParents(){
+  if(!['secretariat','direction','fondation'].includes(ui.role)) return '';
+  const recus = (DB.messagesInternes || []).filter(m => m.destinataireType === 'ecole')
+    .sort((a, b) => (a.lu - b.lu) || String(b.createdAt).localeCompare(String(a.createdAt))).slice(0, 30);
+  const nonLus = recus.filter(m => !m.lu).length;
+  return `<div class="panel">
+    <div class="panel-head"><div><h2>📩 Messages des parents${nonLus ? ` (${nonLus} non lu${nonLus > 1 ? 's' : ''})` : ''}</h2><div class="sub">Répondez : le parent reçoit la réponse dans son application, avec une notification</div></div></div>
+    ${!recus.length ? '<div class="hint">Aucun message de parent pour l’instant.</div>' : `<div class="table-wrap"><table>
+      <thead><tr><th>Date</th><th>De</th><th>Message</th><th></th></tr></thead>
+      <tbody>${recus.map(m => `<tr ${!m.lu ? 'style="font-weight:700;"' : ''}>
+        <td style="white-space:nowrap;">${m.createdAt ? new Date(m.createdAt).toLocaleString('fr-FR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : ''}</td>
+        <td>${escapeHtml(m.auteurNom || 'Parent')}<br><span class="hint">parent de ${escapeHtml(eleveById(m.eleveId) ? eleveFullName(eleveById(m.eleveId)) : '—')}</span></td>
+        <td style="white-space:pre-wrap;">${escapeHtml(m.contenu)}</td>
+        <td><button class="btn sm" onclick="repondreParent('${m.id}')">Répondre</button></td>
+      </tr>`).join('')}</tbody></table></div>`}
+  </div>`;
+}
 // Envoi gratuit par WhatsApp : un vrai bouton (les navigateurs bloquent les
 // fenêtres ouvertes automatiquement après une attente réseau). WhatsApp
 // s'ouvre avec le message déjà écrit ; il reste à appuyer sur Envoyer.
@@ -6875,6 +6949,7 @@ function renderMessagerie(){
   return `
   <div class="view active">
     <div class="section-note">📨 À chaque absence, le parent est prévenu dans son application ; le secrétariat peut aussi le prévenir gratuitement par WhatsApp depuis l'appel (« Prévenir le parent »). La Direction et la Fondation reçoivent l'alerte dans l'application. Les absences/retards d'enseignants restent des notifications internes pour Direction et Fondation.</div>
+    ${renderMessagesParents()}
     ${renderObjetsPerdusEcole()}
     <div class="cards">
       <div class="card"><div class="card-top"><div class="icon-badge" style="background:var(--primary-dim);">📨</div></div><div class="num">${DB.messages.length}</div><div class="label">Messages envoyés (total)</div></div>

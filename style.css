@@ -999,3 +999,4 @@ td:has(> .amount), th.montant{ text-align:right; }
 .eb-table th, .eb-table td{ text-align:left; padding:5px 6px; border-bottom:1px dashed var(--em-border, #e3e8e5); }
 .eb-moyenne{ margin-top:8px; font-size:14px; }
 .eb-appreciation{ margin-top:6px; font-size:13px; font-style:italic; }
+.bulle-item.msg-envoye{ background:var(--em-green-100, #e6efe9); margin-left:18px; }

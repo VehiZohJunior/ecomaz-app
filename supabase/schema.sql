@@ -2391,3 +2391,26 @@ drop policy if exists "gestion evenements_agenda" on evenements_agenda;
 create policy "gestion evenements_agenda" on evenements_agenda for all
   using (ecole_id = mon_ecole_id() and est_perso_admin())
   with check (ecole_id = mon_ecole_id() and est_perso_admin());
+
+-- =====================================================================
+-- 62. MESSAGERIE DANS LES DEUX SENS : le parent écrit à l'école (2026-10-13)
+-- =====================================================================
+-- destinataire_type 'ecole' = message d'un parent à l'école, au sujet d'un
+-- de SES enfants. Lu par le secrétariat / la direction / la fondation.
+alter table messages_internes drop constraint if exists messages_internes_destinataire_type_check;
+alter table messages_internes add constraint messages_internes_destinataire_type_check
+  check (destinataire_type in ('parent','enseignant','ecole'));
+
+drop policy if exists "envoi messages_internes parent" on messages_internes;
+create policy "envoi messages_internes parent" on messages_internes for insert with check (
+  destinataire_type = 'ecole' and est_parent() and ecole_id = mon_ecole_id() and auteur_id = auth.uid() and lu = false
+  and exists (select 1 from parents_eleves pe where pe.parent_profile_id = auth.uid() and pe.eleve_id = messages_internes.eleve_id)
+);
+drop policy if exists "lecture messages_internes envoyes parent" on messages_internes;
+create policy "lecture messages_internes envoyes parent" on messages_internes for select
+  using (destinataire_type = 'ecole' and auteur_id = auth.uid());
+-- Le personnel marque comme lus les messages reçus des parents
+drop policy if exists "maj messages_internes personnel" on messages_internes;
+create policy "maj messages_internes personnel" on messages_internes for update
+  using (destinataire_type = 'ecole' and ecole_id = mon_ecole_id() and est_perso_admin())
+  with check (destinataire_type = 'ecole' and ecole_id = mon_ecole_id() and est_perso_admin());
