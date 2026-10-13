@@ -1553,7 +1553,41 @@ function renderPresenceSemaine(e){
     <div class="sem-titre">Présence de la semaine</div>
     <div class="sem-grille">${cases}</div>
     ${aucun ? '<div class="sem-note">L’appel de cette semaine n’a pas encore été enregistré par l’école.</div>' : ''}
+    <button type="button" class="btn secondary sm" style="margin-top:8px;" onclick="ouvrirHistoriquePresences('${e.id}')">📅 Historique depuis la rentrée</button>
   </div>`;
+}
+// Console parent : présences depuis la rentrée (RLS : ses enfants seulement)
+async function ouvrirHistoriquePresences(eleveId){
+  const e = (DB.eleves || []).find(x => x.id === eleveId);
+  openModal('📅 Présences de ' + (e ? e.prenom : ''), '<div class="hint">Chargement…</div>');
+  const auj = new Date();
+  const rentree = `${auj.getMonth() >= 8 ? auj.getFullYear() : auj.getFullYear() - 1}-09-01`;
+  try{
+    const { data, error } = await sb.from('presences_eleves').select('date, statut, motif').eq('eleve_id', eleveId).gte('date', rentree).order('date', { ascending:false });
+    if(error) throw error;
+    const lignes = rowsToCamel(data || []);
+    if(!lignes.length){ $('#modalBody').innerHTML = '<div class="empty-state"><div class="em-ic">📅</div>Aucun appel enregistré depuis la rentrée.</div>'; return; }
+    const compte = (l, s) => l.filter(p => p.statut === s).length;
+    const abs = compte(lignes, 'Absent'), ret = compte(lignes, 'Retard');
+    const taux = Math.round(100 * (lignes.length - abs) / lignes.length);
+    const mois = {};
+    lignes.forEach(p => { (mois[p.date.slice(0, 7)] ||= []).push(p); });
+    const nomMois = (k) => new Date(k + '-15T12:00:00').toLocaleDateString('fr-FR', { month:'long', year:'numeric' });
+    const evenements = lignes.filter(p => p.statut === 'Absent' || p.statut === 'Retard');
+    $('#modalTitle').textContent = '📅 Présences de ' + (e ? eleveFullName(e) : '');
+    $('#modalBody').innerHTML = `
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
+        <span class="badge green">${taux} % de présence</span><span class="badge">${lignes.length} jour(s) d’appel</span>
+        <span class="badge red">${abs} absence(s)</span><span class="badge amber">${ret} retard(s)</span></div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Mois</th><th>Jours</th><th>Absences</th><th>Retards</th></tr></thead>
+        <tbody>${Object.keys(mois).sort().reverse().map(k => `<tr><td style="text-transform:capitalize;">${nomMois(k)}</td><td>${mois[k].length}</td><td>${compte(mois[k], 'Absent') || '—'}</td><td>${compte(mois[k], 'Retard') || '—'}</td></tr>`).join('')}</tbody>
+      </table></div>
+      ${evenements.length ? `<h4 style="margin:14px 0 6px;">Détail des absences et retards</h4>
+        ${evenements.map(p => `<div style="padding:4px 0;border-bottom:1px solid var(--border);"><span class="badge ${p.statut === 'Absent' ? 'red' : 'amber'}">${p.statut === 'Absent' ? 'Absent' : 'Retard'}</span> ${new Date(p.date + 'T12:00:00').toLocaleDateString('fr-FR', { weekday:'long', day:'numeric', month:'long' })}${p.motif ? ` <span class="hint">— ${escapeHtml(p.motif)}</span>` : ''}</div>`).join('')}`
+        : '<p class="hint">Aucune absence ni aucun retard depuis la rentrée. Bravo ! 👏</p>'}
+      <p class="hint" style="margin-top:12px;">Une absence à venir ? Utilisez « Signaler une absence à l’avance » sur l’accueil.</p>`;
+  }catch(err){ $('#modalBody').innerHTML = `<div class="hint">Erreur : ${escapeHtml(err.message)}</div>`; }
 }
 function renderAlerteAbsence(enfants){
   if(!Array.isArray(DB.presencesSemaine)) return '';
@@ -2235,6 +2269,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.10.13-10', nouveautes: {
+    commun: [],
+    parent: [ 'Fiche de votre enfant : « Historique depuis la rentrée » — taux de présence, absences et retards mois par mois.' ],
+    portier: [],
+    personnel: [],
+  } },
   { version: '2026.10.13-9', nouveautes: {
     commun: [],
     parent: [ 'Chaque vendredi à 17h30 : le résumé de la semaine de vos enfants (présences, devoirs à venir, prochaines dates).' ],
