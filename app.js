@@ -2269,6 +2269,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.10.13-11', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Tableau de bord : « Élèves à surveiller » — absences répétées (3 ou plus en 30 jours, ou absent aux 2 derniers appels), avec bouton WhatsApp vers le parent.' ],
+  } },
   { version: '2026.10.13-10', nouveautes: {
     commun: [],
     parent: [ 'Fiche de votre enfant : « Historique depuis la rentrée » — taux de présence, absences et retards mois par mois.' ],
@@ -2696,6 +2702,7 @@ function renderDashboard(){
     ${animer ? `${(setTimeout(animerCompteursKpi, 0), '')}` : ''}
     ${renderMiseEnRoute()}
     ${renderMaJournee()}
+    ${renderElevesASurveiller()}
     ${renderAnniversaires()}
     ${(ui.role==='direction' || ui.role==='fondation') ? `<div class="form-actions no-print" style="justify-content:flex-start;margin:0 0 var(--sp-4);"><button class="btn secondary" onclick="ouvrirBilanHebdo()">📊 Bilan de la semaine</button></div>` : ''}
 
@@ -3422,6 +3429,48 @@ async function supprimerPublication(id){
     DB.fil.pubs = DB.fil.pubs.filter(p => p.id !== id);
     rafraichirFil(); toast('Publication supprimée');
   }catch(e){ alert('Erreur : ' + e.message); }
+}
+/* =====================================================================
+   ÉLÈVES À SURVEILLER : absences répétées (tableau de bord)
+   3 absences ou plus sur les 30 derniers jours, ou absent aux 2 derniers
+   appels de sa classe. Bouton WhatsApp (gratuit) pour joindre le parent.
+   ===================================================================== */
+function elevesASurveiller(){
+  const ids = classesVisibles().map(c => c.id);
+  const depuis = new Date(); depuis.setDate(depuis.getDate() - 30);
+  const limite = `${depuis.getFullYear()}-${String(depuis.getMonth()+1).padStart(2,'0')}-${String(depuis.getDate()).padStart(2,'0')}`;
+  const recentes = DB.presencesEleves.filter(p => p.date >= limite);
+  return DB.eleves.filter(e => e.statut === 'Actif' && ids.includes(e.classeId)).map(e => {
+    const siennes = recentes.filter(p => p.eleveId === e.id).sort((a, b) => b.date.localeCompare(a.date));
+    const absences = siennes.filter(p => p.statut === 'Absent');
+    const signalees = absences.filter(p => absenceSignalee(e.id, p.date)).length;
+    const suite = siennes.length >= 2 && siennes[0].statut === 'Absent' && siennes[1].statut === 'Absent';
+    return { e, absences: absences.length, signalees, suite, derniere: absences[0]?.date };
+  }).filter(x => x.absences >= 3 || x.suite).sort((a, b) => b.absences - a.absences);
+}
+function renderElevesASurveiller(){
+  if(!['enseignant','secretariat','direction','fondation'].includes(ui.role)) return '';
+  if(DB.absencesSignalees === undefined){ DB.absencesSignalees = null; chargerAbsencesSignalees().then(() => { if(ui.currentView === 'dashboard') renderView('dashboard'); }).catch(() => { DB.absencesSignalees = []; }); }
+  const liste = elevesASurveiller();
+  if(!liste.length) return '';
+  const admin = ui.role !== 'enseignant';
+  return `<div class="panel">
+    <div class="panel-head"><div><h2>👀 Élèves à surveiller (${liste.length})</h2><div class="sub">Absences répétées sur les 30 derniers jours, ou absent(e) aux 2 derniers appels. Un petit message au parent suffit souvent.</div></div></div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Élève</th><th>Absences (30 j)</th><th>Dernière</th>${admin ? '<th></th>' : ''}</tr></thead>
+      <tbody>${liste.map(x => `<tr>
+        <td><strong>${escapeHtml(eleveFullName(x.e))}</strong><br><span class="hint">${escapeHtml(classeName(x.e.classeId))}</span></td>
+        <td>${x.absences}${x.signalees ? ` <span class="hint">(dont ${x.signalees} signalée(s) par le parent)</span>` : ''}${x.suite ? '<br><span class="badge red">absent(e) aux 2 derniers appels</span>' : ''}</td>
+        <td>${x.derniere ? fmtDate(x.derniere) : '—'}</td>
+        ${admin ? `<td>${telephonesWhatsapp(x.e.parentTel).length ? `<button class="btn secondary sm" onclick="contacterParentAbsences('${x.e.id}', ${x.absences})">📲 Parent</button>` : '<span class="hint">pas de numéro</span>'}</td>` : ''}
+      </tr>`).join('')}</tbody></table></div>
+  </div>`;
+}
+function contacterParentAbsences(eleveId, nb){
+  const e = eleveById(eleveId);
+  if(!e) return;
+  const message = `Bonjour, ici ${DB.meta?.nomEcole || 'l’école'}. Nous avons remarqué que ${e.prenom} a été absent(e) ${nb} fois ces dernières semaines. Tout va bien ? N’hésitez pas à nous contacter. Merci !`;
+  ouvrirEnvoiWhatsapp(`📲 Parent de ${eleveFullName(e)}`, telephonesWhatsapp(e.parentTel), message, 'WhatsApp s’ouvrira au numéro du parent avec ce message (gratuit) :');
 }
 /* =====================================================================
    CORRECTIONS DE FICHE PROPOSÉES PAR LES PARENTS (schema.sql section 68)
