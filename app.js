@@ -2272,6 +2272,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.10.13-17', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Messagerie : « Messages envoyés aux parents » avec accusés de lecture (✓ envoyé, ✓✓ lu, avec l’heure) et bouton WhatsApp pour prévenir un parent qui n’a pas lu.' ],
+  } },
   { version: '2026.10.13-16', nouveautes: {
     commun: [],
     parent: [],
@@ -7958,6 +7964,31 @@ function renderComptaJournal(){
 /* ---------------------------------------------------------------------
    12.8 MESSAGERIE (notifications automatiques d'absence/retard)
    --------------------------------------------------------------------- */
+/* ---------------------------------------------------------------------
+   MESSAGES ENVOYÉS AUX PARENTS — accusés de lecture (schema.sql section 73)
+   --------------------------------------------------------------------- */
+function renderMessagesEnvoyesParents(){
+  if(!['secretariat','direction','fondation'].includes(ui.role)) return '';
+  const tous = (DB.messagesInternes || []).filter(m => m.destinataireType === 'parent')
+    .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+  if(!tous.length) return '';
+  const nonLus = ui.filters.envoyesNonLus;
+  const liste = tous.filter(m => !nonLus || !m.lu).slice(0, 40);
+  const lus = tous.filter(m => m.lu).length;
+  const quand = (iso) => { const d = new Date(iso); return `${fmtDate(isoLocal(d))} à ${d.toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit' })}`; };
+  return `<div class="panel">
+    <div class="panel-head"><div><h2>📤 Messages envoyés aux parents</h2><div class="sub">${lus} sur ${tous.length} lu(s) (${Math.round(100 * lus / tous.length)} %) — ✓ envoyé, ✓✓ lu par le parent.</div></div>
+      <button class="btn secondary sm" onclick="ui.filters.envoyesNonLus=${!nonLus}; renderView('messagerie')">${nonLus ? 'Tout afficher' : 'Non lus seulement'}</button></div>
+    ${!liste.length ? '<div class="hint">Tous les messages ont été lus. 👏</div>' : `<div class="table-wrap"><table>
+      <thead><tr><th>Envoyé</th><th>Élève</th><th>Message</th><th>Lecture</th></tr></thead>
+      <tbody>${liste.map(m => { const e = eleveById(m.eleveId); return `<tr>
+        <td style="white-space:nowrap;">${m.createdAt ? quand(m.createdAt) : '—'}</td>
+        <td>${e ? escapeHtml(eleveFullName(e)) : '—'}</td>
+        <td style="max-width:340px;">${escapeHtml(String(m.contenu || '').slice(0, 140))}${String(m.contenu || '').length > 140 ? '…' : ''}</td>
+        <td style="white-space:nowrap;">${m.lu ? `<span class="badge green">✓✓ Lu</span>${m.luAt ? `<br><span class="hint">${quand(m.luAt)}</span>` : ''}` : `<span class="badge">✓ Envoyé</span>${e && telephonesWhatsapp(e.parentTel).length ? `<br><a class="hint" href="https://wa.me/${telephonesWhatsapp(e.parentTel)[0]}?text=${encodeURIComponent('Bonjour, un message de ' + (DB.meta?.nomEcole || 'l’école') + ' vous attend dans l’application EcoMaZ Parents. Merci !')}" target="_blank" rel="noopener">📲 Prévenir</a>` : ''}`}</td>
+      </tr>`; }).join('')}</tbody></table></div>`}
+  </div>`;
+}
 function renderMessagerie(){
   const typeFilter = ui.filters.msgType || '';
   ui.filters.msgType = typeFilter;
@@ -7995,6 +8026,7 @@ function renderMessagerie(){
   <div class="view active">
     <div class="section-note">📨 À chaque absence, le parent est prévenu dans son application ; le secrétariat peut aussi le prévenir gratuitement par WhatsApp depuis l'appel (« Prévenir le parent »). La Direction et la Fondation reçoivent l'alerte dans l'application. Les absences/retards d'enseignants restent des notifications internes pour Direction et Fondation.</div>
     ${renderMessagesParents()}
+    ${renderMessagesEnvoyesParents()}
     ${renderObjetsPerdusEcole()}
     <div class="cards">
       <div class="card"><div class="card-top"><div class="icon-badge" style="background:var(--primary-dim);">📨</div></div><div class="num">${DB.messages.length}</div><div class="label">Messages envoyés (total)</div></div>

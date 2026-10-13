@@ -2737,3 +2737,22 @@ drop policy if exists "admin demandes_documents" on demandes_documents;
 create policy "admin demandes_documents" on demandes_documents for all
   using (ecole_id = mon_ecole_id() and est_perso_admin())
   with check (ecole_id = mon_ecole_id() and est_perso_admin());
+
+-- =====================================================================
+-- 73. ACCUSÉS DE LECTURE DES MESSAGES (2026-10-13)
+-- =====================================================================
+-- Heure à laquelle le destinataire a lu le message (posée par la base,
+-- jamais par le navigateur) : l'école voit « Lu le … à … ».
+alter table messages_internes add column if not exists lu_at timestamptz;
+create or replace function horodater_lecture_message() returns trigger
+language plpgsql set search_path = public as $$
+begin
+  new.lu_at := case when new.lu and not coalesce(old.lu, false) then now()
+                    when new.lu then old.lu_at
+                    else null end;
+  return new;
+end $$;
+revoke all on function horodater_lecture_message() from public, anon, authenticated;
+drop trigger if exists horodater_lecture_message on messages_internes;
+create trigger horodater_lecture_message before update on messages_internes
+  for each row execute function horodater_lecture_message();
