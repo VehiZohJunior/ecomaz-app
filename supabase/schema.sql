@@ -2469,3 +2469,78 @@ create policy "gestion devoirs" on devoirs for all
 -- vœux de l'école (fonction annoncer-horaires, une fois par élève et par
 -- an via rappels_envoyes). L'école peut le désactiver dans Paramètres.
 alter table ecoles add column if not exists voeux_anniversaire boolean not null default true;
+
+-- =====================================================================
+-- 66. SÉCURITÉ ET SANTÉ DE L'ÉLÈVE (2026-10-13)
+-- =====================================================================
+-- Le parent indique lui-même les personnes autorisées à venir chercher
+-- son enfant et ses informations de santé (allergies…). Lecture : le
+-- parent de l'enfant, le personnel administratif, l'enseignant de la
+-- classe. Le portier ne voit QUE le nom et le lien des personnes
+-- autorisées, élève par élève, via une fonction (jamais téléphone ni santé).
+create or replace function est_parent_de(p_eleve uuid) returns boolean
+language sql stable security definer set search_path = public as $$
+  select exists (select 1 from parents_eleves pe join eleves e on e.id = pe.eleve_id
+    where pe.parent_profile_id = auth.uid() and pe.eleve_id = p_eleve and e.ecole_id = mon_ecole_id())
+$$;
+revoke all on function est_parent_de(uuid) from public, anon;
+grant execute on function est_parent_de(uuid) to authenticated;
+
+create or replace function peut_voir_fiche_eleve(p_eleve uuid) returns boolean
+language sql stable security definer set search_path = public as $$
+  select exists (select 1 from eleves e where e.id = p_eleve and e.ecole_id = mon_ecole_id()
+    and (est_perso_admin() or (mon_role() = 'enseignant' and e.classe_id = any(mes_classes())) or est_parent_de(p_eleve)))
+$$;
+revoke all on function peut_voir_fiche_eleve(uuid) from public, anon;
+grant execute on function peut_voir_fiche_eleve(uuid) to authenticated;
+
+create table if not exists personnes_autorisees (
+  id uuid primary key default gen_random_uuid(),
+  ecole_id uuid not null references ecoles(id) on delete cascade default mon_ecole_id(),
+  eleve_id uuid not null references eleves(id) on delete cascade,
+  nom text not null check (char_length(nom) between 2 and 120),
+  lien text not null default '' check (char_length(lien) <= 60),
+  telephone text not null default '' check (char_length(telephone) <= 30),
+  created_by uuid references auth.users(id) on delete set null default auth.uid(),
+  created_at timestamptz not null default now()
+);
+create index if not exists personnes_autorisees_idx on personnes_autorisees(eleve_id);
+alter table personnes_autorisees enable row level security;
+drop policy if exists "lecture personnes_autorisees" on personnes_autorisees;
+create policy "lecture personnes_autorisees" on personnes_autorisees for select using (ecole_id = mon_ecole_id() and peut_voir_fiche_eleve(eleve_id));
+drop policy if exists "gestion personnes_autorisees" on personnes_autorisees;
+create policy "gestion personnes_autorisees" on personnes_autorisees for all
+  using (ecole_id = mon_ecole_id() and (est_perso_admin() or est_parent_de(eleve_id)))
+  with check (ecole_id = mon_ecole_id() and (est_perso_admin() or est_parent_de(eleve_id))
+    and exists (select 1 from eleves e where e.id = eleve_id and e.ecole_id = personnes_autorisees.ecole_id));
+
+create table if not exists sante_eleves (
+  eleve_id uuid primary key references eleves(id) on delete cascade,
+  ecole_id uuid not null references ecoles(id) on delete cascade default mon_ecole_id(),
+  allergies text not null default '' check (char_length(allergies) <= 300),
+  infos text not null default '' check (char_length(infos) <= 1000),
+  maj_par uuid references auth.users(id) on delete set null default auth.uid(),
+  maj_at timestamptz not null default now()
+);
+alter table sante_eleves enable row level security;
+drop policy if exists "lecture sante_eleves" on sante_eleves;
+create policy "lecture sante_eleves" on sante_eleves for select using (ecole_id = mon_ecole_id() and peut_voir_fiche_eleve(eleve_id));
+drop policy if exists "gestion sante_eleves" on sante_eleves;
+create policy "gestion sante_eleves" on sante_eleves for all
+  using (ecole_id = mon_ecole_id() and (est_perso_admin() or est_parent_de(eleve_id)))
+  with check (ecole_id = mon_ecole_id() and (est_perso_admin() or est_parent_de(eleve_id))
+    and exists (select 1 from eleves e where e.id = eleve_id and e.ecole_id = sante_eleves.ecole_id));
+
+-- Portier : nom et lien des personnes autorisées d'UN élève de son école
+create or replace function personnes_autorisees_portier(p_eleve uuid)
+returns table (nom text, lien text)
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if not (mon_role() in ('portier','secretariat','direction','fondation')) then raise exception 'Non autorisé'; end if;
+  return query select pa.nom, pa.lien from personnes_autorisees pa
+    join eleves e on e.id = pa.eleve_id
+    where pa.eleve_id = p_eleve and e.ecole_id = mon_ecole_id()
+    order by pa.created_at;
+end $$;
+revoke all on function personnes_autorisees_portier(uuid) from public, anon;
+grant execute on function personnes_autorisees_portier(uuid) to authenticated;

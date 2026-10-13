@@ -1002,6 +1002,11 @@ td:has(> .amount), th.montant{ text-align:right; }
 .bulle-item.msg-envoye{ background:var(--em-green-100, #e6efe9); margin-left:18px; }
 
 /* Tableau de bord enseignant : ma journée */
+.enfant-secu{ margin:10px 0; padding:10px 12px; border:1px dashed var(--border); border-radius:var(--r-card, 12px); display:flex; flex-direction:column; gap:6px; font-size:.95em; }
+.enfant-secu .btn{ align-self:flex-start; }
+.gate-autorises{ margin:12px 0; padding:12px 14px; border-radius:12px; background:rgba(255,255,255,.08); border:1px solid var(--em-gate-border, rgba(255,255,255,.2)); text-align:left; }
+.gate-autorises ul{ margin:6px 0; padding-left:20px; }
+.gate-autorises span{ font-size:.85em; opacity:.85; }
 .enfant-anniv{ margin:10px 0; padding:10px 12px; border-radius:var(--r-card, 12px); background:linear-gradient(90deg, #f7d774, #f3b93f); color:#3a2a00; font-weight:700; }
 .enfant-anniv span{ display:block; font-weight:500; font-size:.92em; margin-top:2px; }
 .mj-grille{ display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:10px; }

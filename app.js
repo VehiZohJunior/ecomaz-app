@@ -1631,6 +1631,7 @@ function renderFicheEnfant(e){
       <div><dt>Naissance</dt><dd>${fmtDate(e.dateNaissance)}</dd></div>
       <div><dt>Inscription</dt><dd>${fmtDate(e.dateInscription)}</dd></div>
     </dl>
+    ${renderSecuriteEnfant(e)}
     ${renderPresenceSemaine(e)}
     ${renderBulletinEnfant(e)}
     ${renderScolariteEnfant(e)}
@@ -2199,6 +2200,7 @@ function renderEtatPortier(etat, e, detail){
       <div class="gate-rond gate-rond-ok em-pop"><span class="gate-onde" aria-hidden="true"></span>
         <svg viewBox="0 0 24 24" aria-hidden="true"><path class="gate-coche" d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
       <div class="gate-etat-titre">Enseignant prévenu</div>${eleve}
+      <div id="gateAutorises"></div>
       <button class="gate-btn-principal em-press" onclick="ui.filters.portierRecherche=''; refreshPortierDashboard()">Nouveau signalement</button></div></div>`;
   return `<div class="view active"><div class="gate-etat-carte" role="alert">
       <div class="gate-rond gate-rond-erreur"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"/></svg></div>
@@ -2219,6 +2221,7 @@ async function handleNotifierPortier(eleveId){
     const heure = `${String(d.getHours()).padStart(2,'0')}h${String(d.getMinutes()).padStart(2,'0')}`;
     ui.filters.portierRecherche = '';
     $('#viewContainer').innerHTML = renderEtatPortier('ok', e, { heure });
+    afficherAutorisesPortier(eleveId);
     if(navigator.vibrate) try{ navigator.vibrate(30); }catch(_e){}
     toast('Enseignant prévenu · signalement enregistré');
   }catch(err){
@@ -2231,6 +2234,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.10.13-6', nouveautes: {
+    commun: [],
+    parent: [ 'Nouveau sur la fiche de votre enfant : « Sécurité & santé » — indiquez qui peut venir le chercher (le portier le verra) et ses allergies.' ],
+    portier: [ 'Après chaque signalement, la liste des personnes autorisées à venir chercher l’enfant s’affiche.' ],
+    personnel: [ 'Fiche élève : bouton « Sécurité & santé » (personnes autorisées, allergies, informations utiles).', 'Enseignants : les allergies des élèves de vos classes apparaissent dans « Ma journée ».' ],
+  } },
   { version: '2026.10.13-5', nouveautes: {
     commun: [],
     parent: [ 'Le jour de l’anniversaire de votre enfant, l’école lui souhaite un joyeux anniversaire dans votre application. 🎂' ],
@@ -2798,6 +2807,7 @@ function renderMaJournee(){
     .then(({ data }) => { DB.agenda = rowsToCamel(data || []); if(ui.currentView === 'dashboard') renderView('dashboard'); }); }
   if(DB.devoirs === undefined){ DB.devoirs = null; sb.from('devoirs').select('*').eq('ecole_id', session.ecoleId).gte('pour_le', todayISO()).order('pour_le')
     .then(({ data }) => { DB.devoirs = rowsToCamel(data || []); if(ui.currentView === 'dashboard') renderView('dashboard'); }); }
+  chargerSecuriteEleves();
   const prochain = prochainJourClasse();
   const aujourd = todayISO(), jourIso = ((new Date().getDay() + 6) % 7) + 1;
   const renfAujourdhui = (DB.horairesAnnonces?.joursRenforcement || [1,2,3,4,5]).includes(jourIso);
@@ -2814,6 +2824,7 @@ function renderMaJournee(){
       <div class="mj-ligne">${appel.length ? `<span class="badge green">✓ Appel fait</span> ${absents} absent(s)` : `<span class="badge red">Appel non fait</span> <button class="btn sm" onclick="ui.filters.presEleves={classeId:'${c.id}', date:'${aujourd}'}; go('presences-eleves')">Faire l’appel</button>`}</div>
       ${signales.length ? `<div class="mj-ligne">📝 Absences signalées : ${signales.map(x => `${escapeHtml(eleveFullName(x.e))} <span class="hint">(${escapeHtml(x.a.motif)})</span>`).join(', ')}</div>` : ''}
       ${DB.devoirs ? (() => { const dv = DB.devoirs.filter(d => d.classeId === c.id && d.pourLe === prochain); return `<div class="mj-ligne">📒 ${dv.length ? `Devoirs ${quandDevoir(prochain)} : ${dv.map(d => escapeHtml(d.matiere || 'travail')).join(', ')}` : `Aucun devoir noté ${quandDevoir(prochain)}`} <button class="btn secondary sm" onclick="ui.filters.devoirsClasse='${c.id}'; go('devoirs')">${dv.length ? 'Voir' : 'Noter un devoir'}</button></div>`; })() : ''}
+      ${(() => { const al = eleves.map(e => ({ e, s: santeDe(e.id) })).filter(x => x.s && x.s.allergies); return al.length ? `<div class="mj-ligne">⚕️ Allergies : ${al.map(x => `${escapeHtml(eleveFullName(x.e))} <span class="hint">(${escapeHtml(x.s.allergies)})</span>`).join(', ')}</div>` : ''; })()}
       ${renf.length ? `<div class="mj-ligne">📘 Renforcement ce soir : ${renf.map(e => escapeHtml(eleveFullName(e))).join(', ')}</div>` : ''}
       ${arrivees.length ? `<div class="mj-ligne">🚪 Parents arrivés : ${arrivees.map(n => `${escapeHtml(n.eleveNom)} <span class="hint">(${new Date(n.createdAt).toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'})})</span>`).join(', ')}</div>` : ''}
     </div>`;
@@ -3352,6 +3363,119 @@ async function supprimerPublication(id){
     DB.fil.pubs = DB.fil.pubs.filter(p => p.id !== id);
     rafraichirFil(); toast('Publication supprimée');
   }catch(e){ alert('Erreur : ' + e.message); }
+}
+/* =====================================================================
+   SÉCURITÉ ET SANTÉ DE L'ÉLÈVE (schema.sql section 66)
+   Le parent (ou le secrétariat) indique les personnes autorisées à venir
+   chercher l'enfant et ses informations de santé. Le portier ne voit que
+   le nom et le lien des personnes autorisées, après son signalement.
+   ===================================================================== */
+const LIENS_AUTORISES = ['Père','Mère','Grand-père','Grand-mère','Oncle','Tante','Frère','Sœur','Tuteur','Chauffeur','Nounou','Voisin(e)'];
+function personnesDe(eleveId){ return (DB.personnesAutorisees || []).filter(p => p.eleveId === eleveId); }
+function santeDe(eleveId){ return (DB.santeEleves || []).find(s => s.eleveId === eleveId) || null; }
+// Personnel : chargement unique (RLS : élèves visibles seulement)
+function chargerSecuriteEleves(){
+  if(DB.santeEleves !== undefined) return;
+  DB.santeEleves = null; DB.personnesAutorisees = DB.personnesAutorisees || [];
+  Promise.all([sb.from('sante_eleves').select('*').eq('ecole_id', session.ecoleId), sb.from('personnes_autorisees').select('*').eq('ecole_id', session.ecoleId)])
+    .then(([s, p]) => { DB.santeEleves = rowsToCamel(s.data || []); DB.personnesAutorisees = rowsToCamel(p.data || []); if(['dashboard'].includes(ui.currentView)) renderView(ui.currentView); })
+    .catch(() => { DB.santeEleves = []; });
+}
+// Console parent : résumé sur la fiche de l'enfant
+function renderSecuriteEnfant(e){
+  const pers = personnesDe(e.id), sante = santeDe(e.id);
+  return `<div class="enfant-secu">
+    <div><strong>🛡️ Peuvent venir le chercher :</strong> ${pers.length ? pers.map(p => `${escapeHtml(p.nom)}${p.lien ? ` <span class="hint">(${escapeHtml(p.lien)})</span>` : ''}`).join(', ') : '<span class="hint">personne d’autre que vous n’est indiqué</span>'}</div>
+    ${sante && sante.allergies ? `<div><strong>⚕️ Allergies :</strong> ${escapeHtml(sante.allergies)}</div>` : ''}
+    <button type="button" class="btn secondary sm" onclick="ouvrirSecuriteEleve('${e.id}')">${pers.length || sante ? 'Mettre à jour' : 'Indiquer les personnes autorisées et la santé'}</button>
+  </div>`;
+}
+async function ouvrirSecuriteEleve(eleveId){
+  const e = (DB.eleves || []).find(x => x.id === eleveId);
+  openModal('🛡️ Sécurité & santé', '<div class="hint">Chargement…</div>');
+  try{
+    const [p, s] = await Promise.all([
+      sb.from('personnes_autorisees').select('*').eq('eleve_id', eleveId).order('created_at'),
+      sb.from('sante_eleves').select('*').eq('eleve_id', eleveId).maybeSingle(),
+    ]);
+    if(p.error) throw p.error;
+    DB.personnesAutorisees = (DB.personnesAutorisees || []).filter(x => x.eleveId !== eleveId).concat(rowsToCamel(p.data || []));
+    DB.santeEleves = (DB.santeEleves || []).filter(x => x.eleveId !== eleveId).concat(s.data ? [rowToCamel(s.data)] : []);
+  }catch(err){ $('#modalBody').innerHTML = `<div class="hint">Erreur : ${escapeHtml(err.message)}</div>`; return; }
+  afficherSecuriteEleve(e || { id: eleveId, prenom: '', nom: '' });
+}
+function afficherSecuriteEleve(e){
+  const pers = personnesDe(e.id), sante = santeDe(e.id) || {};
+  openModal('🛡️ Sécurité & santé — ' + eleveFullName(e), `
+    <h4 style="margin:0 0 6px;">Personnes autorisées à venir chercher ${escapeHtml(e.prenom || 'l’enfant')}</h4>
+    <p class="hint" style="margin-top:0;">Le portier voit leur nom et leur lien quand il signale l’arrivée d’un parent (jamais leur téléphone).</p>
+    ${pers.length ? pers.map(p => `<div class="actu-carte" style="justify-content:space-between;margin-bottom:6px;"><div class="actu-corps"><div class="actu-titre">${escapeHtml(p.nom)}${p.lien ? ` <span class="hint">(${escapeHtml(p.lien)})</span>` : ''}</div>${p.telephone ? `<div class="actu-meta">${escapeHtml(p.telephone)}</div>` : ''}</div>
+      <button class="icon-btn danger" title="Retirer" onclick="supprimerPersonneAutorisee('${p.id}', '${e.id}')">🗑️</button></div>`).join('') : '<div class="hint">Aucune personne indiquée pour l’instant.</div>'}
+    <form onsubmit="return ajouterPersonneAutorisee(event, '${e.id}')" style="margin-top:8px;">
+      <div class="form-grid">
+        <div class="field"><label>Nom et prénom</label><input name="nom" required minlength="2" maxlength="120" placeholder="Ex : KOUASSI Marie"></div>
+        <div class="field"><label>Lien avec l’enfant</label><input name="lien" maxlength="60" list="listeLiensAutorises" placeholder="Ex : Tante"><datalist id="listeLiensAutorises">${LIENS_AUTORISES.map(l => `<option value="${l}">`).join('')}</datalist></div>
+        <div class="field span2"><label>Téléphone (facultatif)</label><input name="telephone" type="tel" maxlength="30" placeholder="Ex : 07 00 00 00 00"></div>
+      </div>
+      <div class="form-actions"><button class="btn secondary" type="submit">+ Ajouter cette personne</button></div>
+    </form>
+    <h4 style="margin:var(--sp-4) 0 6px;">⚕️ Santé</h4>
+    <p class="hint" style="margin-top:0;">Visible seulement par vous, l’administration de l’école et l’enseignant de la classe.</p>
+    <form onsubmit="return enregistrerSanteEleve(event, '${e.id}')">
+      <div class="field"><label>Allergies</label><input name="allergies" maxlength="300" value="${escapeHtml(sante.allergies || '')}" placeholder="Ex : arachides, pénicilline — ou laissez vide"></div>
+      <div class="field"><label>Autres informations utiles</label><textarea name="infos" maxlength="1000" rows="3" placeholder="Ex : asthme (ventoline dans le sac), lunettes, médecin traitant…">${escapeHtml(sante.infos || '')}</textarea></div>
+      <div class="form-actions"><button class="btn" type="submit">Enregistrer la santé</button></div>
+    </form>`);
+}
+function apresMajSecurite(e){
+  afficherSecuriteEleve(e);
+  if(ui.role === 'parent') renderView(ui.currentView);
+}
+async function ajouterPersonneAutorisee(ev, eleveId){
+  ev.preventDefault();
+  const fd = new FormData(ev.target);
+  const e = (DB.eleves || []).find(x => x.id === eleveId) || { id: eleveId };
+  try{
+    const { data, error } = await sb.from('personnes_autorisees').insert({ eleve_id: eleveId, nom: fd.get('nom').trim(), lien: (fd.get('lien') || '').trim(), telephone: (fd.get('telephone') || '').trim() }).select().single();
+    if(error) throw error;
+    DB.personnesAutorisees = (DB.personnesAutorisees || []).concat(rowToCamel(data));
+    toast('Personne ajoutée'); apresMajSecurite(e);
+  }catch(err){ alert('Erreur : ' + err.message); }
+  return false;
+}
+async function supprimerPersonneAutorisee(id, eleveId){
+  if(!confirm('Retirer cette personne de la liste ?')) return;
+  const e = (DB.eleves || []).find(x => x.id === eleveId) || { id: eleveId };
+  try{
+    const { error } = await sb.from('personnes_autorisees').delete().eq('id', id);
+    if(error) throw error;
+    DB.personnesAutorisees = (DB.personnesAutorisees || []).filter(p => p.id !== id);
+    toast('Personne retirée'); apresMajSecurite(e);
+  }catch(err){ alert('Erreur : ' + err.message); }
+}
+async function enregistrerSanteEleve(ev, eleveId){
+  ev.preventDefault();
+  const fd = new FormData(ev.target);
+  const e = (DB.eleves || []).find(x => x.id === eleveId) || { id: eleveId };
+  try{
+    const { data, error } = await sb.from('sante_eleves').upsert({ eleve_id: eleveId, allergies: (fd.get('allergies') || '').trim(), infos: (fd.get('infos') || '').trim(), maj_at: new Date().toISOString() }).select().single();
+    if(error) throw error;
+    DB.santeEleves = (DB.santeEleves || []).filter(s => s.eleveId !== eleveId).concat(rowToCamel(data));
+    toast('Santé enregistrée'); apresMajSecurite(e);
+  }catch(err){ alert('Erreur : ' + err.message); }
+  return false;
+}
+// Portier : après le signalement, affiche qui peut venir chercher l'enfant
+async function afficherAutorisesPortier(eleveId){
+  const zone = document.getElementById('gateAutorises');
+  if(!zone) return;
+  try{
+    const { data, error } = await sb.rpc('personnes_autorisees_portier', { p_eleve: eleveId });
+    if(error) throw error;
+    zone.innerHTML = data && data.length
+      ? `<div class="gate-autorises"><strong>🛡️ Peuvent venir chercher l’enfant :</strong><ul>${data.map(p => `<li>${escapeHtml(p.nom)}${p.lien ? ` — ${escapeHtml(p.lien)}` : ''}</li>`).join('')}</ul><span>et les parents. En cas de doute, appelez l’administration.</span></div>`
+      : '';
+  }catch(_e){ zone.innerHTML = ''; }
 }
 /* =====================================================================
    ANNIVERSAIRES DES ÉLÈVES (schema.sql section 65)
@@ -4166,6 +4290,7 @@ function openEleveForm(id){
     <form id="formEleve" onsubmit="return handleSaveEleve(event)">
       <input type="hidden" name="id" value="${e?e.id:''}">
       <button type="button" class="btn secondary sm" style="margin-bottom:14px;" onclick="ouvrirRemplissageIntelligent('eleve', SCHEMA_ELEVE, (r)=>appliquerRemplissage('formEleve', r))">✨ Remplir automatiquement</button>
+      ${e ? `<button type="button" class="btn secondary sm" style="margin-bottom:14px;" onclick="ouvrirSecuriteEleve('${e.id}')">🛡️ Sécurité & santé</button>` : ''}
       <div class="form-grid">
         <div class="field"><label>Prénom</label><input name="prenom" required value="${e?escapeHtml(e.prenom):''}"></div>
         <div class="field"><label>Nom</label><input name="nom" required value="${e?escapeHtml(e.nom):''}"></div>
