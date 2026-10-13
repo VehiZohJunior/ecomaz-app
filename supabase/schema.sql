@@ -2928,3 +2928,10 @@ begin
 end $$;
 revoke all on function preparer_ecole_demo(uuid) from public, anon;
 grant execute on function preparer_ecole_demo(uuid) to authenticated;
+
+-- =====================================================================
+-- 76. REMPLISSAGE INTELLIGENT — source « texte collé » (2026-10-14)
+-- =====================================================================
+alter table usage_remplissage_intelligent drop constraint if exists usage_remplissage_intelligent_type_source_check;
+alter table usage_remplissage_intelligent add constraint usage_remplissage_intelligent_type_source_check
+  check (type_source in ('photo','audio','texte'));

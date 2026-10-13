@@ -2320,6 +2320,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.10.14-2', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ '« Remplir automatiquement » amélioré : photo recto/verso, vocal (2 min), ou texte collé (message WhatsApp du parent) ; aperçu de ce qui a été trouvé avant d’appliquer ; dates, sexe, noms et téléphones vérifiés.' ],
+  } },
   { version: '2026.10.14-1', nouveautes: {
     commun: [ 'Correction : une suppression ou une modification refusée n’affiche plus « enregistré » à tort ; un message clair explique pourquoi.' ],
     parent: [],
@@ -4873,15 +4879,19 @@ const SCHEMA_PERSONNEL = [
 
 let smartFillRecorder = null;
 let smartFillChunks = [];
+let smartFillMinuteur = null;
+const SMARTFILL_DUREE_MAX = 120; // secondes d'enregistrement vocal au maximum
 
 function ouvrirRemplissageIntelligent(formulaire, schema, onResultat){
   window.__smartFillOnResultat = onResultat;
   window.__smartFillFormulaire = formulaire;
   window.__smartFillSchema = schema;
+  window.__smartFillResultat = null;
   $('#smartFillBody').innerHTML = renderSmartFillModal();
   $('#smartFillBackdrop').classList.add('open');
 }
 function closeSmartFillModal(){
+  arreterEnregistrementSmartFill(true);
   $('#smartFillBackdrop').classList.remove('open');
   $('#smartFillBody').innerHTML = '';
 }
@@ -4889,110 +4899,147 @@ $('#smartFillClose').addEventListener('click', closeSmartFillModal);
 $('#smartFillBackdrop').addEventListener('click', e=>{ if(e.target.id==='smartFillBackdrop') closeSmartFillModal(); });
 function renderSmartFillModal(etat, message){
   if(etat==='chargement'){
-    return `<div style="text-align:center;padding:30px 10px;">
-      <div class="hint">⏳ Analyse en cours… (ça peut prendre quelques secondes)</div>
+    return `<div style="text-align:center;padding:30px 10px;" role="status" aria-live="polite">
+      <div style="font-size:2rem;" class="em-spin">⏳</div>
+      <div class="hint">Analyse en cours… (quelques secondes)</div>
     </div>`;
   }
   return `
-    <div class="hint" style="margin-bottom:14px;">Prenez en photo un document (ex : acte de naissance), ou enregistrez/importez un message vocal décrivant les informations. Vous pourrez tout relire et corriger avant d'enregistrer.</div>
-    ${message ? `<div class="pin-error" style="margin-bottom:12px;">${escapeHtml(message)}</div>` : ''}
-    <div class="grid-2" style="margin-bottom:14px;">
-      <div class="panel" style="background:var(--surface-2);text-align:center;padding:18px;">
-        <div style="font-size:var(--fs-2xl);">📷</div>
-        <div class="hint" style="margin:8px 0 12px;">Photo d'un document</div>
-        <label class="btn secondary sm" style="cursor:pointer;">Choisir une photo
-          <input type="file" accept="image/*" capture="environment" style="display:none;" onchange="handleSmartFillPhoto(event)">
+    <div class="hint" style="margin-bottom:14px;">Trois façons de remplir la fiche sans tout taper : une <strong>photo</strong> de document (acte de naissance, fiche de renseignements — recto et verso possibles), un <strong>message vocal</strong>, ou un <strong>texte collé</strong> (par exemple un message WhatsApp du parent). Vous relisez tout avant de l’appliquer.</div>
+    ${message ? `<div class="pin-error" style="margin-bottom:12px;" role="alert">${escapeHtml(message)}</div>` : ''}
+    <div class="sf-sources">
+      <div class="sf-source">
+        <div class="sf-ic">📷</div><strong>Photo</strong>
+        <label class="btn secondary sm" style="cursor:pointer;">Prendre / choisir (1 ou 2)
+          <input type="file" accept="image/*" multiple style="display:none;" onchange="handleSmartFillPhoto(event)">
         </label>
       </div>
-      <div class="panel" style="background:var(--surface-2);text-align:center;padding:18px;">
-        <div style="font-size:var(--fs-2xl);">🎤</div>
-        <div class="hint" style="margin:8px 0 12px;">Message vocal</div>
-        <div style="display:flex;flex-direction:column;gap:8px;">
-          <button type="button" class="btn secondary sm" id="btnSmartFillRec" onclick="handleSmartFillToggleRecord()">⏺️ Enregistrer</button>
-          <label class="btn secondary sm" style="cursor:pointer;">Importer un fichier (dont .opus WhatsApp)
-            <input type="file" accept="audio/*" style="display:none;" onchange="handleSmartFillAudioFichier(event)">
-          </label>
-        </div>
+      <div class="sf-source">
+        <div class="sf-ic">🎤</div><strong>Vocal</strong>
+        <button type="button" class="btn secondary sm" id="btnSmartFillRec" onclick="handleSmartFillToggleRecord()">⏺️ Enregistrer</button>
+        <span class="hint" id="smartFillDuree" style="margin:0;"></span>
+        <label class="btn secondary sm" style="cursor:pointer;">Importer (dont WhatsApp)
+          <input type="file" accept="audio/*" style="display:none;" onchange="handleSmartFillAudioFichier(event)">
+        </label>
+      </div>
+      <div class="sf-source sf-texte">
+        <div class="sf-ic">📝</div><strong>Texte</strong>
+        <textarea id="smartFillTexte" rows="4" maxlength="4000" placeholder="Collez ici le message du parent : nom de l’enfant, date de naissance, téléphone…"></textarea>
+        <button type="button" class="btn secondary sm" onclick="handleSmartFillTexte()">Analyser le texte</button>
       </div>
     </div>
     <div class="form-actions"><button type="button" class="btn secondary" onclick="closeSmartFillModal()">Annuler</button></div>
   `;
 }
+// Aperçu avant application : la personne voit ce qui a été trouvé et le niveau de certitude
+function renderSmartFillApercu(resultat){
+  const schema = window.__smartFillSchema || [];
+  const badge = c => c === 'élevé' ? '<span class="badge green">sûr</span>' : c === 'moyen' ? '<span class="badge amber">à vérifier</span>' : '<span class="badge">non trouvé</span>';
+  const trouves = schema.filter(c => resultat[c.name] && resultat[c.name].valeur);
+  return `<div class="hint" style="margin-bottom:10px;">${trouves.length ? `${trouves.length} information(s) trouvée(s) sur ${schema.length}. Vérifiez puis appliquez : la fiche n’est pas encore enregistrée.` : 'Aucune information n’a pu être lue. Essayez une photo plus nette, bien éclairée, ou un autre moyen.'}</div>
+    <table class="eb-table"><tbody>${schema.map(c => { const r = resultat[c.name] || {}; return `<tr><td>${escapeHtml(c.label)}</td><td><strong>${r.valeur ? escapeHtml(r.valeur) : '—'}</strong></td><td>${badge(r.valeur ? r.confiance : 'faible')}</td></tr>`; }).join('')}</tbody></table>
+    <div class="form-actions">
+      <button type="button" class="btn secondary" onclick="$('#smartFillBody').innerHTML = renderSmartFillModal()">Recommencer</button>
+      ${trouves.length ? `<button type="button" class="btn" onclick="appliquerSmartFill()">✓ Appliquer à la fiche</button>` : ''}
+    </div>`;
+}
+function appliquerSmartFill(){
+  const r = window.__smartFillResultat; const cb = window.__smartFillOnResultat;
+  closeSmartFillModal();
+  if(r && cb) cb(r);
+}
 function smartFillFichierEnBase64(fichier){
   return new Promise((resolve, reject) => {
     const lecteur = new FileReader();
     lecteur.onload = () => resolve(String(lecteur.result).split(',')[1]);
-    lecteur.onerror = reject;
+    lecteur.onerror = () => reject(new Error('Fichier illisible.'));
     lecteur.readAsDataURL(fichier);
   });
 }
+// Photo réduite sur le téléphone (1600 px, JPEG) : envoi rapide même en 3G
 function smartFillCompresserImage(fichier){
   return new Promise((resolve, reject) => {
     const img = new Image();
     const url = URL.createObjectURL(fichier);
     img.onload = () => {
-      const maxLargeur = 1600;
-      const ratio = Math.min(1, maxLargeur / img.width);
+      const ratio = Math.min(1, 1600 / Math.max(img.width, img.height));
       const canvas = document.createElement('canvas');
       canvas.width = Math.round(img.width * ratio);
       canvas.height = Math.round(img.height * ratio);
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
       URL.revokeObjectURL(url);
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
-      resolve({ base64: dataUrl.split(',')[1], mimeType: 'image/jpeg' });
+      resolve(canvas.toDataURL('image/jpeg', 0.82).split(',')[1]);
     };
-    img.onerror = reject;
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Format de photo non lu (HEIC ?) : prenez la photo directement depuis ce bouton, ou envoyez-la en JPG.')); };
     img.src = url;
   });
 }
 async function handleSmartFillPhoto(ev){
-  const fichier = ev.target.files[0];
-  if(!fichier) return;
+  const fichiers = [...(ev.target.files || [])].slice(0, 2);
+  if(!fichiers.length) return;
   try{
-    const { base64, mimeType } = await smartFillCompresserImage(fichier);
-    await smartFillEnvoyer('photo', base64, mimeType);
-  }catch(e){ $('#smartFillBody').innerHTML = renderSmartFillModal(null, 'Erreur : ' + e.message); }
+    const photos = [];
+    for(const f of fichiers) photos.push(await smartFillCompresserImage(f));
+    await smartFillEnvoyer({ typeSource: 'photo', fichiersBase64: photos, mimeType: 'image/jpeg' });
+  }catch(e){ $('#smartFillBody').innerHTML = renderSmartFillModal(null, e.message); }
 }
 async function handleSmartFillAudioFichier(ev){
   const fichier = ev.target.files[0];
   if(!fichier) return;
+  if(fichier.size > 8 * 1024 * 1024){ $('#smartFillBody').innerHTML = renderSmartFillModal(null, 'Fichier audio trop lourd (8 Mo maximum, environ 2 minutes).'); return; }
   try{
     const base64 = await smartFillFichierEnBase64(fichier);
-    await smartFillEnvoyer('audio', base64, fichier.type || 'audio/ogg');
-  }catch(e){ $('#smartFillBody').innerHTML = renderSmartFillModal(null, 'Erreur : ' + e.message); }
+    await smartFillEnvoyer({ typeSource: 'audio', fichierBase64: base64, mimeType: fichier.type || 'audio/ogg' });
+  }catch(e){ $('#smartFillBody').innerHTML = renderSmartFillModal(null, e.message); }
+}
+async function handleSmartFillTexte(){
+  const texte = ($('#smartFillTexte')?.value || '').trim();
+  if(texte.length < 5){ $('#smartFillBody').innerHTML = renderSmartFillModal(null, 'Collez d’abord le texte à analyser.'); return; }
+  await smartFillEnvoyer({ typeSource: 'texte', texte });
+}
+function arreterEnregistrementSmartFill(annuler){
+  clearInterval(smartFillMinuteur); smartFillMinuteur = null;
+  if(smartFillRecorder && smartFillRecorder.state === 'recording'){
+    if(annuler) smartFillRecorder.onstop = () => { try{ smartFillRecorder.stream.getTracks().forEach(t => t.stop()); }catch(_e){} };
+    smartFillRecorder.stop();
+  }
 }
 async function handleSmartFillToggleRecord(){
   const btn = $('#btnSmartFillRec');
-  if(smartFillRecorder && smartFillRecorder.state === 'recording'){
-    smartFillRecorder.stop();
-    return;
-  }
+  if(smartFillRecorder && smartFillRecorder.state === 'recording'){ arreterEnregistrementSmartFill(false); return; }
   try{
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     smartFillChunks = [];
     smartFillRecorder = new MediaRecorder(stream);
-    smartFillRecorder.ondataavailable = (e) => smartFillChunks.push(e.data);
+    smartFillRecorder.ondataavailable = (e) => { if(e.data && e.data.size) smartFillChunks.push(e.data); };
     smartFillRecorder.onstop = async () => {
       stream.getTracks().forEach(t => t.stop());
       const blob = new Blob(smartFillChunks, { type: smartFillRecorder.mimeType || 'audio/webm' });
+      if(blob.size < 2000){ $('#smartFillBody').innerHTML = renderSmartFillModal(null, 'Enregistrement trop court : parlez quelques secondes.'); return; }
       const base64 = await smartFillFichierEnBase64(blob);
-      await smartFillEnvoyer('audio', base64, blob.type);
+      await smartFillEnvoyer({ typeSource: 'audio', fichierBase64: base64, mimeType: blob.type });
     };
-    smartFillRecorder.start();
-    if(btn){ btn.textContent = '⏹️ Arrêter'; btn.classList.add('btn-recording'); }
-  }catch(e){ $('#smartFillBody').innerHTML = renderSmartFillModal(null, "Impossible d'accéder au microphone : " + e.message); }
+    smartFillRecorder.start(1000);
+    const debut = Date.now();
+    if(btn){ btn.textContent = '⏹️ Arrêter et analyser'; btn.classList.add('btn-recording'); }
+    smartFillMinuteur = setInterval(() => {
+      const s = Math.round((Date.now() - debut) / 1000);
+      const z = $('#smartFillDuree'); if(z) z.textContent = `🔴 ${s} s / ${SMARTFILL_DUREE_MAX} s`;
+      if(s >= SMARTFILL_DUREE_MAX) arreterEnregistrementSmartFill(false);
+    }, 500);
+  }catch(e){ $('#smartFillBody').innerHTML = renderSmartFillModal(null, "Impossible d'accéder au microphone : autorisez-le dans le navigateur, puis réessayez."); }
 }
-async function smartFillEnvoyer(typeSource, fichierBase64, mimeType){
+async function smartFillEnvoyer(source){
+  if(!navigator.onLine){ $('#smartFillBody').innerHTML = renderSmartFillModal(null, 'Pas de connexion internet : le remplissage automatique a besoin du réseau.'); return; }
   $('#smartFillBody').innerHTML = renderSmartFillModal('chargement');
   try{
     const { data, error } = await sb.functions.invoke('smart-fill', {
-      body: { formulaire: window.__smartFillFormulaire, schema: window.__smartFillSchema, typeSource, fichierBase64, mimeType },
+      body: { formulaire: window.__smartFillFormulaire, schema: window.__smartFillSchema, ...source },
     });
     if(error) throw new Error(await messageErreurFonction(error));
     if(!data?.ok) throw new Error(data?.error || 'Échec du remplissage automatique');
-    closeSmartFillModal();
-    window.__smartFillOnResultat(data.resultat);
+    window.__smartFillResultat = data.resultat;
+    $('#smartFillBody').innerHTML = renderSmartFillApercu(data.resultat);
   }catch(e){ $('#smartFillBody').innerHTML = renderSmartFillModal(null, e.message); }
 }
 function appliquerRemplissage(formId, resultat){
@@ -5003,15 +5050,16 @@ function appliquerRemplissage(formId, resultat){
     const { valeur, confiance } = resultat[champ];
     const input = form.elements[champ];
     if(!input || valeur == null || valeur === '') continue;
+    // Liste déroulante : on ne choisit qu'une option qui existe vraiment
+    if(input.tagName === 'SELECT' && ![...input.options].some(o => o.value === valeur)) continue;
     input.value = valeur;
+    input.classList.remove('champ-a-verifier');
     input.classList.add('champ-pre-rempli');
+    input.addEventListener('input', () => input.classList.remove('champ-pre-rempli', 'champ-a-verifier'), { once: true });
     nbRemplis++;
-    if(confiance === 'faible'){
-      input.classList.add('champ-a-verifier');
-      nbAVerifier++;
-    }
+    if(confiance !== 'élevé'){ input.classList.add('champ-a-verifier'); nbAVerifier++; }
   }
-  toast(nbRemplis ? `${nbRemplis} champ(s) pré-rempli(s)${nbAVerifier?', '+nbAVerifier+' à vérifier':''}` : "Aucune information n'a pu être extraite");
+  toast(nbRemplis ? `${nbRemplis} champ(s) pré-rempli(s)${nbAVerifier ? ', ' + nbAVerifier + ' à vérifier (en orange)' : ''} — relisez puis enregistrez` : "Aucune information n'a pu être extraite");
 }
 
 function openEleveForm(id){
