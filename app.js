@@ -2344,6 +2344,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.10.13-29', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Nouveau : « 🔐 Sécurité du compte » (en bas du menu) — double vérification par code à 6 chiffres (Google Authenticator, gratuit). Recommandé pour la direction et le secrétariat : même avec votre mot de passe, personne d’autre ne peut entrer.' ],
+  } },
   { version: '2026.10.13-28', nouveautes: {
     commun: [],
     parent: [ 'Si votre école l’active : les notes des devoirs et exercices de votre enfant, dès qu’elles sont saisies, avec la moyenne en cours par matière.' ],
@@ -2646,6 +2652,101 @@ window.addEventListener('offline', majBanniereHorsLigne);
 // Le rôle "développeur" n'est rattaché à aucune école (ecole_id null) — il
 // n'a pas accès à l'application cliente normale, seulement à sa propre
 // console de gestion des écoles clientes.
+/* =====================================================================
+   🔐 DOUBLE VÉRIFICATION (code à 6 chiffres, schema.sql section 81)
+   Application gratuite sur le téléphone : Google Authenticator, Microsoft
+   Authenticator… La base elle-même refuse toute donnée à un compte protégé
+   tant que le code n'est pas saisi.
+   ===================================================================== */
+async function niveauVerification(){
+  try{ const { data } = await sb.auth.mfa.getAuthenticatorAssuranceLevel(); return data; }catch(_e){ return null; }
+}
+// À l'entrée : si le compte est protégé et que le code n'a pas été saisi, on le demande
+async function exigerDoubleVerification(){
+  const n = await niveauVerification();
+  if(n && n.nextLevel === 'aal2' && n.currentLevel !== 'aal2'){ afficherEcranCode(); return true; }
+  return false;
+}
+function afficherEcranCode(message){
+  const gate = $('#loginGate');
+  gate.classList.add('open');
+  gate.innerHTML = `<div class="login-card"><div class="login-logo">🔐</div><h1>Double vérification</h1>
+    <div class="sub">Ouvrez votre application d’authentification (Google Authenticator…) et tapez le code à 6 chiffres affiché pour EcoMaZ.</div>
+    <form class="pin-pad" onsubmit="return validerCodeConnexion(event)">
+      <input id="codeMfa" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required placeholder="000000" style="font-size:1.6rem;letter-spacing:.4em;text-align:center;">
+      <div class="pin-error" role="alert">${message ? escapeHtml(message) : ''}</div>
+      <button class="btn" type="submit" style="width:100%;margin-top:10px;">Vérifier</button>
+      <button type="button" class="pin-back" onclick="logoutRole()">Se déconnecter</button>
+    </form></div>`;
+  setTimeout(() => { const c = $('#codeMfa'); if(c) c.focus(); }, 50);
+}
+async function validerCodeConnexion(ev){
+  ev.preventDefault();
+  const code = ($('#codeMfa')?.value || '').replace(/\D/g, '');
+  try{
+    const { data, error } = await sb.auth.mfa.listFactors();
+    if(error) throw error;
+    const facteur = (data?.totp || []).find(f => f.status === 'verified');
+    if(!facteur) throw new Error('Aucune double vérification trouvée sur ce compte.');
+    const r = await sb.auth.mfa.challengeAndVerify({ factorId: facteur.id, code });
+    if(r.error) throw new Error('Code incorrect ou expiré : tapez le nouveau code affiché.');
+    $('#loginGate').innerHTML = renderLoginGate('login', '', true);
+    await entrerSelonRole();
+  }catch(e){ afficherEcranCode(e.message); }
+  return false;
+}
+// Menu « Sécurité du compte » : activer / désactiver
+async function ouvrirSecuriteCompte(){
+  openModal('🔐 Sécurité du compte', '<div class="hint">Chargement…</div>');
+  try{
+    const { data } = await sb.auth.mfa.listFactors();
+    const actif = (data?.totp || []).find(f => f.status === 'verified');
+    $('#modalBody').innerHTML = actif ? `
+      <div class="section-note" style="background:var(--green-bg, #e3f1eb);">✅ <strong>Double vérification activée</strong> sur ce compte. À chaque connexion, le code à 6 chiffres de votre application d’authentification est demandé — même avec votre mot de passe, personne d’autre ne peut entrer.</div>
+      <div class="form-actions"><button class="btn secondary" onclick="closeModal()">Fermer</button><button class="btn danger" onclick="desactiverDoubleVerification('${actif.id}')">Désactiver</button></div>` : `
+      <p>Protégez ce compte : après le mot de passe, EcoMaZ demandera un <strong>code à 6 chiffres</strong> qui change toutes les 30 secondes sur votre téléphone. Même si quelqu’un découvre votre mot de passe, il ne pourra pas entrer.</p>
+      <ol class="hint" style="line-height:1.7;"><li>Installez sur votre téléphone l’application gratuite <strong>Google Authenticator</strong> (ou Microsoft Authenticator).</li><li>Cliquez sur « Commencer », puis scannez le QR code avec cette application.</li><li>Tapez le code affiché pour confirmer.</li></ol>
+      <div class="form-actions"><button class="btn secondary" onclick="closeModal()">Plus tard</button><button class="btn" onclick="commencerDoubleVerification()">Commencer</button></div>`;
+  }catch(e){ $('#modalBody').innerHTML = `<div class="hint">Erreur : ${escapeHtml(e.message)}</div>`; }
+}
+async function commencerDoubleVerification(){
+  try{
+    // Un essai précédent non terminé est retiré d'abord
+    const { data: liste } = await sb.auth.mfa.listFactors();
+    for(const f of (liste?.all || []).filter(f => f.status !== 'verified')) await sb.auth.mfa.unenroll({ factorId: f.id });
+    const { data, error } = await sb.auth.mfa.enroll({ factorType: 'totp', friendlyName: 'EcoMaZ ' + new Date().toISOString().slice(0, 10) });
+    if(error) throw error;
+    $('#modalBody').innerHTML = `
+      <p>Scannez ce QR code avec Google Authenticator (bouton « + » → « Scanner un code QR ») :</p>
+      <div style="text-align:center;"><img id="qrDoubleVerif" alt="QR code de double vérification" style="width:220px;height:220px;background:#fff;padding:8px;border-radius:12px;"></div>
+      <p class="hint">Impossible de scanner ? Saisissez cette clé dans l’application : <code style="user-select:all;word-break:break-all;">${escapeHtml(data.totp.secret)}</code></p>
+      <form onsubmit="return confirmerDoubleVerification(event, '${data.id}')">
+        <div class="field"><label>Code à 6 chiffres affiché par l’application</label><input id="codeActivation" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required style="font-size:1.4rem;letter-spacing:.3em;"></div>
+        <div class="pin-error" id="erreurActivation" role="alert"></div>
+        <div class="form-actions"><button type="button" class="btn secondary" onclick="closeModal()">Annuler</button><button class="btn" type="submit">Activer</button></div>
+      </form>`;
+    // Le QR code (SVG) contient des guillemets : on l'affecte par le DOM, jamais dans le HTML
+    const img = document.getElementById('qrDoubleVerif');
+    if(img) img.src = /^data:image\/svg\+xml;utf-?8,/.test(data.totp.qr_code)
+      ? 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(data.totp.qr_code.replace(/^data:image\/svg\+xml;utf-?8,/, ''))
+      : data.totp.qr_code;
+  }catch(e){ $('#modalBody').innerHTML = `<div class="hint">Activation impossible : ${escapeHtml(e.message)}</div>`; }
+}
+async function confirmerDoubleVerification(ev, factorId){
+  ev.preventDefault();
+  const code = ($('#codeActivation')?.value || '').replace(/\D/g, '');
+  const r = await sb.auth.mfa.challengeAndVerify({ factorId, code });
+  if(r.error){ $('#erreurActivation').textContent = 'Code incorrect : tapez le code actuellement affiché (il change toutes les 30 secondes).'; return false; }
+  closeModal(); toast('🔐 Double vérification activée : le code sera demandé à chaque connexion');
+  return false;
+}
+async function desactiverDoubleVerification(factorId){
+  if(!confirm('Désactiver la double vérification ? Votre compte ne sera plus protégé que par le mot de passe.')) return;
+  const { error } = await sb.auth.mfa.unenroll({ factorId });
+  if(error){ alert('Désactivation impossible : ' + error.message); return; }
+  await sb.auth.refreshSession().catch(() => {});
+  closeModal(); toast('Double vérification désactivée');
+}
 async function entrerSelonRole(){
   ui.role = session.role;
   // Ce compte est un compte technique de la console développeur — il n'a
@@ -2675,6 +2776,8 @@ async function entrerSelonRole(){
     return;
   }
   if(fixe){ try{ localStorage.setItem('ecomaz_ecole_' + fixe, session.ecoleId); }catch(_e){} }
+  // Compte protégé par la double vérification : code à 6 chiffres avant toute donnée
+  if(await exigerDoubleVerification()) return;
   // Un compte parent a son propre chemin de chargement (minimal, jamais le
   // chargeur générique du personnel — voir chargerDBParent()) et son propre
   // écran, sans le tableau de bord/menu du personnel.

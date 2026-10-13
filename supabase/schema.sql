@@ -3106,3 +3106,31 @@ create policy "lecture evaluations parent" on evaluations for select
     and exists (select 1 from ecoles e where e.id = evaluations.ecole_id and e.notes_continues_parents)
     and exists (select 1 from parents_eleves pe join eleves el on el.id = pe.eleve_id
                 where pe.parent_profile_id = auth.uid() and el.classe_id = evaluations.classe_id));
+
+-- =====================================================================
+-- 81. DOUBLE VÉRIFICATION (code à 6 chiffres) — appliquée PAR LA BASE
+-- =====================================================================
+-- Un compte qui a activé la double vérification (facteur TOTP vérifié)
+-- n'accède à AUCUNE donnée tant que sa session n'est pas au niveau aal2
+-- (code saisi). Même avec le mot de passe volé, et même en contournant
+-- l'application, la base ne renvoie rien. Les comptes sans double
+-- vérification fonctionnent comme avant. Exception : « profiles » (pour
+-- reconnaître le compte avant la saisie du code).
+create or replace function double_verification_ok() returns boolean
+language sql stable security definer set search_path = public, auth as $$
+  select coalesce(auth.jwt() ->> 'aal', 'aal1') = 'aal2'
+      or not exists (select 1 from auth.mfa_factors f where f.user_id = auth.uid() and f.status = 'verified')
+$$;
+revoke all on function double_verification_ok() from public, anon;
+grant execute on function double_verification_ok() to authenticated;
+
+do $$
+declare t record;
+begin
+  for t in select c.relname from pg_class c join pg_namespace n on n.oid = c.relnamespace
+           where n.nspname = 'public' and c.relkind = 'r' and c.relrowsecurity and c.relname <> 'profiles'
+  loop
+    execute format('drop policy if exists "double verification" on public.%I', t.relname);
+    execute format('create policy "double verification" on public.%I as restrictive for all to authenticated using (double_verification_ok()) with check (double_verification_ok())', t.relname);
+  end loop;
+end $$;
