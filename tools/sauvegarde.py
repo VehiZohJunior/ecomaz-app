@@ -83,6 +83,11 @@ def main():
     for d in anciennes:
         shutil.rmtree(os.path.join(DESTINATION, d), ignore_errors=True)
     print(f'Sauvegarde terminée : {dossier} ({len(tables)} tables, {total} lignes)')
+    # Copie des nouvelles actions (corrections, nouveautés) sur ce PC, sans doublon
+    try:
+        subprocess.run([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'copier_actions.py')], check=False, timeout=600)
+    except Exception as e:
+        print('Copie des actions non faite :', e)
 
 
 if __name__ == '__main__':
