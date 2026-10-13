@@ -3134,3 +3134,42 @@ begin
     execute format('create policy "double verification" on public.%I as restrictive for all to authenticated using (double_verification_ok()) with check (double_verification_ok())', t.relname);
   end loop;
 end $$;
+
+-- =====================================================================
+-- 82. RÉCUPÉRATION DE LA DOUBLE VÉRIFICATION (téléphone perdu)
+-- =====================================================================
+-- Réservé au compte développeur (Console). La réinitialisation supprime le
+-- code de la personne (elle se reconnecte avec son seul mot de passe, puis
+-- réactive la protection) et est TOUJOURS inscrite au journal d'audit, par
+-- la base elle-même, avec le motif.
+create or replace function comptes_double_verification(p_ecole uuid)
+returns table (user_id uuid, nom text, role text, protege boolean)
+language plpgsql stable security definer set search_path = public, auth as $$
+begin
+  if not est_developpeur() then raise exception 'Réservé au compte développeur'; end if;
+  return query
+  select p.id, coalesce(p.nom_complet, ''), p.role::text,
+    exists (select 1 from auth.mfa_factors f where f.user_id = p.id and f.status = 'verified')
+  from profiles p where p.ecole_id = p_ecole and p.role in ('direction','fondation','secretariat','enseignant')
+  order by p.role, p.nom_complet;
+end $$;
+revoke all on function comptes_double_verification(uuid) from public, anon;
+grant execute on function comptes_double_verification(uuid) to authenticated;
+
+create or replace function reinitialiser_double_verification(p_user uuid, p_motif text) returns integer
+language plpgsql security definer set search_path = public, auth as $$
+declare v_ecole uuid; v_nom text; v_role text; n int;
+begin
+  if not est_developpeur() then raise exception 'Réservé au compte développeur'; end if;
+  if char_length(coalesce(trim(p_motif), '')) < 5 then raise exception 'Indiquez le motif (5 caractères minimum).'; end if;
+  select ecole_id, nom_complet, role::text into v_ecole, v_nom, v_role from profiles where id = p_user;
+  if v_ecole is null or v_role = 'developpeur' then raise exception 'Compte introuvable ou non autorisé'; end if;
+  delete from auth.mfa_factors where user_id = p_user;
+  get diagnostics n = row_count;
+  insert into journal_console_dev(action, ecole_id, ecole_nom, details, auteur_id)
+  values ('reinitialisation_double_verification', v_ecole, (select nom_ecole from ecoles where id = v_ecole),
+    jsonb_build_object('compte', v_nom, 'role', v_role, 'motif', left(trim(p_motif), 300), 'codes_supprimes', n), auth.uid());
+  return n;
+end $$;
+revoke all on function reinitialiser_double_verification(uuid, text) from public, anon;
+grant execute on function reinitialiser_double_verification(uuid, text) to authenticated;

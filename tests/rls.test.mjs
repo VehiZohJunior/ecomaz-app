@@ -306,6 +306,11 @@ async function requete(accessToken, chemin, options = {}){
   const dvAnon = await requete(ANON_KEY, `/rest/v1/rpc/double_verification_ok`, { method:'POST', body:'{}' });
   verifier('La fonction de contrôle n est pas appelable sans connexion', !dvAnon.ok);
 
+  const resetSec = await requete(tokenSecretariat, `/rest/v1/rpc/reinitialiser_double_verification`, { method:'POST', body: JSON.stringify({ p_user: FAUX, p_motif: 'essai refusé' }) });
+  verifier('Seul le développeur peut réinitialiser une double vérification', !resetSec.ok, `statut ${resetSec.status}`);
+  const listeSec = await requete(tokenSecretariat, `/rest/v1/rpc/comptes_double_verification`, { method:'POST', body: JSON.stringify({ p_ecole: FAUX }) });
+  verifier('La liste des comptes protégés est réservée au développeur', !listeSec.ok, `statut ${listeSec.status}`);
+
   section('8. Visiteur non connecté — ne lit que les affichages publics prévus');
   for(const table of ['eleves','enseignants_lecture','profiles','paiements_scolarite','messages','parents_eleves','presences_eleves','eleves_portier_lecture','objets_perdus','push_abonnements','absences_signalees','evenements_agenda','devoirs','personnes_autorisees','sante_eleves','reponses_agenda','corrections_fiches','menus_cantine','preinscriptions','demandes_documents','evaluations','coefficients_matieres','bulletins_resultats']){
     const r = await requete(ANON_KEY, `/rest/v1/${table}?select=*&limit=1`);
