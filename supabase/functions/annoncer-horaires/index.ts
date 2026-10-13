@@ -119,6 +119,60 @@ async function voeuxAnniversaire(admin: any, aujourdhui: string, minuteActuelle:
   return n;
 }
 
+// Résumé de la semaine (schema.sql section 69) : le vendredi à 17h30,
+// chaque parent reçoit le bilan de ses enfants — présences de la semaine
+// (si l'appel est fait), devoirs pour la semaine suivante, dates à venir.
+// Une seule fois par parent et par semaine ; rien n'est envoyé s'il n'y a
+// rien à dire.
+// deno-lint-ignore no-explicit-any
+async function resumeHebdo(admin: any, aujourdhui: string, minuteActuelle: number): Promise<number> {
+  if (minuteActuelle < 17 * 60 + 30 || minuteActuelle > 18 * 60) return 0;
+  const decale = (n: number) => { const d = new Date(aujourdhui + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+  const lundi = decale(-4), lundiProchain = decale(3), vendrediProchain = decale(7);
+  const { data: ecoles } = await admin.from('ecoles').select('id, nom_ecole').eq('actif', true).eq('resume_hebdo', true);
+  let n = 0;
+  for (const ec of (ecoles || []) as { id: string; nom_ecole: string }[]) {
+    const { data: liens } = await admin.from('parents_eleves').select('parent_profile_id, eleve_id').eq('ecole_id', ec.id);
+    if (!liens || !liens.length) continue;
+    const ids = [...new Set((liens as { eleve_id: string }[]).map((l) => l.eleve_id))];
+    const [{ data: eleves }, { data: pres }, { data: devoirs }, { data: agenda }] = await Promise.all([
+      admin.from('eleves').select('id, prenom, classe_id').eq('ecole_id', ec.id).eq('statut', 'Actif').in('id', ids),
+      admin.from('presences_eleves').select('eleve_id, statut, date').eq('ecole_id', ec.id).in('eleve_id', ids).gte('date', lundi).lte('date', aujourdhui),
+      admin.from('devoirs').select('classe_id').eq('ecole_id', ec.id).gte('pour_le', lundiProchain).lte('pour_le', vendrediProchain),
+      admin.from('evenements_agenda').select('titre, date_debut, classe_ids').eq('ecole_id', ec.id).gte('date_debut', decale(1)).lte('date_debut', decale(10)).order('date_debut'),
+    ]);
+    const parParent: Record<string, string[]> = {};
+    for (const l of liens as { parent_profile_id: string; eleve_id: string }[]) (parParent[l.parent_profile_id] ||= []).push(l.eleve_id);
+    for (const [parentId, siens] of Object.entries(parParent)) {
+      const enfants = ((eleves || []) as { id: string; prenom: string; classe_id: string }[]).filter((e) => siens.includes(e.id));
+      if (!enfants.length) continue;
+      const lignes: string[] = [];
+      for (const e of enfants) {
+        const p = ((pres || []) as { eleve_id: string; statut: string }[]).filter((x) => x.eleve_id === e.id);
+        const morceaux: string[] = [];
+        if (p.length) {
+          const abs = p.filter((x) => x.statut === 'Absent').length, ret = p.filter((x) => x.statut === 'Retard').length;
+          morceaux.push(abs || ret ? `${p.length - abs} jour(s) présent(e)${abs ? `, ${abs} absence(s)` : ''}${ret ? `, ${ret} retard(s)` : ''}` : `présent(e) tous les jours ✅`);
+        }
+        const nbDevoirs = ((devoirs || []) as { classe_id: string }[]).filter((d) => d.classe_id === e.classe_id).length;
+        if (nbDevoirs) morceaux.push(`${nbDevoirs} devoir(s) noté(s) pour la semaine prochaine`);
+        if (morceaux.length) lignes.push(`${e.prenom} : ${morceaux.join(' · ')}`);
+      }
+      const classes = enfants.map((e) => e.classe_id);
+      const dates = ((agenda || []) as { titre: string; date_debut: string; classe_ids: string[] | null }[])
+        .filter((a) => !a.classe_ids || a.classe_ids.some((c) => classes.includes(c))).slice(0, 2)
+        .map((a) => `${a.titre} (${a.date_debut.split('-').reverse().slice(0, 2).join('/')})`);
+      if (dates.length) lignes.push(`À venir : ${dates.join(', ')}`);
+      if (!lignes.length) continue;
+      const { error: deja } = await admin.from('rappels_envoyes').insert({ ecole_id: ec.id, type: `resume|${parentId}`, date: aujourdhui });
+      if (deja) continue;
+      await envoyerPush(admin, [parentId], { title: `📊 La semaine — ${ec.nom_ecole}`, body: lignes.join('\n').slice(0, 400), url: './parent.html', tag: 'resume-semaine' });
+      n++;
+    }
+  }
+  return n;
+}
+
 // Rappel des devoirs (schema.sql section 64) : à 18h, la veille d'un jour
 // de classe, les parents de chaque classe reçoivent la liste des devoirs
 // prévus pour le lendemain. Une seule fois par classe et par jour.
@@ -310,6 +364,12 @@ Deno.serve(async (req) => {
     // Vœux d'anniversaire — tous les jours à 8h
     try { nbEnvoyees += await voeuxAnniversaire(supabaseAdmin, dateDuJour, minuteActuelle); }
     catch (e) { erreurs.push(`anniversaires: ${(e as Error).message}`); }
+
+    // Résumé de la semaine — le vendredi
+    if (jourIso === 5) {
+      try { nbEnvoyees += await resumeHebdo(supabaseAdmin, dateDuJour, minuteActuelle); }
+      catch (e) { erreurs.push(`resume: ${(e as Error).message}`); }
+    }
 
     // Rappel des devoirs du lendemain — dimanche à jeudi soir
     if (jourIso === 7 || jourIso <= 4) {

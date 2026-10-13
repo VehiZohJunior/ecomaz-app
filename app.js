@@ -2235,6 +2235,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.10.13-9', nouveautes: {
+    commun: [],
+    parent: [ 'Chaque vendredi à 17h30 : le résumé de la semaine de vos enfants (présences, devoirs à venir, prochaines dates).' ],
+    portier: [],
+    personnel: [ 'Les parents reçoivent chaque vendredi le résumé de la semaine de leurs enfants (désactivable dans Paramètres).' ],
+  } },
   { version: '2026.10.13-8', nouveautes: {
     commun: [],
     parent: [ 'Une erreur sur la fiche de votre enfant (date de naissance, téléphone…) ? Bouton « Signaler une erreur sur la fiche » : l’école vérifie et corrige.' ],
@@ -3613,6 +3619,14 @@ function renderAnniversaireEnfant(e){
   if(joursAvantAnniversaire(e.dateNaissance) !== 0) return '';
   const age = ageAnniversaire(e.dateNaissance, 0);
   return `<div class="enfant-anniv" role="note">🎂 Joyeux anniversaire ${escapeHtml(e.prenom)}${age > 0 && age < 30 ? ` — ${age} ans` : ''} ! <span>Toute l’équipe ${DB.meta?.nomEcole ? 'de ' + escapeHtml(DB.meta.nomEcole) : 'de l’école'} lui souhaite une très belle journée.</span></div>`;
+}
+async function reglerOptionEcole(colonne, cle, actif, libelle){
+  try{
+    const { error } = await sb.from('ecoles').update({ [colonne]: actif }).eq('id', session.ecoleId);
+    if(error) throw error;
+    DB.meta[cle] = actif;
+    toast(`${libelle} : ${actif ? 'activé' : 'désactivé'}`);
+  }catch(e){ alert('Erreur : ' + e.message); renderView('parametres'); }
 }
 async function reglerVoeuxAnniversaire(actif){
   try{
@@ -8119,6 +8133,12 @@ function renderParametres(){
       <div class="panel-head"><div><h2>🎂 Anniversaires des élèves</h2><div class="sub">Le tableau de bord affiche les anniversaires de la semaine ; les parents voient un bandeau de fête le jour J.</div></div></div>
       <label style="display:flex;align-items:center;gap:10px;"><input type="checkbox" ${DB.meta?.voeuxAnniversaire !== false ? 'checked' : ''} onchange="reglerVoeuxAnniversaire(this.checked)">
         <strong>Envoyer automatiquement les vœux de l’école aux parents à 8h</strong> (notification + message)</label>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><div><h2>📊 Résumé de la semaine aux parents</h2><div class="sub">Chaque vendredi à 17h30, chaque parent reçoit sur son téléphone le bilan de ses enfants : présences de la semaine (si l’appel est fait), devoirs de la semaine suivante, prochaines dates de l’agenda.</div></div></div>
+      <label style="display:flex;align-items:center;gap:10px;"><input type="checkbox" ${DB.meta?.resumeHebdo !== false ? 'checked' : ''} onchange="reglerOptionEcole('resume_hebdo', 'resumeHebdo', this.checked, 'Résumé de la semaine')">
+        <strong>Envoyer le résumé de la semaine chaque vendredi</strong></label>
     </div>
 
     <div class="panel">

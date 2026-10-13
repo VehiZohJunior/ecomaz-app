@@ -2616,3 +2616,11 @@ drop policy if exists "admin corrections_fiches" on corrections_fiches;
 create policy "admin corrections_fiches" on corrections_fiches for all
   using (ecole_id = mon_ecole_id() and est_perso_admin())
   with check (ecole_id = mon_ecole_id() and est_perso_admin());
+
+-- =====================================================================
+-- 69. RÉSUMÉ DE LA SEMAINE AUX PARENTS (2026-10-13)
+-- =====================================================================
+-- Chaque vendredi à 17h30, chaque parent reçoit le bilan de la semaine
+-- de ses enfants (présences, devoirs de la semaine suivante, dates à
+-- venir) par notification — fonction annoncer-horaires. Désactivable.
+alter table ecoles add column if not exists resume_hebdo boolean not null default true;
