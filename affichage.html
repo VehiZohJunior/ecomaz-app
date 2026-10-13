@@ -116,12 +116,11 @@ if(!ecoleId){
 }
 
 async function charger(){
-  const [{ data: ecoles }, { data: honneurs }, { data: actus }] = await Promise.all([
-    sb.from('ecoles_vitrine').select('*').eq('id', ecoleId),
-    sb.from('tableau_honneur_public').select('*').eq('ecole_id', ecoleId),
-    sb.from('actualites_affichage_public').select('*').eq('ecole_id', ecoleId).order('created_at', {ascending:false}),
-  ]);
-  const ecole = ecoles && ecoles[0];
+  // Une seule fonction sécurisée : elle exige l'identifiant exact de l'école
+  // (schema.sql section 77) — impossible de lister les autres écoles.
+  const { data: affichage } = await sb.rpc('affichage_ecole', { p_ecole: ecoleId });
+  const ecole = affichage && affichage.ecole;
+  const honneurs = affichage ? affichage.honneurs : [], actus = affichage ? affichage.actualites : [];
   if(!ecole){
     ecranMessage("École introuvable", "Aucune école active ne correspond à ce lien. Vérifiez le lien généré depuis EcoMaZ, ou contactez le secrétariat.");
     return;

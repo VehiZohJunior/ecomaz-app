@@ -30,7 +30,8 @@
   window.ESPACE_FIXE_PRET = (async function(){
     if(!ecoleId) return;
     try{
-      const { data } = await sb.from('ecoles_vitrine').select('id,nom_ecole,logo_url').eq('id', ecoleId).maybeSingle();
+      const { data: lignes } = await sb.rpc('ecole_vitrine', { p_ecole: ecoleId });
+      const data = lignes && lignes[0];
       if(data){
         window.ECOLE_VITRINE = data;
         appliquerNom(data.nom_ecole);
