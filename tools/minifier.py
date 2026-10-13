@@ -32,3 +32,19 @@ for f in SCRIPTS:
     code = open(dst, encoding='utf-8').read()
     open(dst, 'w', encoding='utf-8').write(entete + code)
     print(f'{f} -> {os.path.basename(dst)} ({os.path.getsize(src)} -> {os.path.getsize(dst)} octets)')
+
+# app.js et supabase-client.js : compactés avec terser (gratuit, installé le
+# 2026-10-13 avec « npm install -g terser »), SANS renommer les noms de
+# premier niveau (fonctions appelées par les boutons, variables partagées
+# DB, ui, session…) — seuls les noms internes aux fonctions sont raccourcis.
+for f in ['app.js', 'supabase-client.js']:
+    src = os.path.join(RACINE, f)
+    dst = os.path.join(RACINE, f[:-3] + '.min.js')
+    r = subprocess.run(['terser', src, '--compress', 'toplevel=false,passes=2', '--mangle', 'toplevel=false',
+                        '--ecma', '2020', '--comments', 'false', '-o', dst],
+                       capture_output=True, text=True, encoding='utf-8', errors='replace', shell=(os.name == 'nt'))
+    if r.returncode != 0:
+        sys.exit(f'Échec du compactage de {f} :\n{r.stderr}')
+    code = open(dst, encoding='utf-8').read()
+    open(dst, 'w', encoding='utf-8').write(f'/* EcoMaZ — version compacte de {f} (générée par tools/minifier.py, ne pas modifier à la main) */\n' + code)
+    print(f'{f} -> {os.path.basename(dst)} ({os.path.getsize(src)} -> {os.path.getsize(dst)} octets)')

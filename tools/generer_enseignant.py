@@ -27,8 +27,8 @@ rep('<link rel="manifest" href="manifest.json">', """<script>
     document.head.appendChild(l);
   })();
 </script>""")
-rep('<script src="supabase-client.js"></script>\n<script src="motion.min.js"></script>',
-    "<script src=\"supabase-client.js\"></script>\n<script>window.ESPACE_FIXE='enseignant';</script>\n<script src=\"espace-fixe.min.js\"></script>\n<script src=\"motion.min.js\"></script>")
+rep('<script src="supabase-client.min.js"></script>\n<script src="motion.min.js"></script>',
+    "<script src=\"supabase-client.min.js\"></script>\n<script>window.ESPACE_FIXE='enseignant';</script>\n<script src=\"espace-fixe.min.js\"></script>\n<script src=\"motion.min.js\"></script>")
 rep('<html lang="fr">', '<html lang="fr">\n<!-- Généré par tools/generer_enseignant.py à partir de index.html : ne pas modifier à la main -->')
 open(os.path.join(RACINE, 'enseignant.html'), 'w', encoding='utf-8', newline='').write(s.replace('\n', nl))
 print('enseignant.html écrit')
