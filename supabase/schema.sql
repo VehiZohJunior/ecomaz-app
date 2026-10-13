@@ -2364,3 +2364,30 @@ create policy "lecture bulletins parent" on bulletins_commentaires for select us
   and exists (select 1 from ecoles ec where ec.id = bulletins_commentaires.ecole_id and bulletins_commentaires.trimestre = any(ec.bulletins_publies))
   and exists (select 1 from parents_eleves pe where pe.parent_profile_id = auth.uid() and pe.eleve_id = bulletins_commentaires.eleve_id)
 );
+
+-- =====================================================================
+-- 61. AGENDA DE L'ÉCOLE (2026-10-13)
+-- =====================================================================
+-- Vacances, compositions, réunions, fêtes, sorties : visibles par le
+-- personnel et par les parents concernés (toute l'école ou certaines
+-- classes). Une période de vacances arrête les annonces automatiques.
+create table if not exists evenements_agenda (
+  id uuid primary key default gen_random_uuid(),
+  ecole_id uuid not null references ecoles(id) on delete cascade default mon_ecole_id(),
+  titre text not null check (char_length(titre) between 2 and 150),
+  description text not null default '' check (char_length(description) <= 1000),
+  type text not null default 'autre' check (type in ('vacances','examen','reunion','fete','sortie','autre')),
+  date_debut date not null,
+  date_fin date not null,
+  classe_ids text[],                         -- null = toute l'école
+  created_at timestamptz not null default now(),
+  check (date_fin >= date_debut)
+);
+create index if not exists evenements_agenda_idx on evenements_agenda(ecole_id, date_debut);
+alter table evenements_agenda enable row level security;
+drop policy if exists "lecture evenements_agenda" on evenements_agenda;
+create policy "lecture evenements_agenda" on evenements_agenda for select using (peut_voir_publication(ecole_id, classe_ids));
+drop policy if exists "gestion evenements_agenda" on evenements_agenda;
+create policy "gestion evenements_agenda" on evenements_agenda for all
+  using (ecole_id = mon_ecole_id() and est_perso_admin())
+  with check (ecole_id = mon_ecole_id() and est_perso_admin());

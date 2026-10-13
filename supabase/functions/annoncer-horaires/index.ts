@@ -118,6 +118,10 @@ Deno.serve(async (req) => {
     for (const h of (horaires || []) as Record<string, any>[]) {
       if (!(h.jours_cours || [1, 2, 3, 4, 5]).includes(jourIso)) continue;          // pas de classe aujourd'hui
       if (h.suspendu_jusquau && h.suspendu_jusquau >= dateDuJour) continue;         // vacances
+      // Vacances inscrites à l'agenda de l'école (toute l'école) : pas d'annonces ni de rappel
+      const { data: vacances } = await supabaseAdmin.from('evenements_agenda').select('id').eq('ecole_id', h.ecole_id)
+        .eq('type', 'vacances').is('classe_ids', null).lte('date_debut', dateDuJour).gte('date_fin', dateDuJour).limit(1);
+      if (vacances && vacances.length) continue;
       const avance = Number.isFinite(h.avance_minutes) ? h.avance_minutes : 15;
       const dans = avance > 0 ? `dans ${avance} minutes` : 'maintenant';
 

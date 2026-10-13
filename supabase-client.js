@@ -540,6 +540,13 @@ async function chargerDBParent(){
   if(tableauHonneur.error) throw tableauHonneur.error;
   if(actualitesAffichage.error) throw actualitesAffichage.error;
   const ecole = rowToCamel(ecoleRow.data);
+  // Agenda : événements à venir (toute l'école ou la classe de ses enfants — RLS)
+  let agenda = [];
+  try{
+    const d = new Date(); const iso = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    const r = await sb.from('evenements_agenda').select('*').eq('ecole_id', session.ecoleId).gte('date_fin', iso).order('date_debut').limit(10);
+    agenda = rowsToCamel(r.data || []);
+  }catch(_e){}
   // Bulletins : notes des trimestres publiés par l'école (RLS : ses enfants seulement)
   let notesParent = [], appreciations = {};
   if((ecole.bulletinsPublies || []).length){
@@ -572,7 +579,7 @@ async function chargerDBParent(){
       scolariteVisibleParents: ecole.scolariteVisibleParents === true,
       bulletinsPublies: ecole.bulletinsPublies || [],
     },
-    echeancesScolarite, paiementsScolarite, notes: notesParent, bulletinsComments: appreciations,
+    echeancesScolarite, paiementsScolarite, notes: notesParent, bulletinsComments: appreciations, agenda,
     eleves: rowsToCamel(eleves.data),
     classes: rowsToCamel(classesRows.data),
     presencesSemaine,

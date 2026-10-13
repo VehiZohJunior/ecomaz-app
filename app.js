@@ -184,6 +184,7 @@ const VIEW_TITLES = {
   parametres: 'Paramètres',
   'liens-parents': 'Parents ↔ Élèves',
   'vie-ecole': 'Vie de l’école',
+  agenda: 'Agenda de l’école',
   renforcement: 'Cours de renforcement',
 };
 
@@ -219,8 +220,8 @@ const COMPTA_TABS = [
 
 /* --- Rôles / Interfaces --- */
 const ROLES = {
-  enseignant:  {label:'Enseignant(e)', icon:'👩‍🏫', desc:'Notes, présences, emploi du temps', nav:['dashboard','notes','presences-eleves','emploi-temps','programmes','vie-ecole']},
-  secretariat: {label:'Secrétariat', icon:'🗂️', desc:'Gestion administrative & scolarité', nav:['dashboard','eleves','liens-parents','renforcement','vie-ecole','notes','presences-eleves','emploi-temps','programmes','pointage-scan','enseignants','presences-enseignants','comptabilite','messagerie']},
+  enseignant:  {label:'Enseignant(e)', icon:'👩‍🏫', desc:'Notes, présences, emploi du temps', nav:['dashboard','notes','presences-eleves','emploi-temps','programmes','vie-ecole','agenda']},
+  secretariat: {label:'Secrétariat', icon:'🗂️', desc:'Gestion administrative & scolarité', nav:['dashboard','eleves','liens-parents','renforcement','vie-ecole','agenda','notes','presences-eleves','emploi-temps','programmes','pointage-scan','enseignants','presences-enseignants','comptabilite','messagerie']},
   direction:   {label:'Direction', icon:'🎩', desc:'Accès complet', nav:'all'},
   fondation:   {label:'Fondation', icon:'🏛️', desc:'Accès complet', nav:'all'},
   parent:      {label:'Parent', icon:'👪', desc:"Suivi de l'enfant", nav:[]},
@@ -795,6 +796,7 @@ function renderView(view){
     parametres: renderParametres,
     'liens-parents': renderLiensParents,
     'vie-ecole': renderVieEcole,
+    agenda: renderAgenda,
     renforcement: renderRenforcement,
   };
   // Données pas encore chargées, ou déjà effacées par une déconnexion (fin
@@ -1652,6 +1654,7 @@ function renderParentDashboard(){
       ${mesEnfants.map(renderFicheEnfant).join('')}
     </div>
     <div class="form-actions" style="justify-content:flex-start;margin:0 0 var(--sp-4);"><button type="button" class="btn secondary" onclick="ouvrirSignalerAbsence()">📝 Signaler une absence à l’avance</button></div>
+    ${renderAgendaParent()}
     ${renderInformationsPassees()}
     ${renderTableauHonneurParent()}
   </div>`;
@@ -2167,11 +2170,11 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
-  { version: '2026.10.13', nouveautes: {
+  { version: '2026.10.13-2', nouveautes: {
     commun: [],
-    parent: [ 'Nouvel onglet « Vie de l’école » : photos et vidéos des événements, J’aime, Bravo et commentaires.' ],
+    parent: [ 'Nouveau : « À venir » sur l’accueil — vacances, compositions, réunions et fêtes de l’école.', 'Nouvel onglet « Vie de l’école » : photos et vidéos des événements, J’aime, Bravo et commentaires.' ],
     portier: [],
-    personnel: [ 'Notes & Bulletins : la Direction publie un trimestre, les parents voient le bulletin de leurs enfants.', 'Enseignants : application « EcoMaZ-ENSEIGNANTS » — chacun s’inscrit avec Google, coche ses classes et ne voit que ses classes.', 'Parents : à l’inscription, ils cochent eux-mêmes leurs enfants ; vous n’avez plus qu’à approuver.', 'Paramètres → Scolarité : assistant « inscription + scolarité par classe ».', 'Paramètres → Scolarité : relances automatiques et polies des tranches impayées (3 jours avant, le jour même, 7 jours après).', 'Notifications sur le téléphone pour tout le personnel : demandes d’accès, absences signalées, objets perdus, appel non fait.', 'Appel rapide : « Tous présents », puis touchez le nom des absents ; rappel à 9h00 si l’appel n’est pas fait.', 'Paramètres → Scolarité : montants et tranches de paiement propres à chaque classe, copie vers d’autres classes, affichage aux parents au choix.', 'Direction : liste « Mise en route de l’école » sur le tableau de bord, avec ce qui reste à faire.', 'Nouveau menu « Vie de l’école » : publiez les photos et vidéos des événements pour les parents (toute l’école ou certaines classes).' ],
+    personnel: [ 'Nouveau menu « Agenda de l’école » : vacances, compositions, réunions ; les vacances arrêtent les annonces automatiquement.', 'Notes & Bulletins : la Direction publie un trimestre, les parents voient le bulletin de leurs enfants.', 'Enseignants : application « EcoMaZ-ENSEIGNANTS » — chacun s’inscrit avec Google, coche ses classes et ne voit que ses classes.', 'Parents : à l’inscription, ils cochent eux-mêmes leurs enfants ; vous n’avez plus qu’à approuver.', 'Paramètres → Scolarité : assistant « inscription + scolarité par classe ».', 'Paramètres → Scolarité : relances automatiques et polies des tranches impayées (3 jours avant, le jour même, 7 jours après).', 'Notifications sur le téléphone pour tout le personnel : demandes d’accès, absences signalées, objets perdus, appel non fait.', 'Appel rapide : « Tous présents », puis touchez le nom des absents ; rappel à 9h00 si l’appel n’est pas fait.', 'Paramètres → Scolarité : montants et tranches de paiement propres à chaque classe, copie vers d’autres classes, affichage aux parents au choix.', 'Direction : liste « Mise en route de l’école » sur le tableau de bord, avec ce qui reste à faire.', 'Nouveau menu « Vie de l’école » : publiez les photos et vidéos des événements pour les parents (toute l’école ou certaines classes).' ],
   } },
   { version: '2026.10.12-2', nouveautes: {
     commun: [],
@@ -3229,6 +3232,108 @@ async function supprimerPublication(id){
     if(error) throw error;
     DB.fil.pubs = DB.fil.pubs.filter(p => p.id !== id);
     rafraichirFil(); toast('Publication supprimée');
+  }catch(e){ alert('Erreur : ' + e.message); }
+}
+/* =====================================================================
+   AGENDA DE L'ÉCOLE (schema.sql section 61)
+   ===================================================================== */
+const TYPES_AGENDA = {
+  vacances: { lib:'Vacances / congé', ic:'🏖️' }, examen: { lib:'Composition / examen', ic:'📝' },
+  reunion: { lib:'Réunion de parents', ic:'👪' }, fete: { lib:'Fête / cérémonie', ic:'🎉' },
+  sortie: { lib:'Sortie / excursion', ic:'🚌' }, autre: { lib:'Autre', ic:'📌' },
+};
+function datesAgenda(ev){
+  return ev.dateDebut === ev.dateFin ? fmtDate(ev.dateDebut) : `du ${fmtDate(ev.dateDebut)} au ${fmtDate(ev.dateFin)}`;
+}
+function delaiAgenda(ev){
+  const aujourd = todayISO();
+  if(ev.dateDebut <= aujourd && ev.dateFin >= aujourd) return 'en cours';
+  const j = Math.round((Date.parse(ev.dateDebut + 'T12:00:00') - Date.parse(aujourd + 'T12:00:00')) / 86400000);
+  return j === 1 ? 'demain' : `dans ${j} jours`;
+}
+// Console parent : prochaines dates
+function renderAgendaParent(){
+  const evs = (DB.agenda || []).filter(e => e.dateFin >= todayISO()).slice(0, 5);
+  if(!evs.length) return '';
+  return `<section class="panel actus-panel" aria-labelledby="titreAgenda">
+    <div class="panel-head"><div><h2 id="titreAgenda">📅 À venir</h2></div></div>
+    <div class="actu-liste">${evs.map(ev => `<article class="actu-carte">
+      <div class="actu-date" aria-hidden="true"><span class="actu-jour">${new Date(ev.dateDebut + 'T12:00:00').getDate()}</span><span class="actu-mois">${new Date(ev.dateDebut + 'T12:00:00').toLocaleDateString('fr-FR', {month:'short'}).replace('.', '').toUpperCase()}</span></div>
+      <div class="actu-corps"><div class="actu-titre">${(TYPES_AGENDA[ev.type] || TYPES_AGENDA.autre).ic} ${escapeHtml(ev.titre)}</div>
+        <div class="actu-meta">${datesAgenda(ev)} · <strong>${delaiAgenda(ev)}</strong>${ev.description ? ' · ' + escapeHtml(ev.description) : ''}</div></div>
+    </article>`).join('')}</div>
+  </section>`;
+}
+// Application école : page Agenda
+function renderAgenda(){
+  if(DB.agenda === undefined){
+    DB.agenda = null;
+    sb.from('evenements_agenda').select('*').eq('ecole_id', session.ecoleId).order('date_debut')
+      .then(({ data }) => { DB.agenda = rowsToCamel(data || []); if(ui.currentView === 'agenda') renderView('agenda'); });
+  }
+  const gestion = ['secretariat','direction','fondation'].includes(ui.role);
+  const tous = ui.filters.agendaPasses;
+  const liste = (DB.agenda || []).filter(e => tous || e.dateFin >= todayISO());
+  return `<div class="view active">
+    ${gestion ? `<div class="panel">
+      <div class="panel-head"><div><h2>📅 Ajouter une date</h2><div class="sub">Visible par le personnel et par les parents concernés. Les vacances arrêtent automatiquement les annonces et le rappel d’appel.</div></div></div>
+      <form onsubmit="return ajouterEvenementAgenda(event)">
+        <div class="form-grid">
+          <div class="field"><label>Titre</label><input name="titre" required minlength="2" maxlength="150" placeholder="Ex : Compositions du 1er trimestre"></div>
+          <div class="field"><label>Type</label><select name="type">${Object.entries(TYPES_AGENDA).map(([k, v]) => `<option value="${k}">${v.ic} ${v.lib}</option>`).join('')}</select></div>
+          <div class="field"><label>Du</label><input type="date" name="dateDebut" required value="${todayISO()}"></div>
+          <div class="field"><label>Au (inclus)</label><input type="date" name="dateFin" required value="${todayISO()}"></div>
+          <div class="field span2"><label>Précision (facultatif)</label><input name="description" maxlength="1000" placeholder="Ex : apporter la tenue de sport"></div>
+          <div class="field span2"><label>Pour qui ?</label>
+            <select name="cible" onchange="document.getElementById('choixClassesAgenda').style.display = this.value === 'classes' ? 'flex' : 'none'"><option value="tous">Toute l’école</option><option value="classes">Certaines classes</option></select>
+            <div id="choixClassesAgenda" style="display:none;flex-wrap:wrap;gap:10px;margin-top:8px;">${DB.classes.map(c => `<label style="display:flex;align-items:center;gap:6px;"><input type="checkbox" name="classe" value="${c.id}"> ${escapeHtml(c.nom)}</label>`).join('')}</div></div>
+        </div>
+        <label style="display:flex;align-items:center;gap:8px;margin-top:8px;"><input type="checkbox" name="prevenir" checked> Prévenir les parents concernés par une notification</label>
+        <div class="form-actions"><button class="btn" type="submit">Ajouter à l’agenda</button></div>
+      </form>
+    </div>` : ''}
+    <div class="panel">
+      <div class="panel-head"><div><h2>${tous ? 'Toutes les dates' : 'Dates à venir'}</h2></div>
+        <button class="btn secondary sm" onclick="ui.filters.agendaPasses=${!tous}; renderView('agenda')">${tous ? 'À venir seulement' : 'Voir aussi les dates passées'}</button></div>
+      ${DB.agenda === null ? '<div class="hint">Chargement…</div>' : !liste.length ? '<div class="empty-state"><div class="em-ic">📅</div>Aucune date pour l’instant.</div>' : `<div class="table-wrap"><table>
+        <thead><tr><th>Date</th><th>Événement</th><th>Pour</th><th></th></tr></thead>
+        <tbody>${liste.map(ev => `<tr>
+          <td style="white-space:nowrap;">${datesAgenda(ev)}<br><span class="hint">${ev.dateFin >= todayISO() ? delaiAgenda(ev) : 'passé'}</span></td>
+          <td>${(TYPES_AGENDA[ev.type] || TYPES_AGENDA.autre).ic} <strong>${escapeHtml(ev.titre)}</strong>${ev.description ? `<br><span class="hint">${escapeHtml(ev.description)}</span>` : ''}</td>
+          <td>${ev.classeIds && ev.classeIds.length ? ev.classeIds.map(classeName).join(', ') : 'Toute l’école'}</td>
+          <td>${gestion ? `<button class="icon-btn danger" title="Supprimer" onclick="supprimerEvenementAgenda('${ev.id}')">🗑️</button>` : ''}</td>
+        </tr>`).join('')}</tbody></table></div>`}
+    </div>
+  </div>`;
+}
+async function ajouterEvenementAgenda(ev){
+  ev.preventDefault();
+  const fd = new FormData(ev.target);
+  if(fd.get('dateFin') < fd.get('dateDebut')) return alert('La date de fin doit être après la date de début.'), false;
+  const classeIds = fd.get('cible') === 'classes' ? fd.getAll('classe') : null;
+  if(classeIds && !classeIds.length) return alert('Cochez au moins une classe.'), false;
+  const ligne = { titre: fd.get('titre').trim(), type: fd.get('type'), date_debut: fd.get('dateDebut'), date_fin: fd.get('dateFin'),
+    description: (fd.get('description') || '').trim(), classe_ids: classeIds };
+  try{
+    const { data, error } = await sb.from('evenements_agenda').insert(ligne).select().single();
+    if(error) throw error;
+    DB.agenda = (DB.agenda || []).concat(rowToCamel(data)).sort((a, b) => a.dateDebut.localeCompare(b.dateDebut));
+    if(fd.get('prevenir') === 'on'){
+      const eleves = DB.eleves.filter(e => e.statut === 'Actif' && (!classeIds || classeIds.includes(e.classeId))).map(e => e.id);
+      const evt = rowToCamel(data);
+      notifierParentsPush(eleves, `${(TYPES_AGENDA[evt.type] || TYPES_AGENDA.autre).ic} ${evt.titre} — ${datesAgenda(evt)}`);
+    }
+    toast('Ajouté à l’agenda'); renderView('agenda');
+  }catch(e){ alert('Erreur : ' + e.message); }
+  return false;
+}
+async function supprimerEvenementAgenda(id){
+  if(!confirm('Supprimer cette date de l’agenda ?')) return;
+  try{
+    const { error } = await sb.from('evenements_agenda').delete().eq('id', id);
+    if(error) throw error;
+    DB.agenda = (DB.agenda || []).filter(e => e.id !== id);
+    toast('Date supprimée'); renderView('agenda');
   }catch(e){ alert('Erreur : ' + e.message); }
 }
 /* ---------------------------------------------------------------------

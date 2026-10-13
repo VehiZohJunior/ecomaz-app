@@ -221,7 +221,7 @@ async function requete(accessToken, chemin, options = {}){
   verifier('Sans connexion, aucune note lisible', !notesAnon.ok || (Array.isArray(notesAnon.data) && notesAnon.data.length === 0));
 
   section('8. Visiteur non connecté — ne lit que les affichages publics prévus');
-  for(const table of ['eleves','enseignants_lecture','profiles','paiements_scolarite','messages','parents_eleves','presences_eleves','eleves_portier_lecture','objets_perdus','push_abonnements','absences_signalees']){
+  for(const table of ['eleves','enseignants_lecture','profiles','paiements_scolarite','messages','parents_eleves','presences_eleves','eleves_portier_lecture','objets_perdus','push_abonnements','absences_signalees','evenements_agenda']){
     const r = await requete(ANON_KEY, `/rest/v1/${table}?select=*&limit=1`);
     verifier(`Sans connexion, rien à lire dans ${table}`, !r.ok || (Array.isArray(r.data) && r.data.length === 0), `reçu ${JSON.stringify(r.data)?.slice(0,80)}`);
   }
