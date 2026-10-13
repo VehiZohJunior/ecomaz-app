@@ -2231,7 +2231,7 @@ const VERSIONS = [
     commun: [],
     parent: [ 'Nouveau : « Écrire à l’école » dans vos messages — l’école vous répond ici.', 'Nouveau : « À venir » sur l’accueil — vacances, compositions, réunions et fêtes de l’école.', 'Nouvel onglet « Vie de l’école » : photos et vidéos des événements, J’aime, Bravo et commentaires.' ],
     portier: [],
-    personnel: [ 'Messagerie : les parents peuvent vous écrire ; bouton « Répondre » et notification à chaque message.', 'Nouveau menu « Agenda de l’école » : vacances, compositions, réunions ; les vacances arrêtent les annonces automatiquement.', 'Notes & Bulletins : la Direction publie un trimestre, les parents voient le bulletin de leurs enfants.', 'Enseignants : application « EcoMaZ-ENSEIGNANTS » — chacun s’inscrit avec Google, coche ses classes et ne voit que ses classes.', 'Parents : à l’inscription, ils cochent eux-mêmes leurs enfants ; vous n’avez plus qu’à approuver.', 'Paramètres → Scolarité : assistant « inscription + scolarité par classe ».', 'Paramètres → Scolarité : relances automatiques et polies des tranches impayées (3 jours avant, le jour même, 7 jours après).', 'Notifications sur le téléphone pour tout le personnel : demandes d’accès, absences signalées, objets perdus, appel non fait.', 'Appel rapide : « Tous présents », puis touchez le nom des absents ; rappel à 9h00 si l’appel n’est pas fait.', 'Paramètres → Scolarité : montants et tranches de paiement propres à chaque classe, copie vers d’autres classes, affichage aux parents au choix.', 'Direction : liste « Mise en route de l’école » sur le tableau de bord, avec ce qui reste à faire.', 'Nouveau menu « Vie de l’école » : publiez les photos et vidéos des événements pour les parents (toute l’école ou certaines classes).' ],
+    personnel: [ 'Exports Excel : liste des élèves (une feuille par classe) et état de la scolarité avec les impayés.', 'Messagerie : les parents peuvent vous écrire ; bouton « Répondre » et notification à chaque message.', 'Nouveau menu « Agenda de l’école » : vacances, compositions, réunions ; les vacances arrêtent les annonces automatiquement.', 'Notes & Bulletins : la Direction publie un trimestre, les parents voient le bulletin de leurs enfants.', 'Enseignants : application « EcoMaZ-ENSEIGNANTS » — chacun s’inscrit avec Google, coche ses classes et ne voit que ses classes.', 'Parents : à l’inscription, ils cochent eux-mêmes leurs enfants ; vous n’avez plus qu’à approuver.', 'Paramètres → Scolarité : assistant « inscription + scolarité par classe ».', 'Paramètres → Scolarité : relances automatiques et polies des tranches impayées (3 jours avant, le jour même, 7 jours après).', 'Notifications sur le téléphone pour tout le personnel : demandes d’accès, absences signalées, objets perdus, appel non fait.', 'Appel rapide : « Tous présents », puis touchez le nom des absents ; rappel à 9h00 si l’appel n’est pas fait.', 'Paramètres → Scolarité : montants et tranches de paiement propres à chaque classe, copie vers d’autres classes, affichage aux parents au choix.', 'Direction : liste « Mise en route de l’école » sur le tableau de bord, avec ce qui reste à faire.', 'Nouveau menu « Vie de l’école » : publiez les photos et vidéos des événements pour les parents (toute l’école ou certaines classes).' ],
   } },
   { version: '2026.10.12-2', nouveautes: {
     commun: [],
@@ -3463,6 +3463,51 @@ function ouvrirImportEleves(){
     </div>
     <div id="importApercu"></div>`);
 }
+// --- Exports Excel (gratuits, produits sur l'appareil) ---
+function nomFichierExport(sujet){ return `${simplifierTexte(DB.meta?.nomEcole || 'ecole').replace(/ /g, '-')}-${sujet}-${todayISO()}.xlsx`; }
+async function ecrireClasseurExcel(feuilles, nomFichier){
+  const X = await chargerXLSX();
+  const classeur = X.utils.book_new();
+  for(const [nom, lignes] of feuilles){
+    const f = X.utils.aoa_to_sheet(lignes);
+    f['!cols'] = (lignes[0] || []).map((_, i) => ({ wch: Math.min(40, Math.max(10, ...lignes.map(l => String(l[i] ?? '').length + 2))) }));
+    X.utils.book_append_sheet(classeur, f, nom.slice(0, 31));
+  }
+  X.writeFile(classeur, nomFichier);
+}
+async function exporterElevesExcel(){
+  try{
+    const relies = new Set((DB.parentsEleves || []).map(pe => pe.eleveId));
+    const eleves = DB.eleves.slice().sort((a, b) => classeName(a.classeId).localeCompare(classeName(b.classeId)) || a.nom.localeCompare(b.nom));
+    const lignes = [['Matricule','Nom','Prénoms','Sexe','Date de naissance','Classe','Statut','Date d’inscription','Parent / tuteur','Téléphone du parent','Adresse','Renforcement','Parent relié dans l’application']]
+      .concat(eleves.map(e => [e.matricule || '', e.nom, e.prenom, e.sexe || '', e.dateNaissance ? fmtDate(e.dateNaissance) : '', classeName(e.classeId), e.statut || '',
+        e.dateInscription ? fmtDate(e.dateInscription) : '', e.parentNom || '', e.parentTel || '', e.parentAdresse || '', e.renforcement ? 'Oui' : 'Non', relies.has(e.id) ? 'Oui' : 'Non']));
+    // Une feuille par classe en plus de la liste complète
+    const parClasse = DB.classes.map(c => [c.nom, [lignes[0]].concat(lignes.slice(1).filter(l => l[5] === c.nom))]).filter(([, l]) => l.length > 1);
+    await ecrireClasseurExcel([['Tous les élèves', lignes], ...parClasse], nomFichierExport('eleves'));
+    toast(`${eleves.length} élève(s) exporté(s)`);
+  }catch(e){ alert('Erreur : ' + e.message); }
+}
+async function exporterScolariteExcel(){
+  try{
+    const lignes = [['Classe','Matricule','Élève','Parent','Téléphone','Scolarité due','Payé','Reste à payer','Prochaine tranche','Date limite','Statut']];
+    let totDu = 0, totPaye = 0;
+    DB.classes.forEach(c => {
+      DB.eleves.filter(e => e.classeId === c.id && e.statut === 'Actif').sort((a, b) => a.nom.localeCompare(b.nom)).forEach(e => {
+        const g = scolariteEleveParEcheance(e.id), info = scolariteEleveInfo(e.id);
+        const du = g.total || info.du, paye = g.total ? g.totalPaye : info.paye, reste = Math.max(0, du - paye);
+        const proch = g.detail.find(d => d.statut !== 'paye'), ech = proch ? echeancesDeClasse(c.id).find(x => x.label === proch.label) : null;
+        totDu += du; totPaye += paye;
+        lignes.push([c.nom, e.matricule || '', eleveFullName(e), e.parentNom || '', e.parentTel || '', du, paye, reste, proch ? proch.label : '', ech?.dateEcheance ? fmtDate(ech.dateEcheance) : '',
+          reste <= 0 && du > 0 ? 'Soldé' : paye > 0 ? 'Partiel' : 'Impayé']);
+      });
+    });
+    lignes.push([], ['TOTAL', '', '', '', '', totDu, totPaye, Math.max(0, totDu - totPaye)]);
+    const impayes = [lignes[0]].concat(lignes.slice(1).filter(l => l.length > 10 && l[7] > 0));
+    await ecrireClasseurExcel([['État de la scolarité', lignes], ['Impayés seulement', impayes]], nomFichierExport('scolarite'));
+    toast('Export de la scolarité prêt');
+  }catch(e){ alert('Erreur : ' + e.message); }
+}
 async function telechargerModeleImport(){
   try{
     const X = await chargerXLSX();
@@ -3706,6 +3751,7 @@ function renderEleveListe(){
       <div class="panel-head">
         <div><h2>Liste des élèves</h2><div class="sub">${DB.eleves.length} élève(s) au total</div></div>
         <button class="btn secondary" onclick="ouvrirImportEleves()">⬆️ Importer depuis Excel</button>
+        <button class="btn secondary" onclick="exporterElevesExcel()">⬇️ Exporter vers Excel</button>
         <button class="btn" onclick="openEleveForm()">+ Nouvel élève</button>
       </div>
       <div class="filters">
@@ -6144,6 +6190,7 @@ function renderComptaScolarite(){
             ${DB.classes.map(c=>`<option value="${c.id}" ${classeId===c.id?'selected':''}>${c.nom}</option>`).join('')}
           </select>
           <button class="btn secondary" onclick="renderView('parametres')" title="Gérer les échéances (Frais d'inscription, versements...) depuis Paramètres">🎓 Échéances</button>
+          <button class="btn secondary" onclick="exporterScolariteExcel()">⬇️ Excel (toutes les classes)</button>
           ${grilleActive ? '' : `<button class="btn secondary" onclick="openFraisScolariteForm()">⚙️ Configurer les frais</button>`}
         </div>
       </div>
