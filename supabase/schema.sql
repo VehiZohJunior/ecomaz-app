@@ -3000,3 +3000,43 @@ grant execute on function est_admin(), est_perso_admin(), est_developpeur(), est
   mon_ecole_id(), mon_enseignant_id(), mes_classes() to authenticated;
 revoke execute on function developpeur_a_acces(uuid) from anon, public;
 grant execute on function developpeur_a_acces(uuid) to authenticated;
+
+-- =====================================================================
+-- 78. CAHIER D'APPEL ET CAMPS DE BASE (2026-10-13)
+-- =====================================================================
+-- Demande de Vehi Zoh Junior : deux modules de l'application de l'école
+-- (jamais les consoles parent et portier) :
+-- 1. Cahier d'appel : registre mensuel des présences (presences_eleves) ;
+--    un seul relevé par élève et par jour (index unique ci-dessous).
+-- 2. Camps de base : évaluations continues (devoirs, exercices de classe,
+--    exercices de maison, interrogations), autant que voulu, notées sur 10,
+--    20… ; leur moyenne (« moyenne de classe ») entre dans le bulletin avec
+--    la composition : (moyenne de classe + 2 × composition) / 3.
+create unique index if not exists presences_eleves_un_par_jour on presences_eleves(eleve_id, date);
+
+create table if not exists evaluations (
+  id uuid primary key default gen_random_uuid(),
+  ecole_id uuid not null references ecoles(id) on delete cascade default mon_ecole_id(),
+  classe_id text not null references classes(id) on delete cascade,
+  matiere text not null check (char_length(matiere) between 1 and 80),
+  trimestre text not null check (trimestre in ('Trimestre 1','Trimestre 2','Trimestre 3')),
+  type text not null check (type in ('Devoir','Exercice de classe','Exercice de maison','Interrogation')),
+  titre text not null default '' check (char_length(titre) <= 120),
+  date date not null default current_date,
+  note_sur numeric not null default 20 check (note_sur in (5, 10, 20, 40, 50, 100)),
+  created_by uuid references auth.users(id) on delete set null default auth.uid(),
+  created_at timestamptz not null default now()
+);
+create index if not exists evaluations_idx on evaluations(ecole_id, classe_id, trimestre);
+alter table evaluations enable row level security;
+drop policy if exists "acces evaluations" on evaluations;
+create policy "acces evaluations" on evaluations for all
+  using (ecole_id = mon_ecole_id() and (est_perso_admin() or (mon_role() = 'enseignant' and classe_id = any(mes_classes()))))
+  with check (ecole_id = mon_ecole_id() and (est_perso_admin() or (mon_role() = 'enseignant' and classe_id = any(mes_classes())))
+    and exists (select 1 from classes c where c.id = evaluations.classe_id and c.ecole_id = evaluations.ecole_id));
+
+alter table notes add column if not exists evaluation_id uuid references evaluations(id) on delete cascade;
+create index if not exists notes_evaluation_idx on notes(evaluation_id);
+create unique index if not exists notes_une_par_evaluation on notes(evaluation_id, eleve_id) where evaluation_id is not null;
+alter table notes drop constraint if exists notes_type_valide;
+alter table notes add constraint notes_type_valide check (type is null or type in ('Devoir','Composition','Exercice de classe','Exercice de maison','Interrogation'));

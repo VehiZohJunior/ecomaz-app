@@ -301,7 +301,7 @@ async function dbInsert(table, objCamel){
     if(error) throw error;
     return rowToCamel(data);
   }catch(e){
-    if(!erreurReseau(e)) throw e;
+    if(!erreurReseau(e)) throw erreurLisible(e);
     await mettreEnFileAttente('insert', table, row);
     return rowToCamel(row);
   }

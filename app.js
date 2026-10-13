@@ -187,6 +187,8 @@ const VIEW_TITLES = {
   agenda: 'Agenda de l’école',
   devoirs: 'Cahier de textes',
   cantine: 'Menu de la cantine',
+  'cahier-appel': 'Cahier d’appel',
+  'camps-de-base': 'Camps de base — devoirs et exercices',
   renforcement: 'Cours de renforcement',
 };
 
@@ -222,8 +224,8 @@ const COMPTA_TABS = [
 
 /* --- Rôles / Interfaces --- */
 const ROLES = {
-  enseignant:  {label:'Enseignant(e)', icon:'👩‍🏫', desc:'Notes, présences, emploi du temps', nav:['dashboard','notes','presences-eleves','devoirs','emploi-temps','programmes','vie-ecole','agenda']},
-  secretariat: {label:'Secrétariat', icon:'🗂️', desc:'Gestion administrative & scolarité', nav:['dashboard','eleves','liens-parents','renforcement','vie-ecole','agenda','devoirs','cantine','notes','presences-eleves','emploi-temps','programmes','pointage-scan','enseignants','presences-enseignants','comptabilite','messagerie']},
+  enseignant:  {label:'Enseignant(e)', icon:'👩‍🏫', desc:'Notes, présences, emploi du temps', nav:['dashboard','cahier-appel','camps-de-base','notes','presences-eleves','devoirs','emploi-temps','programmes','vie-ecole','agenda']},
+  secretariat: {label:'Secrétariat', icon:'🗂️', desc:'Gestion administrative & scolarité', nav:['dashboard','eleves','liens-parents','renforcement','vie-ecole','agenda','devoirs','cantine','cahier-appel','camps-de-base','notes','presences-eleves','emploi-temps','programmes','pointage-scan','enseignants','presences-enseignants','comptabilite','messagerie']},
   direction:   {label:'Direction', icon:'🎩', desc:'Accès complet', nav:'all'},
   fondation:   {label:'Fondation', icon:'🏛️', desc:'Accès complet', nav:'all'},
   parent:      {label:'Parent', icon:'👪', desc:"Suivi de l'enfant", nav:[]},
@@ -801,6 +803,8 @@ function renderView(view){
     agenda: renderAgenda,
     devoirs: renderDevoirs,
     cantine: renderCantine,
+    'cahier-appel': renderCahierAppel,
+    'camps-de-base': renderCampsDeBase,
     renforcement: renderRenforcement,
   };
   // Données pas encore chargées, ou déjà effacées par une déconnexion (fin
@@ -1613,12 +1617,10 @@ function calculBulletin(eleveId, trimestre){
   const matieres = MATIERES_BY_CYCLE[classeCycle(e?.classeId)] || [];
   let somme = 0, nb = 0;
   const lignes = matieres.map(mat => {
-    const notes = (DB.notes || []).filter(n => n.eleveId === eleveId && n.matiere === mat && n.trimestre === trimestre);
-    const devoir = notes.find(n => n.type === 'Devoir'), compo = notes.find(n => n.type === 'Composition');
-    let moy = null;
-    if(devoir && compo) moy = (Number(devoir.note) + Number(compo.note) * 2) / 3; else if(devoir) moy = Number(devoir.note); else if(compo) moy = Number(compo.note);
-    if(moy !== null){ somme += moy; nb++; }
-    return { mat, devoir: devoir?.note, compo: compo?.note, moy };
+    const m = moyenneMatiere(eleveId, mat, trimestre);
+    if(m.moy !== null){ somme += m.moy; nb++; }
+    const arr = v => v === null ? null : Math.round(v * 100) / 100;
+    return { mat, devoir: arr(m.classe), compo: arr(m.compo), moy: m.moy };
   });
   return { lignes, moyenne: nb ? somme / nb : null };
 }
@@ -1631,7 +1633,7 @@ function renderBulletinEnfant(e){
   const app = (DB.bulletinsComments || {})[`${e.id}_${t}`];
   return `<details class="enfant-bulletin"><summary>📒 Bulletin — ${escapeHtml(t)}${b.moyenne !== null ? ` · moyenne ${b.moyenne.toFixed(2)}/20` : ''}</summary>
     ${publies.length > 1 ? `<div class="filters" style="margin:8px 0;"><select onchange="ui.filters.bulletinParent = Object.assign(ui.filters.bulletinParent || {}, { '${e.id}': this.value }); $('#viewContainer').innerHTML = renderParentDashboard();">${publies.map(x => `<option ${x===t?'selected':''}>${escapeHtml(x)}</option>`).join('')}</select></div>` : ''}
-    <table class="eb-table"><thead><tr><th>Matière</th><th>Devoir</th><th>Compo.</th><th>Moy.</th></tr></thead>
+    <table class="eb-table"><thead><tr><th>Matière</th><th>Classe</th><th>Compo.</th><th>Moy.</th></tr></thead>
       <tbody>${b.lignes.filter(l => l.moy !== null).map(l => `<tr><td>${escapeHtml(l.mat)}</td><td>${l.devoir ?? '—'}</td><td>${l.compo ?? '—'}</td><td><strong>${l.moy.toFixed(1)}</strong></td></tr>`).join('')}</tbody></table>
     ${b.moyenne !== null ? `<div class="eb-moyenne">Moyenne générale : <strong>${b.moyenne.toFixed(2)} / 20</strong> — ${escapeHtml(mentionFromAvg(b.moyenne))}</div>` : ''}
     ${app ? `<div class="eb-appreciation"><strong>Appréciation :</strong> ${escapeHtml(app)}</div>` : ''}
@@ -1653,7 +1655,7 @@ function ouvrirBulletinImprimable(eleveId, trimestre){
       <div class="recu-row"><span>Élève</span><strong>${escapeHtml(eleveFullName(e))}</strong></div>
       <div class="recu-row"><span>Classe</span><strong>${escapeHtml(classeName(e.classeId))}</strong></div>
       <div class="recu-row"><span>Année scolaire</span><strong>${escapeHtml(m.anneeScolaire || '')}</strong></div>
-      <table class="eb-table" style="margin-top:12px;"><thead><tr><th>Matière</th><th>Devoir</th><th>Compo.</th><th>Moy.</th></tr></thead>
+      <table class="eb-table" style="margin-top:12px;"><thead><tr><th>Matière</th><th>Classe</th><th>Compo.</th><th>Moy.</th></tr></thead>
         <tbody>${b.lignes.filter(l => l.moy !== null).map(l => `<tr><td>${escapeHtml(l.mat)}</td><td>${l.devoir ?? '—'}</td><td>${l.compo ?? '—'}</td><td><strong>${l.moy.toFixed(1)}</strong></td></tr>`).join('')}</tbody></table>
       ${b.moyenne !== null ? `<div class="eb-moyenne" style="margin-top:10px;">Moyenne générale : <strong>${b.moyenne.toFixed(2)} / 20</strong> — ${escapeHtml(mentionFromAvg(b.moyenne))}</div>` : ''}
       ${app ? `<div class="eb-appreciation"><strong>Appréciation :</strong> ${escapeHtml(app)}</div>` : ''}
@@ -2320,6 +2322,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.10.13-26', nouveautes: {
+    commun: [],
+    parent: [ 'Bulletin : la colonne « Classe » regroupe maintenant tous les devoirs et exercices de l’enfant.' ],
+    portier: [],
+    personnel: [ 'Nouveau module « Cahier d’appel » : registre du mois (élèves × jours), présent / absent / retard en un toucher, totaux, impression et Excel.', 'Nouveau module « Camps de base » : autant de devoirs, exercices de classe, exercices de maison et interrogations que voulu, notés sur 10, 20… ; leur moyenne entre dans le bulletin avec la composition.' ],
+  } },
   { version: '2026.10.14-2', nouveautes: {
     commun: [],
     parent: [],
@@ -3680,6 +3688,233 @@ async function statutDemandeDocument(id, statut){
     toast(statut === 'pret' ? 'Parent prévenu : document prêt' : statut === 'remis' ? 'Document remis' : 'Parent prévenu');
     renderView('eleves');
   }catch(err){ alert('Erreur : ' + err.message); }
+}
+/* =====================================================================
+   NOTES : CAMPS DE BASE + COMPOSITION → BULLETIN (schema.sql section 78)
+   Moyenne de classe = moyenne (ramenée sur 20) de toutes les notes de
+   « Camps de base » (devoirs, exercices de classe, exercices de maison,
+   interrogations) ; moyenne de la matière = (classe + 2 × composition) / 3.
+   ===================================================================== */
+const TYPES_BASE = ['Devoir','Exercice de classe','Exercice de maison','Interrogation'];
+const ICONES_EVAL = { 'Devoir':'📝', 'Exercice de classe':'✏️', 'Exercice de maison':'🏠', 'Interrogation':'❓' };
+function sur20(n){ return Number(n.note) * 20 / (Number(n.noteSur) || 20); }
+function moyenneMatiere(eleveId, matiere, trimestre){
+  const notes = (DB.notes || []).filter(n => n.eleveId === eleveId && n.matiere === matiere && n.trimestre === trimestre && n.note != null);
+  const base = notes.filter(n => TYPES_BASE.includes(n.type)), compos = notes.filter(n => n.type === 'Composition');
+  const moyClasse = base.length ? base.reduce((s, n) => s + sur20(n), 0) / base.length : null;
+  const compo = compos.length ? compos.reduce((s, n) => s + sur20(n), 0) / compos.length : null;
+  const moy = moyClasse !== null && compo !== null ? (moyClasse + 2 * compo) / 3 : (moyClasse ?? compo);
+  return { classe: moyClasse, nbClasse: base.length, compo, moy };
+}
+
+/* ---------- 🏕️ CAMPS DE BASE ---------- */
+function renderCampsDeBase(){
+  const mesClasses = classesVisibles();
+  if(!mesClasses.length) return `<div class="view active"><div class="panel"><div class="empty-state"><div class="em-ic">🏕️</div>Aucune classe : activez un niveau dans Paramètres, ou faites valider vos classes par la direction.</div></div></div>`;
+  const f = ui.filters.camps || { classeId: mesClasses[0].id, matiere: '', trimestre: trimestreCourant() };
+  if(!mesClasses.some(c => c.id === f.classeId)) f.classeId = mesClasses[0].id;
+  const matieres = MATIERES_BY_CYCLE[classeCycle(f.classeId)] || [];
+  if(!matieres.includes(f.matiere)) f.matiere = matieres[0] || '';
+  ui.filters.camps = f;
+  if(DB.evaluations === undefined){
+    DB.evaluations = null;
+    sb.from('evaluations').select('*').eq('ecole_id', session.ecoleId).order('date')
+      .then(({ data }) => { DB.evaluations = rowsToCamel(data || []); if(ui.currentView === 'camps-de-base') renderView('camps-de-base'); });
+  }
+  const evals = (DB.evaluations || []).filter(e => e.classeId === f.classeId && e.matiere === f.matiere && e.trimestre === f.trimestre)
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const eleves = DB.eleves.filter(e => e.classeId === f.classeId && e.statut === 'Actif').sort((a, b) => eleveFullName(a).localeCompare(eleveFullName(b)));
+  const noteDe = (ev, el) => (DB.notes || []).find(n => n.evaluationId === ev.id && n.eleveId === el.id);
+  const ouverte = evals.find(e => e.id === ui.filters.campsEval);
+  const sel = (nom, opts, val) => `<select onchange="ui.filters.camps.${nom}=this.value; ui.filters.campsEval=null; renderView('camps-de-base')">${opts.map(o => `<option value="${escapeHtml(o[0])}" ${o[0] === val ? 'selected' : ''}>${escapeHtml(o[1])}</option>`).join('')}</select>`;
+  return `<div class="view active">
+    <div class="section-note">🏕️ <strong>Camps de base</strong> : notez ici tous les devoirs, exercices de classe, exercices de maison et interrogations, autant que vous voulez. Leur moyenne forme la <strong>moyenne de classe</strong> du bulletin ; avec la composition (menu Notes & Bulletins) : moyenne de la matière = (classe + 2 × composition) ÷ 3.</div>
+    <div class="panel">
+      <div class="filters">
+        ${sel('classeId', mesClasses.map(c => [c.id, c.nom]), f.classeId)}
+        ${sel('matiere', matieres.map(m => [m, m]), f.matiere)}
+        ${sel('trimestre', TRIMESTRES.map(t => [t, t]), f.trimestre)}
+      </div>
+      ${DB.evaluations === null ? '<div class="hint">Chargement…</div>' : ouverte ? renderSaisieEvaluation(ouverte, eleves, noteDe) : `
+      <div class="panel-head" style="margin-top:8px;"><div><h2>Évaluations — ${escapeHtml(f.matiere)}</h2><div class="sub">${evals.length} évaluation(s) · ${eleves.length} élève(s)</div></div>
+        <button class="btn" onclick="ouvrirNouvelleEvaluation()">+ Nouvelle évaluation</button></div>
+      ${!evals.length ? '<div class="empty-state"><div class="em-ic">🏕️</div>Aucune évaluation pour cette matière et ce trimestre. Cliquez sur « + Nouvelle évaluation ».</div>' : `
+      <div class="table-wrap"><table class="camps-table">
+        <thead><tr><th>Élève</th>${evals.map(ev => `<th class="camps-col" title="${escapeHtml(ev.titre || ev.type)}"><button class="lien-btn" onclick="ui.filters.campsEval='${ev.id}'; renderView('camps-de-base')">${ICONES_EVAL[ev.type] || ''} ${fmtDate(ev.date).slice(0, 5)}<br><span class="hint">/${Number(ev.noteSur)}</span></button></th>`).join('')}<th>Moy. classe /20</th></tr></thead>
+        <tbody>${eleves.map(el => { const m = moyenneMatiere(el.id, f.matiere, f.trimestre); return `<tr>
+          <td>${escapeHtml(eleveFullName(el))}</td>
+          ${evals.map(ev => { const n = noteDe(ev, el); return `<td class="camps-col">${n && n.note != null ? Number(n.note) : '<span class="hint">—</span>'}</td>`; }).join('')}
+          <td><strong class="${m.classe !== null ? moyenneClass(m.classe) : ''}">${m.classe !== null ? m.classe.toFixed(2) : '—'}</strong></td></tr>`; }).join('')}</tbody>
+        <tfoot><tr><td><strong>Moyenne de la classe</strong></td>${evals.map(ev => { const ns = eleves.map(el => noteDe(ev, el)).filter(n => n && n.note != null); return `<td class="camps-col">${ns.length ? (ns.reduce((s, n) => s + Number(n.note), 0) / ns.length).toFixed(1) : '—'}</td>`; }).join('')}<td></td></tr></tfoot>
+      </table></div>
+      <div class="hint" style="margin-top:8px;">Touchez la date d’une évaluation pour saisir ou corriger ses notes.</div>`}`}
+    </div>
+  </div>`;
+}
+function trimestreCourant(){
+  const m = new Date().getMonth() + 1; // septembre-décembre : T1 ; janvier-mars : T2 ; avril-juillet : T3
+  return m >= 8 ? 'Trimestre 1' : m <= 3 ? 'Trimestre 2' : 'Trimestre 3';
+}
+function renderSaisieEvaluation(ev, eleves, noteDe){
+  return `<div class="panel-head" style="margin-top:8px;"><div><h2>${ICONES_EVAL[ev.type] || ''} ${escapeHtml(ev.type)}${ev.titre ? ' — ' + escapeHtml(ev.titre) : ''}</h2><div class="sub">${fmtDate(ev.date)} · noté sur ${Number(ev.noteSur)} · ${escapeHtml(ev.matiere)} · ${escapeHtml(ev.trimestre)}</div></div>
+      <button class="btn secondary sm" onclick="ui.filters.campsEval=null; renderView('camps-de-base')">← Retour au tableau</button></div>
+    <form onsubmit="return enregistrerNotesEvaluation(event, '${ev.id}')">
+      <div class="table-wrap"><table>
+        <thead><tr><th>Élève</th><th>Note / ${Number(ev.noteSur)}</th></tr></thead>
+        <tbody>${eleves.map((el, i) => { const n = noteDe(ev, el); return `<tr><td>${escapeHtml(eleveFullName(el))}</td>
+          <td><input type="number" inputmode="decimal" name="n_${el.id}" min="0" max="${Number(ev.noteSur)}" step="0.25" value="${n && n.note != null ? Number(n.note) : ''}" style="width:90px;" onkeydown="if(event.key==='Enter'){ event.preventDefault(); const s=document.querySelectorAll('[name^=n_]')[${i + 1}]; if(s) s.focus(); }" aria-label="Note de ${escapeHtml(eleveFullName(el))}"></td></tr>`; }).join('')}</tbody>
+      </table></div>
+      <div class="hint">Laissez vide pour un élève absent ou non noté (il ne compte pas dans sa moyenne).</div>
+      <div class="form-actions">
+        <button type="button" class="btn danger" onclick="supprimerEvaluation('${ev.id}')">Supprimer l’évaluation</button>
+        <button class="btn" type="submit">Enregistrer les notes</button></div>
+    </form>`;
+}
+function ouvrirNouvelleEvaluation(){
+  const f = ui.filters.camps;
+  openModal('🏕️ Nouvelle évaluation', `
+    <form onsubmit="return creerEvaluation(event)">
+      <p class="hint" style="margin-top:0;">${escapeHtml(classeName(f.classeId))} · ${escapeHtml(f.matiere)} · ${escapeHtml(f.trimestre)}</p>
+      <div class="form-grid">
+        <div class="field"><label>Type</label><select name="type">${TYPES_BASE.map(t => `<option value="${t}">${ICONES_EVAL[t]} ${t}</option>`).join('')}</select></div>
+        <div class="field"><label>Date</label><input type="date" name="date" required value="${todayISO()}" max="${todayISO()}"></div>
+        <div class="field"><label>Noté sur</label><select name="noteSur">${[20, 10, 5, 40, 50, 100].map(v => `<option value="${v}">${v}</option>`).join('')}</select></div>
+        <div class="field"><label>Titre (facultatif)</label><input name="titre" maxlength="120" placeholder="Ex : Les fractions"></div>
+      </div>
+      <div class="form-actions"><button type="button" class="btn secondary" onclick="closeModal()">Annuler</button><button class="btn" type="submit">Créer et saisir les notes</button></div>
+    </form>`);
+}
+async function creerEvaluation(ev){
+  ev.preventDefault();
+  const fd = new FormData(ev.target), f = ui.filters.camps;
+  try{
+    const e = await dbInsert('evaluations', { classeId: f.classeId, matiere: f.matiere, trimestre: f.trimestre, type: fd.get('type'), titre: (fd.get('titre') || '').trim(), date: fd.get('date'), noteSur: Number(fd.get('noteSur')) });
+    DB.evaluations = (DB.evaluations || []).concat(e);
+    ui.filters.campsEval = e.id;
+    closeModal(); renderView('camps-de-base');
+    setTimeout(() => { const p = document.querySelector('[name^=n_]'); if(p) p.focus(); }, 50);
+  }catch(err){ alert('Erreur : ' + err.message); }
+  return false;
+}
+async function enregistrerNotesEvaluation(event, evalId){
+  event.preventDefault();
+  const ev = (DB.evaluations || []).find(e => e.id === evalId); if(!ev) return false;
+  const bouton = event.target.querySelector('button[type=submit]'); if(bouton) bouton.disabled = true;
+  let nb = 0;
+  try{
+    for(const input of event.target.querySelectorAll('[name^=n_]')){
+      const eleveId = input.name.slice(2), brut = input.value.trim().replace(',', '.');
+      const exist = (DB.notes || []).find(n => n.evaluationId === evalId && n.eleveId === eleveId);
+      if(brut === ''){
+        if(exist){ await dbDelete('notes', exist.id); DB.notes = DB.notes.filter(n => n.id !== exist.id); nb++; }
+        continue;
+      }
+      const note = Number(brut);
+      if(!(note >= 0 && note <= Number(ev.noteSur))){ input.focus(); throw new Error(`Note impossible (${brut}) : elle doit être entre 0 et ${Number(ev.noteSur)}.`); }
+      if(exist){ if(Number(exist.note) !== note){ await dbUpdate('notes', exist.id, { note }); exist.note = note; nb++; } }
+      else { DB.notes.push(await dbInsert('notes', { eleveId, matiere: ev.matiere, note, noteSur: Number(ev.noteSur), trimestre: ev.trimestre, type: ev.type, date: ev.date, evaluationId: ev.id })); nb++; }
+    }
+    toast(nb ? `${nb} note(s) enregistrée(s)` : 'Aucun changement');
+    ui.filters.campsEval = null; renderView('camps-de-base');
+  }catch(err){ alert('Erreur : ' + err.message); if(bouton) bouton.disabled = false; }
+  return false;
+}
+async function supprimerEvaluation(evalId){
+  if(!confirm('Supprimer cette évaluation et toutes ses notes ?')) return;
+  try{
+    await dbDelete('evaluations', evalId);
+    DB.evaluations = (DB.evaluations || []).filter(e => e.id !== evalId);
+    DB.notes = (DB.notes || []).filter(n => n.evaluationId !== evalId);
+    ui.filters.campsEval = null; toast('Évaluation supprimée'); renderView('camps-de-base');
+  }catch(err){ alert('Erreur : ' + err.message); }
+}
+
+/* ---------- 📒 CAHIER D'APPEL (registre mensuel) ---------- */
+const CYCLE_APPEL = ['', 'Présent', 'Absent', 'Retard'];
+function joursDeClasseDuMois(mois){
+  const [a, m] = mois.split('-').map(Number);
+  const jours = DB.horairesAnnonces?.joursCours || [1, 2, 3, 4, 5];
+  const res = [];
+  for(let j = 1; j <= new Date(a, m, 0).getDate(); j++){
+    const d = new Date(a, m - 1, j, 12), iso = ((d.getDay() + 6) % 7) + 1;
+    if(jours.includes(iso)) res.push(`${a}-${String(m).padStart(2, '0')}-${String(j).padStart(2, '0')}`);
+  }
+  return res;
+}
+function renderCahierAppel(){
+  const mesClasses = classesVisibles();
+  if(!mesClasses.length) return `<div class="view active"><div class="panel"><div class="empty-state"><div class="em-ic">📒</div>Aucune classe.</div></div></div>`;
+  const f = ui.filters.cahier || { classeId: mesClasses[0].id, mois: thisMonthISO() };
+  if(!mesClasses.some(c => c.id === f.classeId)) f.classeId = mesClasses[0].id;
+  ui.filters.cahier = f;
+  const jours = joursDeClasseDuMois(f.mois), auj = todayISO();
+  const eleves = DB.eleves.filter(e => e.classeId === f.classeId && e.statut === 'Actif').sort((a, b) => eleveFullName(a).localeCompare(eleveFullName(b)));
+  const pres = DB.presencesEleves.filter(p => p.date.startsWith(f.mois) && eleves.some(e => e.id === p.eleveId));
+  const cle = (e, d) => pres.find(p => p.eleveId === e.id && p.date === d);
+  const nomMois = new Date(f.mois + '-15T12:00:00').toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+  // Sur téléphone : le registre s'ouvre directement sur la colonne d'aujourd'hui
+  setTimeout(() => { const t = document.querySelector('.ca-table .ca-auj'); if(t && t.scrollIntoView) t.scrollIntoView({ inline: 'center', block: 'nearest' }); }, 0);
+  const decale = n => { const [a, m] = f.mois.split('-').map(Number); const d = new Date(a, m - 1 + n, 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; };
+  const cellule = (e, d) => {
+    const p = cle(e, d), s = p ? p.statut : '';
+    const cls = s === 'Présent' ? 'ca-p' : s === 'Absent' ? 'ca-a' : s === 'Retard' ? 'ca-r' : '';
+    const lettre = s === 'Présent' ? '•' : s === 'Absent' ? 'A' : s === 'Retard' ? 'R' : '';
+    const futur = d > auj;
+    return `<td class="ca-cell ${cls}${futur ? ' ca-futur' : ''}"${futur ? '' : ` onclick="basculerCahierAppel('${e.id}','${d}')"`} title="${escapeHtml(eleveFullName(e))} — ${fmtDate(d)}${s ? ' : ' + s : ''}${p && p.motif ? ' (' + escapeHtml(p.motif) + ')' : ''}">${lettre}</td>`;
+  };
+  return `<div class="view active">
+    <div class="panel cahier-appel">
+      <div class="panel-head no-print"><div><h2>📒 Cahier d’appel</h2><div class="sub">Touchez une case pour la changer : vide → • présent → A absent → R retard → vide. Les jours futurs sont verrouillés.</div></div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+          <button class="btn secondary sm" onclick="exporterCahierAppel()">⬇️ Excel</button>
+          <button class="btn secondary sm" onclick="window.print()">🖨️ Imprimer</button></div></div>
+      <div class="filters no-print">
+        <select onchange="ui.filters.cahier.classeId=this.value; renderView('cahier-appel')">${mesClasses.map(c => `<option value="${c.id}" ${c.id === f.classeId ? 'selected' : ''}>${escapeHtml(c.nom)}</option>`).join('')}</select>
+        <button class="btn secondary sm" onclick="ui.filters.cahier.mois='${decale(-1)}'; renderView('cahier-appel')">◀</button>
+        <strong style="text-transform:capitalize;align-self:center;">${nomMois}</strong>
+        <button class="btn secondary sm" onclick="ui.filters.cahier.mois='${decale(1)}'; renderView('cahier-appel')">▶</button>
+      </div>
+      <div class="print-only"><h2>${escapeHtml(DB.meta?.nomEcole || '')} — Cahier d’appel · ${escapeHtml(classeName(f.classeId))} · <span style="text-transform:capitalize;">${nomMois}</span></h2></div>
+      ${!eleves.length ? '<div class="empty-state"><div class="em-ic">📒</div>Aucun élève actif dans cette classe.</div>' : `
+      <div class="table-wrap"><table class="ca-table">
+        <thead><tr><th class="ca-nom">Élève</th>${jours.map(d => `<th class="ca-jour${d === auj ? ' ca-auj' : ''}">${new Date(d + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'narrow' })}<br>${Number(d.slice(8))}</th>`).join('')}<th>Abs.</th><th>Ret.</th><th>Prés. %</th></tr></thead>
+        <tbody>${eleves.map(e => { const ps = pres.filter(p => p.eleveId === e.id), a = ps.filter(p => p.statut === 'Absent').length, r = ps.filter(p => p.statut === 'Retard').length;
+          return `<tr><td class="ca-nom">${escapeHtml(eleveFullName(e))}</td>${jours.map(d => cellule(e, d)).join('')}<td class="ca-tot">${a || ''}</td><td class="ca-tot">${r || ''}</td><td class="ca-tot">${ps.length ? Math.round(100 * (ps.length - a) / ps.length) + ' %' : '—'}</td></tr>`; }).join('')}</tbody>
+        <tfoot><tr><td class="ca-nom"><strong>Présents</strong></td>${jours.map(d => { const ps = pres.filter(p => p.date === d); return `<td class="ca-tot">${ps.length ? ps.filter(p => p.statut !== 'Absent').length : ''}</td>`; }).join('')}<td colspan="3"></td></tr></tfoot>
+      </table></div>
+      <div class="hint">• présent · <span class="ca-a" style="padding:0 4px;">A</span> absent · <span class="ca-r" style="padding:0 4px;">R</span> retard. Une absence saisie pour aujourd’hui prévient le parent, comme l’appel du jour.</div>
+      <div class="signatures print-only"><div class="sign-box"><div class="sign-role">L’enseignant(e)</div><div class="sign-line">&nbsp;</div></div><div class="sign-box"><div class="sign-role">La Direction</div><div class="sign-line">&nbsp;</div></div></div>`}
+    </div>
+  </div>`;
+}
+async function basculerCahierAppel(eleveId, date){
+  if(date > todayISO()) return;
+  const e = eleveById(eleveId); if(!e) return;
+  const rec = DB.presencesEleves.find(p => p.eleveId === eleveId && p.date === date);
+  const suivant = CYCLE_APPEL[(CYCLE_APPEL.indexOf(rec ? rec.statut : '') + 1) % CYCLE_APPEL.length];
+  try{
+    if(!suivant){
+      if(rec){ await dbDelete('presences_eleves', rec.id); DB.presencesEleves = DB.presencesEleves.filter(p => p.id !== rec.id); }
+    } else if(rec){
+      await dbUpdate('presences_eleves', rec.id, { statut: suivant }); rec.statut = suivant;
+    } else {
+      DB.presencesEleves.push(await dbInsert('presences_eleves', { date, classeId: e.classeId, eleveId, statut: suivant, motif: '' }));
+    }
+    if(suivant === 'Absent' && date === todayISO() && !absenceSignalee(eleveId, date)) envoyerNotificationAbsenceEleve(eleveId, date, '').catch(() => {});
+    renderView('cahier-appel');
+  }catch(err){ alert('Erreur : ' + err.message); }
+}
+async function exporterCahierAppel(){
+  const f = ui.filters.cahier, jours = joursDeClasseDuMois(f.mois);
+  const eleves = DB.eleves.filter(e => e.classeId === f.classeId && e.statut === 'Actif').sort((a, b) => eleveFullName(a).localeCompare(eleveFullName(b)));
+  const lettre = s => s === 'Présent' ? 'P' : s === 'Absent' ? 'A' : s === 'Retard' ? 'R' : '';
+  const lignes = [['Élève', ...jours.map(d => d.slice(8) + '/' + d.slice(5, 7)), 'Absences', 'Retards']];
+  for(const e of eleves){
+    const ps = DB.presencesEleves.filter(p => p.eleveId === e.id && p.date.startsWith(f.mois));
+    lignes.push([eleveFullName(e), ...jours.map(d => lettre(ps.find(p => p.date === d)?.statut)), ps.filter(p => p.statut === 'Absent').length, ps.filter(p => p.statut === 'Retard').length]);
+  }
+  try{ await ecrireClasseurExcel([[`Appel ${f.mois}`, lignes]], `Cahier-appel_${classeName(f.classeId).replace(/\s+/g, '-')}_${f.mois}.xlsx`); }
+  catch(err){ alert('Export impossible : ' + err.message); }
 }
 /* =====================================================================
    CERTIFICAT DE SCOLARITÉ (imprimable, depuis la fiche élève)
@@ -5307,18 +5542,13 @@ function renderEleveProfile(id){
   const matieres = MATIERES_BY_CYCLE[cycle];
   let sumMoy = 0, countMat = 0;
   const bulletinRows = matieres.map(mat=>{
-    const notes = DB.notes.filter(n=>n.eleveId===id && n.matiere===mat && n.trimestre===trimestre);
-    const devoir = notes.find(n=>n.type==='Devoir');
-    const compo = notes.find(n=>n.type==='Composition');
-    let moy = null;
-    if(devoir && compo) moy = (devoir.note + compo.note*2)/3;
-    else if(devoir) moy = devoir.note;
-    else if(compo) moy = compo.note;
+    const mm = moyenneMatiere(id, mat, trimestre);
+    const moy = mm.moy;
     if(moy!==null){ sumMoy += moy; countMat++; }
     return `<tr>
       <td>${mat}</td>
-      <td>${devoir?devoir.note:'—'}</td>
-      <td>${compo?compo.note:'—'}</td>
+      <td>${mm.classe!==null?mm.classe.toFixed(2):'—'}</td>
+      <td>${mm.compo!==null?mm.compo.toFixed(2):'—'}</td>
       <td class="bulletin-grade ${moy!==null?moyenneClass(moy):''}">${moy!==null?moy.toFixed(1):'—'}</td>
       <td>${moy!==null?mentionFromAvg(moy):'—'}</td>
     </tr>`;
@@ -5389,7 +5619,7 @@ function renderEleveProfile(id){
           </select>
         </div>
         <div class="table-wrap"><table>
-          <thead><tr><th>Matière</th><th>Devoir</th><th>Composition</th><th>Moyenne</th><th>Appréciation</th></tr></thead>
+          <thead><tr><th>Matière</th><th>Moy. classe</th><th>Composition</th><th>Moyenne</th><th>Appréciation</th></tr></thead>
           <tbody>${bulletinRows}</tbody>
         </table></div>
         <div style="display:flex;justify-content:space-between;align-items:center;margin-top:14px;padding-top:14px;border-top:1px solid var(--border);">
@@ -5476,18 +5706,18 @@ function renderNotes(){
 
   const rows = eleves.map(e=>{
     const notes = DB.notes.filter(n=>n.eleveId===e.id && n.matiere===f.matiere && n.trimestre===f.trimestre);
-    const devoir = notes.find(n=>n.type==='Devoir');
     const compo = notes.find(n=>n.type==='Composition');
+    const m = moyenneMatiere(e.id, f.matiere, f.trimestre);
     return `<tr>
       <td><div class="row-name"><span class="avatar">${initials(e.prenom,e.nom)}</span>${escapeHtml(eleveFullName(e))}</div></td>
-      <td><input type="number" min="0" max="20" step="0.5" data-eleve="${e.id}" data-type="Devoir" value="${devoir?devoir.note:''}" style="width:70px;padding:6px 8px;border:1px solid var(--border);border-radius:var(--r-control);"></td>
+      <td>${m.classe !== null ? `<strong>${m.classe.toFixed(2)}</strong> <span class="hint">(${m.nbClasse} note${m.nbClasse > 1 ? 's' : ''})</span>` : '<span class="hint">—</span>'}</td></td>
       <td><input type="number" min="0" max="20" step="0.5" data-eleve="${e.id}" data-type="Composition" value="${compo?compo.note:''}" style="width:70px;padding:6px 8px;border:1px solid var(--border);border-radius:var(--r-control);"></td>
     </tr>`;
   }).join('');
 
   return `
   <div class="view active">
-    <div class="section-note">💡 Sélectionnez une classe, une matière et un trimestre pour saisir les notes de devoir et de composition, puis enregistrez. Consultez le bulletin complet d'un élève depuis sa fiche profil (menu Élèves).</div>
+    <div class="section-note">💡 Ici : la note de <strong>composition</strong> de chaque élève. Les devoirs, exercices de classe et de maison se saisissent dans <a href="#" onclick="go('camps-de-base'); return false;">🏕️ Camps de base</a> : leur moyenne s’affiche ci-dessous et entre dans le bulletin (classe + 2 × composition) ÷ 3. Consultez le bulletin complet d'un élève depuis sa fiche profil (menu Élèves).</div>
     ${['direction','fondation'].includes(ui.role) ? `<div class="panel">
       <div class="panel-head"><div><h2>📒 Bulletins visibles par les parents</h2><div class="sub">Publiez un trimestre quand toutes les notes sont saisies : chaque parent verra le bulletin de SES enfants dans son application</div></div></div>
       <div style="display:flex;flex-wrap:wrap;gap:14px;">${TRIMESTRES.map(t => `<label style="display:flex;align-items:center;gap:8px;font-weight:700;"><input type="checkbox" ${(DB.meta.bulletinsPublies || []).includes(t) ? 'checked' : ''} onchange="publierBulletins('${t}', this.checked)"> ${t} publié</label>`).join('')}</div>
@@ -5508,7 +5738,7 @@ function renderNotes(){
       </div>
       ${eleves.length===0 ? `<div class="empty-state"><div class="em-ic">📝</div>Aucun élève actif dans cette classe.</div>` : `
       <div class="table-wrap"><table id="tableNotes">
-        <thead><tr><th>Élève</th><th>Note Devoir /20</th><th>Note Composition /20</th></tr></thead>
+        <thead><tr><th>Élève</th><th>Moy. de classe /20 <span class="hint">(Camps de base)</span></th><th>Note Composition /20</th></tr></thead>
         <tbody>${rows}</tbody>
       </table></div>
       <div class="form-actions"><button class="btn" onclick="saveNotesTable()">Enregistrer les notes</button></div>`}

@@ -278,8 +278,19 @@ async function requete(accessToken, chemin, options = {}){
     verifier(`Sans connexion, impossible de lister ${vue} (toutes écoles)`, !r.ok || (Array.isArray(r.data) && r.data.length === 0));
   }
 
+  section('7undecies. Cahier d appel et Camps de base');
+  const evalEns = await requete(tokenEnseignant, `/rest/v1/evaluations`, { method:'POST', body: JSON.stringify({ classe_id:'classe-inexistante', matiere:'Français', trimestre:'Trimestre 1', type:'Devoir' }) });
+  verifier('Un enseignant ne crée pas d évaluation pour une classe qui n est pas la sienne', !evalEns.ok, `statut ${evalEns.status}`);
+  if(ENV.PARENT_EMAIL){
+    const tokenParent5 = (await connecter(ENV.PARENT_EMAIL, ENV.PARENT_PASSWORD)).accessToken;
+    const evalPar = await requete(tokenParent5, `/rest/v1/evaluations?select=id&limit=1`);
+    verifier('Un parent ne voit pas les évaluations (Camps de base)', Array.isArray(evalPar.data) && evalPar.data.length === 0);
+    const notePar = await requete(tokenParent5, `/rest/v1/notes`, { method:'POST', body: JSON.stringify({ eleve_id: FAUX, matiere:'Français', note: 20, note_sur: 20, trimestre:'Trimestre 1', type:'Devoir' }) });
+    verifier('Un parent ne peut pas écrire de note', !notePar.ok, `statut ${notePar.status}`);
+  }
+
   section('8. Visiteur non connecté — ne lit que les affichages publics prévus');
-  for(const table of ['eleves','enseignants_lecture','profiles','paiements_scolarite','messages','parents_eleves','presences_eleves','eleves_portier_lecture','objets_perdus','push_abonnements','absences_signalees','evenements_agenda','devoirs','personnes_autorisees','sante_eleves','reponses_agenda','corrections_fiches','menus_cantine','preinscriptions','demandes_documents']){
+  for(const table of ['eleves','enseignants_lecture','profiles','paiements_scolarite','messages','parents_eleves','presences_eleves','eleves_portier_lecture','objets_perdus','push_abonnements','absences_signalees','evenements_agenda','devoirs','personnes_autorisees','sante_eleves','reponses_agenda','corrections_fiches','menus_cantine','preinscriptions','demandes_documents','evaluations']){
     const r = await requete(ANON_KEY, `/rest/v1/${table}?select=*&limit=1`);
     verifier(`Sans connexion, rien à lire dans ${table}`, !r.ok || (Array.isArray(r.data) && r.data.length === 0), `reçu ${JSON.stringify(r.data)?.slice(0,80)}`);
   }

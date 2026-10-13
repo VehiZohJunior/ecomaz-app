@@ -1015,6 +1015,19 @@ td:has(> .amount), th.montant{ text-align:right; }
 @media print{ .affiche-a4{ padding-top:20mm; } .affiche-titre{ font-size:30pt; } .affiche-qr{ width:110mm; } .affiche-etapes{ font-size:15pt; } }
 .contact-ecole-boutons{ display:flex; flex-wrap:wrap; gap:8px; }
 .contact-ecole-boutons .btn{ flex:1 1 140px; justify-content:center; text-align:center; }
+.ca-table{ border-collapse:collapse; font-size:.85em; }
+.ca-table th, .ca-table td{ border:1px solid var(--border); padding:4px 3px; text-align:center; min-width:26px; }
+.ca-table .ca-nom{ text-align:left; white-space:nowrap; position:sticky; left:0; background:var(--surface-1, #fff); z-index:1; min-width:150px; padding:4px 8px; }
+.ca-cell{ cursor:pointer; font-weight:800; user-select:none; }
+.ca-cell:hover{ outline:2px solid var(--primary); outline-offset:-2px; }
+.ca-p{ color:#2e7d62; } .ca-a{ background:#fde2e2; color:#b42318; } .ca-r{ background:#fdf0d5; color:#8a5a0c; }
+.ca-futur{ background:repeating-linear-gradient(45deg, transparent 0 4px, rgba(0,0,0,.04) 4px 8px); cursor:not-allowed; }
+.ca-auj{ background:var(--primary-dim, #e3f1eb); }
+.ca-tot{ font-weight:700; }
+.camps-table td, .camps-table th{ text-align:center; } .camps-table td:first-child, .camps-table th:first-child{ text-align:left; }
+.lien-btn{ background:none; border:0; color:var(--primary); font:inherit; font-weight:700; cursor:pointer; text-decoration:underline; padding:0; }
+.print-only{ display:none; }
+@media print{ .print-only{ display:block; } .cahier-appel .ca-table{ font-size:8pt; } }
 .sf-sources{ display:grid; grid-template-columns:repeat(auto-fit, minmax(170px, 1fr)); gap:10px; margin-bottom:12px; }
 .sf-source{ display:flex; flex-direction:column; align-items:center; gap:8px; text-align:center; padding:14px; border:1px solid var(--border); border-radius:var(--r-card, 12px); background:var(--surface-2); }
 .sf-source textarea{ width:100%; }
