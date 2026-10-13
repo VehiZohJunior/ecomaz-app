@@ -2292,6 +2292,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.10.13-19', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Direction : « Mise en route de l’école » complétée — nom du directeur et téléphone, scolarité paramétrée, enseignants inscrits (bouton pour leur envoyer le lien par WhatsApp).' ],
+  } },
   { version: '2026.10.13-18', nouveautes: {
     commun: [],
     parent: [ 'En bas de l’accueil : « Contacter l’école » — appeler, WhatsApp, itinéraire jusqu’à l’école, écrire dans l’application.' ],
@@ -2917,6 +2923,7 @@ function etapesMiseEnRoute(){
   const semaine = decalerJours(todayISO(), -7);
   const appelsRecents = (DB.presencesEleves || []).filter(p => p.date >= semaine).length;
   const m = DB.meta || {};
+  const comptesEnseignants = (DB.profiles || []).filter(pr => pr.role === 'enseignant' && pr.enseignantId).length;
   return [
     { ok: (DB.classes || []).length > 0, titre: 'Classes créées', detail: `${(DB.classes || []).length} classe(s)`, vue: 'parametres', bouton: 'Paramètres' },
     { ok: actifs.length > 0, titre: 'Élèves inscrits', detail: `${actifs.length} élève(s) actif(s)`, vue: 'eleves', bouton: 'Élèves' },
@@ -2927,6 +2934,9 @@ function etapesMiseEnRoute(){
     { ok: (DB.emploiTemps || []).length > 0, titre: 'Emploi du temps', detail: (DB.emploiTemps || []).length ? 'rempli' : 'vide', vue: 'emploi-temps', bouton: 'Emploi du temps' },
     { ok: m.geofenceLatitude != null, titre: 'Zone de l’école (pointage GPS)', detail: m.geofenceLatitude != null ? 'définie' : 'non définie', vue: 'parametres', bouton: 'Paramètres' },
     { ok: !!m.logo, titre: 'Logo de l’école', detail: m.logo ? 'ajouté' : 'non ajouté (apparaît sur les reçus et les applications)', vue: 'parametres', bouton: 'Paramètres' },
+    { ok: !!(m.directeurNom && m.telephone), titre: 'Nom du directeur et téléphone de l’école', detail: !m.directeurNom ? 'nom du directeur manquant (signature des certificats et des reçus)' : !m.telephone ? 'téléphone manquant (bouton « Appeler » des parents)' : 'renseignés', vue: 'parametres', bouton: 'Paramètres' },
+    { ok: (DB.echeancesScolarite || []).length > 0, titre: 'Scolarité et tranches paramétrées', detail: (DB.echeancesScolarite || []).length ? `${DB.echeancesScolarite.length} tranche(s)` : 'aucune tranche : pas de reste à payer ni de relances', vue: 'parametres', bouton: 'Paramètres' },
+    { ok: comptesEnseignants > 0, titre: 'Enseignants inscrits dans leur application', detail: comptesEnseignants ? `${comptesEnseignants} compte(s) enseignant relié(s)` : 'aucun : envoyez le lien EcoMaZ-ENSEIGNANTS (appel, devoirs, « Ma journée »)', vue: 'enseignants', bouton: '📲 Envoyer le lien par WhatsApp', action: "window.open('https://wa.me/?text=' + encodeURIComponent(messagePartageApplication('enseignant.html')), '_blank')" },
   ];
 }
 // Tableau de bord ENSEIGNANT : « Ma journée », classe par classe
@@ -2984,7 +2994,7 @@ function renderMiseEnRoute(){
     ${ouvert ? `<ul class="mer-liste">${etapes.map(e => `<li class="${e.ok ? 'fait' : ''}">
       <span class="mer-ic" aria-hidden="true">${e.ok ? '✓' : '•'}</span>
       <div class="mer-txt"><strong>${e.titre}</strong><span>${escapeHtml(e.detail)}</span></div>
-      ${e.ok ? '' : `<button class="btn sm" onclick="go('${e.vue}')">${e.bouton}</button>`}
+      ${e.ok ? '' : `<button class="btn sm" onclick="${e.action || `go('${e.vue}')`}">${e.bouton}</button>`}
     </li>`).join('')}</ul>` : ''}
   </div>`;
 }
