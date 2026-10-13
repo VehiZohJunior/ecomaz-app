@@ -199,6 +199,12 @@ async function requete(accessToken, chemin, options = {}){
   const santeDev = await requete(tokenDeveloppeur, `/rest/v1/rpc/sante_ecoles`, { method:'POST', body:'{}' });
   verifier('Le développeur obtient uniquement des chiffres', santeDev.ok && Array.isArray(santeDev.data) && santeDev.data.every(r => !('nom' in r) && !('prenom' in r)));
 
+  section('7sexies. Notifications vers l école — aucun envoi sans vrai signalement');
+  const notifFaux = await fetch(`${URL_BASE}/functions/v1/notifier-personnel`, { method:'POST', headers:{ Authorization:`Bearer ${tokenSecretariat}`, 'Content-Type':'application/json' }, body: JSON.stringify({ type:'absence' }) });
+  verifier('Pas de notification « absence » sans signalement récent de l appelant', notifFaux.status === 400);
+  const notifType = await fetch(`${URL_BASE}/functions/v1/notifier-personnel`, { method:'POST', headers:{ Authorization:`Bearer ${tokenSecretariat}`, 'Content-Type':'application/json' }, body: JSON.stringify({ type:'nimporte' }) });
+  verifier('Type de notification inconnu refusé', notifType.status === 400);
+
   section('8. Visiteur non connecté — ne lit que les affichages publics prévus');
   for(const table of ['eleves','enseignants_lecture','profiles','paiements_scolarite','messages','parents_eleves','presences_eleves','eleves_portier_lecture','objets_perdus','push_abonnements','absences_signalees']){
     const r = await requete(ANON_KEY, `/rest/v1/${table}?select=*&limit=1`);

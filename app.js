@@ -1076,6 +1076,7 @@ async function handleDemandeAcces(ev){
     nom: $('#demNom').value.trim(), message: $('#demMsg').value.trim(),
   });
   if(error){ $('#demErr').textContent = "Envoi impossible : " + error.message; return false; }
+  sb.functions.invoke('notifier-personnel', { body: { type: 'demande_acces' } }).catch(() => {});
   showDemandeAcces();
   return false;
 }
@@ -1356,6 +1357,7 @@ async function handleSignalerAbsence(ev){
     }).select().single();
     if(error) throw error;
     DB.absencesSignalees = (DB.absencesSignalees || []).concat(rowToCamel(data));
+    sb.functions.invoke('notifier-personnel', { body: { type: 'absence' } }).catch(() => {});
     toast('L’école est prévenue, merci !');
     afficherSignalerAbsence();
   }catch(e){ bouton.disabled = false; alert('Erreur : ' + e.message); }
@@ -1686,6 +1688,7 @@ async function handleSignalerObjetPerdu(ev){
     }).select().single();
     if(error) throw error;
     DB.objetsPerdus = [rowToCamel(data)].concat(DB.objetsPerdus || []);
+    sb.functions.invoke('notifier-personnel', { body: { type: 'objet_perdu' } }).catch(() => {});
     toast('Objet signalé à l’école, merci !');
     afficherObjetsPerdusParent();
   }catch(e){ bouton.disabled = false; alert('Erreur : ' + e.message); }
@@ -2097,7 +2100,7 @@ const VERSIONS = [
     commun: [],
     parent: [ 'Nouvel onglet « Vie de l’école » : photos et vidéos des événements, J’aime, Bravo et commentaires.' ],
     portier: [],
-    personnel: [ 'Appel rapide : « Tous présents », puis touchez le nom des absents ; rappel à 9h00 si l’appel n’est pas fait.', 'Paramètres → Scolarité : montants et tranches de paiement propres à chaque classe, copie vers d’autres classes, affichage aux parents au choix.', 'Direction : liste « Mise en route de l’école » sur le tableau de bord, avec ce qui reste à faire.', 'Nouveau menu « Vie de l’école » : publiez les photos et vidéos des événements pour les parents (toute l’école ou certaines classes).' ],
+    personnel: [ 'Notifications sur le téléphone pour tout le personnel : demandes d’accès, absences signalées, objets perdus, appel non fait.', 'Appel rapide : « Tous présents », puis touchez le nom des absents ; rappel à 9h00 si l’appel n’est pas fait.', 'Paramètres → Scolarité : montants et tranches de paiement propres à chaque classe, copie vers d’autres classes, affichage aux parents au choix.', 'Direction : liste « Mise en route de l’école » sur le tableau de bord, avec ce qui reste à faire.', 'Nouveau menu « Vie de l’école » : publiez les photos et vidéos des événements pour les parents (toute l’école ou certaines classes).' ],
   } },
   { version: '2026.10.12-2', nouveautes: {
     commun: [],
@@ -2187,7 +2190,7 @@ function enterApp(){
   synchroniserFileAttente();
   startPollingBulles();
   afficherNouveautes();
-  if(ui.role === 'enseignant') activerPush(true);
+  activerPush(true);
 }
 
 /* ---------------------------------------------------------------------
@@ -2301,7 +2304,7 @@ async function logoutRole(){
   if(window.ESPACE_FIXE !== 'portier') document.body.classList.remove('theme-portier');
   const navParentEl = document.getElementById('parentNav'); if(navParentEl) navParentEl.remove();
   if(typeof arreterScanPointage === 'function') arreterScanPointage();
-  if(ui.role === 'parent' || ui.role === 'enseignant') await desactiverPushAppareil();
+  await desactiverPushAppareil();
   await deconnexion();
   ui.role = null;
   ui.espaceChoisi = null;
@@ -2475,7 +2478,7 @@ function renderDashboard(){
     ${renderMiseEnRoute()}
     ${(ui.role==='direction' || ui.role==='fondation') ? `<div class="form-actions no-print" style="justify-content:flex-start;margin:0 0 var(--sp-4);"><button class="btn secondary" onclick="ouvrirBilanHebdo()">📊 Bilan de la semaine</button></div>` : ''}
 
-    ${ui.role==='enseignant' && pushPossible() && Notification.permission === 'default' ? `<div class="form-actions no-print" style="justify-content:flex-start;margin:0 0 var(--sp-4);"><button class="btn" onclick="activerPush(false).then(ok => { if(ok){ toast('Notifications activées : vous serez prévenu quand un parent arrive au portail'); renderView('dashboard'); } })">🔔 Être prévenu sur ce téléphone quand un parent arrive au portail</button></div>` : ''}
+    ${pushPossible() && Notification.permission === 'default' ? `<div class="form-actions no-print" style="justify-content:flex-start;margin:0 0 var(--sp-4);"><button class="btn" onclick="activerPush(false).then(ok => { if(ok){ toast('Notifications activées sur ce téléphone'); renderView('dashboard'); } })">🔔 Activer les notifications sur ce téléphone${ui.role==='enseignant' ? ' (parent au portail, appel, absences)' : ' (appel non fait, demandes d’accès, absences, objets perdus)'}</button></div>` : ''}
     ${ui.role==='enseignant' ? renderActualitesParent() + renderTableauHonneurParent() : ''}
 
     <div class="grid-2">
