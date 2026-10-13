@@ -2525,12 +2525,16 @@ function afficherNouveautes(){
     const textes = [];
     nonVues.forEach(v => v.nouveautes.commun.concat(v.nouveautes[role]).forEach(t => { if(!textes.includes(t)) textes.push(t); }));
     if(textes.length === 0){ nonVues.forEach(v => localStorage.setItem(cle(v.version), '1')); return; }
-    const liste = textes.map(t => `<li>${escapeHtml(t)}</li>`).join('');
+    // Les 6 plus récentes d'abord ; les autres dans un volet repliable
+    const li = t => `<li>${escapeHtml(t)}</li>`;
+    const premieres = textes.slice(0, 6).map(li).join(''), autres = textes.slice(6).map(li).join('');
     setTimeout(() => {
       if(document.getElementById('modalBackdrop').classList.contains('open')) return;
       openModal('EcoMaZ a été mis à jour', `
         <div class="maj-intro">✨ Votre application <strong>${escapeHtml(nomApplication())}</strong> vient d’être mise à jour. Vos données et vos habitudes ne changent pas.</div>
-        <ul class="maj-liste">${liste}</ul>
+        <ul class="maj-liste">${premieres}</ul>
+        ${autres ? `<details class="maj-autres"><summary>Voir les ${textes.length - 6} autres nouveautés</summary><ul class="maj-liste">${autres}</ul></details>` : ''}
+        ${role === 'personnel' ? `<p class="hint" style="margin-top:10px;">📘 Tous les gestes expliqués pas à pas : <a href="docs/EcoMaZ-Guide-du-personnel.pdf" target="_blank" rel="noopener">guide du personnel (PDF)</a>.</p>` : ''}
         <div class="form-actions"><button type="button" class="btn" onclick="closeModal()">J’ai compris</button></div>`);
       nonVues.forEach(v => localStorage.setItem(cle(v.version), '1'));
     }, 900);
