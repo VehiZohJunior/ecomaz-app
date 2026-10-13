@@ -223,8 +223,45 @@ async function requete(accessToken, chemin, options = {}){
   const errSec = await requete(tokenSecretariat, `/rest/v1/rpc/erreurs_recentes`, { method:'POST', body:'{}' });
   verifier('Les erreurs techniques sont réservées au développeur', !errSec.ok, `statut ${errSec.status}`);
 
+  section('7novies. Fonctions du 13/10 — devoirs, sécurité & santé, demandes des familles (identifiants fictifs : rien n est créé)');
+  const FAUX = '00000000-0000-4000-8000-000000000001';
+  const devoirEns = await requete(tokenEnseignant, `/rest/v1/devoirs`, { method:'POST', body: JSON.stringify({ classe_id:'classe-inexistante', travail:'essai refusé', pour_le:'2030-01-01' }) });
+  verifier('Un enseignant ne note pas de devoir pour une classe qui n est pas la sienne', !devoirEns.ok, `statut ${devoirEns.status}`);
+  const santeEns = await requete(tokenEnseignant, `/rest/v1/sante_eleves?select=eleve_id&limit=1`);
+  verifier('Un enseignant sans classe ne voit aucune information de santé', Array.isArray(santeEns.data) && santeEns.data.length === 0);
+  const persEns = await requete(tokenEnseignant, `/rest/v1/personnes_autorisees?select=id&limit=1`);
+  verifier('Un enseignant sans classe ne voit aucune personne autorisée', Array.isArray(persEns.data) && persEns.data.length === 0);
+  const preEns = await requete(tokenEnseignant, `/rest/v1/preinscriptions?select=id&limit=1`);
+  verifier('Un enseignant ne lit pas les pré-inscriptions', Array.isArray(preEns.data) && preEns.data.length === 0);
+  const preSec = await requete(tokenSecretariat, `/rest/v1/preinscriptions?select=id&limit=1`);
+  verifier('Le secrétariat consulte les pré-inscriptions (requête acceptée)', preSec.ok);
+  const portierAnon = await requete(ANON_KEY, `/rest/v1/rpc/personnes_autorisees_portier`, { method:'POST', body: JSON.stringify({ p_eleve: FAUX }) });
+  verifier('Sans connexion, impossible de lire les personnes autorisées', !portierAnon.ok);
+  const portierEns = await requete(tokenEnseignant, `/rest/v1/rpc/personnes_autorisees_portier`, { method:'POST', body: JSON.stringify({ p_eleve: FAUX }) });
+  verifier('Un enseignant n utilise pas la fonction réservée au portier', !portierEns.ok);
+  const preFaux = await requete(ANON_KEY, `/rest/v1/rpc/preinscrire`, { method:'POST', body: JSON.stringify({ p_ecole: FAUX, p_enfant_prenom:'A', p_enfant_nom:'B', p_date_naissance:null, p_sexe:'', p_classe:'', p_parent_nom:'Essai', p_parent_tel:'0700000000', p_message:'' }) });
+  verifier('Pré-inscription refusée pour une école inexistante', !preFaux.ok, `statut ${preFaux.status}`);
+  const infoFaux = await requete(ANON_KEY, `/rest/v1/rpc/ecole_preinscription`, { method:'POST', body: JSON.stringify({ p_ecole: FAUX }) });
+  verifier('Aucune information pour une école inexistante', infoFaux.ok && Array.isArray(infoFaux.data) && infoFaux.data.length === 0);
+  if(ENV.PARENT_EMAIL){
+    const tokenParent3 = (await connecter(ENV.PARENT_EMAIL, ENV.PARENT_PASSWORD)).accessToken;
+    const essais = [
+      ['personnes_autorisees', { eleve_id: FAUX, nom:'Essai refusé' }],
+      ['sante_eleves', { eleve_id: FAUX, allergies:'essai' }],
+      ['corrections_fiches', { eleve_id: FAUX, champs:{ parent_nom:'Essai' } }],
+      ['demandes_documents', { eleve_id: FAUX, type:'certificat_scolarite' }],
+      ['reponses_agenda', { evenement_id: FAUX, eleve_id: FAUX, reponse:true }],
+      ['devoirs', { classe_id:'classe-inexistante', travail:'essai refusé', pour_le:'2030-01-01' }],
+      ['menus_cantine', { date:'2030-01-01', repas:'essai' }],
+    ];
+    for(const [table, corps] of essais){
+      const r = await requete(tokenParent3, `/rest/v1/${table}`, { method:'POST', body: JSON.stringify(corps) });
+      verifier(`Un parent n écrit pas dans ${table} pour un enfant / une classe qui n est pas la sienne`, !r.ok, `statut ${r.status}`);
+    }
+  }
+
   section('8. Visiteur non connecté — ne lit que les affichages publics prévus');
-  for(const table of ['eleves','enseignants_lecture','profiles','paiements_scolarite','messages','parents_eleves','presences_eleves','eleves_portier_lecture','objets_perdus','push_abonnements','absences_signalees','evenements_agenda']){
+  for(const table of ['eleves','enseignants_lecture','profiles','paiements_scolarite','messages','parents_eleves','presences_eleves','eleves_portier_lecture','objets_perdus','push_abonnements','absences_signalees','evenements_agenda','devoirs','personnes_autorisees','sante_eleves','reponses_agenda','corrections_fiches','menus_cantine','preinscriptions','demandes_documents']){
     const r = await requete(ANON_KEY, `/rest/v1/${table}?select=*&limit=1`);
     verifier(`Sans connexion, rien à lire dans ${table}`, !r.ok || (Array.isArray(r.data) && r.data.length === 0), `reçu ${JSON.stringify(r.data)?.slice(0,80)}`);
   }
