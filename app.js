@@ -2272,6 +2272,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.10.13-16', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Tableau de bord : encadré « À traiter » — demandes d’accès, pré-inscriptions, documents, corrections, messages de parents et objets perdus en attente, d’un coup d’œil.' ],
+  } },
   { version: '2026.10.13-15', nouveautes: {
     commun: [],
     parent: [ 'Nouveau sur l’accueil : « Demander un document » (certificat de scolarité…) — vous êtes prévenu(e) dès qu’il est prêt à retirer.' ],
@@ -2727,6 +2733,7 @@ function renderDashboard(){
       ${kpi(3, '🕘', 'var(--blue-bg)', tauxEns===null ? null : tauxEns+'%', "Présence enseignants aujourd'hui", ['Aucun pointage aujourd’hui', lien('presences-enseignants', 'Voir le journal')])}
     </div>
     ${animer ? `${(setTimeout(animerCompteursKpi, 0), '')}` : ''}
+    ${renderATraiter()}
     ${renderMiseEnRoute()}
     ${renderMaJournee()}
     ${renderElevesASurveiller()}
@@ -3456,6 +3463,38 @@ async function supprimerPublication(id){
     DB.fil.pubs = DB.fil.pubs.filter(p => p.id !== id);
     rafraichirFil(); toast('Publication supprimée');
   }catch(e){ alert('Erreur : ' + e.message); }
+}
+/* =====================================================================
+   « À TRAITER » — tableau de bord du secrétariat et de la direction
+   Compte (sans rien télécharger d'autre) ce qui attend une action.
+   ===================================================================== */
+const SUJETS_A_TRAITER = [
+  { cle:'acces', ic:'🔑', lib:'demande(s) d’accès à valider', vue:'parametres', table:'demandes_acces', filtre: q => q.eq('statut', 'en_attente'), roles:['direction','fondation'] },
+  { cle:'preinsc', ic:'📥', lib:'pré-inscription(s) à rappeler', vue:'eleves', table:'preinscriptions', filtre: q => q.eq('statut', 'nouvelle') },
+  { cle:'docs', ic:'📄', lib:'document(s) demandé(s) par les parents', vue:'eleves', table:'demandes_documents', filtre: q => q.eq('statut', 'en_attente') },
+  { cle:'corr', ic:'✏️', lib:'correction(s) de fiche proposée(s)', vue:'eleves', table:'corrections_fiches', filtre: q => q.eq('statut', 'en_attente') },
+  { cle:'msg', ic:'✉️', lib:'message(s) de parents non lu(s)', vue:'messagerie', table:'messages_internes', filtre: q => q.eq('destinataire_type', 'ecole').eq('lu', false) },
+  { cle:'objets', ic:'🎒', lib:'objet(s) perdu(s) signalé(s)', vue:'messagerie', table:'objets_perdus', filtre: q => q.eq('statut', 'signale') },
+];
+function chargerATraiter(){
+  if(DB.aTraiter && DB.aTraiter.charge && Date.now() - DB.aTraiter.charge < 60000) return;
+  DB.aTraiter = Object.assign(DB.aTraiter || {}, { charge: Date.now() });
+  const sujets = SUJETS_A_TRAITER.filter(s => !s.roles || s.roles.includes(ui.role));
+  Promise.all(sujets.map(s => s.filtre(sb.from(s.table).select('*', { count:'exact', head:true }).eq('ecole_id', session.ecoleId))
+    .then(r => [s.cle, r.error ? 0 : (r.count || 0)], () => [s.cle, 0])))
+    .then(res => { DB.aTraiter.compteurs = Object.fromEntries(res); if(ui.currentView === 'dashboard') renderView('dashboard'); });
+}
+function renderATraiter(){
+  if(!['secretariat','direction','fondation'].includes(ui.role)) return '';
+  chargerATraiter();
+  const c = DB.aTraiter?.compteurs;
+  if(!c) return '';
+  const items = SUJETS_A_TRAITER.filter(s => (c[s.cle] || 0) > 0);
+  if(!items.length) return `<div class="panel" style="padding:10px 16px;"><span class="hint" style="margin:0;">✅ Rien en attente : aucune demande de parent ou de famille à traiter.</span></div>`;
+  return `<div class="panel a-traiter">
+    <div class="panel-head"><div><h2>📥 À traiter</h2><div class="sub">Demandes qui attendent une action de l’école.</div></div></div>
+    <div class="a-traiter-liste">${items.map(s => `<button type="button" class="a-traiter-item" onclick="DB.aTraiter.charge=0; go('${s.vue}')"><span class="a-traiter-ic">${s.ic}</span><strong>${c[s.cle]}</strong> ${s.lib}<span class="a-traiter-fleche">›</span></button>`).join('')}</div>
+  </div>`;
 }
 /* =====================================================================
    DEMANDES DE DOCUMENTS PAR LES PARENTS (schema.sql section 72)
