@@ -1002,6 +1002,8 @@ td:has(> .amount), th.montant{ text-align:right; }
 .bulle-item.msg-envoye{ background:var(--em-green-100, #e6efe9); margin-left:18px; }
 
 /* Tableau de bord enseignant : ma journée */
+.enfant-anniv{ margin:10px 0; padding:10px 12px; border-radius:var(--r-card, 12px); background:linear-gradient(90deg, #f7d774, #f3b93f); color:#3a2a00; font-weight:700; }
+.enfant-anniv span{ display:block; font-weight:500; font-size:.92em; margin-top:2px; }
 .mj-grille{ display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:10px; }
 .mj-classe{ border:1px solid var(--border); border-radius:var(--r-card); padding:10px 12px; }
 .mj-tete{ display:flex; justify-content:space-between; align-items:baseline; margin-bottom:6px; }

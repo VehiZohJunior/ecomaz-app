@@ -88,6 +88,37 @@ async function relancesScolarite(admin: any, aujourdhui: string, minuteActuelle:
   return n;
 }
 
+// Vœux d'anniversaire (schema.sql section 65) : à 8h, le jour de
+// l'anniversaire d'un élève, ses parents reçoivent les vœux de l'école
+// (notification + message). Une seule fois par élève et par an.
+// deno-lint-ignore no-explicit-any
+async function voeuxAnniversaire(admin: any, aujourdhui: string, minuteActuelle: number): Promise<number> {
+  if (minuteActuelle < 8 * 60 || minuteActuelle > 8 * 60 + 30) return 0;
+  const [an, mois, jour] = aujourdhui.split('-').map(Number);
+  // Le 28 février d'une année non bissextile, on fête aussi les élèves nés le 29
+  const bissextile = (an % 4 === 0 && an % 100 !== 0) || an % 400 === 0;
+  const jours = mois === 2 && jour === 28 && !bissextile ? [28, 29] : [jour];
+  const { data: ecoles } = await admin.from('ecoles').select('id, nom_ecole').eq('actif', true).eq('voeux_anniversaire', true);
+  let n = 0;
+  for (const ec of (ecoles || []) as { id: string; nom_ecole: string }[]) {
+    const { data: eleves } = await admin.from('eleves').select('id, prenom, nom, date_naissance').eq('ecole_id', ec.id).eq('statut', 'Actif').not('date_naissance', 'is', null);
+    for (const e of (eleves || []) as { id: string; prenom: string; nom: string; date_naissance: string }[]) {
+      const [a, m, j] = String(e.date_naissance).slice(0, 10).split('-').map(Number);
+      if (m !== mois || !jours.includes(j)) continue;
+      const age = an - a;
+      if (age <= 0 || age >= 30) continue;                        // date manifestement fausse
+      const { error: deja } = await admin.from('rappels_envoyes').insert({ ecole_id: ec.id, type: `anniv|${e.id}`, date: aujourdhui });
+      if (deja) continue;
+      const texte = `Joyeux anniversaire ${e.prenom} ! Toute l’équipe de ${ec.nom_ecole} lui souhaite une très belle journée pour ses ${age} ans. 🎉`;
+      await admin.from('messages_internes').insert({ ecole_id: ec.id, destinataire_type: 'parent', eleve_id: e.id, contenu: '🎂 ' + texte, auteur_nom: ec.nom_ecole, auteur_id: null });
+      const parents = await parentsDesEleves(admin, ec.id, [e.id]);
+      await envoyerPush(admin, parents, { title: `🎂 ${ec.nom_ecole}`, body: texte, url: './parent.html', tag: `anniv-${e.id}` });
+      n++;
+    }
+  }
+  return n;
+}
+
 // Rappel des devoirs (schema.sql section 64) : à 18h, la veille d'un jour
 // de classe, les parents de chaque classe reçoivent la liste des devoirs
 // prévus pour le lendemain. Une seule fois par classe et par jour.
@@ -275,6 +306,10 @@ Deno.serve(async (req) => {
       try { nbEnvoyees += await relancesScolarite(supabaseAdmin, dateDuJour, minuteActuelle); }
       catch (e) { erreurs.push(`relances: ${(e as Error).message}`); }
     }
+
+    // Vœux d'anniversaire — tous les jours à 8h
+    try { nbEnvoyees += await voeuxAnniversaire(supabaseAdmin, dateDuJour, minuteActuelle); }
+    catch (e) { erreurs.push(`anniversaires: ${(e as Error).message}`); }
 
     // Rappel des devoirs du lendemain — dimanche à jeudi soir
     if (jourIso === 7 || jourIso <= 4) {

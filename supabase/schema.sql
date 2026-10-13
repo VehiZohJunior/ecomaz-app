@@ -2461,3 +2461,11 @@ create policy "gestion devoirs" on devoirs for all
   using (ecole_id = mon_ecole_id() and (est_perso_admin() or (mon_role() = 'enseignant' and classe_id = any(mes_classes()))))
   with check (ecole_id = mon_ecole_id() and (est_perso_admin() or (mon_role() = 'enseignant' and classe_id = any(mes_classes())))
     and exists (select 1 from classes c where c.id = devoirs.classe_id and c.ecole_id = devoirs.ecole_id));
+
+-- =====================================================================
+-- 65. ANNIVERSAIRES DES ÉLÈVES (2026-10-13)
+-- =====================================================================
+-- Le jour de l'anniversaire d'un élève, ses parents reçoivent à 8h les
+-- vœux de l'école (fonction annoncer-horaires, une fois par élève et par
+-- an via rappels_envoyes). L'école peut le désactiver dans Paramètres.
+alter table ecoles add column if not exists voeux_anniversaire boolean not null default true;

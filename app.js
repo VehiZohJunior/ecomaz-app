@@ -1625,6 +1625,7 @@ function renderFicheEnfant(e){
         <div class="enfant-classe">${escapeHtml(classeName(e.classeId))} <span class="enfant-statut">${escapeHtml(e.statut || '')}</span></div>
       </div>
     </div>
+    ${renderAnniversaireEnfant(e)}
     <dl class="enfant-details">
       <div><dt>Matricule</dt><dd>${escapeHtml(e.matricule || '—')}</dd></div>
       <div><dt>Naissance</dt><dd>${fmtDate(e.dateNaissance)}</dd></div>
@@ -2230,6 +2231,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.10.13-5', nouveautes: {
+    commun: [],
+    parent: [ 'Le jour de l’anniversaire de votre enfant, l’école lui souhaite un joyeux anniversaire dans votre application. 🎂' ],
+    portier: [],
+    personnel: [ 'Tableau de bord : « Anniversaires de la semaine » de vos élèves.', 'Le jour J à 8h, les parents reçoivent automatiquement les vœux de l’école (désactivable dans Paramètres → Anniversaires des élèves).' ],
+  } },
   { version: '2026.10.13-4', nouveautes: {
     commun: [],
     parent: [ 'Chaque soir à 18h, rappel des devoirs pour le lendemain sur votre téléphone.' ],
@@ -2621,6 +2628,7 @@ function renderDashboard(){
     ${animer ? `${(setTimeout(animerCompteursKpi, 0), '')}` : ''}
     ${renderMiseEnRoute()}
     ${renderMaJournee()}
+    ${renderAnniversaires()}
     ${(ui.role==='direction' || ui.role==='fondation') ? `<div class="form-actions no-print" style="justify-content:flex-start;margin:0 0 var(--sp-4);"><button class="btn secondary" onclick="ouvrirBilanHebdo()">📊 Bilan de la semaine</button></div>` : ''}
 
     ${pushPossible() && Notification.permission === 'default' ? `<div class="form-actions no-print" style="justify-content:flex-start;margin:0 0 var(--sp-4);"><button class="btn" onclick="activerPush(false).then(ok => { if(ok){ toast('Notifications activées sur ce téléphone'); renderView('dashboard'); } })">🔔 Activer les notifications sur ce téléphone${ui.role==='enseignant' ? ' (parent au portail, appel, absences)' : ' (appel non fait, demandes d’accès, absences, objets perdus)'}</button></div>` : ''}
@@ -3344,6 +3352,55 @@ async function supprimerPublication(id){
     DB.fil.pubs = DB.fil.pubs.filter(p => p.id !== id);
     rafraichirFil(); toast('Publication supprimée');
   }catch(e){ alert('Erreur : ' + e.message); }
+}
+/* =====================================================================
+   ANNIVERSAIRES DES ÉLÈVES (schema.sql section 65)
+   Tableau de bord : anniversaires des 7 prochains jours ; console parent :
+   bandeau le jour J ; vœux automatiques de l'école à 8h (annoncer-horaires).
+   ===================================================================== */
+// Jours avant le prochain anniversaire (0 = aujourd'hui), null si date inconnue
+function joursAvantAnniversaire(dateNaissance){
+  if(!dateNaissance || !/^\d{4}-\d{2}-\d{2}/.test(dateNaissance)) return null;
+  const auj = new Date(todayISO() + 'T12:00:00');
+  const [, m, j] = dateNaissance.slice(0, 10).split('-').map(Number);
+  const prochaine = (an) => { const d = new Date(an, m - 1, j, 12); if(d.getMonth() !== m - 1) d.setDate(0); return d; }; // 29 février → 28
+  let d = prochaine(auj.getFullYear());
+  if(d < auj) d = prochaine(auj.getFullYear() + 1);
+  return Math.round((d - auj) / 86400000);
+}
+function ageAnniversaire(dateNaissance, jours){
+  const d = new Date(todayISO() + 'T12:00:00'); d.setDate(d.getDate() + (jours || 0));
+  return d.getFullYear() - Number(dateNaissance.slice(0, 4));
+}
+function renderAnniversaires(){
+  if(!['enseignant','secretariat','direction','fondation'].includes(ui.role)) return '';
+  const ids = classesVisibles().map(c => c.id);
+  const liste = DB.eleves.filter(e => e.statut === 'Actif' && ids.includes(e.classeId))
+    .map(e => ({ e, j: joursAvantAnniversaire(e.dateNaissance) }))
+    .filter(x => x.j !== null && x.j <= 7 && ageAnniversaire(x.e.dateNaissance, x.j) > 0 && ageAnniversaire(x.e.dateNaissance, x.j) < 30)
+    .sort((a, b) => a.j - b.j);
+  if(!liste.length) return '';
+  const quand = (j) => j === 0 ? '<strong>aujourd’hui</strong>' : j === 1 ? 'demain' : new Date(Date.now() + j * 86400000).toLocaleDateString('fr-FR', {weekday:'long', day:'numeric'});
+  return `<div class="panel">
+    <div class="panel-head"><div><h2>🎂 Anniversaires de la semaine</h2>${DB.meta?.voeuxAnniversaire !== false ? '<div class="sub">Le jour J, les parents reçoivent automatiquement les vœux de l’école à 8h.</div>' : ''}</div></div>
+    <div class="mj-grille">${liste.map(({ e, j }) => `<div class="mj-classe"${j === 0 ? ' style="border-color:var(--amber, #d4a017);"' : ''}>
+      <div class="mj-tete"><strong>${j === 0 ? '🎉 ' : ''}${escapeHtml(eleveFullName(e))}</strong><span class="hint" style="margin:0;">${escapeHtml(classeName(e.classeId))}</span></div>
+      <div class="mj-ligne">${ageAnniversaire(e.dateNaissance, j)} ans ${quand(j)}</div></div>`).join('')}</div>
+  </div>`;
+}
+// Console parent : bandeau sur la fiche de l'enfant le jour de son anniversaire
+function renderAnniversaireEnfant(e){
+  if(joursAvantAnniversaire(e.dateNaissance) !== 0) return '';
+  const age = ageAnniversaire(e.dateNaissance, 0);
+  return `<div class="enfant-anniv" role="note">🎂 Joyeux anniversaire ${escapeHtml(e.prenom)}${age > 0 && age < 30 ? ` — ${age} ans` : ''} ! <span>Toute l’équipe ${DB.meta?.nomEcole ? 'de ' + escapeHtml(DB.meta.nomEcole) : 'de l’école'} lui souhaite une très belle journée.</span></div>`;
+}
+async function reglerVoeuxAnniversaire(actif){
+  try{
+    const { error } = await sb.from('ecoles').update({ voeux_anniversaire: actif }).eq('id', session.ecoleId);
+    if(error) throw error;
+    DB.meta.voeuxAnniversaire = actif;
+    toast(actif ? 'Vœux d’anniversaire activés' : 'Vœux d’anniversaire désactivés');
+  }catch(e){ alert('Erreur : ' + e.message); renderView('parametres'); }
 }
 /* =====================================================================
    CAHIER DE TEXTES — devoirs par classe (schema.sql section 64)
@@ -7747,6 +7804,12 @@ function renderParametres(){
     <div class="panel">
       <div class="panel-head"><div><h2>⏰ Annonces horaires automatiques</h2><div class="sub">Les parents sont prévenus automatiquement avant le début des cours, les pauses et la fin des cours — jours de classe uniquement</div></div></div>
       ${renderHorairesAnnonces()}
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><div><h2>🎂 Anniversaires des élèves</h2><div class="sub">Le tableau de bord affiche les anniversaires de la semaine ; les parents voient un bandeau de fête le jour J.</div></div></div>
+      <label style="display:flex;align-items:center;gap:10px;"><input type="checkbox" ${DB.meta?.voeuxAnniversaire !== false ? 'checked' : ''} onchange="reglerVoeuxAnniversaire(this.checked)">
+        <strong>Envoyer automatiquement les vœux de l’école aux parents à 8h</strong> (notification + message)</label>
     </div>
 
     <div class="panel">

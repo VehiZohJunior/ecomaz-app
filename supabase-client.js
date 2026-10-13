@@ -451,6 +451,7 @@ async function loadAllFromSupabase(){
       geofenceLatitude: ecole.geofenceLatitude ?? null,
       scolariteVisibleParents: ecole.scolariteVisibleParents === true,
       relancesScolarite: ecole.relancesScolarite === true, heureRelances: (ecole.heureRelances || '10:00').slice(0, 5),
+      voeuxAnniversaire: ecole.voeuxAnniversaire !== false,
       bulletinsPublies: ecole.bulletinsPublies || [],
       geofenceLongitude: ecole.geofenceLongitude ?? null,
       geofenceRayonMetres: ecole.geofenceRayonMetres ?? 100,
