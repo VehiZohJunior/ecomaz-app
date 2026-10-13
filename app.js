@@ -2272,6 +2272,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.10.13-14', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Fiche élève : bouton « 📄 Certificat de scolarité » — document prêt à imprimer (logo, n°, classe, année scolaire, signature et cachet).' ],
+  } },
   { version: '2026.10.13-13', nouveautes: {
     commun: [],
     parent: [],
@@ -3444,6 +3450,42 @@ async function supprimerPublication(id){
     DB.fil.pubs = DB.fil.pubs.filter(p => p.id !== id);
     rafraichirFil(); toast('Publication supprimée');
   }catch(e){ alert('Erreur : ' + e.message); }
+}
+/* =====================================================================
+   CERTIFICAT DE SCOLARITÉ (imprimable, depuis la fiche élève)
+   ===================================================================== */
+function ouvrirCertificatScolarite(eleveId){
+  const e = eleveById(eleveId);
+  if(!e) return;
+  if(e.statut && e.statut !== 'Actif') return alert(`${eleveFullName(e)} n’est pas inscrit(e) actuellement (statut : ${e.statut}) : pas de certificat de scolarité.`);
+  const m = DB.meta || {};
+  const feminin = e.sexe === 'F';
+  const signataire = m.directeurNom || '……………………………';
+  const ville = (m.adresse || '').split(/[,–-]/).map(x => x.trim()).filter(Boolean).pop() || '……………';
+  const numero = `CS-${String(m.anneeScolaire || new Date().getFullYear()).replace(/\s+/g, '')}-${e.matricule || e.id.slice(0, 6).toUpperCase()}`;
+  openModal('📄 Certificat de scolarité', `
+    <div class="recu certif">
+      <div class="recu-head">
+        ${m.logo ? `<img src="${m.logo}" alt="">` : `<div class="recu-logo-ph">🎓</div>`}
+        <div><strong>${escapeHtml(m.nomEcole || '')}</strong>
+          <div class="hint">${escapeHtml(m.adresse || '')}${m.telephone ? ' · ' + escapeHtml(m.telephone) : ''}</div></div>
+      </div>
+      <div class="recu-title">CERTIFICAT DE SCOLARITÉ</div>
+      <div class="hint" style="text-align:center;margin:-6px 0 14px;">N° ${escapeHtml(numero)}</div>
+      <p>Je soussigné(e), <strong>${escapeHtml(signataire)}</strong>, Directeur / Directrice de l’établissement <strong>${escapeHtml(m.nomEcole || '')}</strong>, certifie que :</p>
+      <p style="text-align:center;font-size:1.15em;margin:14px 0;"><strong>${escapeHtml(String(e.nom || '').toUpperCase())} ${escapeHtml(e.prenom || '')}</strong></p>
+      <p>${feminin ? 'née' : 'né'} le <strong>${e.dateNaissance ? fmtDate(e.dateNaissance) : '……………'}</strong>, matricule <strong>${escapeHtml(e.matricule || '—')}</strong>,
+        est régulièrement ${feminin ? 'inscrite' : 'inscrit'} dans notre établissement en classe de <strong>${escapeHtml(classeName(e.classeId))}</strong>
+        pour l’année scolaire <strong>${escapeHtml(m.anneeScolaire || '')}</strong>${e.dateInscription ? `, depuis le <strong>${fmtDate(e.dateInscription)}</strong>` : ''}.</p>
+      <p>En foi de quoi, le présent certificat lui est délivré pour servir et valoir ce que de droit.</p>
+      <p style="text-align:right;margin-top:18px;">Fait à ${escapeHtml(ville)}, le ${fmtDate(todayISO())}</p>
+      <div class="signatures">
+        <div class="sign-box"><div class="sign-role">Cachet de l’établissement</div><div class="sign-line">&nbsp;</div></div>
+        <div class="sign-box"><div class="sign-role">Le Directeur / La Directrice</div><div class="sign-line">${escapeHtml(signataire)}</div></div>
+      </div>
+    </div>
+    ${!e.dateNaissance ? '<div class="hint no-print" style="color:var(--amber);">⚠️ Date de naissance manquante sur la fiche : complétez-la avant d’imprimer.</div>' : ''}
+    <div class="form-actions no-print"><button type="button" class="btn secondary" onclick="closeModal()">Fermer</button><button type="button" class="btn" onclick="window.print()">🖨️ Imprimer</button></div>`);
 }
 /* =====================================================================
    PRÉ-INSCRIPTIONS EN LIGNE (schema.sql section 71, page preinscription.html)
@@ -4753,7 +4795,8 @@ function openEleveForm(id){
     <form id="formEleve" onsubmit="return handleSaveEleve(event)">
       <input type="hidden" name="id" value="${e?e.id:''}">
       <button type="button" class="btn secondary sm" style="margin-bottom:14px;" onclick="ouvrirRemplissageIntelligent('eleve', SCHEMA_ELEVE, (r)=>appliquerRemplissage('formEleve', r))">✨ Remplir automatiquement</button>
-      ${e ? `<button type="button" class="btn secondary sm" style="margin-bottom:14px;" onclick="ouvrirSecuriteEleve('${e.id}')">🛡️ Sécurité & santé</button>` : ''}
+      ${e ? `<button type="button" class="btn secondary sm" style="margin-bottom:14px;" onclick="ouvrirSecuriteEleve('${e.id}')">🛡️ Sécurité & santé</button>
+      <button type="button" class="btn secondary sm" style="margin-bottom:14px;" onclick="ouvrirCertificatScolarite('${e.id}')">📄 Certificat de scolarité</button>` : ''}
       <div class="form-grid">
         <div class="field"><label>Prénom</label><input name="prenom" required value="${e?escapeHtml(e.prenom):''}"></div>
         <div class="field"><label>Nom</label><input name="nom" required value="${e?escapeHtml(e.nom):''}"></div>

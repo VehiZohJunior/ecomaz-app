@@ -1002,6 +1002,7 @@ td:has(> .amount), th.montant{ text-align:right; }
 .bulle-item.msg-envoye{ background:var(--em-green-100, #e6efe9); margin-left:18px; }
 
 /* Tableau de bord enseignant : ma journée */
+.certif p{ line-height:1.7; margin:8px 0; }
 .menu-jour{ display:flex; gap:10px; align-items:flex-start; padding:8px 0; border-bottom:1px solid var(--border); }
 .menu-jour:last-child{ border-bottom:0; }
 .menu-lib{ min-width:92px; font-weight:700; text-transform:capitalize; }
