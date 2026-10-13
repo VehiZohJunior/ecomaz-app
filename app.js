@@ -2229,9 +2229,9 @@ async function handleNotifierPortier(eleveId){
 const VERSIONS = [
   { version: '2026.10.13-2', nouveautes: {
     commun: [],
-    parent: [ 'Nouveau : « Écrire à l’école » dans vos messages — l’école vous répond ici.', 'Nouveau : « À venir » sur l’accueil — vacances, compositions, réunions et fêtes de l’école.', 'Nouvel onglet « Vie de l’école » : photos et vidéos des événements, J’aime, Bravo et commentaires.' ],
+    parent: [ 'Chaque paiement de scolarité vous est confirmé dans vos messages, avec le reste à payer.', 'Nouveau : « Écrire à l’école » dans vos messages — l’école vous répond ici.', 'Nouveau : « À venir » sur l’accueil — vacances, compositions, réunions et fêtes de l’école.', 'Nouvel onglet « Vie de l’école » : photos et vidéos des événements, J’aime, Bravo et commentaires.' ],
     portier: [],
-    personnel: [ 'Exports Excel : liste des élèves (une feuille par classe) et état de la scolarité avec les impayés.', 'Messagerie : les parents peuvent vous écrire ; bouton « Répondre » et notification à chaque message.', 'Nouveau menu « Agenda de l’école » : vacances, compositions, réunions ; les vacances arrêtent les annonces automatiquement.', 'Notes & Bulletins : la Direction publie un trimestre, les parents voient le bulletin de leurs enfants.', 'Enseignants : application « EcoMaZ-ENSEIGNANTS » — chacun s’inscrit avec Google, coche ses classes et ne voit que ses classes.', 'Parents : à l’inscription, ils cochent eux-mêmes leurs enfants ; vous n’avez plus qu’à approuver.', 'Paramètres → Scolarité : assistant « inscription + scolarité par classe ».', 'Paramètres → Scolarité : relances automatiques et polies des tranches impayées (3 jours avant, le jour même, 7 jours après).', 'Notifications sur le téléphone pour tout le personnel : demandes d’accès, absences signalées, objets perdus, appel non fait.', 'Appel rapide : « Tous présents », puis touchez le nom des absents ; rappel à 9h00 si l’appel n’est pas fait.', 'Paramètres → Scolarité : montants et tranches de paiement propres à chaque classe, copie vers d’autres classes, affichage aux parents au choix.', 'Direction : liste « Mise en route de l’école » sur le tableau de bord, avec ce qui reste à faire.', 'Nouveau menu « Vie de l’école » : publiez les photos et vidéos des événements pour les parents (toute l’école ou certaines classes).' ],
+    personnel: [ 'Paiement de scolarité : le parent reçoit automatiquement la confirmation (application + notification), avec bouton WhatsApp sous le reçu.', 'Exports Excel : liste des élèves (une feuille par classe) et état de la scolarité avec les impayés.', 'Messagerie : les parents peuvent vous écrire ; bouton « Répondre » et notification à chaque message.', 'Nouveau menu « Agenda de l’école » : vacances, compositions, réunions ; les vacances arrêtent les annonces automatiquement.', 'Notes & Bulletins : la Direction publie un trimestre, les parents voient le bulletin de leurs enfants.', 'Enseignants : application « EcoMaZ-ENSEIGNANTS » — chacun s’inscrit avec Google, coche ses classes et ne voit que ses classes.', 'Parents : à l’inscription, ils cochent eux-mêmes leurs enfants ; vous n’avez plus qu’à approuver.', 'Paramètres → Scolarité : assistant « inscription + scolarité par classe ».', 'Paramètres → Scolarité : relances automatiques et polies des tranches impayées (3 jours avant, le jour même, 7 jours après).', 'Notifications sur le téléphone pour tout le personnel : demandes d’accès, absences signalées, objets perdus, appel non fait.', 'Appel rapide : « Tous présents », puis touchez le nom des absents ; rappel à 9h00 si l’appel n’est pas fait.', 'Paramètres → Scolarité : montants et tranches de paiement propres à chaque classe, copie vers d’autres classes, affichage aux parents au choix.', 'Direction : liste « Mise en route de l’école » sur le tableau de bord, avec ce qui reste à faire.', 'Nouveau menu « Vie de l’école » : publiez les photos et vidéos des événements pour les parents (toute l’école ou certaines classes).' ],
   } },
   { version: '2026.10.12-2', nouveautes: {
     commun: [],
@@ -6243,8 +6243,30 @@ async function handleSavePaiementScolarite(ev, eleveId){
     renderView('comptabilite');
     const e = eleveById(eleveId);
     openRecu({type:'entree', refId:rec.id, montant:rec.montant, date:rec.date, modePaiement:rec.modePaiement, objet:`Scolarité — ${rec.tranche}`, personne: eleveFullName(e), sousInfo: `${classeName(e.classeId)} · Matricule ${e.matricule}`});
+    confirmerPaiementParent(rec, e);
   }catch(e){ alert('Erreur : ' + e.message); }
   return false;
+}
+// Confirmation automatique au parent : message dans son application +
+// notification, et bouton WhatsApp sous le reçu (gratuit).
+async function confirmerPaiementParent(rec, e){
+  if(!e) return;
+  const g = scolariteEleveParEcheance(e.id), info = scolariteEleveInfo(e.id);
+  const du = g.total || info.du, paye = g.total ? g.totalPaye : info.paye, reste = Math.max(0, du - paye);
+  const texte = `🧾 Paiement reçu le ${fmtDate(rec.date)} : ${fmtFCFA(rec.montant)} (${rec.modePaiement || 'espèces'}) — ${rec.tranche || 'Scolarité'} — ${eleveFullName(e)}.`
+    + (du ? (reste ? ` Reste à payer : ${fmtFCFA(reste)}.` : ' Scolarité soldée.') : '') + ` Merci ! — ${DB.meta?.nomEcole || ''}`;
+  try{
+    const { data } = await sb.from('messages_internes').insert({ destinataire_type: 'parent', eleve_id: e.id, contenu: texte, auteur_nom: DB.meta?.nomEcole || '' }).select().single();
+    if(data) DB.messagesInternes = [rowToCamel(data)].concat(DB.messagesInternes || []);
+  }catch(_e){}
+  notifierParentsPush([e.id], texte);
+  const tels = String(e.parentTel || '').split(/\s*[\/;,|]\s*|\s+-\s+|\s+et\s+/i).map(t => t.replace(/\D/g, '').replace(/^225/, '')).filter(t => t.length === 10);
+  const corps = document.getElementById('modalBody');
+  if(corps && tels.length){
+    const z = document.createElement('div'); z.className = 'form-actions no-print'; z.style.flexWrap = 'wrap';
+    z.innerHTML = `<span class="hint" style="margin:0 auto 0 0;">Le parent a été prévenu dans son application.</span>` + tels.map(t => `<a class="btn secondary sm" href="https://wa.me/225${t}?text=${encodeURIComponent(texte)}" target="_blank" rel="noopener">📲 WhatsApp ${t.replace(/(\d{2})(?=\d)/g, '$1 ')}</a>`).join('');
+    corps.appendChild(z);
+  }
 }
 function voirHistoriqueScolarite(eleveId){
   const e = eleveById(eleveId);
