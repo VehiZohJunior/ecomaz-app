@@ -2756,3 +2756,42 @@ revoke all on function horodater_lecture_message() from public, anon, authentica
 drop trigger if exists horodater_lecture_message on messages_internes;
 create trigger horodater_lecture_message before update on messages_internes
   for each row execute function horodater_lecture_message();
+
+-- =====================================================================
+-- 74. SANTÉ DES ÉCOLES — nouveaux indicateurs d'usage (2026-10-13)
+-- =====================================================================
+-- Toujours des CHIFFRES seulement, réservés au compte développeur.
+drop function if exists sante_ecoles();
+create or replace function sante_ecoles()
+returns table (ecole_id uuid, eleves_actifs int, eleves_relies int, enseignants int, jours_appel_7j int,
+               paiements_30j int, publications int, telephones_abonnes int, derniere_activite date,
+               comptes_enseignants int, devoirs_30j int, messages_parents_30j int, messages_lus_30j int, preinscriptions_30j int)
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if not est_developpeur() then raise exception 'Réservé au compte développeur'; end if;
+  return query
+  select e.id,
+    (select count(*)::int from eleves el where el.ecole_id = e.id and el.statut = 'Actif'),
+    (select count(distinct pe.eleve_id)::int from parents_eleves pe join eleves el on el.id = pe.eleve_id where pe.ecole_id = e.id and el.statut = 'Actif'),
+    (select count(*)::int from enseignants t where t.ecole_id = e.id and t.statut = 'Actif'),
+    (select count(distinct p.date)::int from presences_eleves p where p.ecole_id = e.id and p.date >= current_date - 7),
+    (select count(*)::int from paiements_scolarite ps where ps.ecole_id = e.id and ps.date >= current_date - 30),
+    (select count(*)::int from publications pu where pu.ecole_id = e.id),
+    (select count(*)::int from push_abonnements pa where pa.ecole_id = e.id),
+    greatest(
+      (select max(p.date) from presences_eleves p where p.ecole_id = e.id),
+      (select max(ps.date) from paiements_scolarite ps where ps.ecole_id = e.id),
+      (select max(pu.created_at)::date from publications pu where pu.ecole_id = e.id),
+      (select max(m.created_at)::date from messages_internes m where m.ecole_id = e.id),
+      (select max(d.created_at)::date from devoirs d where d.ecole_id = e.id),
+      (select max(el.date_inscription) from eleves el where el.ecole_id = e.id and el.date_inscription <= current_date)
+    ),
+    (select count(*)::int from profiles pr where pr.ecole_id = e.id and pr.role = 'enseignant' and pr.enseignant_id is not null),
+    (select count(*)::int from devoirs d where d.ecole_id = e.id and d.created_at >= now() - interval '30 days'),
+    (select count(*)::int from messages_internes m where m.ecole_id = e.id and m.destinataire_type = 'parent' and m.created_at >= now() - interval '30 days'),
+    (select count(*)::int from messages_internes m where m.ecole_id = e.id and m.destinataire_type = 'parent' and m.lu and m.created_at >= now() - interval '30 days'),
+    (select count(*)::int from preinscriptions pi where pi.ecole_id = e.id and pi.created_at >= now() - interval '30 days')
+  from ecoles e;
+end $$;
+revoke all on function sante_ecoles() from public, anon;
+grant execute on function sante_ecoles() to authenticated;
