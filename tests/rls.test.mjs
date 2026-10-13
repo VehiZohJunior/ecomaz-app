@@ -193,6 +193,12 @@ async function requete(accessToken, chemin, options = {}){
   const arriveeSec = await fetch(`${URL_BASE}/functions/v1/notifier-arrivee-parent`, { method:'POST', headers:{ Authorization:`Bearer ${tokenSecretariat}`, 'Content-Type':'application/json' }, body: JSON.stringify({ eleveId:'00000000-0000-4000-8000-000000000001' }) });
   verifier('Seul le portier peut déclencher la notification « parent à la porte »', arriveeSec.status === 400);
 
+  section('7quinquies. Santé des écoles — réservée au compte développeur');
+  const santeSec = await requete(tokenSecretariat, `/rest/v1/rpc/sante_ecoles`, { method:'POST', body:'{}' });
+  verifier('Le secrétariat ne voit pas la santé des écoles', !santeSec.ok, `statut ${santeSec.status}`);
+  const santeDev = await requete(tokenDeveloppeur, `/rest/v1/rpc/sante_ecoles`, { method:'POST', body:'{}' });
+  verifier('Le développeur obtient uniquement des chiffres', santeDev.ok && Array.isArray(santeDev.data) && santeDev.data.every(r => !('nom' in r) && !('prenom' in r)));
+
   section('8. Visiteur non connecté — ne lit que les affichages publics prévus');
   for(const table of ['eleves','enseignants_lecture','profiles','paiements_scolarite','messages','parents_eleves','presences_eleves','eleves_portier_lecture','objets_perdus','push_abonnements','absences_signalees']){
     const r = await requete(ANON_KEY, `/rest/v1/${table}?select=*&limit=1`);

@@ -2122,3 +2122,36 @@ drop policy if exists "lecture paiements_scolarite parent" on paiements_scolarit
 create policy "lecture paiements_scolarite parent" on paiements_scolarite for select
   using (est_parent() and exists (
     select 1 from parents_eleves pe where pe.parent_profile_id = auth.uid() and pe.eleve_id = paiements_scolarite.eleve_id));
+
+-- =====================================================================
+-- 56. SANTÉ DES ÉCOLES — Console Développeur (2026-10-13)
+-- =====================================================================
+-- Vehi Zoh Junior suit l'usage réel de chaque école cliente. Uniquement
+-- des COMPTES (aucun nom, aucune donnée d'élève), et seulement pour le
+-- compte développeur.
+create or replace function sante_ecoles()
+returns table (ecole_id uuid, eleves_actifs int, eleves_relies int, enseignants int, jours_appel_7j int,
+               paiements_30j int, publications int, telephones_abonnes int, derniere_activite date)
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if not est_developpeur() then raise exception 'Réservé au compte développeur'; end if;
+  return query
+  select e.id,
+    (select count(*)::int from eleves el where el.ecole_id = e.id and el.statut = 'Actif'),
+    (select count(distinct pe.eleve_id)::int from parents_eleves pe join eleves el on el.id = pe.eleve_id where pe.ecole_id = e.id and el.statut = 'Actif'),
+    (select count(*)::int from enseignants t where t.ecole_id = e.id and t.statut = 'Actif'),
+    (select count(distinct p.date)::int from presences_eleves p where p.ecole_id = e.id and p.date >= current_date - 7),
+    (select count(*)::int from paiements_scolarite ps where ps.ecole_id = e.id and ps.date >= current_date - 30),
+    (select count(*)::int from publications pu where pu.ecole_id = e.id),
+    (select count(*)::int from push_abonnements pa where pa.ecole_id = e.id),
+    greatest(
+      (select max(p.date) from presences_eleves p where p.ecole_id = e.id),
+      (select max(ps.date) from paiements_scolarite ps where ps.ecole_id = e.id),
+      (select max(pu.created_at)::date from publications pu where pu.ecole_id = e.id),
+      (select max(m.created_at)::date from messages_internes m where m.ecole_id = e.id),
+      (select max(el.date_inscription) from eleves el where el.ecole_id = e.id and el.date_inscription <= current_date)
+    )
+  from ecoles e;
+end $$;
+revoke all on function sante_ecoles() from public, anon;
+grant execute on function sante_ecoles() to authenticated;
