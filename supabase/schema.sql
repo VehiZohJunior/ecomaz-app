@@ -2544,3 +2544,43 @@ begin
 end $$;
 revoke all on function personnes_autorisees_portier(uuid) from public, anon;
 grant execute on function personnes_autorisees_portier(uuid) to authenticated;
+
+-- =====================================================================
+-- 67. RÉPONSES DES PARENTS AUX DATES DE L'AGENDA (2026-10-13)
+-- =====================================================================
+-- Pour une sortie, une réunion, une fête… l'école peut demander une
+-- réponse : « autorisation » (j'autorise / je n'autorise pas) ou
+-- « presence » (je serai présent / absent). Le parent répond pour CHACUN
+-- de ses enfants concernés ; l'école voit les réponses et les oublis.
+alter table evenements_agenda add column if not exists demande_reponse text
+  check (demande_reponse in ('autorisation','presence'));
+
+create table if not exists reponses_agenda (
+  evenement_id uuid not null references evenements_agenda(id) on delete cascade,
+  eleve_id uuid not null references eleves(id) on delete cascade,
+  ecole_id uuid not null references ecoles(id) on delete cascade default mon_ecole_id(),
+  reponse boolean not null,
+  commentaire text not null default '' check (char_length(commentaire) <= 300),
+  repondu_par uuid references auth.users(id) on delete set null default auth.uid(),
+  repondu_at timestamptz not null default now(),
+  primary key (evenement_id, eleve_id)
+);
+alter table reponses_agenda enable row level security;
+drop policy if exists "lecture reponses_agenda" on reponses_agenda;
+create policy "lecture reponses_agenda" on reponses_agenda for select
+  using (ecole_id = mon_ecole_id() and peut_voir_fiche_eleve(eleve_id));
+-- Le parent répond pour son enfant, si la date le concerne et demande une réponse
+drop policy if exists "reponse parent agenda" on reponses_agenda;
+create policy "reponse parent agenda" on reponses_agenda for all
+  using (ecole_id = mon_ecole_id() and est_parent_de(eleve_id))
+  with check (ecole_id = mon_ecole_id() and est_parent_de(eleve_id) and exists (
+    select 1 from evenements_agenda ev join eleves e on e.id = reponses_agenda.eleve_id
+    where ev.id = reponses_agenda.evenement_id and ev.ecole_id = reponses_agenda.ecole_id
+      and ev.demande_reponse is not null and ev.date_fin >= current_date
+      and (ev.classe_ids is null or e.classe_id = any(ev.classe_ids))));
+-- L'administration peut noter une réponse reçue sur papier ou par téléphone
+drop policy if exists "reponse admin agenda" on reponses_agenda;
+create policy "reponse admin agenda" on reponses_agenda for all
+  using (ecole_id = mon_ecole_id() and est_perso_admin())
+  with check (ecole_id = mon_ecole_id() and est_perso_admin()
+    and exists (select 1 from eleves e where e.id = reponses_agenda.eleve_id and e.ecole_id = reponses_agenda.ecole_id));

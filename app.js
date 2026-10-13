@@ -2234,6 +2234,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.10.13-7', nouveautes: {
+    commun: [],
+    parent: [ 'Sorties, réunions, fêtes : répondez directement à l’école depuis « À venir » (j’autorise / je serai présent).' ],
+    portier: [],
+    personnel: [ 'Agenda : demandez une autorisation parentale ou une confirmation de présence ; suivez les réponses par classe et relancez par WhatsApp les parents sans réponse.' ],
+  } },
   { version: '2026.10.13-6', nouveautes: {
     commun: [],
     parent: [ 'Nouveau sur la fiche de votre enfant : « Sécurité & santé » — indiquez qui peut venir le chercher (le portier le verra) et ses allergies.' ],
@@ -3652,6 +3658,35 @@ function delaiAgenda(ev){
   return j === 1 ? 'demain' : `dans ${j} jours`;
 }
 // Console parent : prochaines dates
+/* --- Réponses des parents (schema.sql section 67) --- */
+const DEMANDES_REPONSE = {
+  autorisation: { lib:'Autorisation parentale', oui:'✅ J’autorise', non:'❌ Je n’autorise pas', ouiCourt:'autorisé', nonCourt:'non autorisé' },
+  presence: { lib:'Confirmation de présence', oui:'✅ Je serai présent(e)', non:'❌ Je ne pourrai pas venir', ouiCourt:'présent', nonCourt:'absent' },
+};
+function elevesConcernesAgenda(ev, eleves){
+  return (eleves || []).filter(e => e.statut !== 'Inactif' && (!ev.classeIds || !ev.classeIds.length || ev.classeIds.includes(e.classeId)));
+}
+function renderReponsesParent(ev){
+  const d = DEMANDES_REPONSE[ev.demandeReponse];
+  if(!d) return '';
+  const enfants = elevesConcernesAgenda(ev, DB.eleves);
+  if(!enfants.length) return '';
+  return `<div class="agenda-reponses">${enfants.map(e => {
+    const r = (DB.reponsesAgenda || []).find(x => x.evenementId === ev.id && x.eleveId === e.id);
+    const qui = enfants.length > 1 || (DB.eleves || []).length > 1 ? `<strong>${escapeHtml(e.prenom)}</strong> : ` : '';
+    return r
+      ? `<div class="agenda-rep-ligne">${qui}<span class="badge ${r.reponse ? 'green' : 'red'}">${r.reponse ? d.ouiCourt : d.nonCourt}</span> <button type="button" class="btn secondary sm" onclick="repondreAgenda('${ev.id}','${e.id}', ${!r.reponse})">Changer</button></div>`
+      : `<div class="agenda-rep-ligne">${qui}<button type="button" class="btn sm" onclick="repondreAgenda('${ev.id}','${e.id}', true)">${d.oui}</button> <button type="button" class="btn secondary sm" onclick="repondreAgenda('${ev.id}','${e.id}', false)">${d.non}</button></div>`;
+  }).join('')}</div>`;
+}
+async function repondreAgenda(evenementId, eleveId, reponse){
+  try{
+    const { data, error } = await sb.from('reponses_agenda').upsert({ evenement_id: evenementId, eleve_id: eleveId, reponse, repondu_at: new Date().toISOString() }).select().single();
+    if(error) throw error;
+    DB.reponsesAgenda = (DB.reponsesAgenda || []).filter(x => !(x.evenementId === evenementId && x.eleveId === eleveId)).concat(rowToCamel(data));
+    toast('Réponse envoyée à l’école'); renderView(ui.currentView);
+  }catch(e){ alert('Erreur : ' + e.message); }
+}
 function renderAgendaParent(){
   const evs = (DB.agenda || []).filter(e => e.dateFin >= todayISO()).slice(0, 5);
   if(!evs.length) return '';
@@ -3660,9 +3695,65 @@ function renderAgendaParent(){
     <div class="actu-liste">${evs.map(ev => `<article class="actu-carte">
       <div class="actu-date" aria-hidden="true"><span class="actu-jour">${new Date(ev.dateDebut + 'T12:00:00').getDate()}</span><span class="actu-mois">${new Date(ev.dateDebut + 'T12:00:00').toLocaleDateString('fr-FR', {month:'short'}).replace('.', '').toUpperCase()}</span></div>
       <div class="actu-corps"><div class="actu-titre">${(TYPES_AGENDA[ev.type] || TYPES_AGENDA.autre).ic} ${escapeHtml(ev.titre)}</div>
-        <div class="actu-meta">${datesAgenda(ev)} · <strong>${delaiAgenda(ev)}</strong>${ev.description ? ' · ' + escapeHtml(ev.description) : ''}</div></div>
+        <div class="actu-meta">${datesAgenda(ev)} · <strong>${delaiAgenda(ev)}</strong>${ev.description ? ' · ' + escapeHtml(ev.description) : ''}</div>
+        ${ev.demandeReponse ? `<div class="hint" style="margin:6px 0 0;font-weight:600;">✍️ ${DEMANDES_REPONSE[ev.demandeReponse]?.lib || ''} : l’école attend votre réponse</div>${renderReponsesParent(ev)}` : ''}</div>
     </article>`).join('')}</div>
   </section>`;
+}
+// École : réponses reçues pour une date de l'agenda
+function telephonesWhatsapp(tel){
+  return String(tel || '').split(/\s*[\/;,|]\s*|\s+-\s+|\s+et\s+/i)
+    .map(m => m.replace(/\D/g, '').replace(/^225/, '')).filter(m => m.length === 10).map(m => '225' + m);
+}
+async function ouvrirReponsesAgenda(evenementId){
+  const ev = (DB.agenda || []).find(x => x.id === evenementId);
+  if(!ev) return;
+  openModal('✍️ Réponses des parents', '<div class="hint">Chargement…</div>');
+  try{
+    const { data, error } = await sb.from('reponses_agenda').select('*').eq('evenement_id', evenementId);
+    if(error) throw error;
+    DB.reponsesAgenda = (DB.reponsesAgenda || []).filter(x => x.evenementId !== evenementId).concat(rowsToCamel(data || []));
+  }catch(e){ $('#modalBody').innerHTML = `<div class="hint">Erreur : ${escapeHtml(e.message)}</div>`; return; }
+  afficherReponsesAgenda(ev);
+}
+function afficherReponsesAgenda(ev){
+  const d = DEMANDES_REPONSE[ev.demandeReponse] || DEMANDES_REPONSE.autorisation;
+  const gestion = ['secretariat','direction','fondation'].includes(ui.role);
+  const idsVisibles = classesVisibles().map(c => c.id);
+  const eleves = elevesConcernesAgenda(ev, DB.eleves.filter(e => e.statut === 'Actif' && idsVisibles.includes(e.classeId)));
+  const rep = (e) => (DB.reponsesAgenda || []).find(x => x.evenementId === ev.id && x.eleveId === e.id);
+  const oui = eleves.filter(e => rep(e)?.reponse === true).length, non = eleves.filter(e => rep(e)?.reponse === false).length;
+  const sans = eleves.filter(e => !rep(e));
+  const numeros = [...new Set(sans.flatMap(e => telephonesWhatsapp(e.parentTel)))];
+  const classes = DB.classes.filter(c => eleves.some(e => e.classeId === c.id));
+  ui._repAgenda = { ev, numeros };
+  openModal(`✍️ ${ev.titre}`, `
+    <p class="hint" style="margin-top:0;">${d.lib} · ${datesAgenda(ev)}</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+      <span class="badge green">${oui} ${d.ouiCourt}</span><span class="badge red">${non} ${d.nonCourt}</span><span class="badge">${sans.length} sans réponse</span></div>
+    ${sans.length && numeros.length ? `<button type="button" class="btn secondary sm" style="margin-bottom:12px;" onclick="relancerReponsesAgenda()">📲 Relancer par WhatsApp les parents sans réponse (${numeros.length} numéro(s))</button>` : ''}
+    ${classes.map(c => `<h4 style="margin:12px 0 6px;">${escapeHtml(c.nom)}</h4>
+      <div class="table-wrap"><table><tbody>${eleves.filter(e => e.classeId === c.id).sort((a, b) => eleveFullName(a).localeCompare(eleveFullName(b))).map(e => { const r = rep(e); return `<tr>
+        <td>${escapeHtml(eleveFullName(e))}</td>
+        <td>${r ? `<span class="badge ${r.reponse ? 'green' : 'red'}">${r.reponse ? d.ouiCourt : d.nonCourt}</span>` : '<span class="hint">sans réponse</span>'}</td>
+        <td style="white-space:nowrap;">${gestion ? `<button class="btn secondary sm" title="Réponse reçue sur papier ou par téléphone" onclick="noterReponseAgenda('${ev.id}','${e.id}',true)">Oui</button> <button class="btn secondary sm" onclick="noterReponseAgenda('${ev.id}','${e.id}',false)">Non</button>` : ''}</td>
+      </tr>`; }).join('')}</tbody></table></div>`).join('') || '<div class="hint">Aucun élève concerné.</div>'}
+    ${gestion ? '<p class="hint">« Oui / Non » : pour noter une réponse reçue sur papier ou par téléphone.</p>' : ''}`);
+}
+function relancerReponsesAgenda(){
+  const { ev, numeros } = ui._repAgenda || {};
+  if(!ev) return;
+  const d = DEMANDES_REPONSE[ev.demandeReponse] || DEMANDES_REPONSE.autorisation;
+  const message = `Bonjour, ${DB.meta?.nomEcole || 'l’école'} attend votre réponse (${d.lib.toLowerCase()}) pour « ${ev.titre} » — ${datesAgenda(ev)}. Merci de répondre dans l’application EcoMaZ Parents (accueil → À venir). Merci !`;
+  ouvrirEnvoiWhatsapp('📲 Relance des parents', numeros, message, 'Touchez chaque numéro : WhatsApp s’ouvre avec ce message (gratuit).');
+}
+async function noterReponseAgenda(evenementId, eleveId, reponse){
+  try{
+    const { data, error } = await sb.from('reponses_agenda').upsert({ evenement_id: evenementId, eleve_id: eleveId, reponse, repondu_at: new Date().toISOString() }).select().single();
+    if(error) throw error;
+    DB.reponsesAgenda = (DB.reponsesAgenda || []).filter(x => !(x.evenementId === evenementId && x.eleveId === eleveId)).concat(rowToCamel(data));
+    afficherReponsesAgenda((DB.agenda || []).find(x => x.id === evenementId));
+  }catch(e){ alert('Erreur : ' + e.message); }
 }
 // Application école : page Agenda
 function renderAgenda(){
@@ -3688,6 +3779,8 @@ function renderAgenda(){
             <select name="cible" onchange="document.getElementById('choixClassesAgenda').style.display = this.value === 'classes' ? 'flex' : 'none'"><option value="tous">Toute l’école</option><option value="classes">Certaines classes</option></select>
             <div id="choixClassesAgenda" style="display:none;flex-wrap:wrap;gap:10px;margin-top:8px;">${DB.classes.map(c => `<label style="display:flex;align-items:center;gap:6px;"><input type="checkbox" name="classe" value="${c.id}"> ${escapeHtml(c.nom)}</label>`).join('')}</div></div>
         </div>
+        <div class="field" style="margin-top:8px;"><label>Demander une réponse aux parents ?</label>
+          <select name="demandeReponse"><option value="">Non, simple information</option><option value="autorisation">Oui : autorisation parentale (sortie, excursion…)</option><option value="presence">Oui : confirmation de présence (réunion, fête…)</option></select></div>
         <label style="display:flex;align-items:center;gap:8px;margin-top:8px;"><input type="checkbox" name="prevenir" checked> Prévenir les parents concernés par une notification</label>
         <div class="form-actions"><button class="btn" type="submit">Ajouter à l’agenda</button></div>
       </form>
@@ -3699,7 +3792,7 @@ function renderAgenda(){
         <thead><tr><th>Date</th><th>Événement</th><th>Pour</th><th></th></tr></thead>
         <tbody>${liste.map(ev => `<tr>
           <td style="white-space:nowrap;">${datesAgenda(ev)}<br><span class="hint">${ev.dateFin >= todayISO() ? delaiAgenda(ev) : 'passé'}</span></td>
-          <td>${(TYPES_AGENDA[ev.type] || TYPES_AGENDA.autre).ic} <strong>${escapeHtml(ev.titre)}</strong>${ev.description ? `<br><span class="hint">${escapeHtml(ev.description)}</span>` : ''}</td>
+          <td>${(TYPES_AGENDA[ev.type] || TYPES_AGENDA.autre).ic} <strong>${escapeHtml(ev.titre)}</strong>${ev.description ? `<br><span class="hint">${escapeHtml(ev.description)}</span>` : ''}${ev.demandeReponse ? `<br><button class="btn secondary sm" style="margin-top:4px;" onclick="ouvrirReponsesAgenda('${ev.id}')">✍️ Réponses des parents</button>` : ''}</td>
           <td>${ev.classeIds && ev.classeIds.length ? ev.classeIds.map(classeName).join(', ') : 'Toute l’école'}</td>
           <td>${gestion ? `<button class="icon-btn danger" title="Supprimer" onclick="supprimerEvenementAgenda('${ev.id}')">🗑️</button>` : ''}</td>
         </tr>`).join('')}</tbody></table></div>`}
@@ -3713,7 +3806,7 @@ async function ajouterEvenementAgenda(ev){
   const classeIds = fd.get('cible') === 'classes' ? fd.getAll('classe') : null;
   if(classeIds && !classeIds.length) return alert('Cochez au moins une classe.'), false;
   const ligne = { titre: fd.get('titre').trim(), type: fd.get('type'), date_debut: fd.get('dateDebut'), date_fin: fd.get('dateFin'),
-    description: (fd.get('description') || '').trim(), classe_ids: classeIds };
+    description: (fd.get('description') || '').trim(), classe_ids: classeIds, demande_reponse: fd.get('demandeReponse') || null };
   try{
     const { data, error } = await sb.from('evenements_agenda').insert(ligne).select().single();
     if(error) throw error;
@@ -3721,7 +3814,7 @@ async function ajouterEvenementAgenda(ev){
     if(fd.get('prevenir') === 'on'){
       const eleves = DB.eleves.filter(e => e.statut === 'Actif' && (!classeIds || classeIds.includes(e.classeId))).map(e => e.id);
       const evt = rowToCamel(data);
-      notifierParentsPush(eleves, `${(TYPES_AGENDA[evt.type] || TYPES_AGENDA.autre).ic} ${evt.titre} — ${datesAgenda(evt)}`);
+      notifierParentsPush(eleves, `${(TYPES_AGENDA[evt.type] || TYPES_AGENDA.autre).ic} ${evt.titre} — ${datesAgenda(evt)}${evt.demandeReponse ? ' · Merci de répondre dans l’application.' : ''}`);
     }
     toast('Ajouté à l’agenda'); renderView('agenda');
   }catch(e){ alert('Erreur : ' + e.message); }

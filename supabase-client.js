@@ -548,6 +548,14 @@ async function chargerDBParent(){
     const r = await sb.from('evenements_agenda').select('*').eq('ecole_id', session.ecoleId).gte('date_fin', iso).order('date_debut').limit(10);
     agenda = rowsToCamel(r.data || []);
   }catch(_e){}
+  // Réponses déjà données aux dates de l'agenda (RLS : ses enfants)
+  let reponsesAgenda = [];
+  if(agenda.some(a => a.demandeReponse)){
+    try{
+      const r = await sb.from('reponses_agenda').select('*').in('evenement_id', agenda.filter(a => a.demandeReponse).map(a => a.id));
+      reponsesAgenda = rowsToCamel(r.data || []);
+    }catch(_e){}
+  }
   // Sécurité et santé de ses enfants (RLS : ses enfants seulement)
   let personnesAutorisees = [], santeEleves = [];
   try{
@@ -596,7 +604,7 @@ async function chargerDBParent(){
       scolariteVisibleParents: ecole.scolariteVisibleParents === true,
       bulletinsPublies: ecole.bulletinsPublies || [],
     },
-    echeancesScolarite, paiementsScolarite, notes: notesParent, bulletinsComments: appreciations, agenda, devoirs, personnesAutorisees, santeEleves,
+    echeancesScolarite, paiementsScolarite, notes: notesParent, bulletinsComments: appreciations, agenda, reponsesAgenda, devoirs, personnesAutorisees, santeEleves,
     eleves: rowsToCamel(eleves.data),
     classes: rowsToCamel(classesRows.data),
     presencesSemaine,
