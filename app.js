@@ -1685,6 +1685,23 @@ function renderScolariteEnfant(e){
     </details>
   </div>`;
 }
+// Console parent : notes des Camps de base au fil de l'eau (si l'école l'a activé)
+function renderNotesContinuesEnfant(e){
+  if(!DB.meta?.notesContinuesParents) return '';
+  const t = trimestreCourant();
+  const notes = (DB.notes || []).filter(n => n.eleveId === e.id && n.evaluationId && n.trimestre === t && n.note != null)
+    .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+  if(!notes.length) return '';
+  const ev = id => (DB.evaluations || []).find(x => x.id === id) || {};
+  const matieres = [...new Set(notes.map(n => n.matiere))];
+  return `<details class="enfant-bulletin"><summary>📝 Notes du ${escapeHtml(t)} (${notes.length})</summary>
+    <div class="nc-moyennes">${matieres.map(mat => { const m = moyenneMatiere(e.id, mat, t); return m.classe !== null ? `<span class="badge ${m.classe >= 10 ? 'green' : 'red'}">${escapeHtml(mat)} : ${m.classe.toFixed(1)}/20</span>` : ''; }).join(' ')}</div>
+    <table class="eb-table"><thead><tr><th>Date</th><th>Matière</th><th>Évaluation</th><th>Note</th></tr></thead>
+      <tbody>${notes.slice(0, 15).map(n => { const v = ev(n.evaluationId); return `<tr><td>${n.date ? fmtDate(n.date).slice(0, 5) : ''}</td><td>${escapeHtml(n.matiere)}</td>
+        <td>${ICONES_EVAL[n.type] || ''} ${escapeHtml(v.titre || n.type || '')}</td><td><strong>${Number(n.note)}</strong>/${Number(n.noteSur) || 20}</td></tr>`; }).join('')}</tbody></table>
+    <div class="hint">Moyenne en cours des devoirs et exercices (la composition s’ajoute au bulletin).</div>
+  </details>`;
+}
 function renderFicheEnfant(e){
   const ini = initials(e.prenom, e.nom);
   return `<article class="enfant-carte">
@@ -1704,6 +1721,7 @@ function renderFicheEnfant(e){
     ${renderLienCorrection(e)}
     ${renderSecuriteEnfant(e)}
     ${renderPresenceSemaine(e)}
+    ${renderNotesContinuesEnfant(e)}
     ${renderBulletinEnfant(e)}
     ${renderScolariteEnfant(e)}
   </article>`;
@@ -2326,6 +2344,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.10.13-28', nouveautes: {
+    commun: [],
+    parent: [ 'Si votre école l’active : les notes des devoirs et exercices de votre enfant, dès qu’elles sont saisies, avec la moyenne en cours par matière.' ],
+    portier: [],
+    personnel: [ 'Paramètres : « Notes au fil de l’eau pour les parents » — chaque parent voit les notes des Camps de base de son enfant dès leur saisie, avec notification (désactivé par défaut).' ],
+  } },
   { version: '2026.10.13-27', nouveautes: {
     commun: [],
     parent: [ 'Bulletin : votre enfant voit maintenant son rang dans la classe et la moyenne de la classe.' ],
@@ -3825,6 +3849,10 @@ async function enregistrerNotesEvaluation(event, evalId){
       else { DB.notes.push(await dbInsert('notes', { eleveId, matiere: ev.matiere, note, noteSur: Number(ev.noteSur), trimestre: ev.trimestre, type: ev.type, date: ev.date, evaluationId: ev.id })); nb++; }
     }
     toast(nb ? `${nb} note(s) enregistrée(s)` : 'Aucun changement');
+    if(nb && DB.meta?.notesContinuesParents){
+      const notes = (DB.notes || []).filter(n => n.evaluationId === evalId).map(n => n.eleveId);
+      notifierParentsPush(notes, `📝 Nouvelle note en ${ev.matiere}${ev.titre ? ' (' + ev.titre + ')' : ''} — consultez l’application.`);
+    }
     ui.filters.campsEval = null; renderView('camps-de-base');
   }catch(err){ alert('Erreur : ' + err.message); if(bouton) bouton.disabled = false; }
   return false;
@@ -9202,6 +9230,11 @@ function renderParametres(){
       ${renderHorairesAnnonces()}
     </div>
     ${renderCoefficients()}
+    ${['direction','fondation'].includes(ui.role) ? `<div class="panel">
+      <div class="panel-head"><div><h2>📝 Notes au fil de l’eau pour les parents</h2><div class="sub">Si activé : chaque parent voit, dans son application, les notes des Camps de base de SON enfant dès qu’elles sont saisies (devoirs, exercices), avec la moyenne en cours, et reçoit une notification. Les compositions restent visibles seulement à la publication du bulletin.</div></div></div>
+      <label style="display:flex;align-items:center;gap:10px;"><input type="checkbox" ${DB.meta?.notesContinuesParents ? 'checked' : ''} onchange="reglerOptionEcole('notes_continues_parents', 'notesContinuesParents', this.checked, 'Notes au fil de l’eau')">
+        <strong>Montrer les notes des Camps de base aux parents</strong></label>
+    </div>` : ''}
 
     <div class="panel">
       <div class="panel-head"><div><h2>🎂 Anniversaires des élèves</h2><div class="sub">Le tableau de bord affiche les anniversaires de la semaine ; les parents voient un bandeau de fête le jour J.</div></div></div>

@@ -1015,6 +1015,7 @@ td:has(> .amount), th.montant{ text-align:right; }
 @media print{ .affiche-a4{ padding-top:20mm; } .affiche-titre{ font-size:30pt; } .affiche-qr{ width:110mm; } .affiche-etapes{ font-size:15pt; } }
 .contact-ecole-boutons{ display:flex; flex-wrap:wrap; gap:8px; }
 .contact-ecole-boutons .btn{ flex:1 1 140px; justify-content:center; text-align:center; }
+.nc-moyennes{ display:flex; flex-wrap:wrap; gap:6px; margin:8px 0; }
 .bulletin-page{ background:#fff; color:#111; padding:14px; border:1px solid #ddd; border-radius:8px; margin-bottom:16px; }
 .bo-identite{ display:grid; grid-template-columns:repeat(4, 1fr); gap:6px; margin:10px 0; }
 .bo-identite div, .bo-synthese div{ display:flex; flex-direction:column; border:1px solid #ddd; border-radius:6px; padding:6px 8px; }

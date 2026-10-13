@@ -3088,3 +3088,21 @@ create policy "gestion resultats" on bulletins_resultats for all
   using (ecole_id = mon_ecole_id() and est_admin())
   with check (ecole_id = mon_ecole_id() and est_admin()
     and exists (select 1 from eleves el where el.id = bulletins_resultats.eleve_id and el.ecole_id = bulletins_resultats.ecole_id));
+
+-- =====================================================================
+-- 80. SUIVI DES NOTES AU FIL DE L'EAU POUR LES PARENTS (2026-10-13)
+-- =====================================================================
+-- Si l'école l'active, le parent voit les notes des Camps de base de SES
+-- enfants dès leur saisie (pas les compositions, qui restent liées à la
+-- publication du bulletin), avec le titre des évaluations.
+alter table ecoles add column if not exists notes_continues_parents boolean not null default false;
+drop policy if exists "lecture notes continues parent" on notes;
+create policy "lecture notes continues parent" on notes for select
+  using (evaluation_id is not null and est_parent_de(eleve_id)
+    and exists (select 1 from ecoles e where e.id = notes.ecole_id and e.notes_continues_parents));
+drop policy if exists "lecture evaluations parent" on evaluations;
+create policy "lecture evaluations parent" on evaluations for select
+  using (ecole_id = mon_ecole_id() and est_parent()
+    and exists (select 1 from ecoles e where e.id = evaluations.ecole_id and e.notes_continues_parents)
+    and exists (select 1 from parents_eleves pe join eleves el on el.id = pe.eleve_id
+                where pe.parent_profile_id = auth.uid() and el.classe_id = evaluations.classe_id));

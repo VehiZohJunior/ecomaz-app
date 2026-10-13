@@ -475,7 +475,7 @@ async function loadAllFromSupabase(){
       geofenceLatitude: ecole.geofenceLatitude ?? null,
       scolariteVisibleParents: ecole.scolariteVisibleParents === true,
       relancesScolarite: ecole.relancesScolarite === true, heureRelances: (ecole.heureRelances || '10:00').slice(0, 5),
-      voeuxAnniversaire: ecole.voeuxAnniversaire !== false, resumeHebdo: ecole.resumeHebdo !== false, estDemo: ecole.estDemo === true,
+      voeuxAnniversaire: ecole.voeuxAnniversaire !== false, resumeHebdo: ecole.resumeHebdo !== false, estDemo: ecole.estDemo === true, notesContinuesParents: ecole.notesContinuesParents === true,
       bulletinsPublies: ecole.bulletinsPublies || [],
       geofenceLongitude: ecole.geofenceLongitude ?? null,
       geofenceRayonMetres: ecole.geofenceRayonMetres ?? 100,
@@ -588,15 +588,18 @@ async function chargerDBParent(){
   const demandesDocuments = rowsToCamel(demandesDocsRows);
   // 2e vague, selon les réglages de l'école et l'agenda
   const avecReponse = agenda.filter(a => a.demandeReponse).map(a => a.id);
-  const bulletins = (ecole.bulletinsPublies || []).length > 0;
+  const notesContinues = ecole.notesContinuesParents === true;
+  const bulletins = (ecole.bulletinsPublies || []).length > 0 || notesContinues;
   const scolarite = ecole.scolariteVisibleParents === true;
-  const [reponsesRows, resultatsRows, notesRows, commentairesRows, echeancesRows, paiementsRows] = await Promise.all([
+  const [reponsesRows, resultatsRows, notesRows, evaluationsRows, commentairesRows, echeancesRows, paiementsRows] = await Promise.all([
     // Réponses déjà données aux dates de l'agenda (RLS : ses enfants)
     avecReponse.length ? sur(sb.from('reponses_agenda').select('*').in('evenement_id', avecReponse), []) : [],
     // Bulletins : résultats figés (rang, moyenne de classe…) des trimestres publiés
     bulletins ? sur(sb.from('bulletins_resultats').select('*').eq('ecole_id', E), []) : [],
     // Bulletins : notes des trimestres publiés par l'école (RLS : ses enfants seulement)
-    bulletins ? sur(sb.from('notes').select('eleve_id, matiere, note, note_sur, trimestre, type').eq('ecole_id', E), []) : [],
+    bulletins ? sur(sb.from('notes').select('eleve_id, matiere, note, note_sur, trimestre, type, date, evaluation_id').eq('ecole_id', E), []) : [],
+    // Titres des évaluations (si l'école montre les notes au fil de l'eau)
+    notesContinues ? sur(sb.from('evaluations').select('id, titre, type, date, note_sur, matiere, trimestre').eq('ecole_id', E), []) : [],
     bulletins ? sur(sb.from('bulletins_commentaires').select('eleve_id, trimestre, commentaire').eq('ecole_id', E), []) : [],
     // Scolarité (reste à payer, reçus) : seulement si l'école l'a rendue visible
     scolarite ? sur(sb.from('echeances_scolarite').select('*').eq('ecole_id', E).order('ordre'), []) : [],
@@ -605,6 +608,7 @@ async function chargerDBParent(){
   const reponsesAgenda = rowsToCamel(reponsesRows);
   const notesParent = rowsToCamel(notesRows);
   const bulletinsResultats = rowsToCamel(resultatsRows);
+  const evaluations = rowsToCamel(evaluationsRows);
   const appreciations = {};
   (commentairesRows || []).forEach(r => { appreciations[`${r.eleve_id}_${r.trimestre}`] = r.commentaire; });
   const echeancesScolarite = rowsToCamel(echeancesRows), paiementsScolarite = rowsToCamel(paiementsRows);
@@ -616,9 +620,9 @@ async function chargerDBParent(){
       scolariteVisibleParents: ecole.scolariteVisibleParents === true,
       bulletinsPublies: ecole.bulletinsPublies || [],
       geofenceLatitude: ecole.geofenceLatitude ?? null, geofenceLongitude: ecole.geofenceLongitude ?? null,
-      estDemo: ecole.estDemo === true,
+      estDemo: ecole.estDemo === true, notesContinuesParents: notesContinues,
     },
-    echeancesScolarite, paiementsScolarite, notes: notesParent, bulletinsComments: appreciations, agenda, reponsesAgenda, devoirs, correctionsFiches, menusCantine, demandesDocuments, bulletinsResultats, personnesAutorisees, santeEleves,
+    echeancesScolarite, paiementsScolarite, notes: notesParent, bulletinsComments: appreciations, agenda, reponsesAgenda, devoirs, correctionsFiches, menusCantine, demandesDocuments, bulletinsResultats, evaluations, personnesAutorisees, santeEleves,
     eleves: rowsToCamel(eleves.data),
     classes: rowsToCamel(classesRows.data),
     presencesSemaine,
