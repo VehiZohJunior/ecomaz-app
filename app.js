@@ -1634,7 +1634,31 @@ function renderBulletinEnfant(e){
       <tbody>${b.lignes.filter(l => l.moy !== null).map(l => `<tr><td>${escapeHtml(l.mat)}</td><td>${l.devoir ?? '—'}</td><td>${l.compo ?? '—'}</td><td><strong>${l.moy.toFixed(1)}</strong></td></tr>`).join('')}</tbody></table>
     ${b.moyenne !== null ? `<div class="eb-moyenne">Moyenne générale : <strong>${b.moyenne.toFixed(2)} / 20</strong> — ${escapeHtml(mentionFromAvg(b.moyenne))}</div>` : ''}
     ${app ? `<div class="eb-appreciation"><strong>Appréciation :</strong> ${escapeHtml(app)}</div>` : ''}
+    <button type="button" class="btn secondary sm" style="margin-top:8px;" onclick="ouvrirBulletinImprimable('${e.id}', ${escapeHtml(JSON.stringify(t))})">🖨️ Imprimer / enregistrer en PDF</button>
   </details>`;
+}
+// Console parent : bulletin au format document (imprimer ou « Enregistrer en PDF » depuis le téléphone)
+function ouvrirBulletinImprimable(eleveId, trimestre){
+  const e = (DB.eleves || []).find(x => x.id === eleveId);
+  if(!e) return;
+  const b = calculBulletin(e.id, trimestre);
+  const app = (DB.bulletinsComments || {})[`${e.id}_${trimestre}`];
+  const m = DB.meta || {};
+  openModal('📒 Bulletin', `
+    <div class="recu certif">
+      <div class="recu-head">${m.logo ? `<img src="${m.logo}" alt="">` : `<div class="recu-logo-ph">🎓</div>`}
+        <div><strong>${escapeHtml(m.nomEcole || '')}</strong><div class="hint">${escapeHtml(m.adresse || '')}${m.telephone ? ' · ' + escapeHtml(m.telephone) : ''}</div></div></div>
+      <div class="recu-title">BULLETIN — ${escapeHtml(String(trimestre).toUpperCase())}</div>
+      <div class="recu-row"><span>Élève</span><strong>${escapeHtml(eleveFullName(e))}</strong></div>
+      <div class="recu-row"><span>Classe</span><strong>${escapeHtml(classeName(e.classeId))}</strong></div>
+      <div class="recu-row"><span>Année scolaire</span><strong>${escapeHtml(m.anneeScolaire || '')}</strong></div>
+      <table class="eb-table" style="margin-top:12px;"><thead><tr><th>Matière</th><th>Devoir</th><th>Compo.</th><th>Moy.</th></tr></thead>
+        <tbody>${b.lignes.filter(l => l.moy !== null).map(l => `<tr><td>${escapeHtml(l.mat)}</td><td>${l.devoir ?? '—'}</td><td>${l.compo ?? '—'}</td><td><strong>${l.moy.toFixed(1)}</strong></td></tr>`).join('')}</tbody></table>
+      ${b.moyenne !== null ? `<div class="eb-moyenne" style="margin-top:10px;">Moyenne générale : <strong>${b.moyenne.toFixed(2)} / 20</strong> — ${escapeHtml(mentionFromAvg(b.moyenne))}</div>` : ''}
+      ${app ? `<div class="eb-appreciation"><strong>Appréciation :</strong> ${escapeHtml(app)}</div>` : ''}
+      <p class="hint" style="margin-top:14px;">Document consulté dans l’application des parents le ${fmtDate(todayISO())}. Le bulletin officiel signé est remis par l’établissement.</p>
+    </div>
+    <div class="form-actions no-print"><button type="button" class="btn secondary" onclick="closeModal()">Fermer</button><button type="button" class="btn" onclick="window.print()">🖨️ Imprimer / PDF</button></div>`);
 }
 // Console parent : scolarité de l'enfant (si l'école l'a rendue visible)
 function renderScolariteEnfant(e){
@@ -2295,6 +2319,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.10.13-22', nouveautes: {
+    commun: [],
+    parent: [ 'Bulletin : bouton « Imprimer / enregistrer en PDF » pour le garder ou l’envoyer.' ],
+    portier: [],
+    personnel: [],
+  } },
   { version: '2026.10.13-21', nouveautes: {
     commun: [],
     parent: [ 'Inscription : indiquez votre numéro WhatsApp, l’école valide votre demande plus vite.' ],
