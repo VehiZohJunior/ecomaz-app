@@ -1078,7 +1078,8 @@ async function showDemandeAcces(){
       <div class="field" style="text-align:left;margin-bottom:10px;"><label>Votre nom complet (prénom et nom)</label><input type="text" id="demNom" required minlength="3" value="${escapeHtml(nomDefaut)}"></div>
       ${enseignant ? `<div class="field" style="text-align:left;margin-bottom:10px;"><label>Votre numéro WhatsApp</label><input type="tel" id="demTel" required placeholder="07 00 00 00 00"></div>
         <div class="field" style="text-align:left;"><label>Cochez la ou les classes dont vous êtes l’enseignant(e)</label><div class="enrol-liste">${classesHtml}</div></div>` : ''}
-      ${parent ? `<div class="field" style="text-align:left;"><label>Cherchez et cochez votre enfant (ou vos enfants)</label>
+      ${parent ? `<div class="field" style="text-align:left;margin-bottom:10px;"><label>Votre numéro WhatsApp</label><input type="tel" id="demTel" required placeholder="07 00 00 00 00"><div class="hint" style="margin:4px 0 0;">Celui que vous avez donné à l’école : votre demande sera validée plus vite.</div></div>
+        <div class="field" style="text-align:left;"><label>Cherchez et cochez votre enfant (ou vos enfants)</label>
           <input type="search" id="demRecherche" placeholder="Tapez au moins 3 lettres du nom" oninput="rechercherEnfantDemande(this.value)" autocomplete="off">
           <div class="enrol-liste" id="demResultats"></div>
           <div id="demChoisis" class="enrol-choisis"></div></div>` : ''}
@@ -1114,6 +1115,8 @@ async function handleDemandeAcces(ev){
     ligne.eleve_ids = [...(window.__enfantsChoisis || new Map()).keys()];
     if(!ligne.eleve_ids.length){ $('#demErr').textContent = 'Cherchez et cochez au moins un enfant.'; return false; }
     ligne.message = [...window.__enfantsChoisis.values()].join(' ; ');
+    ligne.telephone = ($('#demTel')?.value || '').trim();
+    if(ligne.telephone.replace(/\D/g, '').length < 8){ $('#demErr').textContent = 'Indiquez votre numéro WhatsApp.'; return false; }
   }
   if(fixe === 'enseignant'){
     ligne.classe_ids = $$('.demClasse').filter(c => c.checked).map(c => c.value);
@@ -2292,6 +2295,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.10.13-21', nouveautes: {
+    commun: [],
+    parent: [ 'Inscription : indiquez votre numéro WhatsApp, l’école valide votre demande plus vite.' ],
+    portier: [],
+    personnel: [ 'Demandes d’accès des parents : indices de confiance (téléphone et nom identiques à la fiche, ou différents) et enregistrement du numéro sur les fiches qui n’en ont pas.' ],
+  } },
   { version: '2026.10.13-20', nouveautes: {
     commun: [],
     parent: [],
@@ -8381,14 +8390,30 @@ async function chargerDemandesAcces(){
     const probables = parent ? (choisisParParent.length ? choisisParParent : enfantsProbables(d)) : [];
     return `<div style="border:1px solid var(--border);border-radius:var(--r-card);padding:12px;margin-bottom:10px;">
       <strong>${parent?'👪 Parent':'🚪 Portier'} — ${escapeHtml(d.nom)}</strong>
-      <div class="hint">${escapeHtml(d.email||'')}${d.message?` · « ${escapeHtml(d.message)} »`:''}</div>
+      <div class="hint">${escapeHtml(d.email||'')}${d.telephone ? ' · 📱 ' + escapeHtml(d.telephone) : ''}${d.message?` · « ${escapeHtml(d.message)} »`:''}</div>
       ${parent && probables.length ? `<div class="hint" style="margin:8px 0 4px;">${choisisParParent.length ? 'Enfant(s) coché(s) par le parent' : 'Enfant(s) probable(s), d’après les noms'} — vérifiez avant d'approuver :</div>
-        ${probables.map(e => `<label style="display:flex;align-items:center;gap:8px;margin:2px 0;"><input type="checkbox" class="demEnfant_${d.id}" value="${e.id}" checked> ${escapeHtml(eleveFullName(e))} — ${escapeHtml(classeName(e.classeId))} <span class="hint">(parent sur la fiche : ${escapeHtml(e.parentNom || '—')})</span></label>`).join('')}` : ''}
+        ${probables.map(e => `${indiceConfianceParent(d, e)}<label style="display:flex;align-items:center;gap:8px;margin:2px 0;"><input type="checkbox" class="demEnfant_${d.id}" value="${e.id}" checked> ${escapeHtml(eleveFullName(e))} — ${escapeHtml(classeName(e.classeId))} <span class="hint">(parent sur la fiche : ${escapeHtml(e.parentNom || '—')})</span></label>`).join('')}` : ''}
+      ${parent && d.telephone && probables.some(e => !telephonesWhatsapp(e.parentTel).length) ? `<label style="display:flex;align-items:center;gap:8px;margin:6px 0;"><input type="checkbox" id="demTelFiche_${d.id}" data-tel="${escapeHtml(d.telephone)}" checked> Enregistrer ce numéro sur la fiche des enfants qui n’en ont pas</label>` : ''}
       ${parent ? `<select id="demEleve_${d.id}" style="width:100%;margin:8px 0;"><option value="">${probables.length ? '— Ajouter un autre enfant… —' : '— Lier à l’enfant… —'}</option>${opts}</select>` : ''}
       <button class="btn sm" onclick="traiterDemandeAcces('${d.id}', true, ${parent})">✅ Approuver</button>
       <button class="btn secondary sm" onclick="traiterDemandeAcces('${d.id}', false, ${parent})">Refuser</button>
     </div>`;
   }).join('');
+}
+// Indice de confiance pour la direction : le numéro donné par le parent
+// correspond-il à celui de la fiche de l'enfant ? Le nom ressemble-t-il ?
+function indiceConfianceParent(demande, e){
+  const chiffres = t => String(t || '').replace(/\D/g, '').replace(/^225/, '').slice(-10);
+  const telDem = chiffres(demande.telephone);
+  const telsFiche = telephonesWhatsapp(e.parentTel).map(chiffres);
+  const mots = t => simplifierTexte(t).split(' ').filter(m => m.length >= 3);
+  const nomOk = mots(e.parentNom).some(m => new Set(mots(demande.nom)).has(m));
+  const signes = [];
+  if(telDem.length >= 8 && telsFiche.includes(telDem)) signes.push('<span class="badge green">✅ Téléphone identique à la fiche</span>');
+  else if(telDem.length >= 8 && telsFiche.length) signes.push('<span class="badge amber">⚠️ Téléphone différent de la fiche — appelez le numéro de la fiche pour vérifier</span>');
+  else if(telDem.length >= 8) signes.push('<span class="badge">Fiche sans téléphone</span>');
+  if(nomOk) signes.push('<span class="badge green">✅ Nom du parent identique à la fiche</span>');
+  return signes.length ? `<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;">${signes.join('')}</div>` : '';
 }
 function enfantsProbables(demande){
   const mots = t => simplifierTexte(t).split(' ').filter(m => m.length >= 3);
@@ -8421,8 +8446,17 @@ async function traiterDemandeAcces(id, approuver, parent){
     eleves = [...new Set(coches.concat(v ? [v] : []))];
     if(!eleves.length){ toast("Choisissez l'enfant à lier à ce parent."); return; }
   }
+  const telDemande = approuver && parent && $('#demTelFiche_' + id)?.checked ? ($('#demTelFiche_' + id).dataset.tel || '') : '';
   const { error } = await sb.rpc('traiter_demande_acces', { p_id: id, p_approuver: approuver, p_eleve_ids: eleves, p_classe_ids: [], p_enseignant_id: null });
   if(error){ toast('Erreur : ' + error.message); return; }
+  if(telDemande){
+    for(const eid of eleves){
+      const e = eleveById(eid);
+      if(e && !telephonesWhatsapp(e.parentTel).length){
+        try{ await dbUpdate('eleves', eid, { parentTel: telDemande }); e.parentTel = telDemande; }catch(_e){}
+      }
+    }
+  }
   toast(approuver ? 'Accès accordé ✅' : 'Demande refusée');
   chargerDemandesAcces();
 }
