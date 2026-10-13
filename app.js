@@ -2292,6 +2292,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.10.13-20', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Affiches A4 à imprimer (grand QR code + 3 étapes) : application des parents pour l’entrée, application des enseignants pour la salle des professeurs, pré-inscription en ligne.' ],
+  } },
   { version: '2026.10.13-19', nouveautes: {
     commun: [],
     parent: [],
@@ -3024,6 +3030,7 @@ function renderLiensParents(){
     <div class="form-actions no-print" style="justify-content:flex-start;margin:0 0 var(--sp-3);">
       <button class="btn" onclick="ouvrirCouponsInvitation(true)">🖨️ Coupons d’invitation (élèves sans parent relié)</button>
       <button class="btn secondary" onclick="ouvrirCouponsInvitation(false)">Coupons pour tous les élèves</button>
+      <button class="btn secondary" onclick="imprimerAffiche('parent.html')">🖨️ Affiche A4 pour l’entrée</button>
     </div>
     <div class="section-note">👪 Un élève relié au compte de son parent permet à ce parent de recevoir <strong>uniquement</strong> ce qui concerne son enfant : absences, annonces de son cycle, cours de renforcement, objets perdus et messages de l'école.</div>
     <div class="cards">
@@ -3667,6 +3674,7 @@ function partagerPreinscription(){
       <button class="btn secondary" onclick="navigator.clipboard && navigator.clipboard.writeText('${lien}').then(() => toast('Lien copié'))">📋 Copier le lien</button>
       <a class="btn" href="https://wa.me/?text=${encodeURIComponent(message)}" target="_blank" rel="noopener">📲 Partager sur WhatsApp</a>
       <a class="btn secondary" href="${lien}" target="_blank" rel="noopener">👁️ Voir le formulaire</a>
+      <button class="btn secondary" onclick="imprimerAffiche('preinscription.html')">🖨️ Affiche A4</button>
     </div>`);
 }
 function renderPreinscriptions(){
@@ -8451,6 +8459,29 @@ function afficherQrApplication(page){
     </div>
     <div class="form-actions no-print"><button type="button" class="btn secondary" onclick="closeModal()">Fermer</button><button type="button" class="btn" onclick="window.print()">🖨️ Imprimer</button></div>`);
 }
+// Affiche A4 à imprimer (entrée de l'école, salle des professeurs) : grand QR code + 3 étapes
+const AFFICHES = {
+  'parent.html': { titre:'Parents, suivez votre enfant', sous:'L’application des parents de l’école', etapes:['Scannez ce code avec l’appareil photo de votre téléphone.','Touchez « Continuer avec Google » puis cochez le nom de votre enfant.','L’école valide : vous recevez absences, devoirs, messages et annonces.'] },
+  'enseignant.html': { titre:'Enseignants, votre application', sous:'Appel, devoirs, « Ma journée »', etapes:['Scannez ce code avec l’appareil photo de votre téléphone.','Touchez « Continuer avec Google », écrivez votre nom et cochez vos classes.','La direction valide : vous ne voyez que vos classes.'] },
+  'preinscription.html': { titre:'Inscriptions ouvertes', sous:'Pré-inscrivez votre enfant en ligne', etapes:['Scannez ce code avec l’appareil photo de votre téléphone.','Remplissez le formulaire (2 minutes, sans créer de compte).','L’école vous rappelle pour finaliser l’inscription.'] },
+};
+function imprimerAffiche(page){
+  const a = AFFICHES[page]; if(!a) return;
+  const lien = page === 'preinscription.html' ? lienPreinscription() : lienApplication(page);
+  let qr = '';
+  try{ const q = qrcode(0, 'M'); q.addData(lien); q.make(); qr = q.createSvgTag({ cellSize: 8, margin: 2, scalable: true }); }catch(_e){}
+  const m = DB.meta || {};
+  openModal('🖨️ Affiche à imprimer', `
+    <div class="affiche-a4">
+      <div class="affiche-tete">${m.logo ? `<img src="${m.logo}" alt="">` : ''}<div><div class="affiche-ecole">${escapeHtml(m.nomEcole || '')}</div><div class="affiche-sous">${escapeHtml(a.sous)}</div></div></div>
+      <h1 class="affiche-titre">${escapeHtml(a.titre)}</h1>
+      <div class="affiche-qr">${qr}</div>
+      <ol class="affiche-etapes">${a.etapes.map(e => `<li>${escapeHtml(e)}</li>`).join('')}</ol>
+      <div class="affiche-lien">${escapeHtml(lien)}</div>
+      <div class="affiche-pied">Gratuit · sans publicité · EcoMaZ</div>
+    </div>
+    <div class="form-actions no-print"><button type="button" class="btn secondary" onclick="closeModal()">Fermer</button><button type="button" class="btn" onclick="window.print()">🖨️ Imprimer l’affiche</button></div>`);
+}
 function renderLiensApplications(){
   const bloc = (titre, page, desc) => `
     <div style="margin-bottom:14px;">
@@ -8460,6 +8491,7 @@ function renderLiensApplications(){
       <a class="btn sm" href="https://wa.me/?text=${encodeURIComponent(messagePartageApplication(page))}" target="_blank" rel="noopener">📲 Envoyer par WhatsApp</a>
       <button class="btn secondary sm" onclick="copierLienApplication('${page}')">📋 Copier le lien</button>
       <button class="btn secondary sm" onclick="afficherQrApplication('${page}')">🔳 QR code</button>
+      ${AFFICHES[page] ? `<button class="btn secondary sm" onclick="imprimerAffiche('${page}')">🖨️ Affiche A4</button>` : ''}
       <a class="btn secondary sm" href="${escapeHtml(lienApplication(page))}" target="_blank" rel="noopener">Ouvrir</a>
     </div>`;
   return `
