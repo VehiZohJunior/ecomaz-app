@@ -385,7 +385,7 @@ async function loadAllFromSupabase(){
     gadgets, ventesGadgets, personnelAutre, paiementsSalaires, depenses, messages,
     alertesPointage, echeancesScolarite, profiles, fneConfigRow, tvaCategories, paiementEnLigneRow,
     parentsEleves, tableauHonneur, actualitesAffichage, horairesAnnoncesRow, annoncesHoraires,
-    notificationsPortier, messagesInternes, suggestions, pointagesGps
+    notificationsPortier, messagesInternes, suggestions, pointagesGps, coefficientsMatieres, bulletinsResultats
   ] = await Promise.all([
     sb.from('ecoles').select('*').eq('id', session.ecoleId).single(),
     dbSelectAll('classes'),
@@ -446,6 +446,9 @@ async function loadAllFromSupabase(){
     dbSelectAll('suggestions', 'created_at').catch(()=>[]),
     // Pointage GPS (schema.sql section 39).
     dbSelectAll('pointages_gps', 'created_at').catch(()=>[]),
+    // Bulletin officiel : coefficients et résultats figés (schema.sql section 79)
+    dbSelectAll('coefficients_matieres').catch(()=>[]),
+    dbSelectAll('bulletins_resultats').catch(()=>[]),
   ]);
 
   if(ecoleRow.error) throw ecoleRow.error;
@@ -492,7 +495,7 @@ async function loadAllFromSupabase(){
     echeancesScolarite: echeancesScolarite.slice().sort((a,b)=> (a.ordre-b.ordre) || (a.dateEcheance||'').localeCompare(b.dateEcheance||'')),
     profiles, parentsEleves, tableauHonneur, actualitesAffichage,
     horairesAnnonces: horairesAnnoncesRow, annoncesHoraires, notificationsPortier,
-    messagesInternes, suggestions, pointagesGps,
+    messagesInternes, suggestions, pointagesGps, coefficientsMatieres, bulletinsResultats,
     fneConfig: fneConfigRow || {regime:'recus', prestataire:'', cleConfiguree:false},
   };
 }
@@ -587,9 +590,11 @@ async function chargerDBParent(){
   const avecReponse = agenda.filter(a => a.demandeReponse).map(a => a.id);
   const bulletins = (ecole.bulletinsPublies || []).length > 0;
   const scolarite = ecole.scolariteVisibleParents === true;
-  const [reponsesRows, notesRows, commentairesRows, echeancesRows, paiementsRows] = await Promise.all([
+  const [reponsesRows, resultatsRows, notesRows, commentairesRows, echeancesRows, paiementsRows] = await Promise.all([
     // Réponses déjà données aux dates de l'agenda (RLS : ses enfants)
     avecReponse.length ? sur(sb.from('reponses_agenda').select('*').in('evenement_id', avecReponse), []) : [],
+    // Bulletins : résultats figés (rang, moyenne de classe…) des trimestres publiés
+    bulletins ? sur(sb.from('bulletins_resultats').select('*').eq('ecole_id', E), []) : [],
     // Bulletins : notes des trimestres publiés par l'école (RLS : ses enfants seulement)
     bulletins ? sur(sb.from('notes').select('eleve_id, matiere, note, note_sur, trimestre, type').eq('ecole_id', E), []) : [],
     bulletins ? sur(sb.from('bulletins_commentaires').select('eleve_id, trimestre, commentaire').eq('ecole_id', E), []) : [],
@@ -599,6 +604,7 @@ async function chargerDBParent(){
   ]);
   const reponsesAgenda = rowsToCamel(reponsesRows);
   const notesParent = rowsToCamel(notesRows);
+  const bulletinsResultats = rowsToCamel(resultatsRows);
   const appreciations = {};
   (commentairesRows || []).forEach(r => { appreciations[`${r.eleve_id}_${r.trimestre}`] = r.commentaire; });
   const echeancesScolarite = rowsToCamel(echeancesRows), paiementsScolarite = rowsToCamel(paiementsRows);
@@ -612,7 +618,7 @@ async function chargerDBParent(){
       geofenceLatitude: ecole.geofenceLatitude ?? null, geofenceLongitude: ecole.geofenceLongitude ?? null,
       estDemo: ecole.estDemo === true,
     },
-    echeancesScolarite, paiementsScolarite, notes: notesParent, bulletinsComments: appreciations, agenda, reponsesAgenda, devoirs, correctionsFiches, menusCantine, demandesDocuments, personnesAutorisees, santeEleves,
+    echeancesScolarite, paiementsScolarite, notes: notesParent, bulletinsComments: appreciations, agenda, reponsesAgenda, devoirs, correctionsFiches, menusCantine, demandesDocuments, bulletinsResultats, personnesAutorisees, santeEleves,
     eleves: rowsToCamel(eleves.data),
     classes: rowsToCamel(classesRows.data),
     presencesSemaine,

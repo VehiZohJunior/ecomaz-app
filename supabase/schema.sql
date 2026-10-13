@@ -3040,3 +3040,51 @@ create index if not exists notes_evaluation_idx on notes(evaluation_id);
 create unique index if not exists notes_une_par_evaluation on notes(evaluation_id, eleve_id) where evaluation_id is not null;
 alter table notes drop constraint if exists notes_type_valide;
 alter table notes add constraint notes_type_valide check (type is null or type in ('Devoir','Composition','Exercice de classe','Exercice de maison','Interrogation'));
+
+-- =====================================================================
+-- 79. BULLETIN OFFICIEL : COEFFICIENTS, RANG, STATISTIQUES (2026-10-13)
+-- =====================================================================
+-- Coefficients par niveau (cycle) et matière, réglés par la direction.
+-- Résultats du trimestre (moyenne pondérée, rang, effectif, moyenne de la
+-- classe, extrêmes, détail par matière) calculés par la direction au
+-- moment de la publication et figés ici : le parent lit SEULEMENT la ligne
+-- de son enfant, d'un trimestre publié — jamais les notes des autres.
+create table if not exists coefficients_matieres (
+  ecole_id uuid not null references ecoles(id) on delete cascade default mon_ecole_id(),
+  cycle text not null,
+  matiere text not null,
+  coefficient numeric not null default 1 check (coefficient > 0 and coefficient <= 10),
+  primary key (ecole_id, cycle, matiere)
+);
+alter table coefficients_matieres enable row level security;
+drop policy if exists "lecture coefficients" on coefficients_matieres;
+create policy "lecture coefficients" on coefficients_matieres for select
+  using (ecole_id = mon_ecole_id() and mon_role() in ('enseignant','secretariat','direction','fondation'));
+drop policy if exists "gestion coefficients" on coefficients_matieres;
+create policy "gestion coefficients" on coefficients_matieres for all
+  using (ecole_id = mon_ecole_id() and est_admin()) with check (ecole_id = mon_ecole_id() and est_admin());
+
+create table if not exists bulletins_resultats (
+  eleve_id uuid not null references eleves(id) on delete cascade,
+  trimestre text not null check (trimestre in ('Trimestre 1','Trimestre 2','Trimestre 3')),
+  ecole_id uuid not null references ecoles(id) on delete cascade default mon_ecole_id(),
+  classe_id text references classes(id) on delete set null,
+  moyenne numeric, rang int, ex_aequo boolean not null default false, effectif int,
+  moyenne_classe numeric, plus_forte numeric, plus_faible numeric,
+  details jsonb not null default '[]'::jsonb,
+  calcule_at timestamptz not null default now(),
+  primary key (eleve_id, trimestre)
+);
+alter table bulletins_resultats enable row level security;
+drop policy if exists "lecture resultats personnel" on bulletins_resultats;
+create policy "lecture resultats personnel" on bulletins_resultats for select
+  using (ecole_id = mon_ecole_id() and (est_perso_admin() or (mon_role() = 'enseignant' and classe_id = any(mes_classes()))));
+drop policy if exists "lecture resultats parent" on bulletins_resultats;
+create policy "lecture resultats parent" on bulletins_resultats for select
+  using (ecole_id = mon_ecole_id() and est_parent_de(eleve_id)
+    and exists (select 1 from ecoles e where e.id = bulletins_resultats.ecole_id and bulletins_resultats.trimestre = any(e.bulletins_publies)));
+drop policy if exists "gestion resultats" on bulletins_resultats;
+create policy "gestion resultats" on bulletins_resultats for all
+  using (ecole_id = mon_ecole_id() and est_admin())
+  with check (ecole_id = mon_ecole_id() and est_admin()
+    and exists (select 1 from eleves el where el.id = bulletins_resultats.eleve_id and el.ecole_id = bulletins_resultats.ecole_id));

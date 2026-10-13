@@ -289,8 +289,19 @@ async function requete(accessToken, chemin, options = {}){
     verifier('Un parent ne peut pas écrire de note', !notePar.ok, `statut ${notePar.status}`);
   }
 
+  section('7duodecies. Bulletin officiel — coefficients et résultats protégés');
+  const coefSec = await requete(tokenSecretariat, `/rest/v1/coefficients_matieres`, { method:'POST', body: JSON.stringify({ cycle:'Primaire', matiere:'Essai', coefficient: 2 }) });
+  verifier('Le secrétariat ne modifie pas les coefficients (réservé à la direction)', !coefSec.ok, `statut ${coefSec.status}`);
+  const resSec = await requete(tokenSecretariat, `/rest/v1/bulletins_resultats`, { method:'POST', body: JSON.stringify({ eleve_id: FAUX, trimestre:'Trimestre 1', moyenne: 20 }) });
+  verifier('Le secrétariat ne fabrique pas de résultat de bulletin', !resSec.ok, `statut ${resSec.status}`);
+  if(ENV.PARENT_EMAIL){
+    const tokenParent6 = (await connecter(ENV.PARENT_EMAIL, ENV.PARENT_PASSWORD)).accessToken;
+    const coefPar = await requete(tokenParent6, `/rest/v1/coefficients_matieres?select=matiere&limit=1`);
+    verifier('Un parent ne lit pas la table des coefficients', Array.isArray(coefPar.data) && coefPar.data.length === 0);
+  }
+
   section('8. Visiteur non connecté — ne lit que les affichages publics prévus');
-  for(const table of ['eleves','enseignants_lecture','profiles','paiements_scolarite','messages','parents_eleves','presences_eleves','eleves_portier_lecture','objets_perdus','push_abonnements','absences_signalees','evenements_agenda','devoirs','personnes_autorisees','sante_eleves','reponses_agenda','corrections_fiches','menus_cantine','preinscriptions','demandes_documents','evaluations']){
+  for(const table of ['eleves','enseignants_lecture','profiles','paiements_scolarite','messages','parents_eleves','presences_eleves','eleves_portier_lecture','objets_perdus','push_abonnements','absences_signalees','evenements_agenda','devoirs','personnes_autorisees','sante_eleves','reponses_agenda','corrections_fiches','menus_cantine','preinscriptions','demandes_documents','evaluations','coefficients_matieres','bulletins_resultats']){
     const r = await requete(ANON_KEY, `/rest/v1/${table}?select=*&limit=1`);
     verifier(`Sans connexion, rien à lire dans ${table}`, !r.ok || (Array.isArray(r.data) && r.data.length === 0), `reçu ${JSON.stringify(r.data)?.slice(0,80)}`);
   }

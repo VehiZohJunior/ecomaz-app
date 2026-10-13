@@ -1616,11 +1616,12 @@ function calculBulletin(eleveId, trimestre){
   const e = eleveById(eleveId);
   const matieres = MATIERES_BY_CYCLE[classeCycle(e?.classeId)] || [];
   let somme = 0, nb = 0;
+  const cycle = classeCycle(e?.classeId);
   const lignes = matieres.map(mat => {
-    const m = moyenneMatiere(eleveId, mat, trimestre);
-    if(m.moy !== null){ somme += m.moy; nb++; }
+    const m = moyenneMatiere(eleveId, mat, trimestre), coef = coefficientDe(cycle, mat);
+    if(m.moy !== null){ somme += m.moy * coef; nb += coef; }   // moyenne pondérée par les coefficients
     const arr = v => v === null ? null : Math.round(v * 100) / 100;
-    return { mat, devoir: arr(m.classe), compo: arr(m.compo), moy: m.moy };
+    return { mat, devoir: arr(m.classe), compo: arr(m.compo), moy: m.moy, coef };
   });
   return { lignes, moyenne: nb ? somme / nb : null };
 }
@@ -1630,12 +1631,15 @@ function renderBulletinEnfant(e){
   if(!publies.length) return '';
   const t = (ui.filters.bulletinParent || {})[e.id] || publies[publies.length - 1];
   const b = calculBulletin(e.id, t);
+  const fige = (DB.bulletinsResultats || []).find(x => x.eleveId === e.id && x.trimestre === t);
+  if(fige){ b.moyenne = Number(fige.moyenne); b.lignes = (fige.details || []).map(d => ({ mat: d.matiere, devoir: d.classe, compo: d.compo, moy: d.moy, coef: d.coef })); }
   const app = (DB.bulletinsComments || {})[`${e.id}_${t}`];
   return `<details class="enfant-bulletin"><summary>📒 Bulletin — ${escapeHtml(t)}${b.moyenne !== null ? ` · moyenne ${b.moyenne.toFixed(2)}/20` : ''}</summary>
     ${publies.length > 1 ? `<div class="filters" style="margin:8px 0;"><select onchange="ui.filters.bulletinParent = Object.assign(ui.filters.bulletinParent || {}, { '${e.id}': this.value }); $('#viewContainer').innerHTML = renderParentDashboard();">${publies.map(x => `<option ${x===t?'selected':''}>${escapeHtml(x)}</option>`).join('')}</select></div>` : ''}
     <table class="eb-table"><thead><tr><th>Matière</th><th>Classe</th><th>Compo.</th><th>Moy.</th></tr></thead>
       <tbody>${b.lignes.filter(l => l.moy !== null).map(l => `<tr><td>${escapeHtml(l.mat)}</td><td>${l.devoir ?? '—'}</td><td>${l.compo ?? '—'}</td><td><strong>${l.moy.toFixed(1)}</strong></td></tr>`).join('')}</tbody></table>
     ${b.moyenne !== null ? `<div class="eb-moyenne">Moyenne générale : <strong>${b.moyenne.toFixed(2)} / 20</strong> — ${escapeHtml(mentionFromAvg(b.moyenne))}</div>` : ''}
+    ${fige ? `<div class="eb-moyenne">Rang : <strong>${rangTexte(fige.rang, fige.exAequo)} sur ${fige.effectif}</strong> · Moyenne de la classe : ${Number(fige.moyenneClasse).toFixed(2)}</div>` : ''}
     ${app ? `<div class="eb-appreciation"><strong>Appréciation :</strong> ${escapeHtml(app)}</div>` : ''}
     <button type="button" class="btn secondary sm" style="margin-top:8px;" onclick="ouvrirBulletinImprimable('${e.id}', ${escapeHtml(JSON.stringify(t))})">🖨️ Imprimer / enregistrer en PDF</button>
   </details>`;
@@ -2322,6 +2326,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.10.13-27', nouveautes: {
+    commun: [],
+    parent: [ 'Bulletin : votre enfant voit maintenant son rang dans la classe et la moyenne de la classe.' ],
+    portier: [],
+    personnel: [ 'Bulletin officiel : coefficients par matière (Paramètres), moyenne générale pondérée, rang (ex æquo gérés), moyenne de la classe, plus forte et plus faible moyenne.', 'Notes & Bulletins : « Résultats » de la classe et impression de tous les bulletins de la classe en une fois (une page par élève).' ],
+  } },
   { version: '2026.10.13-26', nouveautes: {
     commun: [],
     parent: [ 'Bulletin : la colonne « Classe » regroupe maintenant tous les devoirs et exercices de l’enfant.' ],
@@ -3829,6 +3839,139 @@ async function supprimerEvaluation(evalId){
   }catch(err){ alert('Erreur : ' + err.message); }
 }
 
+/* ---------- 🏆 BULLETIN OFFICIEL : coefficients, rang, statistiques ---------- */
+function coefficientDe(cycle, matiere){
+  const c = (DB.coefficientsMatieres || []).find(x => x.cycle === cycle && x.matiere === matiere);
+  return c ? Number(c.coefficient) : 1;
+}
+function rangTexte(r, exAequo){ return r ? `${r}${r === 1 ? 'er' : 'e'}${exAequo ? ' ex æquo' : ''}` : '—'; }
+// Résultats d'une classe pour un trimestre : moyenne pondérée, rang (ex æquo gérés), statistiques
+function resultatsClasse(classeId, trimestre){
+  const cycle = classeCycle(classeId);
+  const matieres = MATIERES_BY_CYCLE[cycle] || [];
+  const eleves = DB.eleves.filter(e => e.classeId === classeId && e.statut === 'Actif');
+  const lignes = eleves.map(e => {
+    let somme = 0, coefs = 0;
+    const details = matieres.map(mat => {
+      const m = moyenneMatiere(e.id, mat, trimestre), coef = coefficientDe(cycle, mat);
+      if(m.moy !== null){ somme += m.moy * coef; coefs += coef; }
+      return { matiere: mat, coef, classe: m.classe, compo: m.compo, moy: m.moy };
+    });
+    return { eleve: e, moyenne: coefs ? somme / coefs : null, details };
+  });
+  const classees = lignes.filter(l => l.moyenne !== null).sort((a, b) => b.moyenne - a.moyenne);
+  classees.forEach((l, i) => {
+    const egal = classees.findIndex(x => Math.abs(x.moyenne - l.moyenne) < 0.005);
+    l.rang = egal + 1;
+    l.exAequo = classees.filter(x => Math.abs(x.moyenne - l.moyenne) < 0.005).length > 1;
+  });
+  // Moyenne de chaque matière dans la classe (pour le bulletin)
+  const moyMatiere = {};
+  matieres.forEach(mat => { const vals = lignes.map(l => l.details.find(d => d.matiere === mat).moy).filter(v => v !== null); moyMatiere[mat] = vals.length ? vals.reduce((s, v) => s + v, 0) / vals.length : null; });
+  lignes.forEach(l => l.details.forEach(d => { d.moyClasseMatiere = moyMatiere[d.matiere]; }));
+  const moys = classees.map(l => l.moyenne);
+  return { lignes, effectif: classees.length, moyenneClasse: moys.length ? moys.reduce((s, v) => s + v, 0) / moys.length : null,
+    plusForte: moys.length ? Math.max(...moys) : null, plusFaible: moys.length ? Math.min(...moys) : null };
+}
+const arr2 = v => v === null || v === undefined ? null : Math.round(Number(v) * 100) / 100;
+// Fige les résultats (pour les parents) : appelé à la publication du trimestre
+async function figerResultats(trimestre){
+  const lignes = [];
+  for(const c of DB.classes){
+    const r = resultatsClasse(c.id, trimestre);
+    for(const l of r.lignes){
+      if(l.moyenne === null) continue;
+      lignes.push({ eleve_id: l.eleve.id, trimestre, ecole_id: session.ecoleId, classe_id: c.id, moyenne: arr2(l.moyenne), rang: l.rang, ex_aequo: !!l.exAequo,
+        effectif: r.effectif, moyenne_classe: arr2(r.moyenneClasse), plus_forte: arr2(r.plusForte), plus_faible: arr2(r.plusFaible),
+        details: l.details.map(d => ({ matiere: d.matiere, coef: d.coef, classe: arr2(d.classe), compo: arr2(d.compo), moy: arr2(d.moy), moyClasse: arr2(d.moyClasseMatiere) })),
+        calcule_at: new Date().toISOString() });
+    }
+  }
+  if(!lignes.length) return 0;
+  for(let i = 0; i < lignes.length; i += 200){
+    const { error } = await sb.from('bulletins_resultats').upsert(lignes.slice(i, i + 200), { onConflict: 'eleve_id,trimestre' });
+    if(error) throw erreurLisible(error);
+  }
+  DB.bulletinsResultats = (DB.bulletinsResultats || []).filter(b => b.trimestre !== trimestre).concat(rowsToCamel(lignes));
+  return lignes.length;
+}
+// Panneau « Résultats du trimestre » (Notes & Bulletins)
+function renderResultatsTrimestre(classeId, trimestre){
+  const r = resultatsClasse(classeId, trimestre);
+  if(!r.effectif) return '';
+  const tri = r.lignes.filter(l => l.moyenne !== null).sort((a, b) => a.rang - b.rang);
+  return `<div class="panel">
+    <div class="panel-head"><div><h2>🏆 Résultats — ${escapeHtml(classeName(classeId))} · ${escapeHtml(trimestre)}</h2>
+      <div class="sub">Moyenne de la classe ${r.moyenneClasse.toFixed(2)} · plus forte ${r.plusForte.toFixed(2)} · plus faible ${r.plusFaible.toFixed(2)} · ${r.effectif} élève(s) classé(s)</div></div>
+      <button class="btn sm" onclick="imprimerBulletinsClasse('${classeId}', '${trimestre}')">🖨️ Imprimer les bulletins de la classe</button></div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Rang</th><th>Élève</th><th>Moyenne /20</th><th>Mention</th></tr></thead>
+      <tbody>${tri.map(l => `<tr><td><strong>${rangTexte(l.rang, l.exAequo)}</strong></td><td>${escapeHtml(eleveFullName(l.eleve))}</td>
+        <td><strong class="${moyenneClass(l.moyenne)}">${l.moyenne.toFixed(2)}</strong></td><td>${escapeHtml(mentionFromAvg(l.moyenne))}</td></tr>`).join('')}</tbody>
+    </table></div>
+  </div>`;
+}
+// Bulletin officiel d'un élève (une page A4)
+function bulletinOfficielHtml(l, r, trimestre){
+  const m = DB.meta || {}, e = l.eleve;
+  const app = (DB.bulletinsComments || {})[`${e.id}_${trimestre}`] || '';
+  const totalCoef = l.details.filter(d => d.moy !== null).reduce((s, d) => s + d.coef, 0);
+  return `<section class="bulletin-page">
+    <div class="recu-head">${m.logo ? `<img src="${m.logo}" alt="">` : `<div class="recu-logo-ph">🎓</div>`}
+      <div><strong>${escapeHtml(m.nomEcole || '')}</strong><div class="hint">${escapeHtml(m.adresse || '')}${m.telephone ? ' · ' + escapeHtml(m.telephone) : ''}</div></div>
+      <div style="margin-left:auto;text-align:right;"><strong>BULLETIN DE NOTES</strong><div class="hint">${escapeHtml(trimestre)} · ${escapeHtml(m.anneeScolaire || '')}</div></div></div>
+    <div class="bo-identite"><div><span>Élève</span><strong>${escapeHtml(eleveFullName(e))}</strong></div><div><span>Matricule</span><strong>${escapeHtml(e.matricule || '—')}</strong></div>
+      <div><span>Classe</span><strong>${escapeHtml(classeName(e.classeId))}</strong></div><div><span>Effectif</span><strong>${r.effectif}</strong></div></div>
+    <table class="bo-table"><thead><tr><th>Matière</th><th>Coef.</th><th>Moy. classe<br><small>(camps de base)</small></th><th>Compo.</th><th>Moy. /20</th><th>Moy. × coef.</th><th>Moy. de la classe</th><th>Appréciation</th></tr></thead>
+      <tbody>${l.details.map(d => `<tr><td style="text-align:left;">${escapeHtml(d.matiere)}</td><td>${d.coef}</td><td>${d.classe !== null ? d.classe.toFixed(2) : '—'}</td><td>${d.compo !== null ? d.compo.toFixed(2) : '—'}</td>
+        <td><strong>${d.moy !== null ? d.moy.toFixed(2) : '—'}</strong></td><td>${d.moy !== null ? (d.moy * d.coef).toFixed(2) : '—'}</td><td>${d.moyClasseMatiere != null ? d.moyClasseMatiere.toFixed(2) : '—'}</td><td>${d.moy !== null ? escapeHtml(mentionFromAvg(d.moy)) : ''}</td></tr>`).join('')}</tbody>
+      <tfoot><tr><td style="text-align:left;"><strong>Total</strong></td><td>${totalCoef}</td><td colspan="3"></td><td><strong>${l.moyenne !== null ? (l.moyenne * totalCoef).toFixed(2) : '—'}</strong></td><td colspan="2"></td></tr></tfoot></table>
+    <div class="bo-synthese">
+      <div><span>Moyenne générale</span><strong>${l.moyenne !== null ? l.moyenne.toFixed(2) + ' / 20' : '—'}</strong></div>
+      <div><span>Rang</span><strong>${rangTexte(l.rang, l.exAequo)} sur ${r.effectif}</strong></div>
+      <div><span>Mention</span><strong>${l.moyenne !== null ? escapeHtml(mentionFromAvg(l.moyenne)) : '—'}</strong></div>
+      <div><span>Moyenne de la classe</span><strong>${r.moyenneClasse !== null ? r.moyenneClasse.toFixed(2) : '—'}</strong></div>
+      <div><span>Plus forte / plus faible</span><strong>${r.plusForte !== null ? r.plusForte.toFixed(2) + ' / ' + r.plusFaible.toFixed(2) : '—'}</strong></div></div>
+    <div class="eb-appreciation" style="min-height:40px;"><strong>Appréciation du titulaire :</strong> ${escapeHtml(app)}</div>
+    <div class="signatures"><div class="sign-box"><div class="sign-role">Le/La titulaire</div><div class="sign-line">&nbsp;</div></div>
+      <div class="sign-box"><div class="sign-role">Le Directeur / La Directrice</div><div class="sign-line">${escapeHtml(m.directeurNom || '')}</div></div>
+      <div class="sign-box"><div class="sign-role">Le parent</div><div class="sign-line">&nbsp;</div></div></div>
+  </section>`;
+}
+function imprimerBulletinsClasse(classeId, trimestre){
+  const r = resultatsClasse(classeId, trimestre);
+  const lignes = r.lignes.filter(l => l.moyenne !== null).sort((a, b) => eleveFullName(a.eleve).localeCompare(eleveFullName(b.eleve)));
+  if(!lignes.length) return alert('Aucune note pour ce trimestre dans cette classe.');
+  openModal(`🖨️ Bulletins — ${classeName(classeId)} · ${trimestre}`, `
+    <div class="form-actions no-print" style="justify-content:flex-start;"><button class="btn" onclick="window.print()">🖨️ Imprimer les ${lignes.length} bulletins</button><span class="hint" style="align-self:center;">Une page par élève — choisissez « Enregistrer en PDF » pour garder une copie.</span></div>
+    ${lignes.map(l => bulletinOfficielHtml(l, r, trimestre)).join('')}`);
+}
+// Paramètres : coefficients par niveau et matière
+function renderCoefficients(){
+  if(!['direction','fondation'].includes(ui.role)) return '';
+  const cycles = [...new Set(DB.classes.map(c => c.cycle))].filter(c => MATIERES_BY_CYCLE[c]);
+  if(!cycles.length) return '';
+  return `<div class="panel">
+    <div class="panel-head"><div><h2>⚖️ Coefficients des matières</h2><div class="sub">Utilisés pour la moyenne générale, le rang et le bulletin officiel. Par défaut : 1.</div></div></div>
+    <form onsubmit="return enregistrerCoefficients(event)">
+      ${cycles.map(cy => `<h4 style="margin:12px 0 6px;">${escapeHtml(cy)}</h4><div class="coef-grille">${MATIERES_BY_CYCLE[cy].map(mat => `<label class="coef-ligne"><span>${escapeHtml(mat)}</span>
+        <input type="number" min="0.5" max="10" step="0.5" name="${escapeHtml(cy + '|' + mat)}" value="${coefficientDe(cy, mat)}"></label>`).join('')}</div>`).join('')}
+      <div class="form-actions"><button class="btn" type="submit">Enregistrer les coefficients</button></div>
+    </form>
+  </div>`;
+}
+async function enregistrerCoefficients(ev){
+  ev.preventDefault();
+  const lignes = [...new FormData(ev.target).entries()].map(([k, v]) => { const [cycle, matiere] = k.split('|'); return { ecole_id: session.ecoleId, cycle, matiere, coefficient: Number(v) }; })
+    .filter(l => l.coefficient > 0 && l.coefficient <= 10);
+  try{
+    const { error } = await sb.from('coefficients_matieres').upsert(lignes, { onConflict: 'ecole_id,cycle,matiere' });
+    if(error) throw erreurLisible(error);
+    DB.coefficientsMatieres = rowsToCamel(lignes);
+    toast('Coefficients enregistrés');
+  }catch(e){ alert('Erreur : ' + e.message); }
+  return false;
+}
 /* ---------- 📒 CAHIER D'APPEL (registre mensuel) ---------- */
 const CYCLE_APPEL = ['', 'Présent', 'Absent', 'Retard'];
 function joursDeClasseDuMois(mois){
@@ -5543,8 +5686,8 @@ function renderEleveProfile(id){
   let sumMoy = 0, countMat = 0;
   const bulletinRows = matieres.map(mat=>{
     const mm = moyenneMatiere(id, mat, trimestre);
-    const moy = mm.moy;
-    if(moy!==null){ sumMoy += moy; countMat++; }
+    const moy = mm.moy, coef = coefficientDe(cycle, mat);
+    if(moy!==null){ sumMoy += moy * coef; countMat += coef; }
     return `<tr>
       <td>${mat}</td>
       <td>${mm.classe!==null?mm.classe.toFixed(2):'—'}</td>
@@ -5662,6 +5805,7 @@ async function publierBulletins(trimestre, publier){
   if(publier && !confirm(`Publier les bulletins du ${trimestre} ? Chaque parent verra les notes et l’appréciation de ses enfants, et recevra une notification.`)){ renderView('notes'); return; }
   const liste = publier ? [...new Set(actuels.concat(trimestre))] : actuels.filter(t => t !== trimestre);
   try{
+    if(publier){ const nb = await figerResultats(trimestre); if(!nb && !confirm('Aucune moyenne n’a pu être calculée pour ce trimestre. Publier quand même ?')){ renderView('notes'); return; } }
     const { error } = await exigerEffet(sb.from('ecoles').update({ bulletins_publies: liste }).eq('id', session.ecoleId));
     if(error) throw error;
     DB.meta.bulletinsPublies = liste;
@@ -5743,6 +5887,7 @@ function renderNotes(){
       </table></div>
       <div class="form-actions"><button class="btn" onclick="saveNotesTable()">Enregistrer les notes</button></div>`}
     </div>
+    ${renderResultatsTrimestre(f.classeId, f.trimestre)}
   </div>`;
 }
 
@@ -9056,6 +9201,7 @@ function renderParametres(){
       <div class="panel-head"><div><h2>⏰ Annonces horaires automatiques</h2><div class="sub">Les parents sont prévenus automatiquement avant le début des cours, les pauses et la fin des cours — jours de classe uniquement</div></div></div>
       ${renderHorairesAnnonces()}
     </div>
+    ${renderCoefficients()}
 
     <div class="panel">
       <div class="panel-head"><div><h2>🎂 Anniversaires des élèves</h2><div class="sub">Le tableau de bord affiche les anniversaires de la semaine ; les parents voient un bandeau de fête le jour J.</div></div></div>

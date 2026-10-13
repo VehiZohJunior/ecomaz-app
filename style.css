@@ -1015,6 +1015,19 @@ td:has(> .amount), th.montant{ text-align:right; }
 @media print{ .affiche-a4{ padding-top:20mm; } .affiche-titre{ font-size:30pt; } .affiche-qr{ width:110mm; } .affiche-etapes{ font-size:15pt; } }
 .contact-ecole-boutons{ display:flex; flex-wrap:wrap; gap:8px; }
 .contact-ecole-boutons .btn{ flex:1 1 140px; justify-content:center; text-align:center; }
+.bulletin-page{ background:#fff; color:#111; padding:14px; border:1px solid #ddd; border-radius:8px; margin-bottom:16px; }
+.bo-identite{ display:grid; grid-template-columns:repeat(4, 1fr); gap:6px; margin:10px 0; }
+.bo-identite div, .bo-synthese div{ display:flex; flex-direction:column; border:1px solid #ddd; border-radius:6px; padding:6px 8px; }
+.bo-identite span, .bo-synthese span{ font-size:.75em; color:#555; }
+.bo-table{ width:100%; border-collapse:collapse; font-size:.85em; }
+.bo-table th, .bo-table td{ border:1px solid #ccc; padding:4px 6px; text-align:center; }
+.bo-table th{ background:#f2f5f3; }
+.bo-synthese{ display:grid; grid-template-columns:repeat(5, 1fr); gap:6px; margin:10px 0; }
+.coef-grille{ display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:6px 14px; }
+.coef-ligne{ display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.coef-ligne input{ width:80px; }
+@media print{ .bulletin-page{ border:0; border-radius:0; margin:0; page-break-after:always; break-after:page; } .bulletin-page:last-child{ page-break-after:auto; } }
+@media (max-width:600px){ .bo-identite{ grid-template-columns:repeat(2, 1fr); } .bo-synthese{ grid-template-columns:repeat(2, 1fr); } }
 .ca-table{ border-collapse:collapse; font-size:.85em; }
 .ca-table th, .ca-table td{ border:1px solid var(--border); padding:4px 3px; text-align:center; min-width:26px; }
 .ca-table .ca-nom{ text-align:left; white-space:nowrap; position:sticky; left:0; background:var(--surface-1, #fff); z-index:1; min-width:150px; padding:4px 8px; }
