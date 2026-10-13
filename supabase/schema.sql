@@ -2584,3 +2584,35 @@ create policy "reponse admin agenda" on reponses_agenda for all
   using (ecole_id = mon_ecole_id() and est_perso_admin())
   with check (ecole_id = mon_ecole_id() and est_perso_admin()
     and exists (select 1 from eleves e where e.id = reponses_agenda.eleve_id and e.ecole_id = reponses_agenda.ecole_id));
+
+-- =====================================================================
+-- 68. CORRECTIONS DE FICHE PROPOSÉES PAR LES PARENTS (2026-10-13)
+-- =====================================================================
+-- Le parent signale une erreur sur la fiche de SON enfant (date de
+-- naissance, téléphone, nom du parent, adresse). Rien n'est modifié
+-- tant que le secrétariat / la direction n'a pas validé.
+create table if not exists corrections_fiches (
+  id uuid primary key default gen_random_uuid(),
+  ecole_id uuid not null references ecoles(id) on delete cascade default mon_ecole_id(),
+  eleve_id uuid not null references eleves(id) on delete cascade,
+  champs jsonb not null check (jsonb_typeof(champs) = 'object' and champs <> '{}'::jsonb
+    and (champs - array['date_naissance','parent_tel','parent_nom','parent_adresse']) = '{}'::jsonb
+    and char_length(champs::text) <= 1000),
+  commentaire text not null default '' check (char_length(commentaire) <= 300),
+  statut text not null default 'en_attente' check (statut in ('en_attente','appliquee','refusee')),
+  demande_par uuid references auth.users(id) on delete set null default auth.uid(),
+  created_at timestamptz not null default now(),
+  traite_at timestamptz
+);
+create index if not exists corrections_fiches_idx on corrections_fiches(ecole_id, statut);
+alter table corrections_fiches enable row level security;
+drop policy if exists "parent corrections_fiches lecture" on corrections_fiches;
+create policy "parent corrections_fiches lecture" on corrections_fiches for select
+  using (ecole_id = mon_ecole_id() and demande_par = auth.uid() and est_parent_de(eleve_id));
+drop policy if exists "parent corrections_fiches ajout" on corrections_fiches;
+create policy "parent corrections_fiches ajout" on corrections_fiches for insert
+  with check (ecole_id = mon_ecole_id() and demande_par = auth.uid() and statut = 'en_attente' and traite_at is null and est_parent_de(eleve_id));
+drop policy if exists "admin corrections_fiches" on corrections_fiches;
+create policy "admin corrections_fiches" on corrections_fiches for all
+  using (ecole_id = mon_ecole_id() and est_perso_admin())
+  with check (ecole_id = mon_ecole_id() and est_perso_admin());

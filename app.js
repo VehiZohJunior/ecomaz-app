@@ -1631,6 +1631,7 @@ function renderFicheEnfant(e){
       <div><dt>Naissance</dt><dd>${fmtDate(e.dateNaissance)}</dd></div>
       <div><dt>Inscription</dt><dd>${fmtDate(e.dateInscription)}</dd></div>
     </dl>
+    ${renderLienCorrection(e)}
     ${renderSecuriteEnfant(e)}
     ${renderPresenceSemaine(e)}
     ${renderBulletinEnfant(e)}
@@ -2234,6 +2235,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.10.13-8', nouveautes: {
+    commun: [],
+    parent: [ 'Une erreur sur la fiche de votre enfant (date de naissance, téléphone…) ? Bouton « Signaler une erreur sur la fiche » : l’école vérifie et corrige.' ],
+    portier: [],
+    personnel: [ 'Élèves & Inscriptions : « Corrections proposées par les parents » — ancien → nouveau, appliquez en un clic (notification à chaque demande).' ],
+  } },
   { version: '2026.10.13-7', nouveautes: {
     commun: [],
     parent: [ 'Sorties, réunions, fêtes : répondez directement à l’école depuis « À venir » (j’autorise / je serai présent).' ],
@@ -3371,6 +3378,89 @@ async function supprimerPublication(id){
   }catch(e){ alert('Erreur : ' + e.message); }
 }
 /* =====================================================================
+   CORRECTIONS DE FICHE PROPOSÉES PAR LES PARENTS (schema.sql section 68)
+   ===================================================================== */
+const CHAMPS_CORRECTION = {
+  date_naissance: { lib:'Date de naissance', cle:'dateNaissance', type:'date' },
+  parent_nom: { lib:'Nom du parent', cle:'parentNom', type:'text' },
+  parent_tel: { lib:'Téléphone du parent', cle:'parentTel', type:'tel' },
+  parent_adresse: { lib:'Adresse', cle:'parentAdresse', type:'text' },
+};
+function valeurLisible(champ, v){ return champ === 'date_naissance' && v ? fmtDate(v) : (v || '—'); }
+// Console parent
+function renderLienCorrection(e){
+  const attente = (DB.correctionsFiches || []).filter(c => c.eleveId === e.id && c.statut === 'en_attente').length;
+  return `<div style="margin:4px 0 8px;">${attente ? '<span class="hint">✏️ Votre correction a été envoyée : l’école va la vérifier.</span>'
+    : `<button type="button" class="btn secondary sm" onclick="ouvrirCorrectionFiche('${e.id}')">✏️ Signaler une erreur sur la fiche</button>`}</div>`;
+}
+function ouvrirCorrectionFiche(eleveId){
+  const e = (DB.eleves || []).find(x => x.id === eleveId);
+  if(!e) return;
+  openModal('✏️ Corriger la fiche de ' + e.prenom, `
+    <p class="hint" style="margin-top:0;">Modifiez seulement ce qui est faux. L’école vérifie avant d’enregistrer.</p>
+    <form onsubmit="return envoyerCorrectionFiche(event, '${e.id}')">
+      ${Object.entries(CHAMPS_CORRECTION).map(([k, c]) => `<div class="field"><label>${c.lib}</label><input name="${k}" type="${c.type}" maxlength="200" value="${escapeHtml(e[c.cle] || '')}"${c.type === 'date' ? ` max="${todayISO()}"` : ''}></div>`).join('')}
+      <div class="field"><label>Précision (facultatif)</label><input name="commentaire" maxlength="300" placeholder="Ex : voir l’extrait de naissance"></div>
+      <button class="btn" type="submit" style="width:100%;">Envoyer à l’école</button>
+    </form>`);
+}
+async function envoyerCorrectionFiche(ev, eleveId){
+  ev.preventDefault();
+  const e = (DB.eleves || []).find(x => x.id === eleveId);
+  const fd = new FormData(ev.target);
+  const champs = {};
+  Object.entries(CHAMPS_CORRECTION).forEach(([k, c]) => { const v = (fd.get(k) || '').trim(); if(v && v !== (e[c.cle] || '')) champs[k] = v; });
+  if(!Object.keys(champs).length) return alert('Vous n’avez rien modifié.'), false;
+  try{
+    const { data, error } = await sb.from('corrections_fiches').insert({ eleve_id: eleveId, champs, commentaire: (fd.get('commentaire') || '').trim() }).select().single();
+    if(error) throw error;
+    DB.correctionsFiches = (DB.correctionsFiches || []).concat(rowToCamel(data));
+    sb.functions.invoke('notifier-personnel', { body: { type: 'correction' } }).catch(() => {});
+    closeModal(); toast('Correction envoyée à l’école'); renderView(ui.currentView);
+  }catch(err){ alert('Erreur : ' + err.message); }
+  return false;
+}
+// École : corrections à valider (Élèves & Inscriptions)
+function renderCorrectionsParents(){
+  if(!['secretariat','direction','fondation'].includes(ui.role)) return '';
+  if(DB.correctionsFiches === undefined){
+    DB.correctionsFiches = null;
+    sb.from('corrections_fiches').select('*').eq('ecole_id', session.ecoleId).eq('statut', 'en_attente').order('created_at')
+      .then(({ data }) => { DB.correctionsFiches = rowsToCamel(data || []); if(ui.currentView === 'eleves' && DB.correctionsFiches.length) renderView('eleves'); });
+  }
+  const liste = (DB.correctionsFiches || []).filter(c => c.statut === 'en_attente');
+  if(!liste.length) return '';
+  return `<div class="panel">
+    <div class="panel-head"><div><h2>✏️ Corrections proposées par les parents (${liste.length})</h2><div class="sub">Vérifiez avec les documents de l’élève, puis appliquez : la fiche est mise à jour.</div></div></div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Élève</th><th>Changement demandé</th><th></th></tr></thead>
+      <tbody>${liste.map(c => { const e = eleveById(c.eleveId); return `<tr>
+        <td>${e ? escapeHtml(eleveFullName(e)) : '—'}<br><span class="hint">${e ? escapeHtml(classeName(e.classeId)) : ''} · ${fmtDate(String(c.createdAt).slice(0, 10))}</span></td>
+        <td>${Object.entries(c.champs || {}).map(([k, v]) => `<div><strong>${escapeHtml(CHAMPS_CORRECTION[k]?.lib || k)} :</strong> <span class="hint">${escapeHtml(valeurLisible(k, e ? e[CHAMPS_CORRECTION[k]?.cle] : ''))}</span> → <strong>${escapeHtml(valeurLisible(k, v))}</strong></div>`).join('')}${c.commentaire ? `<div class="hint">« ${escapeHtml(c.commentaire)} »</div>` : ''}</td>
+        <td style="white-space:nowrap;"><button class="btn sm" onclick="traiterCorrectionFiche('${c.id}', true)">✓ Appliquer</button> <button class="btn secondary sm" onclick="traiterCorrectionFiche('${c.id}', false)">Refuser</button></td>
+      </tr>`; }).join('')}</tbody></table></div>
+  </div>`;
+}
+async function traiterCorrectionFiche(id, appliquer){
+  const c = (DB.correctionsFiches || []).find(x => x.id === id);
+  if(!c) return;
+  if(!appliquer && !confirm('Refuser cette correction ? La fiche reste inchangée.')) return;
+  try{
+    if(appliquer){
+      const champs = {};
+      Object.entries(c.champs || {}).forEach(([k, v]) => { if(CHAMPS_CORRECTION[k]) champs[k] = v; });
+      const { error } = await sb.from('eleves').update(champs).eq('id', c.eleveId);
+      if(error) throw error;
+      const e = eleveById(c.eleveId);
+      if(e) Object.entries(champs).forEach(([k, v]) => { e[CHAMPS_CORRECTION[k].cle] = v; });
+    }
+    const { error: err2 } = await sb.from('corrections_fiches').update({ statut: appliquer ? 'appliquee' : 'refusee', traite_at: new Date().toISOString() }).eq('id', id);
+    if(err2) throw err2;
+    c.statut = appliquer ? 'appliquee' : 'refusee';
+    toast(appliquer ? 'Fiche mise à jour' : 'Correction refusée'); renderView('eleves');
+  }catch(e){ alert('Erreur : ' + e.message); }
+}
+/* =====================================================================
    SÉCURITÉ ET SANTÉ DE L'ÉLÈVE (schema.sql section 66)
    Le parent (ou le secrétariat) indique les personnes autorisées à venir
    chercher l'enfant et ses informations de santé. Le portier ne voit que
@@ -4182,6 +4272,7 @@ function renderEleveListe(){
 
   return `
   <div class="view active">
+    ${renderCorrectionsParents()}
     ${renderFichesAVerifier()}
     <div class="panel">
       <div class="panel-head">

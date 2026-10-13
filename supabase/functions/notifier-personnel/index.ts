@@ -66,6 +66,14 @@ Deno.serve(async (req) => {
       ecoleId = m.ecole_id; roles = ['secretariat', 'direction', 'fondation'];
       titre = `✉️ Message de ${m.auteur_nom || 'un parent'}`;
       texte = `${e ? '(' + e.prenom + ' ' + e.nom + ') ' : ''}${String(m.contenu).slice(0, 160)}`;
+    } else if (type === 'correction') {
+      const { data: c } = await admin.from('corrections_fiches').select('ecole_id, eleve_id')
+        .eq('demande_par', user.id).eq('statut', 'en_attente').gte('created_at', depuis).order('created_at', { ascending: false }).limit(1).maybeSingle();
+      if (!c) throw new Error('Demande introuvable');
+      const { data: e } = await admin.from('eleves').select('nom, prenom').eq('id', c.eleve_id).single();
+      ecoleId = c.ecole_id; roles = ['secretariat', 'direction'];
+      titre = '✏️ Correction de fiche proposée';
+      texte = `Un parent propose de corriger la fiche de ${e ? e.prenom + ' ' + e.nom : 'son enfant'}. À valider dans Élèves & Inscriptions.`;
     } else {
       throw new Error('Type inconnu');
     }

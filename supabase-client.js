@@ -556,6 +556,12 @@ async function chargerDBParent(){
       reponsesAgenda = rowsToCamel(r.data || []);
     }catch(_e){}
   }
+  // Corrections de fiche en attente envoyées par ce parent
+  let correctionsFiches = [];
+  try{
+    const r = await sb.from('corrections_fiches').select('*').eq('ecole_id', session.ecoleId).eq('statut', 'en_attente');
+    correctionsFiches = rowsToCamel(r.data || []);
+  }catch(_e){}
   // Sécurité et santé de ses enfants (RLS : ses enfants seulement)
   let personnesAutorisees = [], santeEleves = [];
   try{
@@ -604,7 +610,7 @@ async function chargerDBParent(){
       scolariteVisibleParents: ecole.scolariteVisibleParents === true,
       bulletinsPublies: ecole.bulletinsPublies || [],
     },
-    echeancesScolarite, paiementsScolarite, notes: notesParent, bulletinsComments: appreciations, agenda, reponsesAgenda, devoirs, personnesAutorisees, santeEleves,
+    echeancesScolarite, paiementsScolarite, notes: notesParent, bulletinsComments: appreciations, agenda, reponsesAgenda, devoirs, correctionsFiches, personnesAutorisees, santeEleves,
     eleves: rowsToCamel(eleves.data),
     classes: rowsToCamel(classesRows.data),
     presencesSemaine,
