@@ -2361,6 +2361,14 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.10.17-2', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Nouveau look : en-tête plus compact, une seule cloche 🔔 pour les notifications, messages et suggestions (onglets), mode clair/sombre dans le menu.',
+      'Tableau de bord plus clair : « À faire aujourd’hui », chiffres clés lisibles, vos classes en un coup d’œil.',
+      'Compta → Scolarité : sur téléphone, une carte par élève (reste à payer, tranches Payé / À payer / En retard, bouton « Encaisser »), avec recherche et filtres Soldés / Avec reste / En retard.' ],
+  } },
   { version: '2026.10.17-1', nouveautes: {
     commun: [],
     parent: [],

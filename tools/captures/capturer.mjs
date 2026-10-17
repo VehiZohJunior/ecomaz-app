@@ -67,6 +67,7 @@ for(const theme of THEMES){
     const contexte = await navigateur.newContext({ viewport: { width: largeur, height: hauteur }, colorScheme: theme, deviceScaleFactor: 1, locale: 'fr-FR' });
     await contexte.addInitScript(t => { try{ localStorage.setItem('ecomaz_theme', t); }catch(_e){} }, theme);
     const page = await contexte.newPage();
+    page.on('pageerror', e => console.log(`ERREUR PAGE (${largeur}px) : ${e.message}`));
     await page.goto('http://localhost:5190/', { waitUntil: 'networkidle' });
     await page.waitForTimeout(600);
     await page.evaluate(installerDemo, donnees);
