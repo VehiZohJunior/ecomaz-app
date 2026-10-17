@@ -262,7 +262,7 @@ function fmtDate(iso){
   return `${d}/${m}/${y}`;
 }
 function fmtFCFA(n){
-  return Math.round(n||0).toLocaleString('fr-FR') + ' ' + DEVISE;
+  return Math.round(n||0).toLocaleString('fr-FR') + '\u00a0' + DEVISE;
 }
 function moisLabel(moisISO){
   const [y,m] = moisISO.split('-');
@@ -434,7 +434,8 @@ function applyBranding(){
   if(!window.ESPACE_FIXE) appliquerManifestePersonnel(nomApplication(m.nomEcole));
   $('#brandSchoolName').textContent = m.nomEcole;
   $('#anneeScolaire').textContent = m.anneeScolaire;
-  $('#topbarPill').textContent = `Année scolaire ${m.anneeScolaire}`;
+  $('#topbarPill').textContent = m.anneeScolaire || '';
+  $('#topbarPill').title = `Année scolaire ${m.anneeScolaire || ''}`;
   const img = $('#brandLogoImg'), ph = $('#brandLogoEmoji');
   if(m.logo){
     img.src = m.logo; img.style.display = 'block'; ph.style.display = 'none';
@@ -1965,31 +1966,42 @@ function renderBulles(){
     : ['secretariat','direction','fondation'].includes(ui.role) ? (DB.messagesInternes||[]).filter(m=>!m.lu && m.destinataireType === 'ecole').length : 0;
   const nbSugg = estAdmin ? (DB.suggestions||[]).filter(s=>!s.lu).length : 0;
   const badge = n => n ? `<span class="bulle-badge">${n>9?'9+':n}</span>` : '';
+  // Refonte (DESIGN.md §7) : une seule cloche → centre à onglets (mêmes contenus qu'avant)
+  const total = nbNotif + nbMsg + nbSugg;
+  const onglet = ui.ongletCentre || 'notif';
+  const ong = (cle, lib, n) => `<button type="button" role="tab" class="cn-onglet${onglet === cle ? ' actif' : ''}" aria-selected="${onglet === cle}" onclick="choisirOngletCentre('${cle}')">${lib}${n ? ` <span class="cn-compte">${n > 9 ? '9+' : n}</span>` : ''}</button>`;
   return `
     <div class="bulle-wrap">
-      <button class="bulle-btn" onclick="toggleBulle('notif')" title="Notifications" aria-label="Notifications${nbNotif ? ', ' + nbNotif + ' nouvelle' + (nbNotif>1?'s':'') : ''}">🔔${nbNotif ? `<span class="bulle-badge${ui.role==='parent' ? ' em-pulse' : ''}">${nbNotif>9?'9+':nbNotif}</span>` : ''}</button>
-      <div class="bulle-dropdown" id="dropdownNotif" style="display:none;">${renderDropdownNotifications()}</div>
-    </div>
-    <div class="bulle-wrap">
-      <button class="bulle-btn" onclick="toggleBulle('msg')" title="Messages">✉️${badge(nbMsg)}</button>
-      <div class="bulle-dropdown" id="dropdownMsg" style="display:none;">${renderDropdownMessages()}</div>
-    </div>
-    <div class="bulle-wrap">
-      <button class="bulle-btn" onclick="toggleBulle('sugg')" title="Suggestions">💡${badge(nbSugg)}</button>
-      <div class="bulle-dropdown" id="dropdownSugg" style="display:none;">${renderDropdownSuggestions()}</div>
+      <button class="bulle-btn" onclick="toggleCentre()" aria-haspopup="dialog" aria-controls="centreNotif" aria-label="Centre de notifications${total ? ', ' + total + ' nouveau' + (total > 1 ? 'x' : '') : ''}" title="Notifications, messages et suggestions">🔔${badge(total)}</button>
+      <div class="bulle-dropdown centre-notif" id="centreNotif" style="display:none;" role="dialog" aria-label="Centre de notifications">
+        <div class="cn-poignee" aria-hidden="true"></div>
+        <div class="cn-tete"><strong>Notifications</strong><button type="button" class="cn-fermer" onclick="toggleCentre(false)" aria-label="Fermer">✕</button></div>
+        <div class="cn-onglets" role="tablist">${ong('notif', 'Notifications', nbNotif)}${ong('msg', 'Messages', nbMsg)}${ong('sugg', 'Suggestions', nbSugg)}</div>
+        <div class="cn-panneau" id="dropdownNotif"${onglet === 'notif' ? '' : ' hidden'}>${renderDropdownNotifications()}</div>
+        <div class="cn-panneau" id="dropdownMsg"${onglet === 'msg' ? '' : ' hidden'}>${renderDropdownMessages()}</div>
+        <div class="cn-panneau" id="dropdownSugg"${onglet === 'sugg' ? '' : ' hidden'}>${renderDropdownSuggestions()}</div>
+      </div>
     </div>
   `;
 }
-function toggleBulle(nom){
-  const ids = {notif:'dropdownNotif', msg:'dropdownMsg', sugg:'dropdownSugg'};
-  Object.entries(ids).forEach(([k,id])=>{
-    const el = $('#'+id);
-    if(!el) return;
-    el.style.display = (k===nom && el.style.display==='none') ? 'block' : 'none';
-  });
+// Ouvre le centre sur l'onglet demandé (gardé pour les anciens appels)
+function toggleBulle(nom){ ui.ongletCentre = nom; choisirOngletCentre(nom); toggleCentre(true); }
+function toggleCentre(ouvrir){
+  const c = $('#centreNotif'); if(!c) return;
+  const visible = c.style.display !== 'none';
+  const montrer = ouvrir === undefined ? !visible : !!ouvrir;
+  c.style.display = montrer ? 'flex' : 'none';
+  document.body.classList.toggle('centre-ouvert', montrer);
+  const b = c.parentElement && c.parentElement.querySelector('.bulle-btn'); if(b) b.setAttribute('aria-expanded', String(montrer));
+}
+function choisirOngletCentre(cle){
+  ui.ongletCentre = cle;
+  const ids = { notif:'dropdownNotif', msg:'dropdownMsg', sugg:'dropdownSugg' };
+  Object.entries(ids).forEach(([k, id]) => { const el = $('#' + id); if(el) el.hidden = k !== cle; });
+  $$('.cn-onglet').forEach(o => { const actif = o.getAttribute('onclick').includes(`'${cle}'`); o.classList.toggle('actif', actif); o.setAttribute('aria-selected', String(actif)); });
 }
 document.addEventListener('click', (e)=>{
-  if(!e.target.closest('.bulles')) $$('.bulle-dropdown').forEach(el=>el.style.display='none');
+  if(!e.target.closest('.bulles')){ $$('.bulle-dropdown').forEach(el=>el.style.display='none'); document.body.classList.remove('centre-ouvert'); }
 });
 function calculerNotificationsBulle(){
   const items = [];
@@ -2918,6 +2930,82 @@ function animerCompteursKpi(){
     if(window.EmMotion) EmMotion.countUp(el, n, { duration:900 }); else el.textContent = n;
   });
 }
+/* ---------- Refonte du tableau de bord (DESIGN.md §11) : affichage seulement ---------- */
+function icone(nom){ return window.EmIcones ? EmIcones.svg(nom) : ''; }
+function estJourDeClasse(iso){
+  const j = ((new Date(iso + 'T12:00:00').getDay() + 6) % 7) + 1;
+  return (DB.horairesAnnonces?.joursCours || [1, 2, 3, 4, 5]).includes(j);
+}
+// Bande unique « À faire aujourd'hui » : appel, pointage, demandes des familles
+function renderAFaireAujourdhui(){
+  const auj = todayISO(), admin = ['secretariat','direction','fondation'].includes(ui.role);
+  const lignes = [];
+  if(estJourDeClasse(auj)){
+    const sansAppel = classesVisibles().filter(c => DB.eleves.some(e => e.classeId === c.id && e.statut === 'Actif') && !DB.presencesEleves.some(p => p.classeId === c.id && p.date === auj));
+    if(sansAppel.length && hasAccess('presences-eleves')) lignes.push({ ic:'clipboard', texte:`Appel non fait dans ${sansAppel.length} classe${sansAppel.length > 1 ? 's' : ''}`, detail: sansAppel.slice(0, 4).map(c => c.nom).join(', ') + (sansAppel.length > 4 ? '…' : ''), bouton:'Faire l’appel', action:"go('presences-eleves')" });
+    if(admin && hasAccess('presences-enseignants')){
+      const nonPointes = DB.enseignants.filter(t => t.statut === 'Actif' && !DB.presencesEnseignants.some(p => p.enseignantId === t.id && p.date === auj));
+      if(nonPointes.length) lignes.push({ ic:'clock', texte:`${nonPointes.length} enseignant${nonPointes.length > 1 ? 's' : ''} non pointé${nonPointes.length > 1 ? 's' : ''}`, detail:'', bouton:'Voir le pointage', action:"go('presences-enseignants')" });
+    }
+  }
+  if(admin){
+    chargerATraiter();
+    const c = DB.aTraiter?.compteurs || {};
+    SUJETS_A_TRAITER.filter(su => (!su.roles || su.roles.includes(ui.role)) && (c[su.cle] || 0) > 0)
+      .forEach(su => lignes.push({ ic:'mail', texte:`${c[su.cle]} ${su.lib}`, detail:'', bouton:'Traiter', action:`DB.aTraiter.charge=0; go('${su.vue}')` }));
+  }
+  return `<section class="panel afaire" aria-labelledby="titreAFaire">
+    <div class="afaire-tete"><h2 id="titreAFaire">À faire aujourd’hui</h2>${lignes.length ? `<span class="afaire-compte">${lignes.length}</span>` : ''}</div>
+    ${lignes.length ? `<ul class="afaire-liste">${lignes.map(l => `<li class="afaire-ligne">
+        <span class="afaire-ic" aria-hidden="true">${icone(l.ic)}</span>
+        <span class="afaire-txt"><strong>${escapeHtml(l.texte)}</strong>${l.detail ? `<span>${escapeHtml(l.detail)}</span>` : ''}</span>
+        <button type="button" class="btn sm" onclick="${l.action}">${l.bouton}</button></li>`).join('')}</ul>`
+      : `<div class="etat-vide etat-vide-ok"><span class="etat-vide-ic" aria-hidden="true">${icone('circle-check')}</span><span>Rien en attente : tout est à jour.</span></div>`}
+  </section>`;
+}
+// Vue d'ensemble : une ligne par classe, détail en feuille
+function renderLignesClasses(){
+  const auj = todayISO();
+  return DB.classes.map(c => {
+    const eff = DB.eleves.filter(e => e.classeId === c.id && e.statut === 'Actif').length;
+    const pres = DB.presencesEleves.filter(p => p.classeId === c.id && p.date === auj);
+    const presents = pres.filter(p => p.statut !== 'Absent').length;
+    const badge = pres.length ? `<span class="badge-etat ok">${icone('check')}Appel fait ${presents}/${eff}</span>` : `<span class="badge-etat attente">${icone('clock')}Appel non fait</span>`;
+    return `<button type="button" class="ligne-classe" onclick="ouvrirDetailClasse('${c.id}')">
+      <span class="lc-nom"><strong>${escapeHtml(c.nom)}</strong><small>${escapeHtml(c.cycle)}</small></span>
+      <span class="lc-eff">${eff} élève${eff > 1 ? 's' : ''}</span>${badge}</button>`;
+  }).join('');
+}
+function ouvrirDetailClasse(id){
+  const c = DB.classes.find(x => x.id === id); if(!c) return;
+  const auj = todayISO();
+  const eleves = DB.eleves.filter(e => e.classeId === id && e.statut === 'Actif');
+  const pres = DB.presencesEleves.filter(p => p.classeId === id && p.date === auj);
+  const nb = s => pres.filter(p => p.statut === s).length;
+  const tit = enseignantById(c.titulaireId);
+  openModal(c.nom, `
+    <div class="detail-lignes">
+      <div><span>Cycle</span><strong>${escapeHtml(c.cycle)}</strong></div>
+      <div><span>Effectif</span><strong>${eleves.length} élève${eleves.length > 1 ? 's' : ''}</strong></div>
+      <div><span>Titulaire</span><strong>${tit ? escapeHtml(ensFullName(tit)) : 'Non désigné'}</strong></div>
+      <div><span>Appel du jour</span><strong>${pres.length ? `${nb('Présent')} présents · ${nb('Absent')} absents · ${nb('Retard')} retards` : 'Non fait'}</strong></div>
+    </div>
+    <div class="form-actions">
+      ${hasAccess('eleves') ? `<button type="button" class="btn secondary" onclick="closeModal(); go('eleves')">Voir les élèves</button>` : ''}
+      ${hasAccess('presences-eleves') ? `<button type="button" class="btn" onclick="closeModal(); ui.filters.presEleves = { classeId:'${id}', date:'${auj}' }; go('presences-eleves')">${pres.length ? 'Voir l’appel' : 'Faire l’appel'}</button>` : ''}
+    </div>`);
+}
+function renderBanniereNotifications(){
+  if(!(pushPossible() && Notification.permission === 'default')) return '';
+  try{ if(localStorage.getItem('ecomaz_banniere_push_fermee') === '1') return ''; }catch(_e){}
+  return `<div class="banniere-discrete no-print" role="note">
+    <span class="bd-ic" aria-hidden="true">${icone('bell')}</span>
+    <span class="bd-txt">Recevez les alertes sur ce téléphone${ui.role === 'enseignant' ? ' (parent au portail, appel)' : ' (appel non fait, demandes, absences)'}.</span>
+    <button type="button" class="btn sm" onclick="activerPush(false).then(ok => { if(ok){ toast('Notifications activées sur ce téléphone'); renderView('dashboard'); } })">Activer</button>
+    <button type="button" class="bd-fermer" aria-label="Fermer" onclick="try{ localStorage.setItem('ecomaz_banniere_push_fermee','1'); }catch(_e){} this.closest('.banniere-discrete').remove()">${icone('x') || '×'}</button>
+  </div>`;
+}
+function montantKpi(n){ return `${Math.round(n || 0).toLocaleString('fr-FR')}<span class="kpi-unite">${DEVISE}</span>`; }
 function renderDashboard(){
   const today = todayISO();
   const totalEleves = DB.eleves.filter(e=>e.statut==='Actif').length;
@@ -2982,44 +3070,47 @@ function renderDashboard(){
     </tr>`;
   }).join('');
 
+  const finance = ['direction','fondation'].includes(ui.role);
+  const ensPresents = presEnsToday.filter(p => p.statut !== 'Absent').length;
+  let encaisseMois = 0, resteTotal = 0;
+  if(finance){
+    const mois = today.slice(0, 7);
+    encaisseMois = (DB.paiementsScolarite || []).filter(p => String(p.date || '').startsWith(mois)).reduce((t, p) => t + Number(p.montant || 0), 0);
+    try{ resteTotal = DB.eleves.filter(e => e.statut === 'Actif').reduce((t, e) => t + (scolariteEleveParEcheance(e.id).reste || 0), 0); }catch(_e){ resteTotal = 0; }
+  }
+  const prenom = (session.nomComplet || '').trim().split(/\s+/)[0] || '';
+  const dateLongue = new Date(today + 'T12:00:00').toLocaleDateString('fr-FR', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
   return `
   <div class="view active">
-    <div class="cards">
-      ${kpi(0, '🧒', 'var(--primary-dim)', totalEleves, 'Élèves inscrits (actifs)')}
-      ${kpi(1, '👩‍🏫', 'var(--purple-bg)', totalEns, 'Enseignants actifs')}
-      ${kpi(2, '✅', 'var(--green-bg)', tauxEleves===null ? null : tauxEleves+'%', "Présence élèves aujourd'hui", ['Appel non effectué', lien('presences-eleves', "Faire l'appel")])}
-      ${kpi(3, '🕘', 'var(--blue-bg)', tauxEns===null ? null : tauxEns+'%', "Présence enseignants aujourd'hui", ['Aucun pointage aujourd’hui', lien('presences-enseignants', 'Voir le journal')])}
+    <div class="db-bonjour"><h2>Bonjour${prenom ? ' ' + escapeHtml(prenom) : ''}</h2><div class="db-date">${dateLongue}</div></div>
+    ${renderAFaireAujourdhui()}
+    <div class="cards cards-2x2">
+      ${kpi(0, icone('graduation-cap'), 'var(--primary-dim)', totalEleves, 'Élèves inscrits')}
+      ${kpi(1, icone('presentation'), 'var(--purple-bg)', presEnsToday.length ? `${ensPresents}/${totalEns}` : totalEns, presEnsToday.length ? 'Enseignants présents aujourd’hui' : 'Enseignants (pointage non fait)')}
+      ${finance ? kpi(2, icone('banknote'), 'var(--green-bg)', montantKpi(encaisseMois), 'Encaissé ce mois')
+        : kpi(2, icone('circle-check'), 'var(--green-bg)', tauxEleves===null ? null : tauxEleves+'%', 'Présence élèves aujourd’hui', ['Appel non effectué', lien('presences-eleves', 'Faire l’appel')])}
+      ${finance ? kpi(3, icone('wallet'), 'var(--accent-soft)', montantKpi(resteTotal), 'Reste à encaisser')
+        : kpi(3, icone('clock'), 'var(--blue-bg)', tauxEns===null ? null : tauxEns+'%', 'Présence enseignants aujourd’hui', ['Aucun pointage aujourd’hui', lien('presences-enseignants', 'Voir le journal')])}
     </div>
     ${animer ? `${(setTimeout(animerCompteursKpi, 0), '')}` : ''}
-    ${renderATraiter()}
     ${renderMiseEnRoute()}
     ${renderMaJournee()}
     ${renderElevesASurveiller()}
     ${renderAnniversaires()}
     ${(ui.role==='direction' || ui.role==='fondation') ? `<div class="form-actions no-print" style="justify-content:flex-start;margin:0 0 var(--sp-4);"><button class="btn secondary" onclick="ouvrirBilanHebdo()">📊 Bilan de la semaine</button></div>` : ''}
 
-    ${pushPossible() && Notification.permission === 'default' ? `<div class="form-actions no-print" style="justify-content:flex-start;margin:0 0 var(--sp-4);"><button class="btn" onclick="activerPush(false).then(ok => { if(ok){ toast('Notifications activées sur ce téléphone'); renderView('dashboard'); } })">🔔 Activer les notifications sur ce téléphone${ui.role==='enseignant' ? ' (parent au portail, appel, absences)' : ' (appel non fait, demandes d’accès, absences, objets perdus)'}</button></div>` : ''}
+    ${renderBanniereNotifications()}
     ${ui.role==='enseignant' ? renderActualitesParent() + renderTableauHonneurParent() : ''}
 
     <div class="grid-2">
       <div class="panel">
-        <div class="panel-head"><div><h2>Répartition des élèves par classe</h2><div class="sub">Effectifs actifs par niveau</div></div></div>
+        <div class="panel-head"><div><h2>Répartition des élèves par classe</h2></div></div>
         ${barsHtml}
       </div>
       <div class="panel">
-        <div class="panel-head"><div><h2>Alertes du jour</h2><div class="sub">${fmtDate(today)}</div></div></div>
-        <div style="margin-bottom:14px;">${alertesEleves}</div>
-        <div class="sub" style="margin-bottom:6px;font-weight:700;">Enseignants absents</div>
-        ${ensAbsents}
+        <div class="panel-head"><div><h2>Vue d’ensemble par classe</h2></div></div>
+        <div class="lignes-classes">${renderLignesClasses()}</div>
       </div>
-    </div>
-
-    <div class="panel">
-      <div class="panel-head"><div><h2>Vue d'ensemble par classe</h2><div class="sub">Effectif, titulaire et présence du jour</div></div></div>
-      <div class="table-wrap"><table>
-        <thead><tr><th>Classe</th><th>Cycle</th><th>Effectif</th><th>Titulaire</th><th>Présence aujourd'hui</th></tr></thead>
-        <tbody>${classesRows}</tbody>
-      </table></div>
     </div>
   </div>`;
 }
@@ -3207,15 +3298,16 @@ function renderMiseEnRoute(){
   const ouvert = ui.filters.miseEnRouteOuvert !== false;
   return `<div class="panel mise-en-route">
     <div class="panel-head">
-      <div><h2>🚀 Mise en route de l’école — ${faites} / ${etapes.length}</h2><div class="sub">Plus ces étapes sont faites, plus EcoMaZ travaille pour vous (alertes, annonces, bilans)</div></div>
+      <div><h2>Mise en route de l’école <span class="mer-score">${faites} / ${etapes.length}</span></h2><div class="sub">Plus ces étapes sont faites, plus EcoMaZ travaille pour vous.</div></div>
       <button class="btn secondary sm" onclick="ui.filters.miseEnRouteOuvert=${!ouvert}; renderView('dashboard')">${ouvert ? 'Replier' : 'Afficher'}</button>
     </div>
     <div class="mer-barre" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><div style="width:${pct}%"></div></div>
-    ${ouvert ? `<ul class="mer-liste">${etapes.map(e => `<li class="${e.ok ? 'fait' : ''}">
+    ${ouvert ? `<ul class="mer-liste">${etapes.filter(e => !e.ok || ui.filters.merFaites).map(e => `<li class="${e.ok ? 'fait' : ''}">
       <span class="mer-ic" aria-hidden="true">${e.ok ? '✓' : '•'}</span>
       <div class="mer-txt"><strong>${e.titre}</strong><span>${escapeHtml(e.detail)}</span></div>
       ${e.ok ? '' : `<button class="btn sm" onclick="${e.action || `go('${e.vue}')`}">${e.bouton}</button>`}
-    </li>`).join('')}</ul>` : ''}
+    </li>`).join('')}</ul>
+    <button type="button" class="lien-discret" onclick="ui.filters.merFaites=${!ui.filters.merFaites}; renderView('dashboard')">${ui.filters.merFaites ? 'Masquer les étapes faites' : `Voir les ${faites} étape${faites > 1 ? 's' : ''} déjà faite${faites > 1 ? 's' : ''}`}</button>` : ''}
   </div>`;
 }
 /* =====================================================================
@@ -4422,15 +4514,14 @@ function renderElevesASurveiller(){
   if(!liste.length) return '';
   const admin = ui.role !== 'enseignant';
   return `<div class="panel">
-    <div class="panel-head"><div><h2>👀 Élèves à surveiller (${liste.length})</h2><div class="sub">Absences répétées sur les 30 derniers jours, ou absent(e) aux 2 derniers appels. Un petit message au parent suffit souvent.</div></div></div>
-    <div class="table-wrap"><table>
-      <thead><tr><th>Élève</th><th>Absences (30 j)</th><th>Dernière</th>${admin ? '<th></th>' : ''}</tr></thead>
-      <tbody>${liste.map(x => `<tr>
-        <td><strong>${escapeHtml(eleveFullName(x.e))}</strong><br><span class="hint">${escapeHtml(classeName(x.e.classeId))}</span></td>
-        <td>${x.absences}${x.signalees ? ` <span class="hint">(dont ${x.signalees} signalée(s) par le parent)</span>` : ''}${x.suite ? '<br><span class="badge red">absent(e) aux 2 derniers appels</span>' : ''}</td>
-        <td>${x.derniere ? fmtDate(x.derniere) : '—'}</td>
-        ${admin ? `<td>${telephonesWhatsapp(x.e.parentTel).length ? `<button class="btn secondary sm" onclick="contacterParentAbsences('${x.e.id}', ${x.absences})">📲 Parent</button>` : '<span class="hint">pas de numéro</span>'}</td>` : ''}
-      </tr>`).join('')}</tbody></table></div>
+    <div class="panel-head"><div><h2>Élèves à surveiller <span class="mer-score">${liste.length}</span></h2><div class="sub">Absences répétées sur 30 jours. Un petit message au parent suffit souvent.</div></div></div>
+    <ul class="liste-compacte">${liste.map(x => `<li class="lc-ligne">
+        <span class="lc-avatar" aria-hidden="true">${escapeHtml(initials(x.e.prenom, x.e.nom))}</span>
+        <span class="lc-corps"><strong>${escapeHtml(eleveFullName(x.e))}</strong>
+          <span>${escapeHtml(classeName(x.e.classeId))} · ${x.absences} absence${x.absences > 1 ? 's' : ''} en 30 jours${x.derniere ? ' · dernière le ' + fmtDate(x.derniere).slice(0, 5) : ''}${x.signalees ? ` · ${x.signalees} signalée${x.signalees > 1 ? 's' : ''} par le parent` : ''}</span>
+          ${x.suite ? '<span class="badge-etat erreur">Absent(e) aux 2 derniers appels</span>' : ''}</span>
+        ${admin ? (telephonesWhatsapp(x.e.parentTel).length ? `<button class="btn secondary sm" onclick="contacterParentAbsences('${x.e.id}', ${x.absences})">Contacter</button>` : '<span class="hint">Pas de numéro</span>') : ''}
+      </li>`).join('')}</ul>
   </div>`;
 }
 function contacterParentAbsences(eleveId, nb){
@@ -7793,6 +7884,60 @@ function handleComparerReleve(){
 }
 
 /* --- 12.2 Scolarité --- */
+/* ---------- Refonte : carte de paiement d'un élève (DESIGN.md §11, affichage seulement) ---------- */
+function etatScolarite(e, info){
+  if(!info.reste) return 'solde';
+  const auj = todayISO();
+  const ech = echeancesDeClasse(e.classeId);
+  return info.detail.some(d => d.statut !== 'paye' && (ech.find(x => x.label === d.label)?.dateEcheance || '9999') < auj) ? 'retard' : 'reste';
+}
+function carteScolarite(e, info){
+  const auj = todayISO(), ech = echeancesDeClasse(e.classeId);
+  const pct = info.total ? Math.min(100, Math.round(100 * info.totalPaye / info.total)) : 0;
+  const datePaiement = label => (DB.paiementsScolarite || []).filter(p => p.eleveId === e.id && p.tranche === label).map(p => p.date).sort().pop();
+  const court = iso => iso ? new Date(iso + 'T12:00:00').toLocaleDateString('fr-FR', { day:'numeric', month:'short' }) : '';
+  const lignes = info.detail.map(d => {
+    const limite = ech.find(x => x.label === d.label)?.dateEcheance || null;
+    const enRetard = d.statut !== 'paye' && limite && limite < auj;
+    const badge = d.statut === 'paye' ? `<span class="badge-etat ok">${icone('check')}Payé</span>`
+      : enRetard ? `<span class="badge-etat erreur">${icone('triangle-alert')}En retard</span>`
+      : `<span class="badge-etat attente">${icone('clock')}À payer</span>`;
+    const sous = d.statut === 'paye' ? `Payé le ${court(datePaiement(d.label))}`
+      : d.statut === 'partiel' ? `Reste ${fmtFCFA(d.montant - d.paye)}${limite ? ' · avant le ' + court(limite) : ''}`
+      : limite ? `Avant le ${court(limite)}` : '';
+    return `<li class="sc-ligne">
+      <span class="sc-lib"><span>${escapeHtml(d.label)}</span>${sous ? `<small>${sous}</small>` : ''}</span>
+      <span class="sc-mt">${fmtFCFA(d.montant)}</span>
+      <span class="sc-etat">${badge}${d.statut !== 'paye' ? `<button type="button" class="btn sm" onclick="openPaiementScolariteForm('${e.id}','${escapeHtml(d.label).replace(/'/g, "\\'")}')">Encaisser</button>` : ''}</span>
+    </li>`;
+  }).join('');
+  return `<article class="scol-carte" data-nom="${escapeHtml(eleveFullName(e).toLowerCase())}" data-etat="${etatScolarite(e, info)}">
+    <header class="sc-tete">
+      <span class="lc-avatar" aria-hidden="true">${escapeHtml(initials(e.prenom, e.nom))}</span>
+      <span class="sc-id"><strong>${escapeHtml(eleveFullName(e))}</strong><small>${escapeHtml(classeName(e.classeId))}</small></span>
+      <span class="sc-reste ${info.reste ? 'du' : 'ok'}"><small>${info.reste ? 'Reste à payer' : 'Soldé'}</small><strong>${info.reste ? fmtFCFA(info.reste) : icone('circle-check')}</strong></span>
+    </header>
+    <div class="sc-progression"><div class="sc-piste"><div style="width:${pct}%"></div></div><span>${fmtFCFA(info.totalPaye)} / ${fmtFCFA(info.total)}</span></div>
+    <ul class="sc-echeances">${lignes}</ul>
+    <footer class="sc-pied">
+      <span class="sc-actions"><button type="button" class="btn secondary sm" onclick="voirHistoriqueScolarite('${e.id}')">Reçu</button>${info.reste ? `<button type="button" class="btn secondary sm" onclick="genererLienPaiement('${e.id}', null, ${info.reste})">Lien de paiement</button>` : ''}</span>
+      <span class="sc-totaux"><span>Total <strong>${fmtFCFA(info.total)}</strong></span><span>Reste <strong class="${info.reste ? 'du' : 'ok'}">${fmtFCFA(info.reste)}</strong></span></span>
+    </footer>
+  </article>`;
+}
+// Recherche + filtres sans recharger l'écran (le champ garde le focus)
+function filtrerScolarite(){
+  const etat = ui.filters.scolEtat || 'tous';
+  const texte = simplifierTexte(document.querySelector('.scol-recherche')?.value || '');
+  let visibles = 0;
+  document.querySelectorAll('.scol-carte, .scol-table tbody tr').forEach(el => {
+    const ok = (etat === 'tous' || el.dataset.etat === etat || (etat === 'reste' && el.dataset.etat === 'retard')) && (!texte || simplifierTexte(el.dataset.nom || '').includes(texte));
+    el.hidden = !ok;
+    if(ok && el.classList.contains('scol-carte')) visibles++;
+  });
+  document.querySelectorAll('.segmente .seg').forEach(b => b.classList.toggle('actif', b.dataset.etat === etat));
+  const vide = document.querySelector('.scol-aucun'); if(vide) vide.hidden = visibles > 0 || !document.querySelector('.scol-carte');
+}
 function renderComptaScolarite(){
   if(DB.classes.length === 0){
     return `<div class="panel"><div class="empty-state"><div class="em-ic">🎓</div>Aucune classe configurée pour le moment. Activez au moins un niveau scolaire dans <strong>Paramètres</strong> pour commencer à suivre la scolarité.</div></div>`;
@@ -7805,6 +7950,7 @@ function renderComptaScolarite(){
 
   const du = duAnnuelClasse(classeId);
   let totalDu=0, totalPaye=0;
+  const cartesScol = [];
 
   const rows = eleves.map(e=>{
     if(grilleActive){
@@ -7816,17 +7962,18 @@ function renderComptaScolarite(){
           ? `<span class="badge ${cls}">✓ ${fmtFCFA(d.paye)}</span>`
           : d.statut==='partiel'
             ? `<span class="badge ${cls}" style="cursor:pointer;" onclick="openPaiementScolariteForm('${e.id}','${escapeHtml(d.label).replace(/'/g,"\\'")}')">${fmtFCFA(d.paye)} / ${fmtFCFA(d.montant)}</span>`
-            : `<button class="icon-btn" title="Enregistrer ce versement" onclick="openPaiementScolariteForm('${e.id}','${escapeHtml(d.label).replace(/'/g,"\\'")}')">➕</button>`;
+            : `<button class="btn secondary sm" onclick="openPaiementScolariteForm('${e.id}','${escapeHtml(d.label).replace(/'/g,"\\'")}')">Encaisser</button>`;
         return `<td style="text-align:center;">${contenu}</td>`;
       }).join('');
-      return `<tr>
+      cartesScol.push(carteScolarite(e, info));
+      return `<tr data-nom="${escapeHtml(eleveFullName(e).toLowerCase())}" data-etat="${etatScolarite(e, info)}">
         <td><div class="row-name"><span class="avatar">${initials(e.prenom,e.nom)}</span>${escapeHtml(eleveFullName(e))}</div></td>
         ${cellules}
         <td class="amount" style="font-weight:800;">${fmtFCFA(info.total)}</td>
         <td class="amount ${info.reste>0?'out':''}" style="font-weight:800;">${fmtFCFA(info.reste)}</td>
         <td style="white-space:nowrap;">
-          <button class="icon-btn" title="Historique" onclick="voirHistoriqueScolarite('${e.id}')">🧾</button>
-          ${info.reste>0 ? `<button class="icon-btn" title="Générer un lien de paiement pour le parent" onclick="genererLienPaiement('${e.id}', null, ${info.reste})">🔗</button>` : ''}
+          <button class="btn secondary sm" onclick="voirHistoriqueScolarite('${e.id}')">Reçu</button>
+          ${info.reste>0 ? `<button class="btn secondary sm" title="Lien de paiement pour le parent" aria-label="Lien de paiement" onclick="genererLienPaiement('${e.id}', null, ${info.reste})">Lien</button>` : ''}
         </td>
       </tr>`;
     }
@@ -7864,9 +8011,19 @@ function renderComptaScolarite(){
           ${grilleActive ? '' : `<button class="btn secondary" onclick="openFraisScolariteForm()">⚙️ Configurer les frais</button>`}
         </div>
       </div>
-      ${grilleActive ? `<div class="section-note">💡 Grille par échéance active — configurée dans Paramètres → Échéances de scolarité. Cliquez ➕ pour enregistrer un versement précis.</div>` : ''}
       <div class="progress" style="margin-bottom:16px;"><div style="width:${tauxClasse}%;background:${tauxClasse>=80?'var(--green)':tauxClasse>=50?'var(--amber)':'var(--red)'};"></div></div>
-      ${eleves.length===0 ? `<div class="empty-state"><div class="em-ic">🎓</div>Aucun élève actif dans cette classe.</div>` : `
+      ${eleves.length===0 ? `<div class="empty-state"><div class="em-ic">🎓</div>Aucun élève actif dans cette classe.</div>` : grilleActive ? `
+      <div class="scol-outils">
+        <input type="search" class="scol-recherche" placeholder="Rechercher un élève" aria-label="Rechercher un élève" oninput="filtrerScolarite()">
+        <div class="segmente" role="group" aria-label="Filtrer les élèves">${[['tous','Tous'],['solde','Soldés'],['reste','Avec reste'],['retard','En retard']].map(([k, l]) => `<button type="button" class="seg${(ui.filters.scolEtat || 'tous') === k ? ' actif' : ''}" data-etat="${k}" onclick="ui.filters.scolEtat='${k}'; filtrerScolarite()">${l}</button>`).join('')}</div>
+      </div>
+      <div class="scol-cartes seulement-mobile">${cartesScol.join('')}</div>
+      <div class="table-wrap seulement-ordi"><table class="scol-table">
+        <thead>${theadHtml}</thead>
+        <tbody>${rows}</tbody>
+      </table></div>
+      <div class="etat-vide scol-aucun" hidden><span class="etat-vide-ic" aria-hidden="true">${icone('search')}</span><span>Aucun élève pour ce filtre. <button type="button" class="lien-discret" onclick="ui.filters.scolEtat='tous'; const r=document.querySelector('.scol-recherche'); if(r) r.value=''; filtrerScolarite()">Effacer les filtres</button></span></div>
+      ${(setTimeout(filtrerScolarite, 0), '')}` : `
       <div class="table-wrap"><table>
         <thead>${theadHtml}</thead>
         <tbody>${rows}</tbody>

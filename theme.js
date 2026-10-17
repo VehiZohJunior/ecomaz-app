@@ -25,7 +25,7 @@
     // Seulement les vrais boutons de thème : le bouton Recherche partage leur style
     // (classe theme-toggle) mais ne doit jamais recevoir l'icône lune/soleil.
     document.querySelectorAll('.theme-toggle:not(#btnRechercheGlobale)').forEach(b => {
-      b.textContent = sombre ? '☀️' : '🌙';
+      b.textContent = b.classList.contains('theme-toggle-menu') ? (sombre ? '☀️ Mode clair' : '🌙 Mode sombre') : (sombre ? '☀️' : '🌙');
       b.setAttribute('aria-label', sombre ? 'Passer au thème clair' : 'Passer au thème sombre');
       b.title = b.getAttribute('aria-label');
     });
@@ -218,6 +218,9 @@
     // Bouton dans la barre du haut (application) et sur l'écran de connexion
     const barre = document.querySelector('.topbar-right');
     if(barre) barre.insertBefore(creerBouton(), barre.firstChild);
+    // Refonte : la bascule du personnel se trouve aussi dans le menu (DESIGN.md §7)
+    const pied = document.querySelector('.sidebar-footer');
+    if(pied){ const deco = document.getElementById('btnSwitchRole'); pied.insertBefore(creerBouton('btn-reset theme-toggle-menu'), deco || null); }
     // bouton de l'écran de connexion : seulement dans les applications (pas sur les pages simples)
     if(document.getElementById('loginGate')) document.body.appendChild(creerBouton('theme-toggle-gate'));
     majBoutons();

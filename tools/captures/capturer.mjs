@@ -78,10 +78,18 @@ for(const theme of THEMES){
       DB = await chargerDB();
       enterApp();
     }, { eid: donnees._ecole_id, role });
-    for(const ecran of ecrans){
-      await page.evaluate(v => { closeModal && closeModal(); go(v); window.scrollTo(0, 0); }, ecran);
+    for(const ecranBrut of ecrans){
+      // « ecran+centre » : ouvre aussi le centre de notifications avant la capture
+      // « ecran:onglet » : ouvre un sous-onglet (ex. comptabilite:scolarite)
+      const [ecranOnglet, extra] = ecranBrut.split('+');
+      const [ecran, onglet] = ecranOnglet.split(':');
+      await page.evaluate(([v, o]) => { closeModal && closeModal(); if(o) ui.filters.comptaTab = o; go(v); window.scrollTo(0, 0); }, [ecran, onglet]);
       await page.waitForTimeout(900);
-      await page.screenshot({ path: join(sortie, `${ecran}_${largeur}_${theme === 'light' ? 'clair' : 'sombre'}.png`), fullPage: true });
+      if(extra === 'centre') await page.evaluate(() => { toggleCentre(true); });
+      if(extra === 'centre') await page.waitForTimeout(400);
+      const mesure = await page.evaluate(() => { const t = document.querySelector('.topbar'); return t ? Math.round(t.getBoundingClientRect().height) : 0; });
+      console.log(`${ecranBrut} ${largeur}px ${theme} : en-tête ${mesure}px`);
+      await page.screenshot({ path: join(sortie, `${ecranBrut.replace('+', '-').replace(':', '-')}_${largeur}_${theme === 'light' ? 'clair' : 'sombre'}.png`), fullPage: !extra });
       n++;
     }
     await contexte.close();
