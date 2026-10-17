@@ -2361,6 +2361,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.10.17-3', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Parents ↔ Élèves : une carte claire par élève (Compte relié / Non relié, numéros lisibles), recherche et filtres Non reliés / Reliés ; « Inviter » envoie le lien par WhatsApp, « Relier à un compte » avec recherche.' ],
+  } },
   { version: '2026.10.17-2', nouveautes: {
     commun: [],
     parent: [],
