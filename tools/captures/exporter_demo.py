@@ -37,16 +37,6 @@ donnees = {r['t']: (json.loads(r['d']) if isinstance(r['d'], str) else r['d']) f
 # Les vues lues par l'application, reconstituées depuis leurs tables
 donnees['enseignants_lecture'] = donnees.get('enseignants', [])
 donnees['eleves_portier_lecture'] = [{k: e[k] for k in ('id', 'ecole_id', 'prenom', 'nom', 'classe_id', 'matricule', 'statut')} for e in donnees.get('eleves', [])]
-# L'application attend les identifiants de classe standard (ps, cp1…) : dans ce
-# fichier LOCAL seulement, les classes démo (demo-xxxx-ps…) sont renommées ainsi.
-# La base n'est pas modifiée.
-correspondance = {c['id']: c['id'].split('-')[-1] for c in donnees.get('classes', []) if c['id'].startswith('demo-')}
-def renommer(v):
-    if isinstance(v, str): return correspondance.get(v, v)
-    if isinstance(v, list): return [renommer(x) for x in v]
-    if isinstance(v, dict): return {k: renommer(x) for k, x in v.items()}
-    return v
-donnees = {t: renommer(rows) for t, rows in donnees.items()}
 donnees['_ecole_id'] = eid
 with open(os.path.join(ICI, 'donnees-demo.json'), 'w', encoding='utf-8') as f:
     json.dump(donnees, f, ensure_ascii=False)
