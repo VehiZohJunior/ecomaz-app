@@ -316,6 +316,41 @@ tbody td input[type=number]{ width:90px; }
 .bulle-dropdown h4{ margin:0 0 var(--sp-3); font-size:var(--fs-sm); }
 /* ===== Refonte (DESIGN.md §6, §8, §11) : composants communs du tableau de bord ===== */
 .db-bonjour{ margin:0 0 12px; }
+/* ----- Parents ↔ Élèves (DESIGN.md §11) ----- */
+.pe-grille{ display:grid; grid-template-columns:repeat(auto-fill, minmax(min(100%, 320px), 1fr)); gap:12px; align-items:start; }
+.pe-carte{ min-width:0; border:1px solid var(--border); border-radius:16px; padding:14px; background:var(--surface-1); display:flex; flex-direction:column; gap:10px; overflow:hidden; }
+.pe-carte[hidden], .pe-aucun[hidden]{ display:none !important; }
+.pe-tete{ display:flex; align-items:center; gap:10px; min-width:0; }
+.pe-tete .badge-etat{ flex:0 0 auto; }
+.pe-id{ flex:1; min-width:0; display:flex; flex-direction:column; align-items:flex-start; gap:2px; }
+.pe-id strong{ overflow-wrap:anywhere; line-height:1.25; }
+.pe-id small{ color:var(--text-dim); font-size:13px; }
+.puce-classe{ display:inline-block; padding:1px 8px; border-radius:999px; background:var(--primary-soft); color:var(--primary-ink); font-size:12px; font-weight:700; }
+.pe-parent, .pe-comptes{ display:flex; flex-wrap:wrap; align-items:center; gap:6px 8px; min-width:0; }
+.pe-lib{ flex-basis:100%; font-size:12px; color:var(--text-dim); }
+.pe-nom{ font-weight:700; overflow-wrap:anywhere; }
+.pe-tels{ display:flex; flex-wrap:wrap; gap:6px; }
+.puce-tel{ padding:2px 10px; border-radius:999px; background:var(--surface-2); font-size:13px; font-weight:700; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.puce-tel.invalide{ white-space:normal; overflow-wrap:anywhere; color:var(--accent-ink); background:var(--accent-soft); }
+.puce-compte{ display:inline-flex; align-items:center; gap:4px; max-width:100%; padding:2px 4px 2px 10px; border-radius:999px; background:var(--success-soft); color:var(--success); font-size:13px; font-weight:700; }
+.puce-retirer{ width:28px; height:28px; border:0; border-radius:999px; background:transparent; color:inherit; font-weight:900; cursor:pointer; flex:0 0 auto; }
+.puce-retirer:hover{ background:rgba(0,0,0,.08); }
+.pe-actions{ display:flex; flex-wrap:wrap; gap:8px; align-items:flex-start; padding-top:10px; border-top:1px solid var(--border); }
+.pe-actions details > summary{ list-style:none; cursor:pointer; }
+.pe-actions details > summary::-webkit-details-marker{ display:none; }
+.pe-relier[open]{ flex-basis:100%; order:3; }
+.pe-feuille{ display:flex; flex-direction:column; gap:8px; margin-top:8px; padding:10px; border-radius:12px; background:var(--surface-2); }
+.pe-feuille input, .pe-feuille select{ width:100%; min-height:44px; padding:6px 10px; border:1px solid var(--border); border-radius:10px; background:var(--surface-1); color:var(--text); font:inherit; }
+.pe-feuille .btn{ align-self:flex-end; }
+.pe-plus{ position:relative; margin-left:auto; }
+.pe-menu{ position:absolute; right:0; top:calc(100% + 4px); z-index:5; min-width:220px; padding:6px; border:1px solid var(--border); border-radius:12px; background:var(--surface-1); box-shadow:var(--shadow-2, 0 6px 20px rgba(0,0,0,.15)); }
+.pe-menu .btn-reset{ width:100%; min-height:44px; padding:0 12px; text-align:left; border-radius:8px; }
+.pe-menu .btn-reset:hover{ background:var(--surface-2); }
+.pe-ajout{ display:flex; gap:8px; align-items:center; }
+.pe-ajout select{ flex:1; min-width:0; min-height:40px; }
+.pe-invit, .pe-invit-liste{ display:flex; flex-wrap:wrap; gap:8px; }
+.pe-invit-liste{ flex-direction:column; }
+.pe-a-faire{ color:var(--accent-ink); }
 /* ----- Carte de paiement (Compta) ----- */
 .seulement-ordi{ display:none; }
 @media (min-width:900px){ .seulement-mobile{ display:none !important; } .seulement-ordi{ display:block; } }

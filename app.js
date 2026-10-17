@@ -3335,59 +3335,114 @@ function suggestionsParent(e){
   return comptesParents().map(p => ({ p, score: mots(p.nomComplet).filter(m => cles.has(m)).length }))
     .filter(x => x.score > 0).sort((a, b) => b.score - a.score).map(x => x.p);
 }
+// Numéros lisibles de la fiche (« 07 67 68 68 77 »), sans l'indicatif 225
+function telsDeFiche(e){
+  return String(e.parentTel || '').split(/\s*[\/;,|]\s*|\s+-\s+|\s+et\s+/i).map(t => t.replace(/\D/g, '').replace(/^225/, '')).filter(t => t.length === 10);
+}
+const telLisible = t => t.replace(/(\d{2})(?=\d)/g, '$1 ');
+// Refonte (DESIGN.md §11) : une carte par élève, rien ne peut déborder sur la carte suivante
 function renderLiensParents(){
   const eleves = DB.eleves.filter(e => e.statut === 'Actif').sort((a, b) => a.nom.localeCompare(b.nom));
   const sansParent = eleves.filter(e => !parentsDeLEleve(e.id).length);
   const parents = comptesParents().slice().sort((a, b) => (a.nomComplet||'').localeCompare(b.nomComplet||''));
   const optionsParents = sel => parents.map(p => `<option value="${p.id}" ${sel===p.id?'selected':''}>${escapeHtml(p.nomComplet || '—')}</option>`).join('');
+  const etat = ui.filters.peEtat || 'tous';
+  const carte = e => {
+    const liens = parentsDeLEleve(e.id), relie = liens.length > 0;
+    const sugg = suggestionsParent(e), tels = telsDeFiche(e);
+    return `<article class="pe-carte" data-nom="${escapeHtml((eleveFullName(e) + ' ' + (e.parentNom || '')).toLowerCase())}" data-etat="${relie ? 'relie' : 'non'}">
+      <header class="pe-tete">
+        <span class="lc-avatar" aria-hidden="true">${escapeHtml(initials(e.prenom, e.nom))}</span>
+        <span class="pe-id"><strong>${escapeHtml(eleveFullName(e))}</strong><span class="puce-classe">${escapeHtml(classeName(e.classeId))}</span></span>
+        ${relie ? `<span class="badge-etat ok">${icone('check')}Compte relié</span>` : `<span class="badge-etat attente">${icone('clock')}Non relié</span>`}
+      </header>
+      <div class="pe-parent">
+        <span class="pe-lib">Parent sur la fiche</span>
+        <span class="pe-nom">${escapeHtml(e.parentNom || '—')}</span>
+        ${tels.length ? `<span class="pe-tels">${tels.map(t => `<span class="puce-tel">${telLisible(t)}</span>`).join('')}</span>` : (e.parentTel ? `<span class="pe-tels"><span class="puce-tel invalide" title="Numéro incomplet ou illisible">${escapeHtml(e.parentTel)}</span></span>` : '')}
+      </div>
+      ${relie ? `<div class="pe-comptes"><span class="pe-lib">Compte(s) relié(s)</span>${liens.map(x => `<span class="puce-compte">${escapeHtml(x.profil?.nomComplet || 'parent')}<button type="button" class="puce-retirer" aria-label="Retirer le lien avec ${escapeHtml(x.profil?.nomComplet || 'ce parent')}" title="Retirer le lien" onclick="retirerAccesParentLiens('${x.lien.id}')">✕</button></span>`).join('')}</div>` : `
+      <div class="pe-actions">
+        <button type="button" class="btn sm" onclick="ouvrirInvitationParent('${e.id}')">Inviter</button>
+        ${parents.length ? `<details class="pe-relier">
+          <summary class="btn secondary sm">Relier à un compte</summary>
+          <div class="pe-feuille">
+            <input type="search" class="pe-cherche" placeholder="Rechercher un compte parent" aria-label="Rechercher un compte parent" oninput="filtrerOptionsParent(this, 'lienParent-${e.id}')">
+            <select id="lienParent-${e.id}" size="${Math.min(6, Math.max(3, parents.length + (sugg.length ? 2 : 0)))}"><option value="">— Choisir un compte —</option>
+              ${sugg.length ? `<optgroup label="Suggestions">${sugg.map(p => `<option value="${p.id}">${escapeHtml(p.nomComplet || '—')}</option>`).join('')}</optgroup><optgroup label="Tous les comptes">` : ''}${optionsParents(sugg[0]?.id)}${sugg.length ? '</optgroup>' : ''}</select>
+            <button type="button" class="btn sm" onclick="relierParentEleve('${e.id}')">Relier</button>
+          </div>
+        </details>` : ''}
+        <details class="pe-plus">
+          <summary class="btn secondary sm" aria-label="Plus d’actions" title="Plus d’actions">⋯</summary>
+          <div class="pe-menu"><button type="button" class="btn-reset" onclick="ouvrirCreerCompteParent('${e.id}')">Créer le compte par e-mail</button></div>
+        </details>
+      </div>`}
+    </article>`;
+  };
   return `<div class="view active">
-    <div class="form-actions no-print" style="justify-content:flex-start;margin:0 0 var(--sp-3);">
-      <button class="btn" onclick="ouvrirCouponsInvitation(true)">🖨️ Coupons d’invitation (élèves sans parent relié)</button>
-      <button class="btn secondary" onclick="ouvrirCouponsInvitation(false)">Coupons pour tous les élèves</button>
-      <button class="btn secondary" onclick="imprimerAffiche('parent.html')">🖨️ Affiche A4 pour l’entrée</button>
-    </div>
     <div class="section-note">👪 Un élève relié au compte de son parent permet à ce parent de recevoir <strong>uniquement</strong> ce qui concerne son enfant : absences, annonces de son cycle, cours de renforcement, objets perdus et messages de l'école.</div>
-    <div class="cards">
-      <div class="card"><div class="num">${eleves.length - sansParent.length} / ${eleves.length}</div><div class="label">Élèves reliés à un parent</div></div>
-      <div class="card"><div class="num">${parents.length}</div><div class="label">Comptes parents</div></div>
-      <div class="card"><div class="num">${sansParent.length}</div><div class="label">Élèves sans parent relié</div></div>
+    <div class="panel">
+      <div class="panel-head"><div><h2>Élèves et parents</h2><div class="sub"><strong class="${sansParent.length ? 'pe-a-faire' : ''}">${sansParent.length ? `${sansParent.length} élève${sansParent.length > 1 ? 's' : ''} non relié${sansParent.length > 1 ? 's' : ''}` : 'Tous les élèves sont reliés 🎉'}</strong> · ${eleves.length - sansParent.length} / ${eleves.length} reliés · ${parents.length} compte${parents.length > 1 ? 's' : ''} parent${parents.length > 1 ? 's' : ''}</div></div></div>
+      <div class="mer-barre" role="progressbar" aria-valuenow="${eleves.length ? Math.round(100 * (eleves.length - sansParent.length) / eleves.length) : 0}" aria-valuemin="0" aria-valuemax="100"><div style="width:${eleves.length ? Math.round(100 * (eleves.length - sansParent.length) / eleves.length) : 0}%"></div></div>
+      <div class="scol-outils">
+        <input type="search" class="scol-recherche pe-recherche" placeholder="Rechercher un élève ou un parent" aria-label="Rechercher un élève ou un parent" oninput="filtrerLiensParents()">
+        <div class="segmente" role="group" aria-label="Filtrer les élèves">${[['tous','Tous'],['non','Non reliés'],['relie','Reliés']].map(([k, l]) => `<button type="button" class="seg${etat === k ? ' actif' : ''}" data-etat="${k}" onclick="ui.filters.peEtat='${k}'; filtrerLiensParents()">${l}</button>`).join('')}</div>
+      </div>
+      ${eleves.length ? `<div class="pe-grille">${eleves.map(carte).join('')}</div>` : '<div class="hint">Aucun élève actif.</div>'}
+      <div class="etat-vide pe-aucun" hidden><span class="etat-vide-ic" aria-hidden="true">${icone('search')}</span><span>Aucun élève pour ce filtre. <button type="button" class="lien-discret" onclick="ui.filters.peEtat='tous'; const r=document.querySelector('.pe-recherche'); if(r) r.value=''; filtrerLiensParents()">Effacer les filtres</button></span></div>
+      ${(setTimeout(filtrerLiensParents, 0), '')}
     </div>
 
     <div class="panel">
-      <div class="panel-head"><div><h2>⚠️ Élèves sans parent relié (${sansParent.length})</h2><div class="sub">Reliez un compte existant, ou invitez le parent par WhatsApp : il se connecte avec Google et vous validez sa demande (Paramètres → Demandes d'accès)</div></div></div>
-      ${!sansParent.length ? '<div class="hint">Tous les élèves actifs sont reliés à un parent. 🎉</div>' : `<div class="table-wrap"><table>
-        <thead><tr><th>Élève</th><th>Parent sur la fiche</th><th>Relier à un compte existant</th><th>Inviter</th></tr></thead>
-        <tbody>${sansParent.map(e => {
-          const sugg = suggestionsParent(e);
-          const tels = String(e.parentTel || '').split(/\s*[\/;,|]\s*|\s+-\s+|\s+et\s+/i).map(t => t.replace(/\D/g, '').replace(/^225/, '')).filter(t => t.length === 10);
-          return `<tr>
-            <td>${escapeHtml(eleveFullName(e))}<br><span class="hint">${escapeHtml(classeName(e.classeId))}</span></td>
-            <td>${escapeHtml(e.parentNom || '—')}<br><span class="hint">${escapeHtml(e.parentTel || '')}</span></td>
-            <td style="min-width:220px;">${parents.length ? `<select id="lienParent-${e.id}"><option value="">— Choisir un compte —</option>
-                ${sugg.length ? `<optgroup label="Suggestions">${sugg.map(p => `<option value="${p.id}">${escapeHtml(p.nomComplet || '—')}</option>`).join('')}</optgroup><optgroup label="Tous les comptes">` : ''}${optionsParents(sugg[0]?.id)}${sugg.length ? '</optgroup>' : ''}</select>
-              <button class="btn secondary sm" style="margin-top:6px;" onclick="relierParentEleve('${e.id}')">Relier</button>` : '<span class="hint">Aucun compte parent pour l’instant</span>'}</td>
-            <td>${tels.map(t => `<a class="btn sm" style="margin:2px 0;" href="https://wa.me/225${t}?text=${encodeURIComponent(messagePartageApplication('parent.html'))}" target="_blank" rel="noopener">📲 ${t.replace(/(\d{2})(?=\d)/g, '$1 ')}</a>`).join('<br>') || '<span class="hint">Pas de numéro valide</span>'}
-              <br><button class="btn secondary sm" style="margin-top:4px;" onclick="ouvrirCreerCompteParent('${e.id}')">Créer par e-mail</button></td>
-          </tr>`;
-        }).join('')}</tbody></table></div>`}
+      <div class="panel-head"><div><h2>Inviter les parents</h2><div class="sub">À glisser dans le cahier de liaison ou à afficher à l’entrée</div></div></div>
+      <div class="pe-invit">
+        <button class="btn" onclick="ouvrirCouponsInvitation(true)">🖨️ Coupons (élèves non reliés)</button>
+        <button class="btn secondary" onclick="ouvrirCouponsInvitation(false)">Coupons pour tous</button>
+        <button class="btn secondary" onclick="imprimerAffiche('parent.html')">🖨️ Affiche A4</button>
+      </div>
     </div>
 
     <div class="panel">
-      <div class="panel-head"><div><h2>👪 Comptes parents et leurs enfants</h2><div class="sub">Un parent peut avoir plusieurs enfants dans l'école</div></div></div>
-      ${!parents.length ? '<div class="hint">Aucun compte parent pour l’instant.</div>' : `<div class="table-wrap"><table>
-        <thead><tr><th>Parent</th><th>Enfant(s) relié(s)</th><th>Ajouter un enfant</th></tr></thead>
-        <tbody>${parents.map(p => {
+      <div class="panel-head"><div><h2>Comptes parents et leurs enfants</h2><div class="sub">Un parent peut avoir plusieurs enfants dans l'école</div></div></div>
+      ${!parents.length ? `<div class="etat-vide"><span class="etat-vide-ic" aria-hidden="true">${icone('users')}</span><span>Aucun compte parent pour l’instant. Invitez les parents : leurs demandes arrivent dans Paramètres → Demandes d’accès.</span></div>` : `<div class="pe-grille">${parents.map(p => {
           const liens = (DB.parentsEleves || []).filter(pe => pe.parentProfileId === p.id);
           const dejaRelies = new Set(liens.map(l => l.eleveId));
-          return `<tr>
-            <td><strong>${escapeHtml(p.nomComplet || '—')}</strong></td>
-            <td>${liens.map(l => { const e = eleveById(l.eleveId); return `<span class="badge green" style="margin:2px;">${escapeHtml(e ? eleveFullName(e) : '—')} <button class="no-icon" style="border:none;background:none;cursor:pointer;color:inherit;font-weight:900;" title="Retirer le lien" onclick="retirerAccesParentLiens('${l.id}')">✕</button></span>`; }).join(' ') || '<span class="hint">aucun</span>'}</td>
-            <td style="min-width:220px;"><select id="ajoutEnfant-${p.id}"><option value="">— Choisir un élève —</option>${eleves.filter(e => !dejaRelies.has(e.id)).map(e => `<option value="${e.id}">${escapeHtml(eleveFullName(e))} (${escapeHtml(classeName(e.classeId))})</option>`).join('')}</select>
-              <button class="btn secondary sm" style="margin-top:6px;" onclick="relierEnfantAuParent('${p.id}')">Ajouter</button></td>
-          </tr>`;
-        }).join('')}</tbody></table></div>`}
+          return `<article class="pe-carte">
+            <header class="pe-tete"><span class="lc-avatar" aria-hidden="true">${escapeHtml(initials(...String(p.nomComplet || '? ?').split(' ')))}</span><span class="pe-id"><strong>${escapeHtml(p.nomComplet || '—')}</strong><small>${liens.length} enfant${liens.length > 1 ? 's' : ''} relié${liens.length > 1 ? 's' : ''}</small></span></header>
+            <div class="pe-comptes">${liens.map(l => { const e = eleveById(l.eleveId); return `<span class="puce-compte">${escapeHtml(e ? eleveFullName(e) : '—')}<button type="button" class="puce-retirer" aria-label="Retirer le lien" title="Retirer le lien" onclick="retirerAccesParentLiens('${l.id}')">✕</button></span>`; }).join('') || '<span class="hint">Aucun enfant relié</span>'}</div>
+            <div class="pe-ajout"><select id="ajoutEnfant-${p.id}" aria-label="Élève à ajouter"><option value="">— Ajouter un enfant —</option>${eleves.filter(e => !dejaRelies.has(e.id)).map(e => `<option value="${e.id}">${escapeHtml(eleveFullName(e))} (${escapeHtml(classeName(e.classeId))})</option>`).join('')}</select>
+              <button type="button" class="btn secondary sm" onclick="relierEnfantAuParent('${p.id}')">Ajouter</button></div>
+          </article>`;
+        }).join('')}</div>`}
     </div>
   </div>`;
+}
+// Feuille « Inviter » : choix du numéro, envoi par WhatsApp (gratuit)
+function ouvrirInvitationParent(eleveId){
+  const e = eleveById(eleveId); if(!e) return;
+  const tels = telsDeFiche(e);
+  const texte = encodeURIComponent(messagePartageApplication('parent.html'));
+  openModal(`Inviter le parent de ${eleveFullName(e)}`, `
+    <p class="hint" style="margin-top:0;">Le parent reçoit le lien de l’application par WhatsApp, se connecte avec Google, puis vous validez sa demande (Paramètres → Demandes d’accès).</p>
+    ${tels.length ? `<div class="pe-invit-liste">${tels.map(t => `<a class="btn" href="https://wa.me/225${t}?text=${texte}" target="_blank" rel="noopener">📲 WhatsApp · ${telLisible(t)}</a>`).join('')}</div>`
+      : `<div class="etat-vide"><span class="etat-vide-ic" aria-hidden="true">${icone('triangle-alert')}</span><span>Aucun numéro valide sur la fiche${e.parentTel ? ` (« ${escapeHtml(e.parentTel)} »)` : ''}. Corrigez le numéro dans la fiche de l’élève, ou imprimez un coupon d’invitation.</span></div>`}
+    <div class="form-actions"><button type="button" class="btn secondary" onclick="closeModal()">Fermer</button><button type="button" class="btn secondary" onclick="closeModal(); ouvrirCreerCompteParent('${e.id}')">Créer par e-mail</button></div>`);
+}
+function filtrerOptionsParent(champ, idSelect){
+  const t = simplifierTexte(champ.value || ''), sel = document.getElementById(idSelect); if(!sel) return;
+  sel.querySelectorAll('option').forEach(o => { if(o.value) o.hidden = !!t && !simplifierTexte(o.textContent).includes(t); });
+}
+function filtrerLiensParents(){
+  const etat = ui.filters.peEtat || 'tous';
+  const texte = simplifierTexte(document.querySelector('.pe-recherche')?.value || '');
+  let visibles = 0;
+  document.querySelectorAll('.pe-carte[data-etat]').forEach(el => {
+    const ok = (etat === 'tous' || el.dataset.etat === etat) && (!texte || simplifierTexte(el.dataset.nom || '').includes(texte));
+    el.hidden = !ok; if(ok) visibles++;
+  });
+  document.querySelectorAll('.segmente .seg').forEach(b => b.classList.toggle('actif', b.dataset.etat === etat));
+  const vide = document.querySelector('.pe-aucun'); if(vide) vide.hidden = visibles > 0 || !document.querySelector('.pe-carte[data-etat]');
 }
 // Coupons à imprimer et glisser dans le cahier de liaison : nom de l'élève,
 // QR code de l'application des parents, étapes d'installation.

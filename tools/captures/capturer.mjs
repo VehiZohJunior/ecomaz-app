@@ -18,7 +18,7 @@ import { fileURLToPath } from 'node:url';
 
 const ICI = dirname(fileURLToPath(import.meta.url));
 const RACINE = join(ICI, '..', '..');
-const [nom = 'essai', listeEcrans = 'dashboard', role = 'direction'] = process.argv.slice(2);
+const [nom = 'essai', listeEcrans = 'dashboard', role = 'direction', option = ''] = process.argv.slice(2);
 const ecrans = listeEcrans.split(',').map(s => s.trim()).filter(Boolean);
 const donnees = JSON.parse(readFileSync(join(ICI, 'donnees-demo.json'), 'utf8'));
 const LARGEURS = [[360, 780], [390, 844], [1440, 900]];
@@ -71,14 +71,21 @@ for(const theme of THEMES){
     await page.goto('http://localhost:5190/', { waitUntil: 'networkidle' });
     await page.waitForTimeout(600);
     await page.evaluate(installerDemo, donnees);
-    await page.evaluate(async ({ eid, role }) => {
+    await page.evaluate(async ({ eid, role, option }) => {
       session.userId = 'apercu-demo'; session.ecoleId = eid; session.role = role; session.nomComplet = 'Directeur Démo';
       ui.role = role;
       // Nouveautés marquées comme déjà vues AVANT l'entrée (sinon la fenêtre couvre l'écran)
       VERSIONS.forEach(v => { try{ localStorage.setItem(`ecomaz_nouveautes_${v.version}_apercu-demo`, '1'); }catch(_e){} });
       DB = await chargerDB();
+      // Option « parents » : 3 comptes parents FICTIFS en mémoire seulement (jamais en base),
+      // pour photographier aussi l'état « Compte relié »
+      if(option === 'parents'){
+        const el = DB.eleves.slice(0, 4);
+        DB.profiles = (DB.profiles || []).concat(el.slice(0, 3).map((e, i) => ({ id: 'parent-fictif-' + i, role: 'parent', nomComplet: e.parentNom || ('Parent ' + e.nom) })));
+        DB.parentsEleves = (DB.parentsEleves || []).concat(el.slice(0, 3).map((e, i) => ({ id: 'lien-fictif-' + i, parentProfileId: 'parent-fictif-' + i, eleveId: e.id })));
+      }
       enterApp();
-    }, { eid: donnees._ecole_id, role });
+    }, { eid: donnees._ecole_id, role, option });
     for(const ecranBrut of ecrans){
       // « ecran+centre » : ouvre aussi le centre de notifications avant la capture
       // « ecran:onglet » : ouvre un sous-onglet (ex. comptabilite:scolarite)
@@ -87,6 +94,14 @@ for(const theme of THEMES){
       await page.evaluate(([v, o]) => { closeModal && closeModal(); if(o) ui.filters.comptaTab = o; go(v); window.scrollTo(0, 0); }, [ecran, onglet]);
       await page.waitForTimeout(900);
       if(extra === 'centre') await page.evaluate(() => { toggleCentre(true); });
+      // Gestes d'essai (aucune écriture) : ouvrir une feuille ou un menu avant la photo
+      const GESTES = {
+        relier: () => { const d = document.querySelector('.pe-carte[data-etat="non"] .pe-relier'); d.open = true; const c = d.querySelector('.pe-cherche'); c.value = 'aka'; c.dispatchEvent(new Event('input')); d.scrollIntoView({ block: 'center' }); },
+        plus: () => { const d = document.querySelector('.pe-carte[data-etat="non"] .pe-plus'); d.open = true; d.scrollIntoView({ block: 'center' }); },
+        inviter: () => { document.querySelector('.pe-carte[data-etat="non"] .pe-actions .btn').click(); },
+        relies: () => { document.querySelector('.seg[data-etat="relie"]').click(); },
+      };
+      if(GESTES[extra]){ await page.evaluate(GESTES[extra]); await page.waitForTimeout(400); }
       if(extra === 'centre') await page.waitForTimeout(400);
       const mesure = await page.evaluate(() => { const t = document.querySelector('.topbar'); return t ? Math.round(t.getBoundingClientRect().height) : 0; });
       console.log(`${ecranBrut} ${largeur}px ${theme} : en-tête ${mesure}px`);
