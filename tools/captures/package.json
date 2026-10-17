@@ -1,0 +1,8 @@
+{
+  "name": "ecomaz-captures",
+  "private": true,
+  "description": "Captures d ecran de verification de la refonte (Edge + playwright-core)",
+  "dependencies": {
+    "playwright-core": "^1.48.2"
+  }
+}

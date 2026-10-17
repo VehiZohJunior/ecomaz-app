@@ -10,4 +10,4 @@ supabase/.temp/
 tools/captures/node_modules/
 tools/captures/package-lock.json
 tools/captures/donnees-demo.json
-captures/
+/captures/
