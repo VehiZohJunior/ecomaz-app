@@ -5,3 +5,9 @@ Thumbs.db
 .env.*
 !.env.test.example
 supabase/.temp/
+
+# Outil de captures (Playwright) : installé localement, jamais envoyé
+tools/captures/node_modules/
+tools/captures/package-lock.json
+tools/captures/donnees-demo.json
+captures/

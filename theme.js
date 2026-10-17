@@ -22,7 +22,9 @@
 
   function majBoutons(){
     const sombre = themeEffectif() === 'dark';
-    document.querySelectorAll('.theme-toggle').forEach(b => {
+    // Seulement les vrais boutons de thème : le bouton Recherche partage leur style
+    // (classe theme-toggle) mais ne doit jamais recevoir l'icône lune/soleil.
+    document.querySelectorAll('.theme-toggle:not(#btnRechercheGlobale)').forEach(b => {
       b.textContent = sombre ? '☀️' : '🌙';
       b.setAttribute('aria-label', sombre ? 'Passer au thème clair' : 'Passer au thème sombre');
       b.title = b.getAttribute('aria-label');
