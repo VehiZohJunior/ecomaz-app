@@ -68,10 +68,15 @@ function classesForNiveaux(niveaux){
 }
 /* Masque du reste de l'appli les classes/élèves des niveaux décochés, sans rien
    supprimer en base : elles réapparaissent dès que le niveau est recoché. */
+// Code de niveau d'une classe (ps, cp1…). Les classes créées avant le
+// 17/10/2026 ont pour identifiant leur code ; les suivantes ont un
+// identifiant propre à leur école (schema.sql section 83).
+function codeClasse(c){ return (c && (c.code || c.id)) || ''; }
 function appliquerFiltreNiveaux(db){
-  const idsActifs = new Set(classesForNiveaux(db.meta.niveaux).map(c=>c.id));
+  const codesActifs = new Set(classesForNiveaux(db.meta.niveaux).map(c=>c.id));
   db.classesTout = db.classes;
-  db.classes = db.classes.filter(c => idsActifs.has(c.id));
+  db.classes = db.classes.filter(c => codesActifs.has(codeClasse(c)));
+  const idsActifs = new Set(db.classes.map(c => c.id));
   db.eleves = db.eleves.filter(e => idsActifs.has(e.classeId));
   return db;
 }
@@ -2344,6 +2349,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.10.17-1', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Correction : une nouvelle école peut maintenant activer ses niveaux et créer ses classes (les classes existantes ne changent pas).' ],
+  } },
   { version: '2026.10.13-29', nouveautes: {
     commun: [],
     parent: [],
@@ -5294,7 +5305,8 @@ function renderEleveListe(){
 
   let totalAffiche = 0;
   const niveauxBlocs = Object.entries(NIVEAUX_DEF).map(([key,n])=>{
-    const classesNiveau = n.classes.filter(c => DB.classes.some(dc=>dc.id===c.id));
+    // Classes réelles de l'école pour ce niveau (retrouvées par leur code)
+    const classesNiveau = n.classes.map(c => DB.classes.find(dc => codeClasse(dc) === c.id)).filter(Boolean);
     if(classesNiveau.length===0) return '';
 
     let classesBlocs = classesNiveau.map(c=>{
@@ -9441,11 +9453,13 @@ async function handleSaveNiveaux(ev){
   const toRemove = actifs.filter(key => !coches.includes(key));
   if(toAdd.length===0 && toRemove.length===0){ toast('Aucun changement'); return false; }
   try{
-    const idsExistants = new Set((DB.classesTout || DB.classes).map(c=>c.id));
-    const nouvellesClasses = toAdd.flatMap(key => NIVEAUX_DEF[key].classes).filter(c => !idsExistants.has(c.id));
+    const codesExistants = new Set((DB.classesTout || DB.classes).map(codeClasse));
+    const nouvellesClasses = toAdd.flatMap(key => NIVEAUX_DEF[key].classes).filter(c => !codesExistants.has(c.id));
     if(nouvellesClasses.length){
+      // Identifiant propre à l'école (unique dans toute la base) + code du niveau
+      const prefixe = String(session.ecoleId).replace(/-/g, '').slice(0, 8);
       const rows = nouvellesClasses.map(c => objToSnake({
-        id: c.id, ecoleId: session.ecoleId, nom: c.nom, cycle: c.cycle,
+        id: `${prefixe}-${c.id}`, code: c.id, ecoleId: session.ecoleId, nom: c.nom, cycle: c.cycle,
         fraisScolarite: FRAIS_SCOLARITE_DEFAUT[c.id] || 0,
       }));
       const { error } = await sb.from('classes').insert(rows);
