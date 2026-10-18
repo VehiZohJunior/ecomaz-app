@@ -2398,6 +2398,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.10.18-5', nouveautes: {
+    commun: [],
+    parent: [ 'Nouvelle carte « Aujourd’hui » en haut de l’accueil : présence du jour, prochain événement, devoirs. Plusieurs enfants ? Touchez son prénom pour changer.' ],
+    portier: [ 'L’écran de confirmation affiche les initiales, le nom et la classe de l’élève.' ],
+    personnel: [ 'Enseignants : « Ma journée » montre vos cours du jour en frise, le cours en cours est mis en évidence.' ],
+  } },
   { version: '2026.10.18-4', nouveautes: {
     commun: [],
     parent: [],
