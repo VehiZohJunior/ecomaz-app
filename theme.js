@@ -106,7 +106,7 @@
       t.parentNode.insertBefore(enveloppe, t);
       enveloppe.appendChild(t);
     });
-    (racine || document).querySelectorAll('.table-wrap table:not(.timetable):not(.is-cards)').forEach(t => {
+    (racine || document).querySelectorAll('.table-wrap table:not(.timetable):not(.is-cards):not(.sans-cartes)').forEach(t => {
       const ths = [...t.querySelectorAll('thead th')];
       if(!ths.length || t.querySelector('td[colspan]')) return;
       const libelles = ths.map(th => th.textContent.trim());

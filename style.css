@@ -1604,3 +1604,19 @@ button.role-card{ font:inherit; color:inherit; width:100%; display:flex; flex-di
 .role-etiquette{ display:inline-block; margin-bottom:6px; padding:2px 10px; border-radius:999px; background:var(--primary-soft); color:var(--primary-ink); font-size:12px; font-weight:800; letter-spacing:.02em; }
 .portier-bonjour{ margin:0 0 12px; } .portier-bonjour h2{ margin:0; font-size:20px; }
 .acces-ens{ margin:0 0 10px; display:grid; gap:6px; } .acces-ens div{ display:flex; gap:10px; } .acces-ens dt{ min-width:120px; color:var(--text-dim); } .acces-ens dd{ margin:0; font-weight:700; }
+/* ===== Fiche élève : onglets, bulletin compact, présences en lignes ===== */
+.profil-onglets{ margin:0 0 14px; }
+.bulletin-mini{ min-width:0 !important; width:100%; font-size:14px; }
+.bulletin-mini th, .bulletin-mini td{ padding:8px 6px; height:auto !important; text-align:center; }
+.bulletin-mini th:first-child, .bulletin-mini td:first-child{ text-align:left; }
+@media (max-width:640px){
+  .bulletin-mini th:nth-child(5), .bulletin-mini td:nth-child(5){ display:none; }
+  .bulletin-mini{ font-size:13px; } .bulletin-mini th{ font-size:10px; }
+}
+.pr-liste{ list-style:none; margin:0; padding:0; }
+.pr-ligne{ display:flex; flex-wrap:wrap; align-items:center; gap:6px 12px; padding:10px 0; border-top:1px solid var(--border); }
+.pr-ligne:first-child{ border-top:0; }
+.pr-date{ display:flex; flex-direction:column; min-width:110px; } .pr-date small{ color:var(--text-dim); font-size:12px; text-transform:capitalize; }
+.pr-motif{ flex-basis:100%; color:var(--text-dim); font-size:13px; padding-left:2px; }
+@media (min-width:641px){ .pr-motif{ flex-basis:auto; } }
+@media (max-width:640px){ .profil-infos{ grid-template-columns:1fr 1fr !important; gap:12px 14px; } .profil-infos strong{ overflow-wrap:anywhere; } }

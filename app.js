@@ -2476,6 +2476,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.10.18-18', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Fiche élève plus courte et plus claire : onglets Infos / Bulletin / Présences, bulletin en tableau compact, présences en une ligne par jour.' ],
+  } },
   { version: '2026.10.18-17', nouveautes: {
     commun: [],
     parent: [],
@@ -6461,17 +6467,18 @@ function renderEleveProfile(id){
   const nbRetard = presences.filter(p=>p.statut==='Retard').length;
   const tauxPresence = totalP ? Math.round(100*nbPresent/totalP) : null;
 
-  const presRows = presences.slice(0,15).map(p=>`
-    <tr><td>${fmtDate(p.date)}</td><td>${weekdayFR(p.date)}</td>
-    <td><span class="badge ${p.statut==='Présent'?'green':p.statut==='Absent'?'red':'amber'}">${p.statut}</span></td>
-    <td>${escapeHtml(p.motif||'—')}</td></tr>`).join('');
+  const presRows = presences.slice(0,30).map(p=>`
+    <li class="pr-ligne"><span class="pr-date"><strong>${fmtDate(p.date)}</strong><small>${weekdayFR(p.date)}</small></span>
+      <span class="badge-etat ${p.statut==='Présent'?'ok':p.statut==='Absent'?'erreur':'attente'}">${p.statut}</span>
+      ${p.motif ? `<span class="pr-motif">${escapeHtml(p.motif)}</span>` : ''}</li>`).join('');
+  const onglet = ['infos','bulletin','presences'].includes(ui.filters.profilOnglet) ? ui.filters.profilOnglet : 'infos';
 
   const commentKey = `${id}_${trimestre}`;
   const comment = DB.bulletinsComments[commentKey] || '';
 
   return `
   <div class="view active">
-    <button class="btn secondary sm no-print" style="margin-bottom:14px;" onclick="ui.eleveProfileId=null; renderView('eleves')">← Retour à la liste</button>
+    <button class="btn secondary sm no-print" style="margin-bottom:14px;" onclick="ui.eleveProfileId=null; ui.filters.profilOnglet='infos'; renderView('eleves')">← Retour à la liste</button>
 
     <div class="panel">
       <div class="profile-head">
@@ -6481,7 +6488,7 @@ function renderEleveProfile(id){
           <div class="meta">${classeName(e.classeId)} · ${ageFromISO(e.dateNaissance)} ans · Matricule ${escapeHtml(e.matricule)} · <span class="badge ${e.statut==='Actif'?'green':'gray'}">${e.statut}</span></div>
         </div>
       </div>
-      <div class="grid-3">
+      <div class="grid-3 profil-infos">
         <div><div class="hint">Parent / Tuteur</div><strong>${escapeHtml(e.parentNom)}</strong></div>
         <div><div class="hint">Téléphone</div><strong>${escapeHtml(e.parentTel)}</strong></div>
         <div><div class="hint">Adresse</div><strong>${escapeHtml(e.parentAdresse||'—')}</strong></div>
@@ -6491,7 +6498,9 @@ function renderEleveProfile(id){
       </div>
     </div>
 
-    ${renderEleveCoupDoeil(e)}
+    <div class="segmente profil-onglets no-print" role="tablist" aria-label="Fiche de l’élève">${[['infos', 'Infos'], ['bulletin', 'Bulletin'], ['presences', `Présences (${totalP})`]].map(([k, l]) => `<button type="button" role="tab" class="seg${onglet === k ? ' actif' : ''}" aria-selected="${onglet === k}" onclick="ui.filters.profilOnglet='${k}'; renderView('eleves')">${l}</button>`).join('')}</div>
+
+    ${onglet === 'infos' ? `${renderEleveCoupDoeil(e)}
 
     <div class="panel">
       <div class="panel-head">
@@ -6499,9 +6508,9 @@ function renderEleveProfile(id){
         <button class="btn sm" onclick="ouvrirCreerCompteParent('${id}')">+ Créer un compte parent</button>
       </div>
       ${renderComptesParentEleve(id)}
-    </div>
+    </div>` : ''}
 
-    <div class="grid-2">
+    ${onglet === 'bulletin' ? `
       <div class="panel">
         <div class="letterhead">
           ${DB.meta.logo ? `<img src="${DB.meta.logo}" alt="Logo">` : `<div class="lh-ph">🎓</div>`}
@@ -6517,8 +6526,8 @@ function renderEleveProfile(id){
             ${TRIMESTRES.map(t=>`<option ${trimestre===t?'selected':''}>${t}</option>`).join('')}
           </select>
         </div>
-        <div class="table-wrap"><table>
-          <thead><tr><th>Matière</th><th>Moy. classe</th><th>Composition</th><th>Moyenne</th><th>Appréciation</th></tr></thead>
+        <div class="table-wrap"><table class="sans-cartes bulletin-mini">
+          <thead><tr><th>Matière</th><th>Moy. classe</th><th>Compo.</th><th>Moyenne</th><th>Appréciation</th></tr></thead>
           <tbody>${bulletinRows}</tbody>
         </table></div>
         <div style="display:flex;justify-content:space-between;align-items:center;margin-top:14px;padding-top:14px;border-top:1px solid var(--border);">
@@ -6538,21 +6547,18 @@ function renderEleveProfile(id){
           <button class="btn secondary sm no-print" onclick="window.print()">🖨️ Imprimer</button>
           <button class="btn sm no-print" onclick="saveBulletinComment('${id}','${trimestre}')">Enregistrer l'appréciation</button>
         </div>
-      </div>
+      </div>` : ''}
 
+    ${onglet === 'presences' ? `
       <div class="panel">
-        <div class="panel-head"><div><h2>Présences</h2><div class="sub">${totalP} enregistrement(s)</div></div></div>
+        <div class="panel-head"><div><h2>Présences</h2><div class="sub">${totalP} enregistrement(s)${totalP > 30 ? ' · les 30 derniers ci-dessous' : ''}</div></div></div>
         <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;">
           <span class="badge green">Présent: ${nbPresent}</span>
           <span class="badge red">Absent: ${nbAbsent}</span>
           <span class="badge amber">Retard: ${nbRetard}</span>
         </div>
-        <div class="table-wrap"><table>
-          <thead><tr><th>Date</th><th>Jour</th><th>Statut</th><th>Motif</th></tr></thead>
-          <tbody>${presRows || '<tr><td colspan="4" class="hint">Aucun enregistrement</td></tr>'}</tbody>
-        </table></div>
-      </div>
-    </div>
+        ${presRows ? `<ul class="pr-liste">${presRows}</ul>` : `<div class="etat-vide"><span class="etat-vide-ic" aria-hidden="true">${icone('calendar')}</span><span>Aucun appel enregistré pour cet élève.</span></div>`}
+      </div>` : ''}
   </div>`;
 }
 

@@ -175,13 +175,16 @@ for(const theme of THEMES){
         cartes: () => { ouvrirCartesScolaires(DB.classes[0].id); },
         madame: () => { choisirCivilite('F'); },
         approuver1: () => { document.querySelector('.dem-carte .btn.sm').click(); },
+        profil: () => { ui.eleveProfileId = DB.eleves[0].id; renderView('eleves'); window.scrollTo(0, 0); },
+        ongletbulletin: () => { ui.eleveProfileId = DB.eleves[0].id; ui.filters.profilOnglet = 'bulletin'; renderView('eleves'); window.scrollTo(0, 0); },
+        ongletpres: () => { ui.eleveProfileId = DB.eleves[0].id; ui.filters.profilOnglet = 'presences'; renderView('eleves'); window.scrollTo(0, 0); },
         relies: () => { document.querySelector('.seg[data-etat="relie"]').click(); },
       };
       if(GESTES[extra]){ await page.evaluate(GESTES[extra]); await page.waitForTimeout(900); }
       if(extra === 'centre') await page.waitForTimeout(400);
       const mesure = await page.evaluate(() => { const t = document.querySelector('.topbar'); return t ? Math.round(t.getBoundingClientRect().height) : 0; });
       console.log(`${ecranBrut} ${largeur}px ${theme} : en-tête ${mesure}px`);
-      await page.screenshot({ path: join(sortie, `${ecranBrut.replace('+', '-').replace(':', '-')}_${largeur}_${theme === 'light' ? 'clair' : 'sombre'}.png`), fullPage: !extra });
+      await page.screenshot({ path: join(sortie, `${ecranBrut.replace('+', '-').replace(':', '-')}_${largeur}_${theme === 'light' ? 'clair' : 'sombre'}.png`), fullPage: !extra || ['profil', 'ongletbulletin', 'ongletpres'].includes(extra) });
       n++;
     }
     await contexte.close();
