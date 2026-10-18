@@ -1442,3 +1442,50 @@ td:has(> .amount), th.montant{ text-align:right; }
 .table-wrap td .icon-btn[aria-label]:not(.menu-plus-liste .icon-btn){ width:auto; min-width:36px; padding:0 10px; display:inline-flex; align-items:center; gap:6px; font-size:14px; white-space:nowrap; }
 .table-wrap td .icon-btn[aria-label]:not(.menu-plus-liste .icon-btn)::after{ content:attr(aria-label); font-weight:600; font-size:13px; }
 .table-wrap td .badge{ white-space:nowrap; }
+/* ===== Refonte étape 8 : console Parent (DESIGN.md §11) ===== */
+/* En-tête compact sur une ligne : marque à gauche, boutons à droite */
+@media (max-width:900px){
+  body.theme-parent .topbar{ display:flex; flex-wrap:nowrap; align-items:center; gap:8px; padding:10px 16px; min-height:60px; }
+  body.theme-parent .topbar h1{ flex:1 1 auto; min-width:0; margin:0; }
+  body.theme-parent .topbar-right{ flex:0 0 auto; display:flex; align-items:center; gap:6px; margin:0; }
+  body.theme-parent .bulle-btn, body.theme-parent .topbar .theme-toggle, body.theme-parent #btnRechercheGlobale{ width:40px; height:40px; border-radius:12px; }
+  body.theme-parent .pt-logo{ width:34px; height:34px; font-size:16px; }
+}
+.annonce-autoriser.banniere-discrete{ margin-bottom:12px; }
+.annonce-autoriser .bd-txt{ flex:1; min-width:0; font-size:14px; }
+/* Carte « Aujourd'hui » */
+.aj-parent{ margin:0 0 16px; }
+.aj-enfants{ display:flex; gap:8px; overflow-x:auto; padding-bottom:8px; }
+.aj-enfant{ display:inline-flex; align-items:center; gap:8px; min-height:44px; padding:4px 14px 4px 4px; border:1px solid var(--border); border-radius:999px; background:var(--surface-1); color:var(--text); font:inherit; font-weight:700; cursor:pointer; flex:0 0 auto; }
+.aj-enfant.actif{ border-color:var(--primary); background:var(--primary-soft); color:var(--primary-ink); }
+.aj-av{ display:inline-flex; align-items:center; justify-content:center; width:34px; height:34px; border-radius:50%; background:var(--em-gold-400, #E8B04B); color:var(--em-green-900, #14392D); font-size:13px; font-weight:900; }
+.aj-carte{ border:1px solid var(--border); border-radius:20px; background:var(--surface-1); padding:16px; box-shadow:var(--shadow-1); }
+.aj-tete{ display:flex; align-items:baseline; justify-content:space-between; gap:10px; margin-bottom:6px; }
+.aj-tete strong{ font-size:18px; } .aj-tete span{ color:var(--text-dim); font-size:13px; text-transform:capitalize; }
+.aj-liste{ list-style:none; margin:0; padding:0; }
+.aj-ligne{ display:flex; align-items:center; gap:12px; padding:10px 0; border-top:1px solid var(--border); }
+.aj-ligne:first-child{ border-top:0; }
+.aj-ic{ display:inline-flex; align-items:center; justify-content:center; width:40px; height:40px; border-radius:12px; background:var(--surface-2); color:var(--text-dim); flex:0 0 auto; }
+.aj-ic svg{ width:20px; height:20px; }
+.aj-ic.ok{ background:var(--success-soft); color:var(--success); }
+.aj-ic.attente{ background:var(--em-gold-100, #fbf0d9); color:color-mix(in srgb, var(--em-gold-400, #E8B04B) 45%, var(--text)); }
+.aj-ic.erreur{ background:var(--accent-soft); color:var(--accent-ink); }
+.aj-txt{ display:flex; flex-direction:column; min-width:0; }
+.aj-txt small{ color:var(--text-dim); font-size:12px; } .aj-txt strong{ font-size:15px; overflow-wrap:anywhere; }
+.aj-delai{ color:var(--text-dim); font-weight:600; font-size:13px; }
+/* ===== Refonte étape 8 : console Enseignant — frise du jour ===== */
+.frise{ list-style:none; margin:0 0 14px; padding:0 0 6px; display:flex; gap:8px; overflow-x:auto; scroll-snap-type:x proximity; }
+.frise-cours{ scroll-snap-align:start; flex:0 0 auto; min-width:150px; display:flex; flex-direction:column; gap:6px; padding:10px 12px; border-radius:14px; border:1px solid color-mix(in srgb, var(--mat) 30%, var(--border)); border-top:4px solid var(--mat); background:color-mix(in srgb, var(--mat) 8%, var(--surface-1)); position:relative; }
+.frise-cours.passe{ opacity:.6; }
+.frise-cours.encours{ box-shadow:0 0 0 2px var(--em-gold-400, #E8B04B); }
+.frise-heure{ display:flex; gap:6px; align-items:baseline; font-weight:800; font-variant-numeric:tabular-nums; }
+.frise-heure small{ color:var(--text-dim); font-weight:600; }
+.frise-txt{ display:flex; flex-direction:column; } .frise-txt small{ color:var(--text-dim); font-size:13px; }
+.frise-fait{ position:absolute; top:8px; right:10px; color:var(--success); font-weight:900; }
+.frise-cours .tt-badge-encours{ align-self:flex-start; }
+/* ===== Refonte étape 8 : console Portier ===== */
+.gate-av{ display:inline-flex; align-items:center; justify-content:center; width:64px; height:64px; margin:0 auto 6px; border-radius:50%; background:var(--em-gold-400, #E8B04B); color:var(--em-green-900, #14392D); font-size:22px; font-weight:900; }
+.gate-fiche{ display:flex; flex-direction:column; align-items:center; }
+.gate-eleve-action svg{ width:18px; height:18px; vertical-align:-3px; }
+body.theme-portier .etat-vide{ color:var(--em-gate-text, #EEF3F0); }
+.gate-fiche .gate-av{ color:var(--em-green-900, #14392D) !important; font-size:22px !important; font-weight:900 !important; }

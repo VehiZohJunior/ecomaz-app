@@ -1318,7 +1318,7 @@ function renderAnnonceDuMoment(){
   const autoriser = ios && !pushPossible()
     ? `<div class="hint annonce-autoriser">🔔 Sur iPhone, installez d’abord l’application (Partager → Sur l’écran d’accueil) pour recevoir les notifications.</div>`
     : (pushPossible() && Notification.permission === 'default'
-      ? `<button type="button" class="btn sm annonce-autoriser" onclick="autoriserAlertesTelephone()">🔔 Activer les notifications sur ce téléphone (même application fermée)</button>` : '');
+      ? `<div class="banniere-discrete annonce-autoriser"><span class="bd-ic" aria-hidden="true">${icone('bell')}</span><span class="bd-txt">Soyez prévenu des absences et annonces, même application fermée.</span><button type="button" class="btn sm" onclick="autoriserAlertesTelephone()">Activer</button></div>` : '');
   if(!a) return autoriser ? `<div id="annonceDuMoment">${autoriser}</div>` : '<div id="annonceDuMoment"></div>';
   const minutes = Math.max(0, Math.round((Date.now() - new Date(a.createdAt).getTime()) / 60000));
   return `<div id="annonceDuMoment">
@@ -1732,11 +1732,47 @@ function renderFicheEnfant(e){
     ${renderScolariteEnfant(e)}
   </article>`;
 }
+// Carte « Aujourd'hui » : présence du jour, prochain événement, devoirs, reste à payer.
+// Plusieurs enfants : sélecteur par avatars (affichage seulement, données déjà chargées).
+function renderAujourdhuiParent(enfants){
+  if(!enfants.length) return '';
+  const e = enfants.find(x => x.id === ui.enfantAujourdhui) || enfants[0];
+  const auj = isoLocal(new Date());
+  const jourIso = ((new Date().getDay() + 6) % 7) + 1;
+  const jourDeClasse = (DB.meta?.joursCours || DB.horairesAnnonces?.joursCours || [1, 2, 3, 4, 5]).includes(jourIso);
+  const p = Array.isArray(DB.presencesSemaine) ? DB.presencesSemaine.find(x => x.eleveId === e.id && x.date === auj) : null;
+  const presence = p ? (p.statut === 'Présent' ? { cls:'ok', ic:'circle-check', txt:'Présent(e) à l’école' } : p.statut === 'Retard' ? { cls:'attente', ic:'clock', txt:'Arrivé(e) en retard' } : { cls:'erreur', ic:'circle-x', txt:'Absent(e) aujourd’hui' })
+    : jourDeClasse ? { cls:'neutre', ic:'clock', txt:'L’appel n’est pas encore fait' } : { cls:'neutre', ic:'calendar', txt:'Pas de classe aujourd’hui' };
+  const ev = (DB.agenda || []).filter(a => (a.dateFin || a.dateDebut) >= auj && (!a.classeIds || !a.classeIds.length || a.classeIds.includes(e.classeId)))
+    .sort((a, b) => String(a.dateDebut).localeCompare(String(b.dateDebut)))[0];
+  const devoirs = (DB.devoirs || []).filter(d => d.classeId === e.classeId && d.pourLe > auj).sort((a, b) => a.pourLe.localeCompare(b.pourLe));
+  const prochainJour = devoirs[0]?.pourLe, nbDevoirs = devoirs.filter(d => d.pourLe === prochainJour).length;
+  let reste = null;
+  if(DB.meta?.scolariteVisibleParents){ const info = scolariteEleveParEcheance(e.id); if(info.total) reste = info.reste; }
+  const ligne = (ic, lib, val, cls) => `<li class="aj-ligne"><span class="aj-ic ${cls || ''}" aria-hidden="true">${icone(ic)}</span><span class="aj-txt"><small>${lib}</small><strong>${val}</strong></span></li>`;
+  return `<section class="aj-parent em-rise" style="--i:2" id="aujParent" aria-label="Aujourd’hui">
+    ${enfants.length > 1 ? `<div class="aj-enfants" role="tablist" aria-label="Choisir l’enfant">${enfants.map(x => `<button type="button" role="tab" class="aj-enfant${x.id === e.id ? ' actif' : ''}" aria-selected="${x.id === e.id}" onclick="choisirEnfantAujourdhui('${x.id}')"><span class="aj-av" aria-hidden="true">${escapeHtml(initials(x.prenom, x.nom))}</span><span>${escapeHtml(x.prenom || x.nom)}</span></button>`).join('')}</div>` : ''}
+    <div class="aj-carte">
+      <div class="aj-tete"><strong>Aujourd’hui</strong><span>${escapeHtml(new Date().toLocaleDateString('fr-FR', { weekday:'long', day:'numeric', month:'long' }))}</span></div>
+      <ul class="aj-liste">
+        ${ligne(presence.ic, escapeHtml(e.prenom || eleveFullName(e)), presence.txt, presence.cls)}
+        ${ev ? ligne('calendar-days', 'Prochain événement', `${escapeHtml(ev.titre)} <span class="aj-delai">${escapeHtml(delaiAgenda(ev))}</span>`) : ''}
+        ${prochainJour ? ligne('book-open', 'Devoirs', `${nbDevoirs} devoir${nbDevoirs > 1 ? 's' : ''} ${escapeHtml(quandDevoir(prochainJour))}`) : ''}
+        ${reste !== null ? ligne('wallet', 'Scolarité', reste ? `Reste à payer : ${fmtFCFA(reste)}` : 'Soldée, merci !', reste ? 'attente' : 'ok') : ''}
+      </ul>
+    </div>
+  </section>`;
+}
+function choisirEnfantAujourdhui(id){
+  ui.enfantAujourdhui = id;
+  const z = document.getElementById('aujParent');
+  if(z) z.outerHTML = renderAujourdhuiParent(DB.eleves || []);
+}
 function renderParentDashboard(){
   const mesEnfants = DB.eleves || [];
   if(!mesEnfants.length){
     return `<div class="view active">
-      <div class="panel"><div class="empty">Aucun enfant n'est encore relié à votre compte. Contactez le secrétariat de l'établissement.</div></div>
+      <div class="panel"><div class="etat-vide"><span class="etat-vide-ic" aria-hidden="true">${icone('users')}</span><span>Aucun enfant n’est encore relié à votre compte. Le secrétariat de l’école le fera après avoir validé votre demande.</span></div></div>
     </div>`;
   }
   const prenomParent = (session.nomComplet||'').trim().split(/\s+/)[0] || '';
@@ -1749,6 +1785,7 @@ function renderParentDashboard(){
       <h2 class="parent-greeting">Bonjour${prenomParent ? ', ' + escapeHtml(prenomParent) : ''} <span class="salut-main em-wave">${window.EmIcones ? EmIcones.svg('hand') : '👋'}</span></h2>
       <p class="parent-greeting-sub">Voici la semaine de ${plusieurs ? 'vos enfants' : 'votre enfant'}.</p>
     </div>
+    ${renderAujourdhuiParent(mesEnfants)}
     <div class="enfants${plusieurs ? ' enfants--carrousel' : ''} em-rise" style="--i:2">
       ${mesEnfants.map(renderFicheEnfant).join('')}
     </div>
@@ -2022,7 +2059,7 @@ function calculerNotificationsBulle(){
 }
 function renderDropdownNotifications(){
   const items = calculerNotificationsBulle();
-  if(!items.length) return `<h4>🔔 Notifications</h4><div class="empty">Rien pour l'instant.</div>`;
+  if(!items.length) return `<h4>🔔 Notifications</h4><div class="etat-vide etat-vide-ok"><span class="etat-vide-ic" aria-hidden="true">${icone('bell')}</span><span>Rien de nouveau : vous êtes à jour.</span></div>`;
   return `<h4>🔔 Notifications</h4>${items.map(it=>`
     <div class="bulle-item ${it.nonLu?'non-lu':''}">
       ${escapeHtml(it.texte)}
@@ -2046,7 +2083,7 @@ function renderDropdownMessages(){
   return `<h4>✉️ Messages</h4>
     ${estStaff ? `<button class="btn sm" style="width:100%;margin-bottom:10px;" onclick="ouvrirComposerMessage()">+ Nouveau message</button>` : ''}
     ${ui.role === 'parent' ? `<button class="btn sm" style="width:100%;margin-bottom:10px;" onclick="ouvrirEcrireEcole()">✉️ Écrire à l’école</button>` : ''}
-    ${!liste.length ? `<div class="empty">Aucun message.</div>` : liste.map(m=>{
+    ${!liste.length ? `<div class="etat-vide"><span class="etat-vide-ic" aria-hidden="true">${icone('mail')}</span><span>Aucun message pour l’instant. Les messages de l’école arriveront ici.</span></div>` : liste.map(m=>{
       const deParent = m.destinataireType === 'ecole';
       if(estStaff){
         const entete = deParent ? `📩 De : ${escapeHtml(m.auteurNom || 'parent')} (parent de ${escapeHtml(nomEleve(m.eleveId))})`
@@ -2183,7 +2220,7 @@ function renderDropdownSuggestions(){
   }
   const liste = (DB.suggestions||[]).slice(0,20);
   return `<h4>💡 Suggestions reçues</h4>
-    ${!liste.length ? `<div class="empty">Aucune suggestion pour l'instant.</div>` : liste.map(s=>`
+    ${!liste.length ? `<div class="etat-vide"><span class="etat-vide-ic" aria-hidden="true">${icone('lightbulb')}</span><span>Aucune suggestion pour l’instant.</span></div>` : liste.map(s=>`
       <div class="bulle-item ${!s.lu?'non-lu':''}">
         <div class="hint">${escapeHtml(s.auteurNom||'Anonyme')} · ${escapeHtml(s.auteurRole||'')}</div>
         ${escapeHtml(s.contenu)}
@@ -2254,7 +2291,7 @@ function refreshPortierDashboard(){
 function renderBoutonEleve(e){
   return `<button class="gate-eleve em-press" onclick="handleNotifierPortier('${e.id}')">
     <span class="gate-eleve-id"><strong>${escapeHtml(eleveFullName(e))}</strong><span class="gate-eleve-classe">${escapeHtml(classeName(e.classeId))}</span></span>
-    <span class="gate-eleve-action">🚪 Prévenir</span>
+    <span class="gate-eleve-action">${icone('bell')} Prévenir</span>
   </button>`;
 }
 function renderPortierDashboard(){
@@ -2266,9 +2303,9 @@ function renderPortierDashboard(){
     const resultats = DB.eleves.filter(e => `${e.prenom} ${e.nom}`.toLowerCase().includes(q)).slice(0, 30);
     return `<div class="view active">
       <div class="panel">
-        <div class="panel-head"><div><h2>🚪 Le parent d'un élève est arrivé</h2><div class="sub">Tapez le nom de l'élève, ou parcourez par classe</div></div></div>
+        <div class="panel-head"><div><h2>Le parent d’un élève est arrivé</h2><div class="sub">Tapez le nom de l’élève, ou parcourez par classe</div></div></div>
         ${renderPortierBarreRecherche()}
-        ${!resultats.length ? `<div class="empty">Aucun élève trouvé.</div>` :
+        ${!resultats.length ? `<div class="etat-vide"><span class="etat-vide-ic" aria-hidden="true">${icone('search')}</span><span>Aucun élève à ce nom. Vérifiez l’orthographe ou cherchez par classe.</span></div>` :
           `<div style="display:flex;flex-direction:column;gap:8px;">${resultats.map(renderBoutonEleve).join('')}</div>`}
       </div>
     </div>`;
@@ -2282,10 +2319,10 @@ function renderPortierDashboard(){
       .sort((a,b)=>eleveFullName(a).localeCompare(eleveFullName(b)));
     return `<div class="view active">
       <div class="panel">
-        <button class="btn secondary sm" style="margin-bottom:14px;" onclick="ui.filters.portierClasse=null; refreshPortierDashboard()">← Toutes les classes</button>
-        <div class="panel-head"><div><h2>🚪 ${escapeHtml(c?c.nom:'Classe')}</h2><div class="sub">Cliquez sur un nom pour prévenir l'enseignant(e)</div></div></div>
+        <button class="btn secondary sm" style="margin-bottom:14px;" onclick="ui.filters.portierClasse=null; refreshPortierDashboard()">‹ Toutes les classes</button>
+        <div class="panel-head"><div><h2>${escapeHtml(c?c.nom:'Classe')}</h2><div class="sub">Touchez un nom pour prévenir l’enseignant(e)</div></div></div>
         ${renderPortierBarreRecherche()}
-        ${!elevesClasse.length ? `<div class="empty">Aucun élève actif dans cette classe.</div>` :
+        ${!elevesClasse.length ? `<div class="etat-vide"><span class="etat-vide-ic" aria-hidden="true">${icone('users')}</span><span>Aucun élève actif dans cette classe.</span></div>` :
           `<div style="display:flex;flex-direction:column;gap:8px;">${elevesClasse.map(renderBoutonEleve).join('')}</div>`}
       </div>
     </div>`;
@@ -2296,7 +2333,7 @@ function renderPortierDashboard(){
   return `<div class="view active">
     <div class="panel">
       <div class="panel-head">
-        <div><h2>🚪 Le parent d'un élève est arrivé</h2><div class="sub">Choisissez une classe, ou tapez directement le nom de l'élève</div></div>
+        <div><h2>Le parent d’un élève est arrivé</h2><div class="sub">Choisissez une classe, ou tapez le nom de l’élève</div></div>
       </div>
       ${renderPortierBarreRecherche()}
       ${cycles.map(cycle=>`
@@ -2313,12 +2350,12 @@ function renderPortierDashboard(){
   </div>`;
 }
 function renderPortierBarreRecherche(){
-  return `<input type="text" id="portierRecherche" placeholder="Ou tapez un nom pour chercher dans toutes les classes…" value="${escapeHtml(ui.filters.portierRecherche||'')}"
+  return `<input type="text" id="portierRecherche" placeholder="Rechercher un élève…" aria-label="Rechercher un élève dans toutes les classes" value="${escapeHtml(ui.filters.portierRecherche||'')}"
     oninput="ui.filters.portierRecherche=this.value; refreshPortierDashboard()"
     style="width:100%;padding:14px;font-size:var(--fs-md);border:1px solid var(--border);border-radius:var(--r-card);margin-bottom:16px;">`;
 }
 function renderEtatPortier(etat, e, detail){
-  const eleve = e ? `<div class="gate-fiche"><strong>${escapeHtml(eleveFullName(e))}</strong><span>${escapeHtml(classeName(e.classeId))}</span>
+  const eleve = e ? `<div class="gate-fiche"><span class="gate-av" aria-hidden="true">${escapeHtml(initials(e.prenom, e.nom))}</span><strong>${escapeHtml(eleveFullName(e))}</strong><span>${escapeHtml(classeName(e.classeId))}</span>
       ${detail && detail.heure ? `<span class="gate-heure">Signalé à ${detail.heure}</span>` : ''}</div>` : '';
   if(etat === 'envoi') return `<div class="view active"><div class="gate-etat-carte" role="status" aria-live="polite">
       <svg class="gate-spinner em-spin" viewBox="0 0 72 72" aria-hidden="true"><circle cx="36" cy="36" r="30" fill="none" stroke="var(--em-gate-border)" stroke-width="6"/><path d="M36 6a30 30 0 0 1 30 30" fill="none" stroke="var(--em-gold-400)" stroke-width="6" stroke-linecap="round"/></svg>
@@ -3328,10 +3365,32 @@ function renderMaJournee(){
   const ids = new Set(classes.map(c => c.id));
   const dates = (DB.agenda || []).filter(ev => ev.dateFin >= aujourd && (!ev.classeIds || ev.classeIds.some(id => ids.has(id)))).slice(0, 3);
   return `<div class="panel">
-    <div class="panel-head"><div><h2>☀️ Ma journée — ${new Date().toLocaleDateString('fr-FR', {weekday:'long', day:'numeric', month:'long'})}</h2><div class="sub">Vos classes uniquement</div></div></div>
+    <div class="panel-head"><div><h2>Ma journée</h2><div class="sub">${(d => d.charAt(0).toUpperCase() + d.slice(1))(new Date().toLocaleDateString('fr-FR', {weekday:'long', day:'numeric', month:'long'}))} · vos classes</div></div></div>
+    ${renderFriseDuJour(classes)}
     <div class="mj-grille">${cartes || '<div class="hint">Aucune classe.</div>'}</div>
     ${dates.length ? `<div class="mj-ligne" style="margin-top:10px;">📅 À venir : ${dates.map(ev => `${escapeHtml(ev.titre)} <span class="hint">(${delaiAgenda(ev)})</span>`).join(' · ')}</div>` : ''}
   </div>`;
+}
+// Emploi du temps du jour en frise, cours en cours mis en évidence (DESIGN.md §11 Console Enseignant)
+function renderFriseDuJour(classes){
+  const jour = JOURS[(new Date().getDay() + 6) % 7];
+  if(!jour) return '';
+  const maintenant = new Date(), hhmm = `${String(maintenant.getHours()).padStart(2,'0')}:${String(maintenant.getMinutes()).padStart(2,'0')}`;
+  const cours = [];
+  classes.forEach(c => (PERIODES_BY_CYCLE[c.cycle] || []).forEach((p, i) => {
+    if(p.type !== 'cours') return;
+    const e = (DB.emploiTemps || []).find(x => x.classeId === c.id && x.jour === jour && x.slotIndex === i);
+    if(e && (!session.enseignantId || !e.enseignantId || e.enseignantId === session.enseignantId)) cours.push({ p, e, c });
+  }));
+  cours.sort((a, b) => a.p.debut.localeCompare(b.p.debut));
+  if(!cours.length) return `<div class="etat-vide" style="margin-bottom:12px;"><span class="etat-vide-ic" aria-hidden="true">${icone('calendar')}</span><span>Aucun cours prévu pour vous aujourd’hui dans l’emploi du temps. <button type="button" class="lien-discret" onclick="go('emploi-temps')">Voir l’emploi du temps</button></span></div>`;
+  return `<ol class="frise" aria-label="Cours d’aujourd’hui">${cours.map(({ p, e, c }) => {
+    const etat = hhmm >= p.fin ? 'passe' : hhmm >= p.debut ? 'encours' : 'avenir';
+    return `<li class="frise-cours ${etat}" style="--mat:${couleurMatiere(e.matiere)}">
+      <span class="frise-heure">${p.debut}<small>${p.fin}</small></span>
+      <span class="frise-txt"><strong>${escapeHtml(e.matiere)}</strong><small>${escapeHtml(c.nom)}</small></span>
+      ${etat === 'encours' ? '<span class="tt-badge-encours">En cours</span>' : etat === 'passe' ? '<span class="frise-fait" aria-label="terminé">✓</span>' : ''}
+    </li>`; }).join('')}</ol>`;
 }
 function renderMiseEnRoute(){
   if(!['direction','fondation'].includes(ui.role)) return '';

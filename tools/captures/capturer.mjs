@@ -73,6 +73,8 @@ for(const theme of THEMES){
     const contexte = await navigateur.newContext({ viewport: { width: largeur, height: hauteur }, colorScheme: theme, deviceScaleFactor: 1, locale: 'fr-FR' });
     await contexte.addInitScript(t => { try{ localStorage.setItem('ecomaz_theme', t); }catch(_e){} }, theme);
     const page = await contexte.newPage();
+    // Option « lundi » : l'horloge de la page affiche lundi 19/10/2026 10:15 (jour de classe)
+    if(option.split(',').includes('lundi')) await page.clock.setFixedTime(new Date('2026-10-19T10:15:00'));
     page.on('pageerror', e => console.log(`ERREUR PAGE (${largeur}px) : ${e.message}`));
     await page.goto('http://localhost:5190/', { waitUntil: 'networkidle' });
     await page.waitForTimeout(600);
@@ -85,6 +87,7 @@ for(const theme of THEMES){
       if(role === 'parent'){ session.nomComplet = 'Parent Démo'; DB = await chargerDBParent(); enterAppParent(); return; }
       if(role === 'portier'){ session.nomComplet = 'Portier Démo'; DB = await chargerDBPortier(); enterAppPortier(); return; }
       DB = await chargerDB();
+      if(role === 'enseignant' && DB.enseignants[0]){ session.enseignantId = DB.enseignants[0].id; DB.enseignants[0].classesAssignees = DB.enseignants[0].classesAssignees && DB.enseignants[0].classesAssignees.length ? DB.enseignants[0].classesAssignees : [DB.classes[0].id]; }
       // Option « parents » : 3 comptes parents FICTIFS en mémoire seulement (jamais en base),
       // pour photographier aussi l'état « Compte relié »
       // Option « edt » : emploi du temps FICTIF en mémoire seulement
@@ -130,7 +133,7 @@ for(const theme of THEMES){
       const [ecran, onglet] = ecranOnglet.split(':');
       await page.evaluate(([v, o, r]) => { closeModal && closeModal();
         if(r === 'parent'){ navParent(v); window.scrollTo(0, 0); return; }
-        if(r === 'portier'){ window.scrollTo(0, 0); return; }
+        if(r === 'portier'){ ui.filters.portierClasse = null; refreshPortierDashboard(); window.scrollTo(0, 0); return; }
         if(o){ ui.filters.comptaTab = o; ui.filters.cahierOnglet = o; ui.filters.presEnsOnglet = o; } go(v); window.scrollTo(0, 0); }, [ecran, onglet, role]);
       await page.waitForTimeout(900);
       if(extra === 'centre') await page.evaluate(() => { toggleCentre(true); });
@@ -143,6 +146,10 @@ for(const theme of THEMES){
         menu: () => { const d = [...document.querySelectorAll('.menu-plus')].pop(); d.open = true; d.scrollIntoView({ block: 'center' }); },
         classes: () => { const r = document.querySelector('input[name=cible][value=classes]'); r.click(); document.querySelectorAll('input[name=classe]')[1].click(); r.scrollIntoView({ block: 'center' }); },
         modal: () => { openEleveForm(); },
+        enfant2: () => { document.querySelectorAll('.aj-enfant')[1].click(); },
+        classe: () => { document.querySelector('.gate-classe').click(); },
+        succes: () => { const e = DB.eleves[0]; $('#viewContainer').innerHTML = renderEtatPortier('ok', e, { heure: '07h42' }); },
+        refus: () => { const e = DB.eleves[0]; $('#viewContainer').innerHTML = renderEtatPortier('erreur', e, { message: 'Pas de connexion internet.' }); },
         relies: () => { document.querySelector('.seg[data-etat="relie"]').click(); },
       };
       if(GESTES[extra]){ await page.evaluate(GESTES[extra]); await page.waitForTimeout(400); }
