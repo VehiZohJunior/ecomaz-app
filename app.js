@@ -2423,6 +2423,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.10.18-10', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Paramètres → « Sauvegarde de vos données » (direction) : un fichier Excel avec toutes les données de l’école, une feuille par sujet, à garder sur votre ordinateur.' ],
+  } },
   { version: '2026.10.18-9', nouveautes: {
     commun: [],
     parent: [],
@@ -5456,6 +5462,55 @@ function ouvrirImportEleves(){
 }
 // --- Exports Excel (gratuits, produits sur l'appareil) ---
 function nomFichierExport(sujet){ return `${simplifierTexte(DB.meta?.nomEcole || 'ecole').replace(/ /g, '-')}-${sujet}-${todayISO()}.xlsx`; }
+/* ---------- Sauvegarde complète (Excel) — direction / fondation ----------
+   Utilise uniquement les données déjà chargées dans l'application (aucune
+   nouvelle requête) ; identifiants internes remplacés par des noms lisibles. */
+const SAUVEGARDE_FEUILLES = [
+  ['Élèves', 'eleves'], ['Classes', 'classes'], ['Enseignants', 'enseignants'], ['Personnel', 'personnelAutre'],
+  ['Paiements scolarité', 'paiementsScolarite'], ['Échéances', 'echeancesScolarite'], ['Activités', 'activites'],
+  ['Inscriptions activités', 'inscriptionsActivites'], ['Cotisations', 'paiementsCotisations'], ['Boutique', 'gadgets'],
+  ['Ventes boutique', 'ventesGadgets'], ['Salaires', 'paiementsSalaires'], ['Dépenses', 'depenses'],
+  ['Présences élèves', 'presencesEleves'], ['Présences enseignants', 'presencesEnseignants'], ['Notes', 'notes'],
+  ['Emploi du temps', 'emploiTemps'], ['Programmes', 'programmes'], ['Agenda', 'agenda'], ['Devoirs', 'devoirs'],
+  ['Parents reliés', 'parentsEleves'], ['Messages', 'messages'],
+];
+const SAUVEGARDE_EXCLUS = new Set(['id', 'ecoleId', 'createdBy', 'traitePar', 'userId', 'auteurId']);
+function libelleColonne(cle){
+  const noms = { classeId:'Classe', eleveId:'Élève', enseignantId:'Enseignant', parentProfileId:'Compte parent', classeIds:'Classes', classesAssignees:'Classes',
+    prenom:'Prénom', parentNom:'Nom du parent', parentTel:'Téléphone du parent', parentAdresse:'Adresse du parent', dateNaissance:'Date de naissance',
+    dateInscription:'Date d’inscription', dateEmbauche:'Date d’embauche', telephone:'Téléphone', modePaiement:'Mode de paiement', matieres:'Matières', matiere:'Matière', createdAt:'Créé le' };
+  if(noms[cle]) return noms[cle];
+  const t = cle.replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase();
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
+function valeurLisible(cle, v){
+  if(v == null) return '';
+  if(cle === 'classeId') return classeName(v);
+  if(cle === 'eleveId'){ const e = eleveById(v); return e ? eleveFullName(e) : v; }
+  if(cle === 'enseignantId'){ const t = enseignantById(v); return t ? ensFullName(t) : v; }
+  if(cle === 'parentProfileId'){ const p = (DB.profiles || []).find(x => x.id === v); return p ? (p.nomComplet || '') : v; }
+  if(Array.isArray(v)) return (cle === 'classeIds' || cle === 'classesAssignees') ? v.map(classeName).join(', ') : v.join(', ');
+  if(typeof v === 'object') return JSON.stringify(v);
+  return v;
+}
+async function exporterSauvegardeComplete(){
+  if(!['direction','fondation'].includes(ui.role)) return;
+  const feuilles = [];
+  for(const [nom, cle] of SAUVEGARDE_FEUILLES){
+    const lignes = Array.isArray(DB[cle]) ? DB[cle] : [];
+    if(!lignes.length) continue;
+    const ordre = ['matricule', 'nom', 'prenom', 'eleveId', 'enseignantId', 'classeId', 'date', 'montant', 'statut'];
+    const rang = k => { const i = ordre.indexOf(k); return i < 0 ? ordre.length : i; };
+    const colonnes = [...new Set(lignes.flatMap(l => Object.keys(l)))].filter(k => !SAUVEGARDE_EXCLUS.has(k)).sort((a, b) => rang(a) - rang(b));
+    feuilles.push([nom.slice(0, 31), [colonnes.map(libelleColonne), ...lignes.map(l => colonnes.map(k => valeurLisible(k, l[k])))]]);
+  }
+  if(!feuilles.length) return toast('Aucune donnée à sauvegarder pour l’instant.');
+  const nomEcole = String(DB.meta?.nomEcole || 'ecole').replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '');
+  try{
+    await ecrireClasseurExcel(feuilles, `Sauvegarde-${nomEcole}-${todayISO()}.xlsx`);
+    toast(`Sauvegarde téléchargée : ${feuilles.length} feuilles`);
+  }catch(err){ alert('Sauvegarde impossible : ' + err.message); }
+}
 async function ecrireClasseurExcel(feuilles, nomFichier){
   const X = await chargerXLSX();
   const classeur = X.utils.book_new();
@@ -9866,6 +9921,13 @@ function renderParametres(){
       <div class="panel-head"><div><h2>📍 Zone de l'établissement</h2><div class="sub">Utilisée pour valider les pointages GPS des enseignants (à quelle distance de l'école ils se trouvent)</div></div></div>
       ${renderGeofence()}
     </div>
+
+    ${['direction','fondation'].includes(ui.role) ? `<div class="panel">
+      <div class="panel-head"><div><h2>Sauvegarde de vos données</h2><div class="sub">Un fichier Excel avec toutes les données de l’école, une feuille par sujet. À garder sur votre ordinateur ou une clé USB.</div></div></div>
+      <div class="sauvegarde-ligne"><span class="etat-vide-ic" aria-hidden="true">${icone('download')}</span>
+        <span>Élèves, classes, enseignants, paiements, présences, notes, dépenses, agenda… Les mots de passe ne sont jamais inclus.</span>
+        <button type="button" class="btn" onclick="exporterSauvegardeComplete()">Télécharger la sauvegarde</button></div>
+    </div>` : ''}
 
     <div class="panel" id="panneauDemandesAcces">
       <div class="panel-head"><div><h2>Demandes d’accès</h2><div class="sub">Parents, enseignants et portier qui se sont inscrits avec Google et attendent votre validation</div></div></div>

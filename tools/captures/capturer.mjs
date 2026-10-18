@@ -35,8 +35,8 @@ if(role === 'parent'){
   for(const k of Object.keys(donnees)) if(Array.isArray(donnees[k]) && k !== 'eleves' && donnees[k][0] && 'eleve_id' in donnees[k][0]) donnees[k] = donnees[k].filter(r => enfants.includes(r.eleve_id));
   donnees.eleves = donnees.eleves.filter(e => enfants.includes(e.id));
 }
-const LARGEURS = [[360, 780], [390, 844], [1440, 900]];
-const THEMES = ['light', 'dark'];
+const LARGEURS = (process.env.UNE_TAILLE ? [[390, 844]] : [[360, 780], [390, 844], [1440, 900]]);
+const THEMES = (process.env.UNE_TAILLE ? ['light'] : ['light', 'dark']);
 const sortie = join(RACINE, 'captures', nom);
 mkdirSync(sortie, { recursive: true });
 
@@ -83,6 +83,7 @@ for(const theme of THEMES){
     const page = await contexte.newPage();
     // Option « lundi » : l'horloge de la page affiche lundi 19/10/2026 10:15 (jour de classe)
     if(option.split(',').includes('lundi')) await page.clock.setFixedTime(new Date('2026-10-19T10:15:00'));
+    page.on('download', async d => { const f = join(sortie, d.suggestedFilename()); await d.saveAs(f); console.log('TÉLÉCHARGÉ : ' + f); });
     page.on('dialog', d => { console.log('DIALOGUE : ' + d.message()); d.accept(); });
     page.on('pageerror', e => console.log(`ERREUR PAGE (${largeur}px) : ${e.message}`));
     await page.goto('http://localhost:5190/', { waitUntil: 'networkidle' });
@@ -162,6 +163,7 @@ for(const theme of THEMES){
         groupe: () => { ouvrirMessageGroupeClasse(DB.classes[0].id); },
         demandes: () => { document.getElementById('panneauDemandesAcces').scrollIntoView({ block: 'start' }); window.scrollBy(0, -70); },
         approuver: () => { approuverDemandesSures(); },
+        sauvegarde: () => { exporterSauvegardeComplete(); },
         relies: () => { document.querySelector('.seg[data-etat="relie"]').click(); },
       };
       if(GESTES[extra]){ await page.evaluate(GESTES[extra]); await page.waitForTimeout(900); }

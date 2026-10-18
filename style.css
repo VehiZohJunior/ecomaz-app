@@ -1547,3 +1547,6 @@ button.role-card{ font:inherit; color:inherit; width:100%; display:flex; flex-di
 .dem-carte[data-sure]{ border-color:color-mix(in srgb, var(--success) 45%, var(--border)); }
 .dem-carte > .btn{ margin-top:8px; }
 .dem-carte label{ min-height:36px; }
+/* ===== Sauvegarde complète ===== */
+.sauvegarde-ligne{ display:flex; flex-wrap:wrap; align-items:center; gap:12px; }
+.sauvegarde-ligne > span:nth-child(2){ flex:1 1 220px; color:var(--text-dim); font-size:14px; }
