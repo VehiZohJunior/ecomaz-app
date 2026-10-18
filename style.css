@@ -1562,3 +1562,14 @@ button.role-card{ font:inherit; color:inherit; width:100%; display:flex; flex-di
 .rm-val{ text-align:right; font-weight:700; font-variant-numeric:tabular-nums; white-space:nowrap; }
 .rm-val.ok{ color:var(--success); } .rm-val.ko{ color:var(--accent-ink); }
 @media print{ .rapport-mois{ color:#000; } .rm-grille{ grid-template-columns:1fr 1fr; } }
+/* ===== Liste de classe imprimable ===== */
+.liste-classe{ background:var(--surface-1); overflow-x:auto; }
+@media print{ .liste-classe{ overflow:visible; } }
+.lc-resume{ margin:0 0 10px; font-size:14px; }
+.lc-table{ width:100%; min-width:0; border-collapse:collapse; font-size:14px; }
+.lc-table th, .lc-table td{ border:1px solid var(--border); padding:6px 8px; text-align:left; height:auto !important; }
+.lc-table th{ background:var(--surface-2); font-size:12px; text-transform:uppercase; letter-spacing:.03em; }
+.lc-table td:first-child, .lc-table th:first-child{ width:36px; text-align:center; }
+.lc-table.emargement td{ height:30px !important; }
+.lc-table .lc-case{ width:11%; }
+@media print{ .lc-table th, .lc-table td{ border-color:#999; color:#000; } .lc-table th{ background:#eee; } }

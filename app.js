@@ -2425,6 +2425,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.10.18-13', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Élèves & Inscriptions : « Imprimer la liste » pour chaque classe — liste simple (avec garçons / filles), liste avec les contacts des parents (secrétariat, direction) ou feuille d’émargement.' ],
+  } },
   { version: '2026.10.18-12', nouveautes: {
     commun: [],
     parent: [],
@@ -3275,6 +3281,42 @@ function renderDashboard(){
 /* ---------------------------------------------------------------------
    5. ÉLÈVES
    --------------------------------------------------------------------- */
+/* ---------- Liste de classe imprimable : simple, avec contacts, émargement ---------- */
+function ouvrirListeClasse(classeId, type){
+  const admin = ['secretariat','direction','fondation'].includes(ui.role);
+  type = type || 'simple';
+  if(type === 'contacts' && !admin) type = 'simple';
+  const c = DB.classes.find(x => x.id === classeId); if(!c) return;
+  const m = DB.meta || {};
+  const eleves = DB.eleves.filter(e => e.classeId === classeId && e.statut === 'Actif')
+    .sort((a, b) => (a.nom || '').localeCompare(b.nom || '') || (a.prenom || '').localeCompare(b.prenom || ''));
+  const g = eleves.filter(e => e.sexe === 'M').length, f = eleves.filter(e => e.sexe === 'F').length;
+  const titres = { simple:'LISTE DE CLASSE', contacts:'LISTE DE CLASSE — CONTACTS DES PARENTS', emargement:'FEUILLE D’ÉMARGEMENT' };
+  const nbCases = 6;
+  const entete = type === 'simple' ? '<th>N°</th><th>Matricule</th><th>Nom</th><th>Prénom(s)</th><th>Sexe</th><th>Né(e) le</th>'
+    : type === 'contacts' ? '<th>N°</th><th>Nom et prénom(s)</th><th>Parent / Tuteur</th><th>Téléphone</th>'
+    : `<th>N°</th><th>Nom et prénom(s)</th>${Array.from({ length: nbCases }, () => '<th class="lc-case"></th>').join('')}`;
+  const ligne = (e, i) => type === 'simple'
+      ? `<td>${i + 1}</td><td>${escapeHtml(e.matricule || '')}</td><td><strong>${escapeHtml(String(e.nom || '').toUpperCase())}</strong></td><td>${escapeHtml(e.prenom || '')}</td><td>${escapeHtml(e.sexe || '')}</td><td>${e.dateNaissance ? fmtDate(e.dateNaissance) : ''}</td>`
+    : type === 'contacts'
+      ? `<td>${i + 1}</td><td><strong>${escapeHtml(String(e.nom || '').toUpperCase())}</strong> ${escapeHtml(e.prenom || '')}</td><td>${escapeHtml(e.parentNom || '')}</td><td style="white-space:nowrap;">${escapeHtml(e.parentTel || '')}</td>`
+      : `<td>${i + 1}</td><td><strong>${escapeHtml(String(e.nom || '').toUpperCase())}</strong> ${escapeHtml(e.prenom || '')}</td>${Array.from({ length: nbCases }, () => '<td class="lc-case"></td>').join('')}`;
+  const choix = [['simple', 'Liste simple'], ...(admin ? [['contacts', 'Avec contacts des parents']] : []), ['emargement', 'Feuille d’émargement']];
+  openModal(`Liste — ${c.nom}`, `
+    <div class="no-print" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;margin-bottom:12px;">
+      <div class="segmente" role="group" aria-label="Type de liste">${choix.map(([k, l]) => `<button type="button" class="seg${type === k ? ' actif' : ''}" onclick="ouvrirListeClasse('${classeId}','${k}')">${l}</button>`).join('')}</div>
+      <button type="button" class="btn" onclick="window.print()">${icone('printer')} Imprimer / PDF</button>
+    </div>
+    <section class="liste-classe">
+      <div class="recu-head">${m.logo ? `<img src="${escapeHtml(m.logo)}" alt="">` : `<div class="recu-logo-ph">🎓</div>`}
+        <div><strong>${escapeHtml(m.nomEcole || '')}</strong><div class="hint">${escapeHtml(m.adresse || '')}${m.telephone ? ' · ' + escapeHtml(m.telephone) : ''}</div></div>
+        <div style="margin-left:auto;text-align:right;"><strong>${titres[type]}</strong><div class="hint">${escapeHtml(c.nom)} · ${escapeHtml(m.anneeScolaire || '')}</div></div></div>
+      <div class="lc-resume">Effectif : <strong>${eleves.length}</strong> · Garçons : <strong>${g}</strong> · Filles : <strong>${f}</strong>${type === 'emargement' ? ' · Objet : ……………………………… · Date : ……/……/………' : ''}</div>
+      <table class="lc-table${type === 'emargement' ? ' emargement' : ''}"><thead><tr>${entete}</tr></thead>
+        <tbody>${eleves.map((e, i) => `<tr>${ligne(e, i)}</tr>`).join('')}</tbody></table>
+      <div class="hint" style="margin-top:8px;">Imprimé le ${fmtDate(todayISO())}${type === 'contacts' ? ' — document confidentiel : ne pas afficher' : ''}</div>
+    </section>`);
+}
 function renderEleves(){
   if(ui.eleveProfileId) return renderEleveProfile(ui.eleveProfileId);
   return renderEleveListe();
@@ -5782,6 +5824,7 @@ function renderEleveListe(){
         <div class="panel" style="margin:0 0 12px;box-shadow:none;border:1px solid var(--border);">
           <div class="panel-head" style="padding:12px 14px;">
             <div><h3 style="margin:0;font-size:var(--fs-sm);">${escapeHtml(c.nom)}</h3><div class="sub">${elevesClasse.length} élève(s)</div></div>
+            ${elevesClasse.length ? `<button type="button" class="btn secondary sm" onclick="ouvrirListeClasse('${c.id}')">${icone('printer')} Imprimer la liste</button>` : ''}
           </div>
           ${elevesClasse.length===0 ? `<div class="empty-state" style="padding:16px;"><div class="em-ic">🧒</div>Aucun élève dans cette classe.</div>` : `
           <div class="table-wrap"><table>
