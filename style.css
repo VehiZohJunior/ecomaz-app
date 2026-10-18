@@ -1550,3 +1550,15 @@ button.role-card{ font:inherit; color:inherit; width:100%; display:flex; flex-di
 /* ===== Sauvegarde complète ===== */
 .sauvegarde-ligne{ display:flex; flex-wrap:wrap; align-items:center; gap:12px; }
 .sauvegarde-ligne > span:nth-child(2){ flex:1 1 220px; color:var(--text-dim); font-size:14px; }
+/* ===== Rapport du mois ===== */
+.db-bonjour{ display:flex; align-items:flex-end; justify-content:space-between; gap:10px; flex-wrap:wrap; }
+.rapport-mois{ background:var(--surface-1); }
+.rm-grille{ display:grid; grid-template-columns:repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap:12px; }
+.rm-bloc{ border:1px solid var(--border); border-radius:12px; padding:10px 12px; break-inside:avoid; }
+.rm-bloc h4{ margin:0 0 6px; font-size:14px; }
+.rm-bloc table{ width:100%; min-width:0; border-collapse:collapse; font-size:14px; }
+.rm-bloc td{ padding:4px 0; border-bottom:1px solid var(--border); height:auto !important; }
+.rm-bloc tr:last-child td{ border-bottom:0; }
+.rm-val{ text-align:right; font-weight:700; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.rm-val.ok{ color:var(--success); } .rm-val.ko{ color:var(--accent-ink); }
+@media print{ .rapport-mois{ color:#000; } .rm-grille{ grid-template-columns:1fr 1fr; } }

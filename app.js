@@ -2423,6 +2423,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.10.18-11', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Tableau de bord (direction) : bouton « Rapport du mois » — élèves, encaissements et dépenses, reste à encaisser, présence des élèves, ponctualité des enseignants ; à imprimer ou enregistrer en PDF, mois par mois.' ],
+  } },
   { version: '2026.10.18-10', nouveautes: {
     commun: [],
     parent: [],
@@ -3224,7 +3230,8 @@ function renderDashboard(){
   const dateLongue = new Date(today + 'T12:00:00').toLocaleDateString('fr-FR', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
   return `
   <div class="view active">
-    <div class="db-bonjour"><h2>Bonjour${prenom ? ' ' + escapeHtml(prenom) : ''}</h2><div class="db-date">${dateLongue}</div></div>
+    <div class="db-bonjour"><div><h2>Bonjour${prenom ? ' ' + escapeHtml(prenom) : ''}</h2><div class="db-date">${dateLongue}</div></div>
+      ${['direction','fondation'].includes(ui.role) ? `<button type="button" class="btn secondary sm" onclick="ouvrirRapportMois()">${icone('file-text')} Rapport du mois</button>` : ''}</div>
     ${renderAFaireAujourdhui()}
     <div class="cards cards-2x2">
       ${kpi(0, icone('graduation-cap'), 'var(--primary-dim)', totalEleves, 'Élèves inscrits')}
@@ -7558,6 +7565,65 @@ function echeancesDeClasse(classeId){
 function duAnnuelClasse(classeId){
   const ech = echeancesDeClasse(classeId);
   return ech.length ? ech.reduce((s, e) => s + Number(e.montant || 0), 0) : ((DB.fraisScolarite || {})[classeId] || 0);
+}
+/* ---------- Rapport du mois (direction / fondation) — imprimable ou PDF ----------
+   Calculé à partir des données déjà chargées ; mêmes calculs que le reste de l'application. */
+function ouvrirRapportMois(mois){
+  if(!['direction','fondation'].includes(ui.role)) return;
+  mois = mois || thisMonthISO();
+  const m = DB.meta || {};
+  const dans = d => String(d || '').slice(0, 7) === mois;
+  const nomMois = (t => t.charAt(0).toUpperCase() + t.slice(1))(new Date(mois + '-15T12:00:00').toLocaleDateString('fr-FR', { month:'long', year:'numeric' }));
+  const decale = n => { const [a, mm] = mois.split('-').map(Number); const d = new Date(a, mm - 1 + n, 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; };
+  const actifs = DB.eleves.filter(e => e.statut === 'Actif');
+  const nouveaux = actifs.filter(e => dans(e.dateInscription));
+  // Finances
+  const somme = (liste) => liste.reduce((t, x) => t + (Number(x.montant) || 0), 0);
+  const scol = somme((DB.paiementsScolarite || []).filter(x => dans(x.date)));
+  const cotis = somme((DB.paiementsCotisations || []).filter(x => dans(x.date)));
+  const ventes = (DB.ventesGadgets || []).filter(x => dans(x.date)).reduce((t, v) => t + (Number(v.montantTotal) || Number(v.montant) || 0), 0);
+  const salaires = somme((DB.paiementsSalaires || []).filter(x => dans(x.date)));
+  const depenses = somme((DB.depenses || []).filter(x => dans(x.date)));
+  const entrees = scol + cotis + ventes, sorties = salaires + depenses;
+  const soldes = actifs.map(e => ({ e, solde: scolariteEleveInfo(e.id).solde })).filter(x => x.solde > 0);
+  const resteTotal = soldes.reduce((t, x) => t + x.solde, 0);
+  // Présences des élèves
+  const pres = (DB.presencesEleves || []).filter(p => dans(p.date));
+  const jours = new Set(pres.map(p => p.date)).size;
+  const abs = pres.filter(p => p.statut === 'Absent'), ret = pres.filter(p => p.statut === 'Retard');
+  const tauxPres = pres.length ? Math.round(100 * (pres.length - abs.length) / pres.length) : null;
+  const parEleve = {}; abs.forEach(p => { parEleve[p.eleveId] = (parEleve[p.eleveId] || 0) + 1; });
+  const plusAbsents = Object.entries(parEleve).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([id, n]) => ({ e: eleveById(id), n })).filter(x => x.e);
+  const classesSansAppel = DB.classes.filter(c => actifs.some(e => e.classeId === c.id) && !pres.some(p => p.classeId === c.id));
+  // Enseignants
+  const pe = (DB.presencesEnseignants || []).filter(p => dans(p.date));
+  const peRetards = pe.filter(p => p.statut === 'Retard'), peAbs = pe.filter(p => p.statut === 'Absent');
+  const ponct = pe.length ? Math.round(100 * pe.filter(p => p.statut === 'Présent').length / pe.length) : null;
+  // Parents
+  const relies = actifs.filter(e => (DB.parentsEleves || []).some(pe2 => pe2.eleveId === e.id)).length;
+  const ligne = (lib, val, cls) => `<tr><td>${lib}</td><td class="rm-val ${cls || ''}">${val}</td></tr>`;
+  const pct = v => v === null ? '—' : v + ' %';
+  openModal(`Rapport du mois — ${nomMois}`, `
+    <div class="form-actions no-print" style="margin-top:0;justify-content:space-between;">
+      <span style="display:flex;gap:6px;"><button type="button" class="btn secondary sm" onclick="ouvrirRapportMois('${decale(-1)}')">‹ Mois précédent</button>${mois < thisMonthISO() ? `<button type="button" class="btn secondary sm" onclick="ouvrirRapportMois('${decale(1)}')">Mois suivant ›</button>` : ''}</span>
+      <button type="button" class="btn" onclick="window.print()">${icone('printer')} Imprimer / PDF</button>
+    </div>
+    <section class="rapport-mois">
+      <div class="recu-head">${m.logo ? `<img src="${escapeHtml(m.logo)}" alt="">` : `<div class="recu-logo-ph">🎓</div>`}
+        <div><strong>${escapeHtml(m.nomEcole || '')}</strong><div class="hint">${escapeHtml(m.adresse || '')}</div></div>
+        <div style="margin-left:auto;text-align:right;"><strong>RAPPORT DU MOIS</strong><div class="hint">${escapeHtml(nomMois)} · ${escapeHtml(m.anneeScolaire || '')}</div></div></div>
+      <div class="rm-grille">
+        <div class="rm-bloc"><h4>Élèves</h4><table>${ligne('Élèves inscrits (actifs)', actifs.length)}${ligne('Nouveaux inscrits ce mois', nouveaux.length)}${ligne('Élèves reliés à un parent', `${relies} / ${actifs.length}`)}</table></div>
+        <div class="rm-bloc"><h4>Finances du mois</h4><table>${ligne('Scolarité encaissée', fmtFCFA(scol))}${cotis ? ligne('Activités extra-scolaires', fmtFCFA(cotis)) : ''}${ventes ? ligne('Boutique', fmtFCFA(ventes)) : ''}${ligne('<strong>Total encaissé</strong>', `<strong>${fmtFCFA(entrees)}</strong>`, 'ok')}${ligne('Salaires payés', fmtFCFA(salaires))}${ligne('Dépenses', fmtFCFA(depenses))}${ligne('<strong>Solde du mois</strong>', `<strong>${fmtFCFA(entrees - sorties)}</strong>`, entrees - sorties >= 0 ? 'ok' : 'ko')}</table></div>
+        <div class="rm-bloc"><h4>Scolarité à encaisser (à ce jour)</h4><table>${ligne('Reste à encaisser', fmtFCFA(resteTotal), resteTotal ? 'ko' : 'ok')}${ligne('Élèves avec un reste à payer', `${soldes.length} / ${actifs.length}`)}</table></div>
+        <div class="rm-bloc"><h4>Présence des élèves</h4><table>${ligne('Jours d’appel enregistrés', jours)}${ligne('Taux de présence', pct(tauxPres), tauxPres !== null && tauxPres < 90 ? 'ko' : '')}${ligne('Absences', abs.length)}${ligne('Retards', ret.length)}</table>
+          ${classesSansAppel.length ? `<div class="hint">Aucun appel ce mois : ${classesSansAppel.map(c => escapeHtml(c.nom)).join(', ')}</div>` : ''}
+          ${plusAbsents.length ? `<div class="hint" style="margin-top:6px;"><strong>Les plus absents :</strong> ${plusAbsents.map(x => `${escapeHtml(eleveFullName(x.e))} (${x.n})`).join(', ')}</div>` : ''}</div>
+        <div class="rm-bloc"><h4>Enseignants</h4><table>${ligne('Pointages enregistrés', pe.length)}${ligne('Ponctualité', pct(ponct), ponct !== null && ponct < 90 ? 'ko' : '')}${ligne('Retards', peRetards.length)}${ligne('Absences', peAbs.length)}</table></div>
+      </div>
+      <div class="hint" style="margin-top:10px;">Rapport établi le ${fmtDate(todayISO())} à partir des données enregistrées dans EcoMaZ.</div>
+      <div class="signatures"><div class="sign-box"><div class="sign-role">La Direction</div><div class="sign-line">${escapeHtml(m.directeurNom || '')}</div></div><div class="sign-box"><div class="sign-role">La Fondation</div><div class="sign-line">${escapeHtml(m.fondateurNom || '')}</div></div></div>
+    </section>`);
 }
 function scolariteEleveInfo(eleveId){
   const el = eleveById(eleveId);

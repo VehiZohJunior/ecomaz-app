@@ -164,6 +164,7 @@ for(const theme of THEMES){
         demandes: () => { document.getElementById('panneauDemandesAcces').scrollIntoView({ block: 'start' }); window.scrollBy(0, -70); },
         approuver: () => { approuverDemandesSures(); },
         sauvegarde: () => { exporterSauvegardeComplete(); },
+        rapport: () => { ouvrirRapportMois('2026-10'); },
         relies: () => { document.querySelector('.seg[data-etat="relie"]').click(); },
       };
       if(GESTES[extra]){ await page.evaluate(GESTES[extra]); await page.waitForTimeout(900); }
