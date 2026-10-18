@@ -1517,3 +1517,19 @@ button.role-card{ font:inherit; color:inherit; width:100%; display:flex; flex-di
 /* Champs larges */
 .login-card .field input{ min-height:48px; font-size:16px; }
 .login-card .btn[type=submit]{ min-height:48px; font-size:16px; }
+/* ===== Invitations : groupe WhatsApp de classe, enseignants ===== */
+.groupe-wa{ margin-top:14px; padding:14px; border-radius:16px; background:var(--primary-soft); border:1px solid color-mix(in srgb, var(--primary) 25%, var(--border)); }
+.groupe-wa-tete{ display:flex; gap:12px; align-items:center; margin-bottom:10px; }
+.groupe-wa-tete div{ display:flex; flex-direction:column; }
+.groupe-wa-tete div span{ color:var(--text-dim); font-size:13px; }
+.groupe-wa-choix{ display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+.groupe-wa-choix select{ flex:1 1 200px; min-height:44px; background-color:var(--surface-1); }
+.invit-ens{ display:flex; gap:16px; align-items:center; padding:14px; margin-bottom:14px; border-radius:16px; background:var(--primary-soft); border:1px solid color-mix(in srgb, var(--primary) 25%, var(--border)); }
+.invit-ens-qr{ flex:0 0 112px; width:112px; height:112px; padding:6px; border-radius:12px; background:#fff; }
+.invit-ens-qr svg{ width:100%; height:100%; display:block; }
+.invit-ens-txt{ display:flex; flex-direction:column; gap:6px; min-width:0; }
+.invit-ens-txt span{ color:var(--text-dim); font-size:14px; }
+.invit-ens-actions{ display:flex; flex-wrap:wrap; gap:8px; margin-top:4px; }
+.invit-ens.replie{ background:var(--surface-2); border-color:var(--border); }
+.invit-ens.replie .invit-ens-qr{ flex-basis:72px; width:72px; height:72px; }
+@media (max-width:520px){ .invit-ens{ flex-direction:column; align-items:stretch; } .invit-ens-qr{ align-self:center; } }

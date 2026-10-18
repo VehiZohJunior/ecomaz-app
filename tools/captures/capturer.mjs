@@ -150,6 +150,7 @@ for(const theme of THEMES){
         classe: () => { document.querySelector('.gate-classe').click(); },
         succes: () => { const e = DB.eleves[0]; $('#viewContainer').innerHTML = renderEtatPortier('ok', e, { heure: '07h42' }); },
         refus: () => { const e = DB.eleves[0]; $('#viewContainer').innerHTML = renderEtatPortier('erreur', e, { message: 'Pas de connexion internet.' }); },
+        groupe: () => { ouvrirMessageGroupeClasse(DB.classes[0].id); },
         relies: () => { document.querySelector('.seg[data-etat="relie"]').click(); },
       };
       if(GESTES[extra]){ await page.evaluate(GESTES[extra]); await page.waitForTimeout(400); }

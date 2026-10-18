@@ -2400,6 +2400,13 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.10.18-7', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Parents ↔ Élèves : « Préparer le message » pour le groupe WhatsApp des parents d’une classe (lien + 3 étapes, à relire puis partager).',
+      'Enseignants : carte « Invitez vos enseignants » avec QR code, partage WhatsApp et affiche — chaque enseignant s’inscrit lui-même, vous validez.' ],
+  } },
   { version: '2026.10.18-6', nouveautes: {
     commun: [ 'Nouvel écran de connexion : accueil « Bienvenue », choix du profil plus clair sur téléphone, logo ou initiales de l’école, champs plus grands.' ],
     parent: [],
@@ -3509,6 +3516,13 @@ function renderLiensParents(){
         <button class="btn secondary" onclick="ouvrirCouponsInvitation(false)">Coupons pour tous</button>
         <button class="btn secondary" onclick="imprimerAffiche('parent.html')">🖨️ Affiche A4</button>
       </div>
+      <div class="groupe-wa">
+        <div class="groupe-wa-tete"><span class="etat-vide-ic" aria-hidden="true">${icone('send')}</span><div><strong>Le plus rapide : le groupe WhatsApp de la classe</strong><span>Un message prêt à coller, avec le lien et 3 étapes simples.</span></div></div>
+        <div class="groupe-wa-choix">
+          <select id="groupeWaClasse" class="puce-select petit" aria-label="Classe">${DB.classes.map(c => { const n = eleves.filter(e => e.classeId === c.id && !parentsDeLEleve(e.id).length).length; return `<option value="${c.id}">${escapeHtml(c.nom)}${n ? ` — ${n} non relié${n > 1 ? 's' : ''}` : ' — tous reliés'}</option>`; }).join('')}</select>
+          <button type="button" class="btn" onclick="ouvrirMessageGroupeClasse(document.getElementById('groupeWaClasse').value)">Préparer le message</button>
+        </div>
+      </div>
     </div>
 
     <div class="panel">
@@ -3525,6 +3539,31 @@ function renderLiensParents(){
         }).join('')}</div>`}
     </div>
   </div>`;
+}
+// Message pour le groupe WhatsApp des parents d'une classe (gratuit ; rien n'est
+// envoyé automatiquement : l'école relit, puis colle ou partage elle-même)
+function messageGroupeClasse(classeId){
+  const nomEcole = DB.meta?.nomEcole || 'L’école';
+  return `Chers parents de la classe ${classeName(classeId)},\n\n`
+    + `${nomEcole} utilise l’application EcoMaZ. Sur votre téléphone, vous recevrez les absences et retards de votre enfant, ses devoirs, les annonces de l’école et le menu de la cantine.\n\n`
+    + `1. Ouvrez ce lien : ${lienApplication('parent.html')}\n`
+    + `2. Touchez « Continuer avec Google »\n`
+    + `3. Écrivez votre numéro et le nom de votre enfant : l’école valide votre accès.\n\n`
+    + `C’est gratuit. Merci de votre confiance !`;
+}
+function ouvrirMessageGroupeClasse(classeId){
+  if(!classeId) return;
+  openModal(`Message pour le groupe WhatsApp — ${classeName(classeId)}`, `
+    <p class="hint" style="margin-top:0;">Relisez ou modifiez le message, puis partagez-le dans le groupe WhatsApp des parents de la classe.</p>
+    <div class="field"><label for="msgGroupeClasse">Message</label><textarea id="msgGroupeClasse" rows="11">${escapeHtml(messageGroupeClasse(classeId))}</textarea></div>
+    <div class="form-actions">
+      <button type="button" class="btn secondary" onclick="copierMessageGroupe()">Copier</button>
+      <button type="button" class="btn" onclick="window.open('https://wa.me/?text=' + encodeURIComponent(document.getElementById('msgGroupeClasse').value), '_blank', 'noopener')">Partager sur WhatsApp</button>
+    </div>`);
+}
+function copierMessageGroupe(){
+  const t = document.getElementById('msgGroupeClasse')?.value || '';
+  (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject()).then(() => toast('Message copié : collez-le dans le groupe'), () => window.prompt('Copiez ce message :', t));
 }
 // Feuille « Inviter » : choix du numéro, envoi par WhatsApp (gratuit)
 function ouvrirInvitationParent(eleveId){
@@ -6552,7 +6591,7 @@ function renderEnseignants(){
         <div><h2>Liste des enseignants</h2><div class="sub">${list.length} enseignant(s)</div></div>
         <button class="btn" onclick="openEnseignantForm()">+ Nouvel enseignant</button>
       </div>
-      <div class="section-note">🔗 Par défaut, tous les enseignants partagent un seul compte de connexion. Cliquez sur 🔗 pour donner à un enseignant précis son propre accès personnel, limité à ses classes assignées.</div>
+      ${renderInvitationEnseignants()}
       <div class="table-wrap"><table>
         <thead><tr><th>Enseignant</th><th>Matricule</th><th>Classe(s)</th><th>Matière(s)</th><th>Téléphone</th><th>Statut</th><th>Accès</th><th>Actions</th></tr></thead>
         <tbody>${rows}</tbody>
@@ -6561,6 +6600,25 @@ function renderEnseignants(){
   </div>`;
 }
 
+// Invitation des enseignants : chacun s'inscrit avec Google et coche ses classes ;
+// la direction valide (Paramètres → Demandes d'accès) et sa fiche est créée.
+function renderInvitationEnseignants(){
+  const avecCompte = (DB.profiles || []).filter(p => p.role === 'enseignant' && p.enseignantId).length;
+  let qr = '';
+  try{ const q = qrcode(0, 'M'); q.addData(lienApplication('enseignant.html')); q.make(); qr = q.createSvgTag({ cellSize: 3, margin: 1, scalable: true }); }catch(_e){}
+  return `<div class="invit-ens${avecCompte ? ' replie' : ''}">
+    <div class="invit-ens-qr" aria-hidden="true">${qr}</div>
+    <div class="invit-ens-txt">
+      <strong>${avecCompte ? `${avecCompte} enseignant${avecCompte > 1 ? 's ont' : ' a'} son application — invitez les autres` : 'Invitez vos enseignants dans leur application'}</strong>
+      <span>Chaque enseignant scanne ce code (ou ouvre le lien), touche « Continuer avec Google » et coche ses classes. Vous validez dans Paramètres → Demandes d’accès : sa fiche est créée toute seule, inutile de la saisir avant.</span>
+      <div class="invit-ens-actions">
+        <button type="button" class="btn sm" onclick="window.open('https://wa.me/?text=' + encodeURIComponent(messagePartageApplication('enseignant.html')), '_blank', 'noopener')">Partager sur WhatsApp</button>
+        <button type="button" class="btn secondary sm" onclick="copierLienApplication('enseignant.html')">Copier le lien</button>
+        <button type="button" class="btn secondary sm" onclick="imprimerAffiche('enseignant.html')">Affiche A4</button>
+      </div>
+    </div>
+  </div>`;
+}
 function ouvrirAccesPersonnel(enseignantId){
   const t = enseignantById(enseignantId);
   const profilLie = (DB.profiles||[]).find(p=>p.enseignantId===enseignantId);
