@@ -48,7 +48,10 @@ Deno.serve(async (req) => {
 
     // Marqué utilisé immédiatement, avant le reste du traitement, pour
     // éviter une double validation en cas de double-clic/double-envoi.
-    await supabaseAdmin.from('liens_pointage_gps').update({ utilise_at: new Date().toISOString() }).eq('id', lien.id);
+    // Atomique : seule la PREMIÈRE requête obtient la ligne (utilise_at encore vide).
+    const { data: pris } = await supabaseAdmin.from('liens_pointage_gps')
+      .update({ utilise_at: new Date().toISOString() }).eq('id', lien.id).is('utilise_at', null).select('id');
+    if (!pris || !pris.length) throw new Error('Ce lien a déjà été utilisé.');
 
     const { data: ecole } = await supabaseAdmin
       .from('ecoles').select('nom_ecole, geofence_latitude, geofence_longitude, geofence_rayon_metres, heure_arrivee_attendue')
