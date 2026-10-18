@@ -2425,6 +2425,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.10.18-15', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Correction : sur les bulletins imprimés, la colonne « Appréciation » n’est plus coupée au bord de la page ; les coupons d’invitation ne sont plus coupés entre deux pages.' ],
+  } },
   { version: '2026.10.18-14', nouveautes: {
     commun: [],
     parent: [],

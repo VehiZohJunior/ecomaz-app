@@ -1235,7 +1235,7 @@ td:has(> .amount), th.montant{ text-align:right; }
 .coupon-app{ font-weight:900; font-size:12px; margin:2px 0 4px; }
 .coupon ol{ margin:0; padding-left:16px; font-size:11px; line-height:1.35; }
 .coupon-lien{ font-size:9px; word-break:break-all; color:#5c6b64; margin-top:4px; }
-@media print{ .coupons{ grid-template-columns:1fr 1fr; } .coupon{ border-color:#999; } }
+@media print{ .coupons{ grid-template-columns:1fr 1fr; } .coupon{ border-color:#999; break-inside:avoid; page-break-inside:avoid; } .badge-qr-card, .bulletin-page{ break-inside:avoid; page-break-inside:avoid; } }
 
 /* Vie de l'école : fil de publications façon réseau social */
 .fil-colonne{ max-width:640px; margin:0 auto; }
@@ -1319,7 +1319,7 @@ td:has(> .amount), th.montant{ text-align:right; }
 /* Console parent : bulletin de l'enfant */
 .enfant-bulletin{ margin-top:12px; padding-top:12px; border-top:1px solid var(--em-border, #e3e8e5); }
 .enfant-bulletin summary{ cursor:pointer; font-weight:800; font-size:14px; }
-.eb-table{ width:100%; border-collapse:collapse; margin-top:8px; font-size:13px; }
+.eb-table{ width:100%; min-width:0; border-collapse:collapse; margin-top:8px; font-size:13px; }
 .eb-table th, .eb-table td{ text-align:left; padding:5px 6px; border-bottom:1px dashed var(--em-border, #e3e8e5); }
 .eb-moyenne{ margin-top:8px; font-size:14px; }
 .eb-appreciation{ margin-top:6px; font-size:13px; font-style:italic; }
@@ -1344,7 +1344,7 @@ td:has(> .amount), th.montant{ text-align:right; }
 .bo-identite{ display:grid; grid-template-columns:repeat(4, 1fr); gap:6px; margin:10px 0; }
 .bo-identite div, .bo-synthese div{ display:flex; flex-direction:column; border:1px solid #ddd; border-radius:6px; padding:6px 8px; }
 .bo-identite span, .bo-synthese span{ font-size:.75em; color:#555; }
-.bo-table{ width:100%; border-collapse:collapse; font-size:.85em; }
+.bo-table{ width:100%; min-width:0; border-collapse:collapse; font-size:.85em; }
 .bo-table th, .bo-table td{ border:1px solid #ccc; padding:4px 6px; text-align:center; }
 .bo-table th{ background:#f2f5f3; }
 .bo-synthese{ display:grid; grid-template-columns:repeat(5, 1fr); gap:6px; margin:10px 0; }
@@ -1592,4 +1592,10 @@ button.role-card{ font:inherit; color:inherit; width:100%; display:flex; flex-di
 @media print{
   .cartes-scolaires{ grid-template-columns:repeat(2, 85.6mm); gap:4mm 6mm; justify-content:center; }
   .carte-scolaire{ width:85.6mm; height:54mm; aspect-ratio:auto; border-radius:3mm; }
+}
+/* Documents imprimés : aucun tableau plus large que la page (la règle générale « 600 px minimum » coupait la dernière colonne des bulletins) */
+@media print{
+  .modal-body table{ min-width:0 !important; width:100% !important; }
+  .bo-table th{ white-space:normal; font-size:10px; }
+  .bo-table td{ font-size:11px; }
 }
