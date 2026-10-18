@@ -1979,6 +1979,7 @@ function renderParentDashboard(){
       <p class="parent-greeting-sub">Voici la semaine de ${plusieurs ? 'vos enfants' : 'votre enfant'}.</p>
       ${renderQuestionAppel()}
     </div>
+    ${renderBienvenueParent(mesEnfants)}
     ${renderAujourdhuiParent(mesEnfants)}
     <div class="enfants${plusieurs ? ' enfants--carrousel' : ''} em-rise" style="--i:2">
       ${mesEnfants.map(renderFicheEnfant).join('')}
@@ -1990,6 +1991,26 @@ function renderParentDashboard(){
     ${renderInformationsPassees()}
     ${renderTableauHonneurParent()}
     ${renderContactEcole()}
+  </div>`;
+}
+// Première ouverture : ce que le parent trouve ici et les 3 gestes utiles (fermé par « J'ai compris »)
+function renderBienvenueParent(enfants){
+  const cle = 'ecomaz_bienvenue_parent_' + (session.userId || '');
+  try{ if(localStorage.getItem(cle)) return ''; }catch(_e){ return ''; }
+  const prenoms = enfants.map(e => e.prenom).join(', ');
+  const pushAProposer = typeof pushPossible === 'function' && pushPossible() && Notification.permission === 'default';
+  const gestes = [
+    ['bell', 'Recevoir les alertes', 'Absence, retard, devoir, paiement : vous êtes prévenu(e) sur ce téléphone.', pushAProposer ? "activerPush(false).then(ok => { if(ok) toast('Alertes activées sur ce téléphone'); })" : null],
+    ['calendar', 'Signaler une absence', 'Prévenez l’école à l’avance : l’enseignant(e) est informé(e).', 'ouvrirSignalerAbsence()'],
+    ['mail', 'Écrire à l’école', 'Une question ? Le secrétariat vous répond ici.', "navParent('msg')"],
+  ].filter(g => g[3]);
+  return `<div class="panel premiers-pas em-rise" style="--i:2">
+    <div class="panel-head"><div><h2>Bienvenue dans l’application de ${escapeHtml(DB.meta?.nomEcole || 'l’école')}</h2>
+      <div class="sub">Vous suivez ici ${enfants.length > 1 ? 'vos enfants' : 'votre enfant'} (${escapeHtml(prenoms)}) : présences, devoirs, bulletins, scolarité et nouvelles de l’école.</div></div>
+      <button type="button" class="btn secondary sm" onclick="try{localStorage.setItem('${cle}','1')}catch(_e){}; $('#viewContainer').innerHTML = renderParentDashboard()">J’ai compris</button></div>
+    <div class="pp-grille">${gestes.map(([ic, t, d, act], i) => `<button type="button" class="pp-geste" onclick="${act}">
+      <span class="pp-num">${i + 1}</span><span class="pp-txt"><strong>${(window.EmIcones ? EmIcones.svg(ic) : '')} ${t}</strong><small>${d}</small></span></button>`).join('')}</div>
+    <div class="hint" style="margin-bottom:0;">Astuce : installez l’application (menu ⋮ de Chrome → « Installer l’application », ou sur iPhone : Partager → « Sur l’écran d’accueil ») pour l’ouvrir d’un seul geste.</div>
   </div>`;
 }
 const NAV_PARENT = [
@@ -2606,6 +2627,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.10.18-37', nouveautes: {
+    commun: [],
+    parent: [ 'Bienvenue : à la première ouverture, un petit guide montre l’essentiel — recevoir les alertes, signaler une absence, écrire à l’école.' ],
+    portier: [],
+    personnel: [],
+  } },
   { version: '2026.10.18-36', nouveautes: {
     commun: [],
     parent: [],
