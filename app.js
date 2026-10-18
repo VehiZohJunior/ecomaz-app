@@ -2628,6 +2628,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.10.18-41', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Emploi du temps : la grille, l’impression et le remplissage rapide ne montrent que les jours de classe de l’école (plus de colonne Mercredi).' ],
+  } },
   { version: '2026.10.18-40', nouveautes: {
     commun: [],
     parent: [],
@@ -8064,17 +8070,17 @@ function renderEmploiTemps(){
   const hhmm = `${String(maintenant.getHours()).padStart(2,'0')}:${String(maintenant.getMinutes()).padStart(2,'0')}`;
   const estEnCours = (p, jour) => jour === jourActuel && p.debut <= hhmm && hhmm < p.fin;
   const modif = ['secretariat','direction','fondation'].includes(ui.role);
-  const nbCours = periodes.filter(p => p.type !== 'pause').length * JOURS.length;
+  const nbCours = periodes.filter(p => p.type !== 'pause').length * joursDeClasseEdt().length;
   const nbRemplis = DB.emploiTemps.filter(e => e.classeId === classeId).length;
 
   let rowsHtml = '';
   periodes.forEach((p,i)=>{
     if(p.type==='pause'){
-      rowsHtml += `<tr><td class="tt-time">${p.debut}-${p.fin}</td><td colspan="5" style="background:var(--surface-2);color:var(--text-dim);font-weight:700;font-size:var(--fs-xs);">${p.label}</td></tr>`;
+      rowsHtml += `<tr><td class="tt-time">${p.debut}-${p.fin}</td><td colspan="${joursDeClasseEdt().length}" style="background:var(--surface-2);color:var(--text-dim);font-weight:700;font-size:var(--fs-xs);">${p.label}</td></tr>`;
       return;
     }
     rowsHtml += `<tr><td class="tt-time">${p.debut}-${p.fin}</td>`;
-    JOURS.forEach(jour=>{
+    joursDeClasseEdt().forEach(jour=>{
       const entry = DB.emploiTemps.find(e=>e.classeId===classeId && e.jour===jour && e.slotIndex===i);
       if(entry){
         const t = enseignantById(entry.enseignantId);
@@ -8097,7 +8103,7 @@ function renderEmploiTemps(){
   });
 
   // Refonte (DESIGN.md §11) : sur téléphone, un jour à la fois en liste verticale
-  const jourVu = JOURS.includes(ui.filters.ttJour) ? ui.filters.ttJour : (jourActuel || JOURS[0]);
+  const jourVu = joursDeClasseEdt().includes(ui.filters.ttJour) ? ui.filters.ttJour : (joursDeClasseEdt().includes(jourActuel) ? jourActuel : joursDeClasseEdt()[0]);
   const listeJour = periodes.map((p, i) => {
     if(p.type === 'pause') return `<li class="edt-pause"><span>${p.debut} – ${p.fin}</span><strong>${escapeHtml(p.label)}</strong></li>`;
     const entry = DB.emploiTemps.find(e => e.classeId === classeId && e.jour === jourVu && e.slotIndex === i);
@@ -8123,12 +8129,12 @@ function renderEmploiTemps(){
       </div>
       ${modif && !nbRemplis ? `<div class="banniere-discrete" style="margin-bottom:12px;"><span>⚡</span><span>Cet emploi du temps est vide. Touchez <strong>« Remplir rapidement »</strong> : une proposition est préparée en un geste, vous n’avez plus qu’à ajuster.</span></div>` : ''}
       <div class="seulement-mobile">
-        <div class="segmente edt-jours" role="tablist" aria-label="Jour">${JOURS.map(j => `<button type="button" role="tab" class="seg${j === jourVu ? ' actif' : ''}" aria-selected="${j === jourVu}" onclick="ui.filters.ttJour='${j}'; renderView('emploi-temps')">${j.slice(0, 3)}${j === jourActuel ? '<span class="edt-auj" aria-label="aujourd’hui"></span>' : ''}</button>`).join('')}</div>
+        <div class="segmente edt-jours" role="tablist" aria-label="Jour">${joursDeClasseEdt().map(j => `<button type="button" role="tab" class="seg${j === jourVu ? ' actif' : ''}" aria-selected="${j === jourVu}" onclick="ui.filters.ttJour='${j}'; renderView('emploi-temps')">${j.slice(0, 3)}${j === jourActuel ? '<span class="edt-auj" aria-label="aujourd’hui"></span>' : ''}</button>`).join('')}</div>
         <ul class="edt-liste">${listeJour}</ul>
       </div>
       <div class="table-wrap seulement-ordi">
         <table class="timetable">
-          <thead><tr><th>Horaire</th>${JOURS.map(j=>`<th>${j}</th>`).join('')}</tr></thead>
+          <thead><tr><th>Horaire</th>${joursDeClasseEdt().map(j=>`<th>${j}</th>`).join('')}</tr></thead>
           <tbody>${rowsHtml}</tbody>
         </table>
       </div>
@@ -8148,8 +8154,8 @@ function imprimerEmploiTemps(classeId){
   const m = DB.meta || {};
   const periodes = PERIODES_BY_CYCLE[c.cycle] || [];
   const lignes = periodes.map((p, i) => p.type === 'pause'
-    ? `<tr class="edt-imp-pause"><td>${p.debut} – ${p.fin}</td><td colspan="${JOURS.length}">${escapeHtml(p.label)}</td></tr>`
-    : `<tr><td class="edt-imp-heure">${p.debut}<br>${p.fin}</td>${JOURS.map(j => {
+    ? `<tr class="edt-imp-pause"><td>${p.debut} – ${p.fin}</td><td colspan="${joursDeClasseEdt().length}">${escapeHtml(p.label)}</td></tr>`
+    : `<tr><td class="edt-imp-heure">${p.debut}<br>${p.fin}</td>${joursDeClasseEdt().map(j => {
         const e = DB.emploiTemps.find(x => x.classeId === classeId && x.jour === j && x.slotIndex === i);
         if(!e) return '<td></td>';
         const t = enseignantById(e.enseignantId);
@@ -8161,10 +8167,16 @@ function imprimerEmploiTemps(classeId){
       <div class="recu-head">${m.logo ? `<img src="${escapeHtml(m.logo)}" alt="">` : `<div class="recu-logo-ph">🎓</div>`}
         <div><strong>${escapeHtml(m.nomEcole || '')}</strong><div class="hint">${escapeHtml(m.adresse || '')}</div></div>
         <div style="margin-left:auto;text-align:right;"><strong>EMPLOI DU TEMPS</strong><div class="hint">${escapeHtml(c.nom)} · ${escapeHtml(m.anneeScolaire || '')}</div></div></div>
-      <table class="edt-imp-table"><thead><tr><th>Horaire</th>${JOURS.map(j => `<th>${j}</th>`).join('')}</tr></thead><tbody>${lignes}</tbody></table>
+      <table class="edt-imp-table"><thead><tr><th>Horaire</th>${joursDeClasseEdt().map(j => `<th>${j}</th>`).join('')}</tr></thead><tbody>${lignes}</tbody></table>
     </section>`);
 }
 /* ---------- Emploi du temps aux horaires réels (séances de durée libre, versions dans l'année) ---------- */
+// Jours de classe de l'école (Paramètres → horaires) : le mercredi n'apparaît pas s'il n'y a pas cours
+function joursDeClasseEdt(){
+  const jours = DB?.horairesAnnonces?.joursCours || [1, 2, 3, 4, 5];
+  const res = JOURS.filter((j, i) => jours.includes(i + 1));
+  return res.length ? res : JOURS;
+}
 function hhmmEdt(t){ return String(t || '').slice(0, 5); }
 function classeEnHorairesLibres(classeId){ return (DB.emploiTemps || []).some(e => e.classeId === classeId && e.heureDebut); }
 function seanceValide(e, dateRef){ return (!e.valableDu || e.valableDu <= dateRef) && (!e.valableAu || e.valableAu >= dateRef); }
@@ -8384,7 +8396,7 @@ async function remplirEdt(classeId, mode, sourceId){
   const tit = titulaireClasse(classeId)?.id || null;
   const mats = MATIERES_BY_CYCLE[c.cycle] || [];
   const lignes = [];
-  JOURS.forEach((j, d) => cours.forEach((i, k) => {
+  joursDeClasseEdt().forEach((j, d) => cours.forEach((i, k) => {
     if(occupe(j, i)) return;
     let matiere = null;
     if(mode === 'proposition' && mats.length){
