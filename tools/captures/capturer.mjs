@@ -87,6 +87,16 @@ for(const theme of THEMES){
           if(p.type === 'cours' && (i + ji) % 4 !== 3) DB.emploiTemps.push({ id: `edt-${ci}-${ji}-${i}`, classeId: c.id, jour: j, slotIndex: i, matiere: mats[(i + ji + ci) % mats.length], enseignantId: (DB.enseignants[ci % DB.enseignants.length] || {}).id });
         })));
       }
+      // Option « pointage » : zone, pointages GPS et alerte FICTIFS en mémoire seulement
+      if(option.split(',').includes('pointage')){
+        const auj = todayISO(), [a, b] = DB.enseignants;
+        DB.meta.geofenceLatitude = 5.35; DB.meta.geofenceLongitude = -4.0;
+        DB.pointagesGps = [
+          { id: 'gps-1', enseignantId: a.id, date: auj, heure: '07:24:00', action: 'arrivee', statut: 'dans_etablissement', distanceMetres: 38, latitude: 5.35, longitude: -4.0, adresseApprox: 'Cocody, Abidjan' },
+          { id: 'gps-2', enseignantId: b.id, date: auj, heure: '07:51:00', action: 'arrivee', statut: 'a_verifier', distanceMetres: 412, latitude: 5.353, longitude: -4.003, adresseApprox: 'Riviera 2, Abidjan' } ];
+        DB.alertesPointage = [{ id: 'al-1', enseignantId: b.id, date: auj, heure: '07:50:00', raison: 'Badge présenté depuis une capture d’écran', score: 82 }];
+        DB.presencesEnseignants = DB.presencesEnseignants.concat([{ id: 'pe-1', enseignantId: a.id, date: auj, statut: 'Présent', heureArrivee: '07:24', methode: 'QR', motif: '' }, { id: 'pe-2', enseignantId: b.id, date: auj, statut: 'Retard', heureArrivee: '07:51', minutesRetard: 21, methode: 'GPS', motif: 'Embouteillage' }]);
+      }
       if(option.split(',').includes('parents')){
         const el = DB.eleves.slice(0, 4);
         DB.profiles = (DB.profiles || []).concat(el.slice(0, 3).map((e, i) => ({ id: 'parent-fictif-' + i, role: 'parent', nomComplet: e.parentNom || ('Parent ' + e.nom) })));
@@ -99,7 +109,7 @@ for(const theme of THEMES){
       // « ecran:onglet » : ouvre un sous-onglet (ex. comptabilite:scolarite)
       const [ecranOnglet, extra] = ecranBrut.split('+');
       const [ecran, onglet] = ecranOnglet.split(':');
-      await page.evaluate(([v, o]) => { closeModal && closeModal(); if(o){ ui.filters.comptaTab = o; ui.filters.cahierOnglet = o; } go(v); window.scrollTo(0, 0); }, [ecran, onglet]);
+      await page.evaluate(([v, o]) => { closeModal && closeModal(); if(o){ ui.filters.comptaTab = o; ui.filters.cahierOnglet = o; ui.filters.presEnsOnglet = o; } go(v); window.scrollTo(0, 0); }, [ecran, onglet]);
       await page.waitForTimeout(900);
       if(extra === 'centre') await page.evaluate(() => { toggleCentre(true); });
       // Gestes d'essai (aucune écriture) : ouvrir une feuille ou un menu avant la photo

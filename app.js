@@ -6601,121 +6601,110 @@ function tauxPonctualite(joursHistorique){
   return Math.round((ponctuels / records.length) * 100);
 }
 
+// Refonte (DESIGN.md §11) : onglets Aujourd'hui / Journal / Alertes, tout en cartes.
+// Mêmes champs (.sel-statut-ens, data-motif-ens) et même enregistrement qu'avant.
+const BADGE_METHODE = m => `<span class="badge ${m==='QR'?'blue':m==='GPS'?'purple':'gray'}">${m === 'QR' ? 'Badge QR' : m || 'Manuel'}</span>`;
+const BADGE_STATUT_ENS = st => st === 'Présent' ? `<span class="badge-etat ok">${icone('check')}Présent</span>` : st === 'Absent' ? `<span class="badge-etat erreur">${icone('circle-x')}Absent</span>` : `<span class="badge-etat attente">${icone('clock')}Retard</span>`;
 function renderPresencesEnseignants(){
   const date = ui.filters.presEnsDate || todayISO();
   ui.filters.presEnsDate = date;
-
+  const onglet = ui.filters.presEnsOnglet || 'jour';
   const list = DB.enseignants.filter(t=>t.statut==='Actif').sort((a,b)=>a.nom.localeCompare(b.nom));
-  const rows = list.map(t=>{
+  const taux = tauxPonctualite(30);
+  const nbAlertes = (DB.alertesPointage || []).length;
+  const heures = rec => `<span class="pens-heures"><span><small>Arrivée</small><strong>${rec?.heureArrivee ? rec.heureArrivee.slice(0, 5) : '—'}</strong></span><span><small>Départ</small><strong>${rec?.heureDepart ? rec.heureDepart.slice(0, 5) : '—'}</strong></span></span>`;
+
+  const cartesJour = list.map(t => {
     const rec = DB.presencesEnseignants.find(p=>p.enseignantId===t.id && p.date===date);
     const statut = rec ? rec.statut : 'Présent';
-    return `<tr>
-      <td><div class="row-name"><span class="avatar">${initials(t.prenom,t.nom)}</span>${escapeHtml(ensFullName(t))}</div></td>
-      <td>${t.classesAssignees.map(cid=>classeName(cid)).join(', ')}</td>
-      <td>
-        <select data-ens="${t.id}" class="sel-statut-ens">
-          <option ${statut==='Présent'?'selected':''}>Présent</option>
-          <option ${statut==='Absent'?'selected':''}>Absent</option>
-          <option ${statut==='Retard'?'selected':''}>Retard</option>
-        </select>
-      </td>
-      <td>${rec?.heureArrivee || '—'}</td>
-      <td>${rec?.heureDepart || '—'}</td>
-      <td><span class="badge ${rec?.methode==='QR'?'blue':rec?.methode==='GPS'?'purple':'gray'}">${rec?.methode || 'Manuel'}</span></td>
-      <td><input type="text" data-motif-ens="${t.id}" placeholder="Motif (optionnel)" value="${escapeHtml(rec?rec.motif:'')}" style="width:100%;padding:7px 9px;border:1px solid var(--border);border-radius:var(--r-control);"></td>
-    </tr>`;
+    return `<li class="pens-carte" data-statut="${statut}" data-ens-carte="${t.id}">
+      <div class="pens-tete">
+        <span class="lc-avatar" aria-hidden="true">${escapeHtml(initials(t.prenom, t.nom))}</span>
+        <span class="pens-id"><strong>${escapeHtml(ensFullName(t))}</strong><small>${escapeHtml(t.classesAssignees.map(cid=>classeName(cid)).join(', ') || 'Aucune classe')}</small></span>
+        ${rec ? BADGE_METHODE(rec.methode) : '<span class="badge gray">Pas encore pointé</span>'}
+      </div>
+      ${heures(rec)}
+      <div class="cj-etats" role="group" aria-label="Statut de ${escapeHtml(ensFullName(t))}">${['Présent', 'Absent', 'Retard'].map(st => `<button type="button" class="cj-btn" data-s="${st}" onclick="choisirStatutEns('${t.id}','${st}')">${st}</button>`).join('')}</div>
+      <select data-ens="${t.id}" class="sel-statut-ens" hidden aria-hidden="true">${['Présent', 'Absent', 'Retard'].map(st => `<option ${statut === st ? 'selected' : ''}>${st}</option>`).join('')}</select>
+      <input type="text" class="cj-motif" data-motif-ens="${t.id}" placeholder="Motif (facultatif)" aria-label="Motif" value="${escapeHtml(rec?rec.motif:'')}">
+    </li>`;
   }).join('');
 
   const recent = DB.presencesEnseignants.slice().sort((a,b)=> b.date.localeCompare(a.date) || (b.heureArrivee||'').localeCompare(a.heureArrivee||'')).slice(0,20);
-  const recentRows = recent.map(p=>{
+  const cartesJournal = recent.map(p => {
     const t = enseignantById(p.enseignantId);
     if(!t) return '';
-    return `<tr><td>${fmtDate(p.date)}</td><td>${escapeHtml(ensFullName(t))}</td>
-      <td><span class="badge ${p.statut==='Présent'?'green':p.statut==='Absent'?'red':'amber'}">${p.statut}</span></td>
-      <td>${p.heureArrivee || '—'}</td><td>${p.heureDepart || '—'}</td>
-      <td>${p.minutesRetard ? p.minutesRetard+' min' : '—'}</td>
-      <td><span class="badge ${p.methode==='QR'?'blue':p.methode==='GPS'?'purple':'gray'}">${p.methode || 'Manuel'}</span></td>
-      <td>${escapeHtml(p.motif||'—')}</td></tr>`;
+    return `<li class="pens-carte">
+      <div class="pens-tete">
+        <span class="lc-avatar" aria-hidden="true">${escapeHtml(initials(t.prenom, t.nom))}</span>
+        <span class="pens-id"><strong>${escapeHtml(ensFullName(t))}</strong><small>${fmtDate(p.date)}</small></span>
+        ${BADGE_STATUT_ENS(p.statut)}
+      </div>
+      <div class="pens-pied">${heures(p)}<span class="pens-meta">${p.minutesRetard ? `<span class="badge amber">${p.minutesRetard} min de retard</span>` : ''}${BADGE_METHODE(p.methode)}</span></div>
+      ${p.motif ? `<div class="pens-motif">${escapeHtml(p.motif)}</div>` : ''}
+    </li>`;
   }).join('');
 
-  const taux = tauxPonctualite(30);
+  const panneauJour = `
+    <div class="pens-outils">
+      <label class="pens-date"><span>Date</span><input type="date" value="${date}" onchange="ui.filters.presEnsDate=this.value; renderView('presences-enseignants')"></label>
+      <span class="hint" style="margin:0;">Les scans du badge QR remplissent cette liste ; corrigez seulement si besoin.</span>
+    </div>
+    ${list.length ? `<ul class="pens-liste">${cartesJour}</ul>
+      <div class="cj-valider"><span class="appel-compteur">${list.length} enseignant${list.length > 1 ? 's' : ''}</span><button class="btn" onclick="savePresencesEnseignants()">Enregistrer la présence</button></div>`
+      : `<div class="etat-vide"><span class="etat-vide-ic" aria-hidden="true">${icone('users')}</span><span>Aucun enseignant actif. Ajoutez vos enseignants dans « Enseignants ».</span></div>`}`;
+
+  const panneauGps = `
+    <div class="panel">
+      <div class="panel-head">
+        <div><h2>Pointage GPS</h2><div class="sub">Un lien envoyé à l’enseignant, qui valide sa position sans se connecter</div></div>
+        ${(DB.pointagesGps||[]).some(p=>p.date===date) ? `<button class="btn secondary sm no-print" onclick="exporterPointagesGpsCSV()">Exporter (CSV)</button>` : ''}
+      </div>
+      <details class="pens-explication"><summary>Comment ça marche ?</summary>
+        <ol><li>Touchez « Arrivée » ou « Départ » à côté de l’enseignant : il reçoit un lien personnel par WhatsApp.</li>
+          <li>Il ouvre le lien sur son téléphone et autorise sa position.</li>
+          <li>Son pointage est validé s’il est dans la zone de l’école (Paramètres → Zone de l’établissement), sinon il apparaît « À vérifier » ou « Hors établissement ».</li></ol>
+      </details>
+      ${!DB.meta.geofenceLatitude ? `<div class="etat-vide"><span class="etat-vide-ic" aria-hidden="true">${icone('map-pin')}</span><span>La zone de l’établissement n’est pas encore configurée. <button type="button" class="lien-discret" onclick="go('parametres')">Ouvrir les Paramètres</button></span></div>` : `
+        <ul class="liste-compacte pens-gps">${list.map(t=>`<li class="lc-ligne"><span class="lc-avatar" aria-hidden="true">${escapeHtml(initials(t.prenom, t.nom))}</span><span class="lc-txt"><strong>${escapeHtml(ensFullName(t))}</strong></span>
+            <span class="pens-gps-btn"><button class="btn secondary sm" onclick="handleEnvoyerLienPointage('${t.id}','arrivee')">Arrivée</button><button class="btn secondary sm" onclick="handleEnvoyerLienPointage('${t.id}','depart')">Départ</button></span></li>`).join('')}</ul>
+        ${renderPointagesGpsDuJour(date)}`}
+    </div>`;
 
   return `
   <div class="view active">
     <div class="panel">
       <div class="panel-head">
-        <div><h2>🕘 Journal de pointage — enseignants</h2><div class="sub">Alimenté automatiquement par les scans QR, avec correction manuelle possible</div></div>
-        <button class="btn secondary no-print" onclick="go('pointage-scan')">📷 Aller au scanner</button>
+        <div><h2>Pointage des enseignants</h2><div class="sub">Arrivée attendue : ${escapeHtml(DB.meta.heureArriveeAttendue || '—')}${taux!=null ? ` · Ponctualité sur 30 jours : <strong class="${taux>=90?'pens-ok':taux>=70?'':'pens-ko'}">${taux} %</strong>` : ''}</div></div>
+        <button class="btn secondary sm no-print" onclick="go('pointage-scan')">${icone('camera')} Scanner un badge</button>
       </div>
-      <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
-        <div class="badge blue" style="font-size:var(--fs-xs);padding:6px 12px;">Heure d'arrivée attendue : ${DB.meta.heureArriveeAttendue}</div>
-        ${taux!=null ? `<div class="badge ${taux>=90?'green':taux>=70?'amber':'red'}" style="font-size:var(--fs-xs);padding:6px 12px;">Ponctualité (30j) : ${taux}%</div>` : ''}
-      </div>
-      <div class="filters">
-        <input type="date" value="${date}" onchange="ui.filters.presEnsDate=this.value; renderView('presences-enseignants')">
-      </div>
-      <div class="hint" style="margin-bottom:10px;">Cette liste reflète l'état du jour (scans QR déjà reçus). Vous pouvez corriger manuellement un statut ci-dessous — le pointage QR reste la source principale.</div>
-      <div class="table-wrap"><table id="tablePresencesEns">
-        <thead><tr><th>Enseignant</th><th>Classe(s)</th><th style="width:140px;">Statut</th><th>Arrivée</th><th>Départ</th><th>Méthode</th><th>Motif</th></tr></thead>
-        <tbody>${rows}</tbody>
-      </table></div>
-      <div class="form-actions"><button class="btn" onclick="savePresencesEnseignants()">Enregistrer la présence</button></div>
+      <div class="segmente pens-onglets" role="tablist" aria-label="Affichage">${[['jour', 'Aujourd’hui'], ['journal', 'Journal'], ['alertes', `Alertes${nbAlertes ? ` (${nbAlertes > 9 ? '9+' : nbAlertes})` : ''}`]].map(([k, l]) => `<button type="button" role="tab" class="seg${onglet === k ? ' actif' : ''}" aria-selected="${onglet === k}" onclick="ui.filters.presEnsOnglet='${k}'; renderView('presences-enseignants')">${l}</button>`).join('')}</div>
+      ${onglet === 'jour' ? panneauJour
+        : onglet === 'journal' ? (cartesJournal ? `<div class="hint" style="margin:0 0 8px;">20 derniers pointages</div><ul class="pens-liste">${cartesJournal}</ul>` : `<div class="etat-vide"><span class="etat-vide-ic" aria-hidden="true">${icone('clock')}</span><span>Aucun pointage pour l’instant. Les scans du badge QR apparaîtront ici.</span></div>`)
+        : `<div class="hint" style="margin:0 0 8px;">Tentatives suspectes détectées au scan (capture d’écran d’un badge, badge non reconnu…)</div>${renderAlertesPointage()}`}
     </div>
-
-    <div class="panel">
-      <div class="panel-head">
-        <div><h2>📍 Pointage GPS</h2><div class="sub">L'enseignant reçoit un lien par WhatsApp, l'ouvre et valide sa position, sans se connecter à l'appli</div></div>
-        ${(DB.pointagesGps||[]).some(p=>p.date===date) ? `<button class="btn secondary sm no-print" onclick="exporterPointagesGpsCSV()">⬇️ Exporter (CSV)</button>` : ''}
-      </div>
-      ${!DB.meta.geofenceLatitude ? `<div class="hint">⚠️ La zone de l'établissement n'est pas encore configurée — allez dans <strong>Paramètres → Zone de l'établissement</strong> avant d'envoyer des liens.</div>` : `
-        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;">
-          ${list.map(t=>`
-            <div style="display:flex;align-items:center;gap:6px;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r-card);padding:6px 10px;">
-              <span style="font-size:var(--fs-xs);">${escapeHtml(ensFullName(t))}</span>
-              <button class="btn secondary sm" onclick="handleEnvoyerLienPointage('${t.id}','arrivee')">Arrivée</button>
-              <button class="btn secondary sm" onclick="handleEnvoyerLienPointage('${t.id}','depart')">Départ</button>
-            </div>`).join('') || '<div class="hint">Aucun enseignant actif.</div>'}
-        </div>
-        ${renderPointagesGpsDuJour(date)}
-      `}
-    </div>
-
-    <div class="panel">
-      <div class="panel-head"><div><h2>Historique récent</h2><div class="sub">20 derniers enregistrements</div></div></div>
-      <div class="table-wrap"><table>
-        <thead><tr><th>Date</th><th>Enseignant</th><th>Statut</th><th>Arrivée</th><th>Départ</th><th>Retard</th><th>Méthode</th><th>Motif</th></tr></thead>
-        <tbody>${recentRows || '<tr><td colspan="8" class="hint">Aucun enregistrement</td></tr>'}</tbody>
-      </table></div>
-    </div>
-
-    <div class="panel">
-      <div class="panel-head"><div><h2>Alertes de pointage</h2><div class="sub">Tentatives suspectes détectées au scan (captures d'écran, badges non reconnus)</div></div></div>
-      ${renderAlertesPointage()}
-    </div>
+    ${onglet === 'jour' ? panneauGps : ''}
   </div>`;
+}
+function choisirStatutEns(id, statut){
+  const sel = document.querySelector(`.sel-statut-ens[data-ens="${id}"]`); if(sel) sel.value = statut;
+  const carte = document.querySelector(`[data-ens-carte="${id}"]`); if(carte) carte.dataset.statut = statut;
 }
 
 function renderPointagesGpsDuJour(date){
   const liste = (DB.pointagesGps||[]).filter(p=>p.date===date).sort((a,b)=>b.heure.localeCompare(a.heure));
-  if(!liste.length) return `<div class="hint">Aucun pointage GPS aujourd'hui.</div>`;
-  const labelsStatut = { dans_etablissement:{txt:'Dans l\'établissement', cls:'green'}, hors_etablissement:{txt:'Hors établissement', cls:'red'}, a_verifier:{txt:'À vérifier', cls:'amber'} };
-  return `<div class="table-wrap"><table>
-    <thead><tr><th>Enseignant</th><th>Heure</th><th>Action</th><th>Statut</th><th>Distance</th><th>Lieu</th></tr></thead>
-    <tbody>
+  if(!liste.length) return `<div class="etat-vide" style="margin-top:10px;"><span class="etat-vide-ic" aria-hidden="true">${icone('map-pin')}</span><span>Aucun pointage GPS ce jour-là.</span></div>`;
+  const labelsStatut = { dans_etablissement:{txt:'Dans l\'établissement', cls:'ok'}, hors_etablissement:{txt:'Hors établissement', cls:'erreur'}, a_verifier:{txt:'À vérifier', cls:'attente'} };
+  return `<ul class="pens-liste" style="margin-top:12px;">
       ${liste.map(p=>{
         const t = enseignantById(p.enseignantId);
-        const st = labelsStatut[p.statut] || {txt:p.statut, cls:'gray'};
-        return `<tr>
-          <td>${t?escapeHtml(ensFullName(t)):'—'}</td>
-          <td>${p.heure?.slice(0,5)||''}</td>
-          <td>${p.action==='arrivee'?'Arrivée':'Départ'}</td>
-          <td><span class="badge ${st.cls}">${st.txt}</span></td>
-          <td>${p.distanceMetres!=null?p.distanceMetres+' m':'—'}</td>
-          <td><a href="https://maps.google.com/?q=${p.latitude},${p.longitude}" target="_blank" rel="noopener" style="font-size:var(--fs-xs);">${p.adresseApprox?escapeHtml(p.adresseApprox.slice(0,40))+'…':'Voir sur la carte'}</a></td>
-        </tr>`;
+        const st = labelsStatut[p.statut] || {txt:p.statut, cls:'attente'};
+        return `<li class="pens-carte">
+          <div class="pens-tete"><span class="pens-id"><strong>${t?escapeHtml(ensFullName(t)):'—'}</strong><small>${p.action==='arrivee'?'Arrivée':'Départ'} à ${p.heure?.slice(0,5)||''}${p.distanceMetres!=null?' · '+p.distanceMetres+' m':''}</small></span><span class="badge-etat ${st.cls}">${st.txt}</span></div>
+          <a class="lien-discret" href="https://maps.google.com/?q=${p.latitude},${p.longitude}" target="_blank" rel="noopener">${p.adresseApprox?escapeHtml(p.adresseApprox.slice(0,60)):'Voir sur la carte'}</a>
+        </li>`;
       }).join('')}
-    </tbody>
-  </table></div>`;
+  </ul>`;
 }
 function renderMessagesParents(){
   if(!['secretariat','direction','fondation'].includes(ui.role)) return '';
@@ -6778,15 +6767,12 @@ function exporterPointagesGpsCSV(){
 }
 function renderAlertesPointage(){
   const alertes = (DB.alertesPointage||[]).slice().sort((a,b)=> (b.date+b.heure).localeCompare(a.date+a.heure)).slice(0,15);
-  if(alertes.length===0) return `<div class="hint">Aucune alerte — rien à signaler.</div>`;
-  const rows = alertes.map(a=>{
+  if(alertes.length===0) return `<div class="etat-vide etat-vide-ok"><span class="etat-vide-ic" aria-hidden="true">${icone('shield')}</span><span>Aucune alerte : rien de suspect au pointage.</span></div>`;
+  return `<ul class="pens-liste">${alertes.map(a=>{
     const t = a.enseignantId ? enseignantById(a.enseignantId) : null;
-    return `<tr><td>${fmtDate(a.date)} ${a.heure?.slice(0,5)||''}</td><td>${t?escapeHtml(ensFullName(t)):'—'}</td><td>${escapeHtml(a.raison)}</td><td>${a.score ?? '—'}</td></tr>`;
-  }).join('');
-  return `<div class="table-wrap"><table>
-    <thead><tr><th>Date</th><th>Enseignant</th><th>Raison</th><th>Score</th></tr></thead>
-    <tbody>${rows}</tbody>
-  </table></div>`;
+    return `<li class="pens-carte"><div class="pens-tete"><span class="badge-etat erreur">${icone('triangle-alert')}Alerte</span><span class="pens-id"><strong>${t?escapeHtml(ensFullName(t)):'Badge non reconnu'}</strong><small>${fmtDate(a.date)} ${a.heure?.slice(0,5)||''}${a.score != null ? ' · score ' + a.score : ''}</small></span></div>
+      <div class="pens-motif">${escapeHtml(a.raison)}</div></li>`;
+  }).join('')}</ul>`;
 }
 
 async function savePresencesEnseignants(){

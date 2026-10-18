@@ -373,6 +373,32 @@ tbody td input[type=number]{ width:90px; }
 .cj-valider .appel-compteur{ margin:0; font-size:13px; }
 @media (max-width:900px){ body.has-bottom-nav .cj-valider{ bottom:calc(60px + env(safe-area-inset-bottom, 0px)); } }
 @media (min-width:900px){ .cj-liste .appel-ligne{ grid-template-columns:minmax(0,1fr) 320px minmax(0,220px); align-items:center; } .appel-present .cj-motif{ display:block; visibility:hidden; } }
+/* ----- Pointage des enseignants (DESIGN.md §11) ----- */
+.pens-onglets{ margin-bottom:14px; }
+.pens-ok{ color:var(--success); } .pens-ko{ color:var(--accent-ink); }
+.pens-outils{ display:flex; flex-wrap:wrap; align-items:flex-end; gap:8px 14px; margin-bottom:12px; }
+.pens-date{ display:flex; flex-direction:column; gap:6px; font-size:13px; color:var(--text-dim); }
+.pens-date input{ min-height:44px; padding:0 10px; border:1px solid var(--border); border-radius:10px; background:var(--surface-1); color:var(--text); font:inherit; }
+.pens-liste{ list-style:none; margin:0; padding:0; display:grid; grid-template-columns:repeat(auto-fill, minmax(min(100%, 340px), 1fr)); gap:10px; }
+.pens-carte{ min-width:0; display:flex; flex-direction:column; gap:10px; padding:14px; border:1px solid var(--border); border-radius:16px; background:var(--surface-1); }
+.pens-tete{ display:flex; align-items:center; gap:10px; min-width:0; }
+.pens-tete > .badge, .pens-tete > .badge-etat{ flex:0 0 auto; }
+.pens-id{ flex:1; min-width:0; display:flex; flex-direction:column; }
+.pens-id strong{ overflow-wrap:anywhere; } .pens-id small{ color:var(--text-dim); font-size:13px; overflow-wrap:anywhere; }
+.pens-heures{ display:flex; gap:20px; font-variant-numeric:tabular-nums; }
+.pens-heures span{ display:flex; flex-direction:column; } .pens-heures small{ font-size:12px; color:var(--text-dim); } .pens-heures strong{ font-size:16px; }
+.pens-pied{ display:flex; flex-wrap:wrap; align-items:flex-end; justify-content:space-between; gap:8px; }
+.pens-meta{ display:flex; flex-wrap:wrap; gap:6px; }
+.pens-motif{ padding:8px 10px; border-radius:10px; background:var(--surface-2); font-size:13px; overflow-wrap:anywhere; }
+.pens-carte[data-statut="Présent"] .cj-btn[data-s="Présent"]{ background:var(--success-soft); border-color:var(--success); color:var(--success); }
+.pens-carte[data-statut="Absent"] .cj-btn[data-s="Absent"]{ background:var(--accent-soft); border-color:var(--accent); color:var(--accent-ink); }
+.pens-carte[data-statut="Retard"] .cj-btn[data-s="Retard"]{ background:var(--em-gold-100, #fbf0d9); border-color:var(--em-gold-400, #E8B04B); color:color-mix(in srgb, var(--em-gold-400, #E8B04B) 40%, var(--text)); }
+.pens-carte[data-statut="Présent"] .cj-motif{ display:none; }
+.pens-explication{ margin-bottom:12px; padding:10px 12px; border-radius:12px; background:var(--surface-2); font-size:14px; }
+.pens-explication summary{ cursor:pointer; font-weight:700; min-height:28px; }
+.pens-explication ol{ margin:8px 0 0; padding-left:20px; } .pens-explication li{ margin:4px 0; }
+.pens-gps .lc-ligne{ flex-wrap:wrap; }
+.pens-gps-btn{ display:flex; gap:6px; margin-left:auto; }
 /* ----- Parents ↔ Élèves (DESIGN.md §11) ----- */
 .pe-grille{ display:grid; grid-template-columns:repeat(auto-fill, minmax(min(100%, 320px), 1fr)); gap:12px; align-items:start; }
 .pe-carte{ min-width:0; border:1px solid var(--border); border-radius:16px; padding:14px; background:var(--surface-1); display:flex; flex-direction:column; gap:10px; overflow:hidden; }
