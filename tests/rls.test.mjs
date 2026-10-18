@@ -311,6 +311,34 @@ async function requete(accessToken, chemin, options = {}){
   const listeSec = await requete(tokenSecretariat, `/rest/v1/rpc/comptes_double_verification`, { method:'POST', body: JSON.stringify({ p_ecole: FAUX }) });
   verifier('La liste des comptes protégés est réservée au développeur', !listeSec.ok, `statut ${listeSec.status}`);
 
+  section('7quaterdecies. Protections du 18/10/2026 (rôles, argent, notes, plateforme) — sans rien modifier');
+  // Profil : réécrire son propre nom à l'IDENTIQUE doit être refusé (plus d'écriture directe des profils)
+  const monProfil = (await requete(tokenSecretariat, `/rest/v1/profiles?select=id,nom_complet&role=eq.secretariat&limit=1`)).data?.[0];
+  if(monProfil){
+    const ecritProfil = await requete(tokenSecretariat, `/rest/v1/profiles?id=eq.${monProfil.id}`, { method:'PATCH', headers:{ Prefer:'return=representation' }, body: JSON.stringify({ nom_complet: monProfil.nom_complet }) });
+    verifier('Le secrétariat ne peut pas écrire dans les profils (rôles protégés)', !ecritProfil.ok || (Array.isArray(ecritProfil.data) && ecritProfil.data.length === 0), `reçu ${JSON.stringify(ecritProfil.data)?.slice(0,80)}`);
+  }
+  // Échéances de scolarité : réservées à la direction (réécriture à l'identique refusée)
+  const ech = (await requete(tokenSecretariat, `/rest/v1/echeances_scolarite?select=id,montant&limit=1`)).data?.[0];
+  if(ech){
+    const ecritEch = await requete(tokenSecretariat, `/rest/v1/echeances_scolarite?id=eq.${ech.id}`, { method:'PATCH', headers:{ Prefer:'return=representation' }, body: JSON.stringify({ montant: ech.montant }) });
+    verifier('Le secrétariat ne modifie pas les tranches de scolarité', !ecritEch.ok || (Array.isArray(ecritEch.data) && ecritEch.data.length === 0), `reçu ${JSON.stringify(ecritEch.data)?.slice(0,80)}`);
+  }
+  const fauxJournal = await requete(tokenSecretariat, `/rest/v1/journal_compta`, { method:'POST', body: JSON.stringify({ table_cible:'depenses', enregistrement_id: FAUX, action:'creation' }) });
+  verifier('Personne ne peut écrire à la main dans le journal d’audit comptable', !fauxJournal.ok, `statut ${fauxJournal.status}`);
+  const jnSec = await requete(tokenSecretariat, `/rest/v1/journal_notes?select=id&limit=1`);
+  verifier('L’historique des notes est réservé à la direction / fondation', Array.isArray(jnSec.data) && jnSec.data.length === 0);
+  for(const [nom, tok] of [['secrétariat', tokenSecretariat], ['enseignant', tokenEnseignant]]){
+    const sante = await requete(tok, `/rest/v1/rpc/sante_ecoles`, { method:'POST', body:'{}' });
+    verifier(`Santé des écoles refusée au compte ${nom} (réservée au développeur)`, !sante.ok, `statut ${sante.status}`);
+  }
+  const santeDev18 = await requete(tokenDeveloppeur, `/rest/v1/rpc/sante_ecoles`, { method:'POST', body:'{}' });
+  verifier('Santé des écoles accessible au développeur', santeDev18.ok && Array.isArray(santeDev18.data), `statut ${santeDev18.status}`);
+  for(const table of ['journal_compta','journal_notes','recherches_demande']){
+    const r = await requete(ANON_KEY, `/rest/v1/${table}?select=*&limit=1`);
+    verifier(`Sans connexion, rien à lire dans ${table}`, !r.ok || (Array.isArray(r.data) && r.data.length === 0));
+  }
+
   section('8. Visiteur non connecté — ne lit que les affichages publics prévus');
   for(const table of ['eleves','enseignants_lecture','profiles','paiements_scolarite','messages','parents_eleves','presences_eleves','eleves_portier_lecture','objets_perdus','push_abonnements','absences_signalees','evenements_agenda','devoirs','personnes_autorisees','sante_eleves','reponses_agenda','corrections_fiches','menus_cantine','preinscriptions','demandes_documents','evaluations','coefficients_matieres','bulletins_resultats']){
     const r = await requete(ANON_KEY, `/rest/v1/${table}?select=*&limit=1`);
