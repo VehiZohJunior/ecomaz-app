@@ -101,7 +101,11 @@ for(const theme of THEMES){
       if(role === 'parent'){ DB = await chargerDBParent(); enterAppParent(); return; }
       if(role === 'portier'){ DB = await chargerDBPortier(); enterAppPortier(); return; }
       DB = await chargerDB();
-      if(role === 'enseignant' && DB.enseignants[0]){ session.enseignantId = DB.enseignants[0].id; DB.enseignants[0].classesAssignees = DB.enseignants[0].classesAssignees && DB.enseignants[0].classesAssignees.length ? DB.enseignants[0].classesAssignees : [DB.classes[0].id]; }
+      // Option « sansfiche » : compte enseignant pas encore inscrit (montre « Je m'enrôle »)
+      // Option « classesdem » : un enseignant FICTIF a demandé des classes depuis sa console
+      if(option.split(',').includes('classesdem') && DB.enseignants[1]) DB.enseignants[1].classesDemandees = [DB.classes[2].id];
+      if(role === 'enseignant' && option.split(',').includes('sansfiche')){ session.nomComplet = 'Enseignant Test'; }
+      else if(role === 'enseignant' && DB.enseignants[0]){ session.enseignantId = DB.enseignants[0].id; DB.enseignants[0].classesAssignees = DB.enseignants[0].classesAssignees && DB.enseignants[0].classesAssignees.length ? DB.enseignants[0].classesAssignees : [DB.classes[0].id]; }
       // Option « parents » : 3 comptes parents FICTIFS en mémoire seulement (jamais en base),
       // pour photographier aussi l'état « Compte relié »
       // Option « edt » : emploi du temps FICTIF en mémoire seulement

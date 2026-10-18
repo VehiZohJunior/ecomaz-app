@@ -91,7 +91,9 @@ async function requete(accessToken, chemin, options = {}){
   }
   const ensVueAdmin = await requete(tokenSecretariat, `/rest/v1/enseignants_lecture?select=*&limit=1`);
   if(Array.isArray(ensVueAdmin.data) && ensVueAdmin.data.length > 0){
-    verifier('Le secrétariat voit les vraies valeurs (pas masquées)', ensVueAdmin.data[0].salaire_mensuel !== null || ensVueAdmin.data[0].salaire_mensuel === 0);
+    // Depuis le 18/10/2026 : le salaire est réservé à la direction / fondation, le secrétariat garde téléphone et badge
+    verifier('Le secrétariat voit le badge (qr_token) des enseignants', ensVueAdmin.data[0].qr_token !== null, `reçu ${ensVueAdmin.data[0].qr_token}`);
+    verifier('Le secrétariat ne voit PAS le salaire des enseignants', ensVueAdmin.data[0].salaire_mensuel === null, `reçu ${ensVueAdmin.data[0].salaire_mensuel}`);
   }
 
   section('3bis. RLS — comptabilité : le secrétariat ne lit ni salaires, ni dépenses, ni personnel, ni journal');
@@ -338,6 +340,13 @@ async function requete(accessToken, chemin, options = {}){
     const r = await requete(ANON_KEY, `/rest/v1/${table}?select=*&limit=1`);
     verifier(`Sans connexion, rien à lire dans ${table}`, !r.ok || (Array.isArray(r.data) && r.data.length === 0));
   }
+
+  section('7quindecies. « Je m’enrôle » (18/10/2026) — réservé aux comptes enseignants, sans rien modifier');
+  const corpsEnrole = JSON.stringify({ p_civilite:'M', p_prenom:'Test', p_nom:'REFUS', p_telephone:'0700000000', p_matieres:[], p_classes:[] });
+  const enrSec = await requete(tokenSecretariat, `/rest/v1/rpc/m_enroler_enseignant`, { method:'POST', body: corpsEnrole });
+  verifier('Le secrétariat ne peut pas s’enrôler comme enseignant', !enrSec.ok, `statut ${enrSec.status}`);
+  const enrAnon = await requete(ANON_KEY, `/rest/v1/rpc/m_enroler_enseignant`, { method:'POST', body: corpsEnrole });
+  verifier('Sans connexion, impossible de s’enrôler', !enrAnon.ok, `statut ${enrAnon.status}`);
 
   section('8. Visiteur non connecté — ne lit que les affichages publics prévus');
   for(const table of ['eleves','enseignants_lecture','profiles','paiements_scolarite','messages','parents_eleves','presences_eleves','eleves_portier_lecture','objets_perdus','push_abonnements','absences_signalees','evenements_agenda','devoirs','personnes_autorisees','sante_eleves','reponses_agenda','corrections_fiches','menus_cantine','preinscriptions','demandes_documents','evaluations','coefficients_matieres','bulletins_resultats']){

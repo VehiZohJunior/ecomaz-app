@@ -799,6 +799,10 @@ function civiliteCourante(){
 }
 function nomPourSalutation(){
   let nom = String(session.nomComplet || '').trim();
+  if(ui.role === 'enseignant' && session.enseignantId){
+    const t = (DB?.enseignants || []).find(x => x.id === session.enseignantId);
+    if(t) nom = `${t.prenom} ${t.nom}`;
+  }
   const generique = !nom || /^(direction|fondation|secr[ée]tariat|enseignant\(?e?\)?|parent|portier|directeur|fondateur)$/i.test(nom);
   if(generique) nom = ui.role === 'direction' ? (DB?.meta?.directeurNom || '') : ui.role === 'fondation' ? (DB?.meta?.fondateurNom || '') : '';
   return nom.replace(/^(M\.|Mme|Mlle|Monsieur|Madame)\s+/i, '');
@@ -818,6 +822,7 @@ function salutation(){ return texteSalutation(civiliteCourante(), session.nomApp
 // tant qu'il n'a pas répondu (ou quand il veut changer)
 function renderQuestionAppel(){
   if(!TITRES_APPEL[ui.role]) return '';
+  if(ui.role === 'enseignant' && !session.enseignantId) return ''; // « Je m'enrôle » demande déjà civilité et nom
   if(session.nomAppel && !ui.modifierAppel) return `<button type="button" class="lien-discret appel-changer" onclick="ui.modifierAppel=true; rafraichirAccueil()">Changer comment je vous appelle</button>`;
   if(ui.appelPlusTard && !ui.modifierAppel) return '';
   const t = TITRES_APPEL[ui.role], civ = civiliteCourante() || '', nom = session.nomAppel || nomAppelParDefaut();
@@ -2563,6 +2568,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.10.18-26', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Console Enseignant : module « Je m’enrôle » — l’enseignant s’inscrit lui-même (civilité, nom, WhatsApp, matières, classes) ; ses classes s’ouvrent quand la direction ou le secrétariat les valide dans Enseignants.', 'Console Enseignant : liste des enseignants de l’école (noms, classes, matières, sans données privées) et salutation au nom de SA fiche.' ],
+  } },
   { version: '2026.10.18-25', nouveautes: {
     commun: [],
     parent: [],
@@ -3458,6 +3469,7 @@ function renderDashboard(){
   <div class="view active">
     <div class="db-bonjour"><div><h2>${escapeHtml(salutation())}</h2><div class="db-date">${dateLongue}</div>${renderQuestionAppel()}</div>
       ${['direction','fondation'].includes(ui.role) ? `<button type="button" class="btn secondary sm" onclick="ouvrirRapportMois()">${icone('file-text')} Rapport du mois</button>` : ''}</div>
+    ${ui.role === 'enseignant' && !session.enseignantId ? renderJeMEnrole() : ''}
     ${renderAFaireAujourdhui()}
     <div class="cards cards-2x2">
       ${kpi(0, icone('graduation-cap'), 'var(--primary-dim)', totalEleves, 'Élèves inscrits')}
@@ -3692,7 +3704,9 @@ function etapesMiseEnRoute(){
 // Tableau de bord ENSEIGNANT : « Ma journée », classe par classe
 function renderMaJournee(){
   if(ui.role !== 'enseignant') return '';
-  if(!session.enseignantId) return `<div class="panel"><div class="hint">Votre compte n’est relié à aucune classe : demandez à la direction de valider votre inscription (application EcoMaZ-ENSEIGNANTS).</div></div>`;
+  if(!session.enseignantId) return renderListeCollegues();
+  const maFiche = enseignantById(session.enseignantId);
+  if(maFiche && !(maFiche.classesAssignees || []).length) return renderJeMEnrole() + renderListeCollegues();
   // Données chargées une fois (absences signalées, agenda), puis le tableau de bord se réaffiche
   if(DB.absencesSignalees === undefined){ DB.absencesSignalees = null; chargerAbsencesSignalees().then(() => { if(ui.currentView === 'dashboard') renderView('dashboard'); }).catch(() => { DB.absencesSignalees = []; }); }
   if(DB.agenda === undefined){ DB.agenda = null; sb.from('evenements_agenda').select('*').eq('ecole_id', session.ecoleId).gte('date_fin', todayISO()).order('date_debut').limit(20)
@@ -3728,6 +3742,123 @@ function renderMaJournee(){
     ${renderFriseDuJour(classes)}
     <div class="mj-grille">${cartes || '<div class="hint">Aucune classe.</div>'}</div>
     ${dates.length ? `<div class="mj-ligne" style="margin-top:10px;">📅 À venir : ${dates.map(ev => `${escapeHtml(ev.titre)} <span class="hint">(${delaiAgenda(ev)})</span>`).join(' · ')}</div>` : ''}
+  </div>
+  ${renderJeMEnrole()}
+  ${renderListeCollegues()}`;
+}
+function renderClassesAValider(){
+  const fiches = (DB.enseignants || []).filter(t => (t.classesDemandees || []).length);
+  if(!fiches.length) return '';
+  return `<div class="enrole-a-valider">${fiches.map(t => {
+    const coches = new Set([...(t.classesAssignees || []), ...(t.classesDemandees || [])]);
+    return `<div class="dem-carte">
+      <strong>${escapeHtml(ensFullName(t))}</strong> <span class="badge-etat attente">Classes demandées</span>
+      <div class="hint">${escapeHtml(t.matricule || '')}${t.telephone ? ' · ' + escapeHtml(t.telephone) : ''}${(t.matieres || []).length ? ' · ' + escapeHtml(t.matieres.join(', ')) : ''} · inscrit depuis sa console</div>
+      <div class="hint" style="margin:8px 0 4px;">Classes à ouvrir pour cet enseignant — vérifiez :</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;">${DB.classes.map(c => `<label style="display:flex;align-items:center;gap:6px;"><input type="checkbox" class="ensClasseVal_${t.id}" value="${c.id}" ${coches.has(c.id) ? 'checked' : ''}> ${escapeHtml(c.nom)}${(t.classesDemandees || []).includes(c.id) ? ' <span class="hint" style="margin:0;">(demandée)</span>' : ''}</label>`).join('')}</div>
+      <div style="margin-top:8px;"><button class="btn sm" onclick="validerClassesEnseignant('${t.id}', true)">Valider les classes</button>
+      <button class="btn secondary sm" onclick="validerClassesEnseignant('${t.id}', false)">Refuser la demande</button></div>
+    </div>`; }).join('')}</div>`;
+}
+async function validerClassesEnseignant(id, valider){
+  const t = enseignantById(id); if(!t) return;
+  const classes = valider ? $$('.ensClasseVal_' + id).filter(c => c.checked).map(c => c.value) : (t.classesAssignees || []);
+  if(valider && !classes.length){ toast('Cochez au moins une classe.'); return; }
+  try{
+    await dbUpdate('enseignants', id, { classesAssignees: classes, classesDemandees: [] });
+    DB.enseignants = await dbSelectAll('enseignants_lecture');
+  }catch(e){ toast('Erreur : ' + e.message); return; }
+  if(DB.aTraiter) DB.aTraiter.charge = 0;
+  toast(valider ? `Classes ouvertes ✅ : ${ensFullName(t)} ne voit que ces classes` : 'Demande refusée');
+  renderView('enseignants');
+}
+/* ---------- « Je m'enrôle » : l'enseignant s'inscrit lui-même dans la base de son école ---------- */
+function renderJeMEnrole(){
+  if(ui.role !== 'enseignant') return '';
+  const fiche = session.enseignantId ? enseignantById(session.enseignantId) : null;
+  const assignees = new Set(fiche?.classesAssignees || []), demandees = new Set(fiche?.classesDemandees || []);
+  if(fiche && !ui.filters.enroleOuvert){
+    return `<div class="panel enrole-panneau">
+      <div class="panel-head"><div><h2>${icone('id-card') || '🪪'} Mon inscription</h2>
+        <div class="sub">${escapeHtml(ensFullName(fiche))} · ${escapeHtml(fiche.matricule || '')}</div></div>
+        <button type="button" class="btn secondary sm" onclick="ui.filters.enroleOuvert=true; renderView('dashboard')">Compléter / demander une classe</button></div>
+      <div class="enrole-classes">${assignees.size ? [...assignees].map(id => `<span class="badge-etat ok">${escapeHtml(classeName(id))}</span>`).join(' ') : '<span class="hint" style="margin:0;">Aucune classe validée pour le moment.</span>'}
+        ${[...demandees].map(id => `<span class="badge-etat attente">${escapeHtml(classeName(id))} · en attente</span>`).join(' ')}</div>
+      ${demandees.size ? `<div class="hint">Les classes « en attente » seront ouvertes dès que la direction ou le secrétariat les aura validées.</div>` : ''}
+    </div>`;
+  }
+  const civ = fiche?.sexe || session.civilite || '';
+  const nomProfil = String(session.nomComplet || '').trim();
+  const generique = /^(enseignant|compte)/i.test(nomProfil);
+  const prenomDefaut = fiche ? fiche.prenom : '', nomDefaut = fiche ? fiche.nom : '';
+  const matieres = [...new Set([...new Set(DB.classes.map(c => c.cycle))].flatMap(cy => MATIERES_BY_CYCLE[cy] || []).concat(fiche?.matieres || []))];
+  const mesMat = new Set(fiche?.matieres || []);
+  return `<div class="panel enrole-panneau enrole-ouvert" id="jeMEnrole">
+    <div class="panel-head"><div><h2>✍️ Je m’enrôle</h2>
+      <div class="sub">${fiche ? 'Complétez votre fiche ou demandez une autre classe.' : 'Inscrivez-vous dans la base de votre école : votre nom, vos matières et vos classes.'}</div></div></div>
+    ${!fiche ? `<div class="alerte-inscription" style="margin-top:0;">Ce compte doit être <strong>le vôtre uniquement</strong>.${generique ? ' Il porte un nom générique (« ' + escapeHtml(nomProfil) + ' ») : s’il est partagé avec d’autres collègues, chacun doit plutôt s’inscrire avec son propre compte Google.' : ''}
+      <button type="button" class="btn secondary sm" style="margin-top:8px;" onclick="inscriptionCompteGoogle()">M’inscrire avec mon propre compte Google</button></div>` : ''}
+    <form class="enrole-form" onsubmit="return enregistrerEnrolement(event)">
+      <div class="field"><label>Civilité</label><div class="segmente seg-radio" role="radiogroup" aria-label="Civilité">
+        ${[['M', 'Monsieur'], ['F', 'Madame']].map(([k, l]) => `<label class="seg"><input type="radio" name="civ" value="${k}" ${civ === k ? 'checked' : ''} required>${l}</label>`).join('')}</div></div>
+      <div class="enrole-ligne">
+        <div class="field"><label for="enrPrenom">Prénom(s)</label><input id="enrPrenom" name="prenom" required minlength="2" maxlength="60" value="${escapeHtml(prenomDefaut)}" ${fiche ? 'readonly' : ''} autocomplete="given-name"></div>
+        <div class="field"><label for="enrNom">Nom</label><input id="enrNom" name="nom" required minlength="2" maxlength="60" value="${escapeHtml(nomDefaut)}" ${fiche ? 'readonly' : ''} autocomplete="family-name" style="text-transform:uppercase;"></div>
+      </div>
+      ${fiche ? '<div class="hint" style="margin-top:-6px;">Pour corriger votre nom, adressez-vous à la direction.</div>' : ''}
+      <div class="field"><label for="enrTel">Numéro WhatsApp</label><input id="enrTel" name="tel" type="tel" required placeholder="07 00 00 00 00" value="${escapeHtml(fiche?.telephone || '')}" autocomplete="tel"></div>
+      <div class="field"><label>Mes matières</label><div class="enrole-choix">${matieres.map(m => `<label class="enrol-choix"><input type="checkbox" name="mat" value="${escapeHtml(m)}" ${mesMat.has(m) ? 'checked' : ''}> ${escapeHtml(m)}</label>`).join('')}</div></div>
+      <div class="field"><label>${fiche ? 'Classes supplémentaires à demander' : 'Mes classes (validées ensuite par l’école)'}</label><div class="enrole-choix">
+        ${DB.classes.filter(c => !assignees.has(c.id)).map(c => `<label class="enrol-choix"><input type="checkbox" name="cls" value="${c.id}" ${demandees.has(c.id) ? 'checked' : ''}> ${escapeHtml(c.nom)}</label>`).join('') || '<span class="hint">Aucune autre classe.</span>'}</div></div>
+      <div class="pin-error" id="enrErr"></div>
+      <div class="form-actions" style="justify-content:flex-start;">
+        <button type="submit" class="btn">${fiche ? 'Enregistrer' : 'M’inscrire'}</button>
+        ${fiche ? `<button type="button" class="btn secondary" onclick="ui.filters.enroleOuvert=false; renderView('dashboard')">Fermer</button>` : ''}
+      </div>
+    </form>
+  </div>`;
+}
+async function enregistrerEnrolement(ev){
+  ev.preventDefault();
+  const f = ev.target, err = f.querySelector('#enrErr');
+  const civ = f.querySelector('input[name=civ]:checked')?.value;
+  const prenom = f.prenom.value.trim(), nom = f.nom.value.trim().toUpperCase(), tel = f.tel.value.trim();
+  const matieres = [...f.querySelectorAll('input[name=mat]:checked')].map(x => x.value);
+  const classes = [...f.querySelectorAll('input[name=cls]:checked')].map(x => x.value);
+  if(!civ){ err.textContent = 'Choisissez Monsieur ou Madame.'; return false; }
+  if(!session.enseignantId && !classes.length){ err.textContent = 'Cochez au moins une classe.'; return false; }
+  const bouton = f.querySelector('button[type=submit]'); bouton.disabled = true;
+  const { data: id, error } = await sb.rpc('m_enroler_enseignant', { p_civilite: civ, p_prenom: prenom, p_nom: nom, p_telephone: tel, p_matieres: matieres, p_classes: classes });
+  bouton.disabled = false;
+  if(error){ err.textContent = 'Envoi impossible : ' + error.message; return false; }
+  const nouveau = !session.enseignantId;
+  session.enseignantId = id; session.civilite = civ;
+  if(nouveau){ session.nomComplet = `${prenom} ${nom}`; session.nomAppel = `${prenom} ${nom}`; }
+  try{ const k = 'ecomaz_profil_cache'; const v = JSON.parse(localStorage.getItem(k) || 'null'); if(v){ v.enseignant_id = id; v.civilite = civ; if(nouveau){ v.nom_complet = session.nomComplet; v.nom_appel = session.nomAppel; } localStorage.setItem(k, JSON.stringify(v)); } }catch(_e){}
+  try{ DB.enseignants = await dbSelectAll('enseignants_lecture'); }catch(_e){}
+  ui.filters.enroleOuvert = false;
+  toast(classes.length ? 'Inscription enregistrée ✅ : l’école va valider vos classes' : 'Fiche mise à jour ✅');
+  renderView('dashboard');
+  return false;
+}
+async function inscriptionCompteGoogle(){
+  if(!confirm('Vous allez quitter ce compte, puis vous inscrire avec votre propre compte Google. Continuer ?')) return;
+  const lien = lienApplication('enseignant.html');
+  await deconnexion();
+  location.href = lien;
+}
+/* ---------- Liste des enseignants (console Enseignant) : noms, classes, matières, sans données privées ---------- */
+function renderListeCollegues(){
+  const liste = (DB.enseignants || []).filter(t => t.statut === 'Actif').sort((a, b) => (a.nom || '').localeCompare(b.nom || ''));
+  if(!liste.length) return '';
+  const titre = t => t.sexe === 'F' ? 'Maîtresse' : t.sexe === 'M' ? 'M.' : '';
+  return `<div class="panel">
+    <div class="panel-head"><div><h2>Liste des enseignants</h2><div class="sub">${liste.length} enseignant${liste.length > 1 ? 's' : ''} dans l’école</div></div></div>
+    <ul class="collegues">${liste.map(t => `<li class="collegue${t.id === session.enseignantId ? ' moi' : ''}">
+      <span class="avatar" aria-hidden="true">${escapeHtml(initials(t.prenom, t.nom))}</span>
+      <span class="collegue-txt"><strong>${escapeHtml([titre(t), t.prenom, t.nom].filter(Boolean).join(' '))}${t.id === session.enseignantId ? ' <span class="badge green">Vous</span>' : ''}</strong>
+        <small>${(t.classesAssignees || []).map(id => escapeHtml(classeName(id))).join(', ') || 'Classes à valider'}${(t.matieres || []).length ? ' · ' + escapeHtml(t.matieres.join(', ')) : ''}</small></span>
+    </li>`).join('')}</ul>
   </div>`;
 }
 // Emploi du temps du jour en frise, cours en cours mis en évidence (DESIGN.md §11 Console Enseignant)
@@ -3874,7 +4005,7 @@ function renderLiensParents(){
 
     <div class="panel">
       <div class="panel-head"><div><h2>Comptes parents et leurs enfants</h2><div class="sub">Un parent peut avoir plusieurs enfants dans l'école</div></div></div>
-      ${!parents.length ? `<div class="etat-vide"><span class="etat-vide-ic" aria-hidden="true">${icone('users')}</span><span>Aucun compte parent pour l’instant. Invitez les parents : leurs demandes arrivent dans Paramètres → Demandes d’accès.</span></div>` : `<div class="pe-grille">${parents.map(p => {
+      ${!parents.length ? `<div class="etat-vide"><span class="etat-vide-ic" aria-hidden="true">${icone('users')}</span><span>Aucun compte parent pour l’instant. Invitez les parents : leurs demandes arrivent en haut de cet écran (Inscriptions des parents).</span></div>` : `<div class="pe-grille">${parents.map(p => {
           const liens = (DB.parentsEleves || []).filter(pe => pe.parentProfileId === p.id);
           const dejaRelies = new Set(liens.map(l => l.eleveId));
           return `<article class="pe-carte">
@@ -3918,7 +4049,7 @@ function ouvrirInvitationParent(eleveId){
   const tels = telsDeFiche(e);
   const texte = encodeURIComponent(messagePartageApplication('parent.html'));
   openModal(`Inviter le parent de ${eleveFullName(e)}`, `
-    <p class="hint" style="margin-top:0;">Le parent reçoit le lien de l’application par WhatsApp, se connecte avec Google, puis vous validez sa demande (Paramètres → Demandes d’accès).</p>
+    <p class="hint" style="margin-top:0;">Le parent reçoit le lien de l’application par WhatsApp, se connecte avec Google, puis vous validez sa demande en haut de cet écran (Inscriptions des parents).</p>
     ${tels.length ? `<div class="pe-invit-liste">${tels.map(t => `<a class="btn" href="https://wa.me/225${t}?text=${texte}" target="_blank" rel="noopener">📲 WhatsApp · ${telLisible(t)}</a>`).join('')}</div>`
       : `<div class="etat-vide"><span class="etat-vide-ic" aria-hidden="true">${icone('triangle-alert')}</span><span>Aucun numéro valide sur la fiche${e.parentTel ? ` (« ${escapeHtml(e.parentTel)} »)` : ''}. Corrigez le numéro dans la fiche de l’élève, ou imprimez un coupon d’invitation.</span></div>`}
     <div class="form-actions"><button type="button" class="btn secondary" onclick="closeModal()">Fermer</button><button type="button" class="btn secondary" onclick="closeModal(); ouvrirCreerCompteParent('${e.id}')">Créer par e-mail</button></div>`);
@@ -4392,6 +4523,7 @@ async function supprimerPublication(id){
    Compte (sans rien télécharger d'autre) ce qui attend une action.
    ===================================================================== */
 const SUJETS_A_TRAITER = [
+  { cle:'classes-ens', ic:'✍️', lib:'enseignant(s) inscrit(s) depuis sa console : classes à valider', vue:'enseignants', table:'enseignants', filtre: q => q.not('classes_demandees', 'eq', '{}') },
   { cle:'acces-ens', ic:'👩‍🏫', lib:'inscription(s) enseignant à valider', vue:'enseignants', table:'demandes_acces', filtre: q => q.eq('statut', 'en_attente').eq('role_demande', 'enseignant') },
   { cle:'acces-par', ic:'👪', lib:'inscription(s) parent à valider', vue:'liens-parents', table:'demandes_acces', filtre: q => q.eq('statut', 'en_attente').eq('role_demande', 'parent') },
   { cle:'acces', ic:'🔑', lib:'demande(s) d’accès portier à valider', vue:'parametres', table:'demandes_acces', filtre: q => q.eq('statut', 'en_attente').eq('role_demande', 'portier'), roles:['direction','fondation'] },
@@ -7007,6 +7139,7 @@ function renderEnseignants(){
         <button type="button" class="btn secondary sm" onclick="chargerDemandesAcces()">Actualiser</button>
       </div>
       <div class="hint" style="margin-top:0;">Chaque enseignant ouvre le lien EcoMaZ-ENSEIGNANTS, touche « Continuer avec Google » et coche ses classes. Vérifiez ses classes puis touchez « Approuver » : sa fiche est créée et il ne voit que ses classes.</div>
+      ${renderClassesAValider()}
       <div id="demandesEnsBox" data-demandes-role="enseignant"><div class="hint">Chargement…</div></div>
       ${(setTimeout(chargerDemandesAcces, 0), '')}
     </div>
@@ -7035,7 +7168,7 @@ function renderInvitationEnseignants(){
     <div class="invit-ens-qr" aria-hidden="true">${qr}</div>
     <div class="invit-ens-txt">
       <strong>${avecCompte ? `${avecCompte} enseignant${avecCompte > 1 ? 's ont' : ' a'} son application — invitez les autres` : 'Invitez vos enseignants dans leur application'}</strong>
-      <span>Chaque enseignant scanne ce code (ou ouvre le lien), touche « Continuer avec Google » et coche ses classes. Vous validez dans Paramètres → Demandes d’accès : sa fiche est créée toute seule, inutile de la saisir avant.</span>
+      <span>Chaque enseignant scanne ce code (ou ouvre le lien), touche « Continuer avec Google » et coche ses classes. Vous validez en haut de cet écran (Inscriptions des enseignants) : sa fiche est créée toute seule, inutile de la saisir avant.</span>
       <div class="invit-ens-actions">
         <button type="button" class="btn sm" onclick="window.open('https://wa.me/?text=' + encodeURIComponent(messagePartageApplication('enseignant.html')), '_blank', 'noopener')">Partager sur WhatsApp</button>
         <button type="button" class="btn secondary sm" onclick="copierLienApplication('enseignant.html')">Copier le lien</button>
@@ -7060,7 +7193,7 @@ function ouvrirAccesPersonnel(enseignantId){
   const tels = telephonesWhatsapp(t.telephone);
   const texte = encodeURIComponent(messagePartageApplication('enseignant.html'));
   openModal('Inviter ' + ensFullName(t), `
-    <p class="hint" style="margin-top:0;">Chaque enseignant a son <strong>propre compte</strong>. ${escapeHtml(ensFullName(t))} ouvre le lien, touche « Continuer avec Google » et coche ses classes ; vous validez dans Paramètres → Demandes d’accès en choisissant « Relier à la fiche existante : ${escapeHtml(ensFullName(t))} ».</p>
+    <p class="hint" style="margin-top:0;">Chaque enseignant a son <strong>propre compte</strong>. ${escapeHtml(ensFullName(t))} ouvre le lien, touche « Continuer avec Google » et coche ses classes ; vous validez dans Enseignants → Inscriptions des enseignants en choisissant « Relier à la fiche existante : ${escapeHtml(ensFullName(t))} ».</p>
     <dl class="acces-ens"><div><dt>Il ou elle verra</dt><dd>${escapeHtml(classes)} — ${escapeHtml(matieres)}</dd></div></dl>
     <div class="form-actions" style="flex-wrap:wrap;">
       ${tels.map(n => `<a class="btn" href="https://wa.me/${n}?text=${texte}" target="_blank" rel="noopener">Envoyer sur WhatsApp · ${n.replace(/^225/, '').replace(/(\d{2})(?=\d)/g, '$1 ')}</a>`).join('')}
@@ -9951,13 +10084,14 @@ async function chargerDemandesAcces(){
   if(error){ box.innerHTML = `<div class="hint">Erreur : ${escapeHtml(error.message)}</div>`; return; }
   window.__demandesAcces = Object.fromEntries((data || []).map(d => [d.id, d]));
   if(role){
-    const n = data.length, qui = role === 'enseignant' ? 'enseignant' : 'parent';
+    const n = data.length + (role === 'enseignant' ? document.querySelectorAll('.enrole-a-valider .dem-carte').length : 0), qui = role === 'enseignant' ? 'enseignant' : 'parent';
     const compteur = $('#compteurInscriptions');
     if(compteur) compteur.textContent = n ? `${n} ${qui}${n > 1 ? 's attendent' : ' attend'} votre validation` : 'Aucune inscription en attente';
-    const panneau = $('.panneau-inscriptions'); if(panneau) panneau.classList.toggle('inscr-attente', n > 0);
+    const panneau = $('.panneau-inscriptions'); if(panneau) panneau.classList.toggle('inscr-attente', n > 0 || !!document.querySelector('.enrole-a-valider'));
   }
   const videRole = { enseignant: 'Aucune inscription en attente. Envoyez le lien EcoMaZ-ENSEIGNANTS ci-dessous : chaque enseignant s’inscrit avec Google et apparaît ici.',
     parent: 'Aucune inscription en attente. Chaque parent qui s’inscrit avec Google dans l’application PARENTS D’ELEVES apparaît ici.' };
+  if(!data.length && role === 'enseignant' && document.querySelector('.enrole-a-valider')){ box.innerHTML = ''; return; }
   if(!data.length){ box.innerHTML = `<div class="etat-vide etat-vide-ok"><span class="etat-vide-ic" aria-hidden="true">${icone('circle-check')}</span><span>${videRole[role] || 'Aucune demande en attente.'}</span></div>`; return; }
   const chiffres = t => String(t || '').replace(/\D/g, '').replace(/^225/, '').slice(-10);
   const sure = d => {
@@ -10191,7 +10325,7 @@ function renderLiensApplications(){
     </div>`;
   return `
     ${bloc('👪 Application Parents', 'parent.html', 'À envoyer aux parents avec leurs identifiants (SMS, WhatsApp…). Ils voient les tableaux d’honneur, actualités et messages de l’école.')}
-    ${bloc('👩‍🏫 Application Enseignants', 'enseignant.html', 'Chaque enseignant s’inscrit lui-même avec Google et coche ses classes ; vous validez dans Demandes d’accès. Il ne voit ensuite que ses classes.')}
+    ${bloc('👩‍🏫 Application Enseignants', 'enseignant.html', 'Chaque enseignant s’inscrit lui-même avec Google et coche ses classes ; vous validez dans Enseignants → Inscriptions des enseignants. Il ne voit ensuite que ses classes.')}
     ${bloc('🚪 Application Portier', 'portier.html', 'À ouvrir une seule fois sur le téléphone du portier. Ses signalements arrivent directement chez les enseignants.')}
     <div class="hint" style="line-height:1.6;">
       <strong>Pour installer :</strong> ouvrir le lien dans Chrome (Android) ou Safari (iPhone), puis toucher « 📲 Installer l’application sur ce téléphone » ou, sur iPhone, <em>Partager → Sur l’écran d’accueil</em>. Le message WhatsApp contient déjà ces explications.

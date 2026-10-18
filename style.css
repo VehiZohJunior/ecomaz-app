@@ -1650,3 +1650,18 @@ body.theme-portier .alerte-inscription{ background:rgba(232,176,75,.12); color:i
 /* ===== Écran Enseignants : inscriptions en attente bien visibles ===== */
 .panneau-inscriptions.inscr-attente{ border:2px solid var(--amber, #C98A12); box-shadow:0 0 0 4px color-mix(in srgb, var(--amber, #C98A12) 15%, transparent); }
 .panneau-inscriptions.inscr-attente #compteurInscriptions{ color:var(--amber-ink, #8A5A00); font-weight:800; }
+/* ===== Console Enseignant : « Je m'enrôle » et liste des enseignants ===== */
+.enrole-ouvert{ border:2px solid color-mix(in srgb, var(--primary) 40%, var(--border)); }
+.enrole-form{ display:flex; flex-direction:column; gap:12px; margin-top:12px; }
+.enrole-form .field{ margin:0; }
+.enrole-ligne{ display:grid; grid-template-columns:repeat(auto-fit, minmax(min(100%, 200px), 1fr)); gap:12px; }
+.enrole-choix{ display:flex; flex-wrap:wrap; gap:6px 14px; margin-top:6px; }
+.enrole-choix .enrol-choix{ min-height:40px; display:inline-flex; align-items:center; gap:6px; }
+.enrole-classes{ display:flex; flex-wrap:wrap; gap:6px; margin-top:4px; }
+.collegues{ list-style:none; margin:0; padding:0; }
+.collegue{ display:flex; align-items:center; gap:12px; padding:10px 0; border-top:1px solid var(--border); }
+.collegue:first-child{ border-top:0; }
+.collegue.moi{ background:var(--primary-soft); border-radius:12px; padding:10px; }
+.collegue-txt{ display:flex; flex-direction:column; min-width:0; }
+.collegue-txt small{ color:var(--text-dim); font-size:13px; }
+.enrole-a-valider{ display:flex; flex-direction:column; gap:10px; margin-bottom:10px; }

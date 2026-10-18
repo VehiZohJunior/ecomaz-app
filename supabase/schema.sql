@@ -3854,3 +3854,61 @@ begin
       and (' ' || lower(e.nom || ' ' || e.prenom)) like '% ' || t || '%'
     order by e.nom, e.prenom limit 8;
 end $$;
+-- =====================================================================
+-- 102. « JE M'ENRÔLE » — L'ENSEIGNANT S'INSCRIT DEPUIS SA CONSOLE (2026-10-18)
+-- =====================================================================
+-- Un compte enseignant sans fiche crée lui-même sa fiche (nom, civilité,
+-- téléphone, matières) et DEMANDE ses classes. Il ne voit aucun élève tant
+-- que la fondation, la direction ou le secrétariat n'a pas validé ses classes
+-- (classes_demandees → classes_assignees). Un enseignant déjà inscrit peut
+-- compléter civilité / téléphone / matières et demander d'autres classes,
+-- mais pas changer son nom ni s'attribuer lui-même une classe.
+alter table enseignants add column if not exists classes_demandees text[] not null default '{}';
+
+create or replace function m_enroler_enseignant(p_civilite text, p_prenom text, p_nom text, p_telephone text,
+                                                p_matieres text[], p_classes text[])
+returns uuid language plpgsql security definer set search_path = public as $$
+declare v_ens uuid := mon_enseignant_id(); v_ecole uuid := mon_ecole_id(); v_mat text; v_nom text; v_prenom text;
+begin
+  if v_ecole is null or mon_role() is distinct from 'enseignant' then raise exception 'Réservé aux comptes enseignants'; end if;
+  if p_civilite not in ('M','F') then raise exception 'Choisissez Monsieur ou Madame'; end if;
+  v_prenom := trim(coalesce(p_prenom, '')); v_nom := upper(trim(coalesce(p_nom, '')));
+  if char_length(v_prenom) not between 2 and 60 or char_length(v_nom) not between 2 and 60 then raise exception 'Indiquez votre prénom et votre nom'; end if;
+  if char_length(regexp_replace(coalesce(p_telephone, ''), '\D', '', 'g')) not between 8 and 15 then raise exception 'Indiquez votre numéro WhatsApp'; end if;
+  if coalesce(cardinality(p_matieres), 0) > 20 or coalesce(cardinality(p_classes), 0) > 30
+     or exists (select 1 from unnest(coalesce(p_matieres, '{}')) m where char_length(m) > 60) then raise exception 'Trop d''éléments'; end if;
+  if exists (select 1 from unnest(coalesce(p_classes, '{}')) c where not exists (select 1 from classes where id = c and ecole_id = v_ecole)) then
+    raise exception 'Classe invalide';
+  end if;
+  if v_ens is null then
+    if coalesce(cardinality(p_classes), 0) = 0 then raise exception 'Cochez au moins une classe'; end if;
+    select 'ENS-' || lpad((coalesce(max(nullif(regexp_replace(matricule, '\D', '', 'g'), '')::int), 0) + 1)::text, 3, '0')
+      into v_mat from enseignants where ecole_id = v_ecole and matricule like 'ENS-%';
+    insert into enseignants (ecole_id, matricule, nom, prenom, sexe, telephone, matieres, classes_assignees, classes_demandees, statut, date_embauche)
+      values (v_ecole, v_mat, v_nom, v_prenom, p_civilite, trim(p_telephone), coalesce(p_matieres, '{}'), '{}', p_classes, 'Actif', current_date)
+      returning id into v_ens;
+    update profiles set enseignant_id = v_ens, nom_complet = v_prenom || ' ' || v_nom,
+      civilite = p_civilite, nom_appel = v_prenom || ' ' || v_nom where id = auth.uid();
+  else
+    update enseignants set sexe = p_civilite, telephone = trim(p_telephone), matieres = coalesce(p_matieres, '{}'),
+      classes_demandees = array(select c from unnest(coalesce(p_classes, '{}')) c where not c = any(coalesce(classes_assignees, '{}')))
+      where id = v_ens and ecole_id = v_ecole;
+    update profiles set civilite = p_civilite where id = auth.uid();
+  end if;
+  return v_ens;
+end $$;
+revoke all on function m_enroler_enseignant(text,text,text,text,text[],text[]) from public, anon;
+grant execute on function m_enroler_enseignant(text,text,text,text,text[],text[]) to authenticated;
+
+-- Classes demandées : visibles par le personnel administratif et par l'enseignant lui-même
+create or replace view enseignants_lecture as
+select
+  e.id, e.ecole_id, e.matricule, e.nom, e.prenom, e.sexe,
+  case when est_perso_admin() then e.telephone else null end as telephone,
+  case when est_perso_admin() then e.email else null end as email,
+  e.classes_assignees, e.matieres, e.date_embauche, e.statut,
+  case when est_admin() then coalesce((select s.salaire_mensuel from salaires_enseignants s where s.enseignant_id = e.id), 0) else null end as salaire_mensuel,
+  case when est_perso_admin() then e.qr_token else null end as qr_token,
+  case when est_perso_admin() or e.id = mon_enseignant_id() then e.classes_demandees else null end as classes_demandees
+from enseignants e
+where e.ecole_id = mon_ecole_id() or developpeur_a_acces(e.ecole_id);
