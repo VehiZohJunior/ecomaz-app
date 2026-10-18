@@ -168,6 +168,7 @@ for(const theme of THEMES){
         liste: () => { ouvrirListeClasse(DB.classes[0].id); },
         contacts: () => { ouvrirListeClasse(DB.classes[0].id, 'contacts'); },
         emarg: () => { ouvrirListeClasse(DB.classes[0].id, 'emargement'); },
+        cartes: () => { ouvrirCartesScolaires(DB.classes[0].id); },
         relies: () => { document.querySelector('.seg[data-etat="relie"]').click(); },
       };
       if(GESTES[extra]){ await page.evaluate(GESTES[extra]); await page.waitForTimeout(900); }

@@ -2425,6 +2425,13 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.10.18-14', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Élèves & Inscriptions : « Cartes scolaires » pour chaque classe — 8 cartes par page A4 (format carte bancaire), à découper.',
+      'Correction : les documents imprimés (bulletins, reçus, listes, rapports…) ne commencent plus par une page blanche.' ],
+  } },
   { version: '2026.10.18-13', nouveautes: {
     commun: [],
     parent: [],
@@ -3316,6 +3323,34 @@ function ouvrirListeClasse(classeId, type){
         <tbody>${eleves.map((e, i) => `<tr>${ligne(e, i)}</tr>`).join('')}</tbody></table>
       <div class="hint" style="margin-top:8px;">Imprimé le ${fmtDate(todayISO())}${type === 'contacts' ? ' — document confidentiel : ne pas afficher' : ''}</div>
     </section>`);
+}
+/* ---------- Cartes scolaires (format carte bancaire, 8 par page A4) ---------- */
+function ouvrirCartesScolaires(classeId){
+  const c = DB.classes.find(x => x.id === classeId); if(!c) return;
+  const m = DB.meta || {};
+  const eleves = DB.eleves.filter(e => e.classeId === classeId && e.statut === 'Actif')
+    .sort((a, b) => (a.nom || '').localeCompare(b.nom || '') || (a.prenom || '').localeCompare(b.prenom || ''));
+  const carte = e => `<article class="carte-scolaire">
+    <header class="cs-tete">${m.logo ? `<img src="${escapeHtml(m.logo)}" alt="">` : `<span class="cs-logo">${escapeHtml(String(m.nomEcole || 'E').charAt(0))}</span>`}
+      <span class="cs-ecole"><strong>${escapeHtml(m.nomEcole || '')}</strong><small>CARTE SCOLAIRE ${escapeHtml(m.anneeScolaire || '')}</small></span></header>
+    <div class="cs-corps">
+      <span class="cs-av" aria-hidden="true">${escapeHtml(initials(e.prenom, e.nom))}</span>
+      <dl class="cs-infos">
+        <div><dt>Nom</dt><dd><strong>${escapeHtml(String(e.nom || '').toUpperCase())}</strong></dd></div>
+        <div><dt>Prénom(s)</dt><dd>${escapeHtml(e.prenom || '')}</dd></div>
+        <div><dt>Classe</dt><dd>${escapeHtml(c.nom)}</dd></div>
+        <div><dt>Matricule</dt><dd>${escapeHtml(e.matricule || '—')}</dd></div>
+        <div><dt>Né(e) le</dt><dd>${e.dateNaissance ? fmtDate(e.dateNaissance) : '—'}</dd></div>
+      </dl>
+    </div>
+    <footer class="cs-pied"><span>${m.telephone ? 'Tél. école : ' + escapeHtml(m.telephone) : escapeHtml(m.adresse || '')}</span><span class="cs-signe">Le Directeur</span></footer>
+  </article>`;
+  openModal(`Cartes scolaires — ${c.nom} (${eleves.length})`, `
+    <div class="form-actions no-print" style="margin-top:0;justify-content:space-between;align-items:center;">
+      <span class="hint" style="margin:0;">8 cartes par page A4, à découper (format carte bancaire). Imprimez de préférence sur papier cartonné.</span>
+      <button type="button" class="btn" onclick="window.print()">${icone('printer')} Imprimer / PDF</button>
+    </div>
+    <div class="cartes-scolaires">${eleves.map(carte).join('')}</div>`);
 }
 function renderEleves(){
   if(ui.eleveProfileId) return renderEleveProfile(ui.eleveProfileId);
@@ -5824,7 +5859,7 @@ function renderEleveListe(){
         <div class="panel" style="margin:0 0 12px;box-shadow:none;border:1px solid var(--border);">
           <div class="panel-head" style="padding:12px 14px;">
             <div><h3 style="margin:0;font-size:var(--fs-sm);">${escapeHtml(c.nom)}</h3><div class="sub">${elevesClasse.length} élève(s)</div></div>
-            ${elevesClasse.length ? `<button type="button" class="btn secondary sm" onclick="ouvrirListeClasse('${c.id}')">${icone('printer')} Imprimer la liste</button>` : ''}
+            ${elevesClasse.length ? `<span style="display:flex;gap:6px;flex-wrap:wrap;"><button type="button" class="btn secondary sm" onclick="ouvrirListeClasse('${c.id}')">${icone('printer')} Imprimer la liste</button><button type="button" class="btn secondary sm" onclick="ouvrirCartesScolaires('${c.id}')">${icone('credit-card')} Cartes scolaires</button></span>` : ''}
           </div>
           ${elevesClasse.length===0 ? `<div class="empty-state" style="padding:16px;"><div class="em-ic">🧒</div>Aucun élève dans cette classe.</div>` : `
           <div class="table-wrap"><table>

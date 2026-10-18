@@ -844,6 +844,7 @@ body:has(.login-gate.open) .theme-toggle-gate{ display:flex; }
   .view-container{ padding:0; max-width:none; }
   body{ background:#fff; color:#000; }
   body:has(.modal-backdrop.open) .view-container{ display:none !important; }
+  body:has(.modal-backdrop.open) .app{ display:none !important; }   /* évitait une page blanche avant chaque document imprimé */
   .modal-backdrop.open{ position:static; background:none; padding:0; display:block !important; }
   .modal-backdrop.open .modal{ box-shadow:none; max-width:100%; border-radius:0; animation:none; }
   .modal-backdrop.open .modal-header{ display:none; }
@@ -1573,3 +1574,22 @@ button.role-card{ font:inherit; color:inherit; width:100%; display:flex; flex-di
 .lc-table.emargement td{ height:30px !important; }
 .lc-table .lc-case{ width:11%; }
 @media print{ .lc-table th, .lc-table td{ border-color:#999; color:#000; } .lc-table th{ background:#eee; } }
+/* ===== Cartes scolaires (85,6 × 54 mm) ===== */
+.cartes-scolaires{ display:grid; grid-template-columns:repeat(auto-fill, minmax(min(100%, 270px), 1fr)); gap:12px; }
+.carte-scolaire{ aspect-ratio:85.6 / 54; display:flex; flex-direction:column; border-radius:12px; overflow:hidden; background:#fff; color:#14392D; border:1px solid #cfd8d3; font-size:11px; break-inside:avoid; page-break-inside:avoid; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+.cs-tete{ display:flex; align-items:center; gap:8px; padding:6px 10px; background:#1F5C46; color:#fff; }
+.cs-tete img, .cs-logo{ width:26px; height:26px; border-radius:6px; object-fit:contain; background:#fff; flex:0 0 auto; }
+.cs-logo{ display:inline-flex; align-items:center; justify-content:center; color:#1F5C46; font-weight:900; }
+.cs-ecole{ display:flex; flex-direction:column; line-height:1.15; min-width:0; }
+.cs-ecole strong{ font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.cs-ecole small{ font-size:9px; letter-spacing:.06em; color:#E8B04B; font-weight:800; }
+.cs-corps{ flex:1; display:flex; gap:10px; align-items:center; padding:6px 10px; }
+.cs-av{ flex:0 0 auto; width:62px; height:72px; border-radius:8px; background:#E3F1EB; border:1px dashed #9cbcae; display:flex; align-items:center; justify-content:center; font-size:20px; font-weight:900; color:#1F5C46; }
+.cs-infos{ margin:0; display:grid; gap:1px; min-width:0; }
+.cs-infos div{ display:flex; gap:6px; } .cs-infos dt{ width:58px; flex:0 0 auto; color:#5F6B65; } .cs-infos dd{ margin:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cs-pied{ display:flex; justify-content:space-between; gap:8px; padding:4px 10px; border-top:1px solid #e4e9e6; font-size:9px; color:#5F6B65; }
+.cs-signe{ font-style:italic; }
+@media print{
+  .cartes-scolaires{ grid-template-columns:repeat(2, 85.6mm); gap:4mm 6mm; justify-content:center; }
+  .carte-scolaire{ width:85.6mm; height:54mm; aspect-ratio:auto; border-radius:3mm; }
+}
