@@ -2361,6 +2361,13 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.10.18-1', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Emploi du temps : sur téléphone, un jour à la fois (onglets Lun → Ven), une couleur par matière, « + Ajouter un cours » sur les créneaux vides.',
+      'Cahier d’appel : nouvel onglet « Aujourd’hui » — 3 boutons Présent / Absent / Retard par élève, « Tous présents », puis « Valider l’appel » (les parents des absents sont prévenus comme avant). L’onglet « Mois » garde le registre complet.' ],
+  } },
   { version: '2026.10.17-3', nouveautes: {
     commun: [],
     parent: [],
