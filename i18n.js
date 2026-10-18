@@ -90,8 +90,7 @@ const TRADUCTIONS = {
     nav_parametres: 'Paramètres',
 
     footer_annee: 'Année scolaire',
-    footer_install: "📲 Installer l'application",
-    footer_demo: 'Recharger les données démo',
+    footer_install: "📲 Installer l'application",
     footer_switch: '🔒 Déconnexion',
     footer_poweredby: 'Propulsé par',
 
@@ -164,8 +163,7 @@ const TRADUCTIONS = {
     nav_parametres: 'Settings',
 
     footer_annee: 'School year',
-    footer_install: '📲 Install the app',
-    footer_demo: 'Reload demo data',
+    footer_install: '📲 Install the app',
     footer_switch: '🔒 Log out',
     footer_poweredby: 'Powered by',
 

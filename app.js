@@ -803,7 +803,8 @@ function nomPourSalutation(){
     const t = (DB?.enseignants || []).find(x => x.id === session.enseignantId);
     if(t) nom = `${t.prenom} ${t.nom}`;
   }
-  const generique = !nom || /^(direction|fondation|secr[ée]tariat|enseignant\(?e?\)?|parent|portier|directeur|fondateur)$/i.test(nom);
+  // Nom de compte générique (rôle, ou intitulé technique) : on salue sans nom plutôt que d'afficher l'intitulé
+  const generique = !nom || /^(direction|fondation|secr[ée]tariat|enseignant\(?e?\)?|parent|portier|directeur|fondateur)$/i.test(nom) || /(^|\s)(test|essai|d[ée]mo)(\s|$)/i.test(nom);
   if(generique) nom = ui.role === 'direction' ? (DB?.meta?.directeurNom || '') : ui.role === 'fondation' ? (DB?.meta?.fondateurNom || '') : '';
   return nom.replace(/^(M\.|Mme|Mlle|Monsieur|Madame)\s+/i, '');
 }
@@ -2590,6 +2591,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.10.18-34', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Textes revus : salutation sans intitulé technique de compte, message du lien de paiement en ligne plus clair.' ],
+  } },
   { version: '2026.10.18-33', nouveautes: {
     commun: [],
     parent: [],
@@ -3883,7 +3890,7 @@ function renderJeMEnrole(){
   return `<div class="panel enrole-panneau enrole-ouvert" id="jeMEnrole">
     <div class="panel-head"><div><h2>✍️ Je m’enrôle</h2>
       <div class="sub">${fiche ? 'Complétez votre fiche ou demandez une autre classe.' : 'Inscrivez-vous dans la base de votre école : votre nom, vos matières et vos classes.'}</div></div></div>
-    ${!fiche ? `<div class="alerte-inscription" style="margin-top:0;">Ce compte doit être <strong>le vôtre uniquement</strong>.${generique ? ' Il porte un nom générique (« ' + escapeHtml(nomProfil) + ' ») : s’il est partagé avec d’autres collègues, chacun doit plutôt s’inscrire avec son propre compte Google.' : ''}
+    ${!fiche ? `<div class="alerte-inscription" style="margin-top:0;">Ce compte doit être <strong>le vôtre uniquement</strong>.${generique ? ' S’il est partagé avec d’autres collègues, chacun doit plutôt s’inscrire avec son propre compte Google.' : ''}
       <button type="button" class="btn secondary sm" style="margin-top:8px;" onclick="inscriptionCompteGoogle()">M’inscrire avec mon propre compte Google</button></div>` : ''}
     <form class="enrole-form" onsubmit="return enregistrerEnrolement(event)">
       <div class="field"><label>Civilité</label><div class="segmente seg-radio" role="radiogroup" aria-label="Civilité">
@@ -11116,11 +11123,11 @@ async function genererLienPaiement(eleveId, trancheLabel, montant){
     if(!data?.ok) throw new Error(data?.error || 'Échec de la génération du lien');
     const eleve = eleveById(eleveId);
     openModal('Lien de paiement généré', `
-      <div class="section-note">${data.mode==='test' ? '🧪 Mode TEST — clique dessus pour simuler, aucun vrai argent ne bouge.' : '✅ Mode production — un vrai paiement peut être effectué avec ce lien.'}</div>
+      <div class="section-note">${data.mode==='test' ? 'Le paiement en ligne n’est pas encore activé pour l’établissement : ce lien ne permet pas encore de régler. Contactez EcoMaZ pour l’activation.' : '✅ Lien de paiement sécurisé : le parent règle directement en ligne.'}</div>
       <div class="field"><label>Lien à envoyer à ${escapeHtml(eleveFullName(eleve))} / son parent</label>
         <input type="text" id="lienPaiementGenere" readonly value="${escapeHtml(data.url)}" onclick="this.select()" style="width:100%;">
       </div>
-      <div class="hint">Copie ce lien et envoie-le au parent par WhatsApp, SMS ou autre — il paiera directement sur la page sécurisée PayDunya (Orange Money, MTN, Moov, Wave, carte).</div>
+      <div class="hint">Copiez ce lien et envoyez-le au parent par WhatsApp, SMS ou autre : il paiera directement sur la page sécurisée PayDunya (Orange Money, MTN, Moov, Wave, carte).</div>
       <div class="form-actions">
         <button type="button" class="btn secondary" onclick="closeModal()">Fermer</button>
         <button type="button" class="btn" onclick="copierLienPaiement('${data.url}')">📋 Copier le lien</button>
