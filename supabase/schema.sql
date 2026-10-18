@@ -3675,3 +3675,56 @@ end $$;
 drop trigger if exists verrou_reglages_plateforme on ecoles;
 create trigger verrou_reglages_plateforme before update on ecoles
   for each row execute function verrou_reglages_plateforme();
+-- =====================================================================
+-- 96. Journal d'audit comptable tenu par la BASE (2026-10-18)
+--     Avant : écrit par l'application (« au mieux »), contournable, et
+--     falsifiable (tout compte de l'école pouvait y ajouter des lignes).
+--     Désormais : chaque création / modification / suppression d'un
+--     paiement de scolarité, cotisation, vente, salaire ou dépense est
+--     journalisée automatiquement ; plus aucune écriture directe ;
+--     le journal n'est jamais modifiable ni effaçable.
+-- =====================================================================
+create or replace function journaliser_compta() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare v_nom text; v_role text; v_ecole uuid;
+begin
+  select nom_complet, role::text into v_nom, v_role from profiles where id = auth.uid();
+  v_ecole := coalesce((case when tg_op = 'DELETE' then old.ecole_id else new.ecole_id end), mon_ecole_id());
+  insert into journal_compta (ecole_id, table_cible, enregistrement_id, action, donnees_avant, donnees_apres, auteur_id, auteur_nom, auteur_role)
+  values (v_ecole, tg_table_name,
+          (case when tg_op = 'DELETE' then old.id else new.id end),
+          (case tg_op when 'INSERT' then 'creation' when 'UPDATE' then 'modification' else 'suppression' end),
+          (case when tg_op = 'INSERT' then null else to_jsonb(old) end),
+          (case when tg_op = 'DELETE' then null else to_jsonb(new) end),
+          auth.uid(), coalesce(v_nom, case when auth.uid() is null then 'Système' else '' end), coalesce(v_role, ''));
+  return coalesce(new, old);
+end $$;
+
+do $$
+declare t text;
+begin
+  foreach t in array array['paiements_scolarite','paiements_cotisations','ventes_gadgets','paiements_salaires','depenses'] loop
+    execute format('drop trigger if exists journaliser_compta on public.%I', t);
+    execute format('create trigger journaliser_compta after insert or update or delete on public.%I for each row execute function journaliser_compta()', t);
+  end loop;
+end $$;
+
+-- Plus d'écriture directe dans le journal depuis l'application
+drop policy if exists "creation journal_compta" on journal_compta;
+-- =====================================================================
+-- 97. Paiements déjà enregistrés : modification / suppression réservées à
+--     la direction et la fondation (décision de Vehi, 2026-10-18).
+--     Le secrétariat encaisse (ajout) et consulte ; tout reste journalisé
+--     (section 96).
+-- =====================================================================
+do $$
+declare t text;
+begin
+  foreach t in array array['paiements_scolarite','paiements_cotisations','ventes_gadgets'] loop
+    execute format('drop policy if exists %I on public.%I', 'acces ' || t, t);
+    execute format('create policy %I on public.%I for select using (ecole_id = mon_ecole_id() and est_perso_admin())', 'lecture ' || t || ' personnel', t);
+    execute format('create policy %I on public.%I for insert with check (ecole_id = mon_ecole_id() and est_perso_admin())', 'encaissement ' || t, t);
+    execute format('create policy %I on public.%I for update using (ecole_id = mon_ecole_id() and est_admin()) with check (ecole_id = mon_ecole_id() and est_admin())', 'modification ' || t || ' direction', t);
+    execute format('create policy %I on public.%I for delete using (ecole_id = mon_ecole_id() and est_admin())', 'suppression ' || t || ' direction', t);
+  end loop;
+end $$;

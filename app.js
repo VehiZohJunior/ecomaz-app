@@ -2507,6 +2507,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.10.18-20', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Paiements : le secrétariat encaisse et imprime les reçus ; seules la direction et la fondation peuvent modifier ou supprimer un paiement déjà enregistré. Chaque opération sur l’argent est notée automatiquement dans le journal d’audit.' ],
+  } },
   { version: '2026.10.18-19', nouveautes: {
     commun: [ 'L’application vous demande : « Comment voudriez-vous que je vous appelle ? » — choisissez votre titre et votre nom, un aperçu s’affiche. Vous pouvez le changer à tout moment sur votre page d’accueil.' ],
     parent: [],
@@ -8712,11 +8718,13 @@ async function confirmerPaiementParent(rec, e){
 function voirHistoriqueScolarite(eleveId){
   const e = eleveById(eleveId);
   const paiements = DB.paiementsScolarite.filter(p=>p.eleveId===eleveId).sort((a,b)=>b.date.localeCompare(a.date));
+  const admin = ['direction','fondation'].includes(ui.role);   // modifier / supprimer : direction et fondation (section 97)
   const rows = paiements.map(p=>`<tr><td>${fmtDate(p.date)}</td><td>${p.tranche}</td><td class="amount in">${fmtFCFA(p.montant)}</td><td>${p.modePaiement}</td>
     <td style="white-space:nowrap;"><button class="icon-btn" title="Reçu" onclick="openRecu({type:'entree', refId:'${p.id}', montant:${p.montant}, date:'${p.date}', modePaiement:'${p.modePaiement}', objet:'Scolarité — ${p.tranche}', personne:'${escapeHtml(eleveFullName(e))}', sousInfo:'${escapeHtml(classeName(e.classeId))}'})">🧾</button>
-    <button class="icon-btn" title="Modifier" onclick="openModifierPaiementScolariteForm('${p.id}')">✏️</button>
-    <button class="icon-btn danger" title="Supprimer" onclick="deletePaiementScolarite('${p.id}','${eleveId}')">🗑️</button></td></tr>`).join('');
+    ${admin ? `<button class="icon-btn" title="Modifier" onclick="openModifierPaiementScolariteForm('${p.id}')">✏️</button>
+    <button class="icon-btn danger" title="Supprimer" onclick="deletePaiementScolarite('${p.id}','${eleveId}')">🗑️</button>` : ''}</td></tr>`).join('');
   openModal(`Historique scolarité — ${eleveFullName(e)}`, `
+    ${admin ? '' : '<div class="hint" style="margin-top:0;">Pour corriger ou annuler un paiement déjà enregistré, adressez-vous à la direction.</div>'}
     <div class="table-wrap"><table><thead><tr><th>Date</th><th>Tranche</th><th>Montant</th><th>Mode</th><th></th></tr></thead>
     <tbody>${rows || '<tr><td colspan="5" class="hint">Aucun paiement enregistré</td></tr>'}</tbody></table></div>`);
 }
@@ -10853,19 +10861,11 @@ window.addEventListener('unhandledrejection', (ev) => {
    quand. Best-effort comme la surveillance technique : ne doit jamais
    empêcher l'action comptable elle-même de réussir.
    --------------------------------------------------------------------- */
-async function journaliserCompta(tableCible, enregistrementId, action, donneesAvant, donneesApres){
-  try{
-    await sb.from('journal_compta').insert({
-      table_cible: tableCible,
-      enregistrement_id: enregistrementId,
-      action,
-      donnees_avant: donneesAvant || null,
-      donnees_apres: donneesApres || null,
-      auteur_nom: session?.nomComplet || '',
-      auteur_role: session?.role || '',
-    });
-  }catch(_e){ /* piste d'audit best-effort : ne jamais bloquer une opération comptable pour ça */ }
-}
+// Le journal d'audit comptable est désormais tenu par la BASE elle-même
+// (schema.sql section 96 : déclencheurs sur paiements, cotisations, ventes,
+// salaires et dépenses) — impossible à contourner ou à falsifier. Cette
+// fonction est gardée pour ne rien casser, mais n'écrit plus rien.
+async function journaliserCompta(){ /* voir schema.sql section 96 */ }
 
 /* ---------------------------------------------------------------------
    13. INITIALISATION
