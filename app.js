@@ -1081,6 +1081,7 @@ function renderLoginGate(step, error, loading){
     ? (ecoleV ? escapeHtml(nomApplication(ecoleV.nom_ecole)) : t('app_name'))
     : (espace ? t('login_espace_prefix') + t('espace_'+espace.key+'_label') : t('app_name'));
   const iosHint = fixe ? aideInstallation() : '';
+  if(fixe && !ui.loginAvecMotDePasse) return renderAccueilInscription(logoHtml, titreLogin, error, iosHint);
   return `
     <div class="login-card">
       <div class="login-logo">${logoHtml}</div>
@@ -1102,7 +1103,7 @@ function renderLoginGate(step, error, loading){
         <div class="pin-error">${error ? escapeHtml(error) : ''}</div>
         <button class="btn" type="submit" style="width:100%;margin-top:14px;" ${loading?'disabled':''}>${loading?t('btn_login_loading'):t('btn_login')}</button>
         <button type="button" class="pin-back" onclick="showForgotPassword()">${t('btn_forgot')}</button>
-        ${fixe ? '' : `<button type="button" class="pin-back" onclick="showEspaces()">${t('btn_change_espace')}</button>`}
+        ${fixe ? `<button type="button" class="pin-back" onclick="ui.loginAvecMotDePasse=false; showLoginGate()">← Revenir à l’inscription avec Google</button>` : `<button type="button" class="pin-back" onclick="showEspaces()">${t('btn_change_espace')}</button>`}
       </form>
       ${fixe ? `<div class="sub" style="margin:16px 0 8px;">— ou —</div>
         <button type="button" class="btn secondary" style="width:100%;" onclick="handleGoogleLogin()">🔵 Continuer avec Google</button>
@@ -1152,6 +1153,48 @@ function showLoginGate(error){
   $('#loginGate').classList.add('open');
   $('#loginGate').innerHTML = renderLoginGate('login', error);
   majBoutonsInstall();
+}
+// Navigateur intégré (WhatsApp, Facebook, Instagram…) : Google y refuse la connexion
+function navigateurIntegre(){
+  const ua = navigator.userAgent || '';
+  return /; wv\)|FBAN|FBAV|FB_IAB|Instagram|Messenger|Line\/|Snapchat|TikTok|musical_ly/i.test(ua);
+}
+const ETAPES_INSCRIPTION = {
+  enseignant: ['Touchez « Continuer avec Google » et choisissez votre adresse Gmail.', 'Écrivez votre nom et votre numéro WhatsApp, puis cochez vos classes.', 'La direction valide votre demande : vous entrez alors dans votre espace.'],
+  parent: ['Touchez « Continuer avec Google » et choisissez votre adresse Gmail.', 'Écrivez votre nom et votre numéro WhatsApp, puis cochez votre ou vos enfants.', 'L’école valide votre demande : vous suivez alors votre enfant.'],
+  portier: ['Touchez « Continuer avec Google » et choisissez votre adresse Gmail.', 'Écrivez votre nom.', 'La direction valide votre demande.'],
+};
+function renderAccueilInscription(logoHtml, titreLogin, error, iosHint){
+  const fixe = window.ESPACE_FIXE;
+  const etapes = ETAPES_INSCRIPTION[fixe] || ETAPES_INSCRIPTION.portier;
+  const sansEcole = !window.ECOLE_VITRINE;
+  const integre = navigateurIntegre();
+  return `
+    <div class="login-card accueil-inscription">
+      <div class="login-logo">${logoHtml}</div>
+      <h1>${titreLogin}</h1>
+      <div class="sub" style="font-weight:700;margin-bottom:2px;">${t('espace_' + fixe + '_label')}</div>
+      ${sansEcole ? `<div class="alerte-inscription">Ce lien ne contient pas le nom de l’école. Demandez à l’école de vous renvoyer le lien complet (bouton « Partager sur WhatsApp » de l’école).</div>` : ''}
+      ${error ? `<div class="pin-error">${escapeHtml(error)}</div>` : ''}
+      <div class="sub" style="margin-top:6px;">Première fois ou déjà inscrit(e) : entrez avec votre compte Google (Gmail). Aucun mot de passe à retenir.</div>
+      ${integre ? `<div class="alerte-inscription">
+          <strong>Ouvrez d’abord ce lien dans Chrome.</strong> Google refuse la connexion à l’intérieur de WhatsApp ou Facebook.
+          Touchez les <strong>⋮</strong> (3 points) en haut à droite, puis « Ouvrir dans Chrome » (ou « Ouvrir dans le navigateur »).
+          <button type="button" class="btn secondary sm" style="width:100%;margin-top:8px;" onclick="copierLienCourant()">Copier le lien pour le coller dans Chrome</button>
+        </div>` : ''}
+      <button type="button" class="btn btn-google" style="width:100%;margin-top:12px;" onclick="handleGoogleLogin()" ${sansEcole ? 'disabled' : ''}>
+        <span class="g-logo" aria-hidden="true">G</span> Continuer avec Google</button>
+      <ol class="etapes-inscription">${etapes.map(e => `<li>${escapeHtml(e)}</li>`).join('')}</ol>
+      <div class="sub" style="font-size:var(--fs-xs);">Pas encore d’adresse Gmail ? <a href="https://accounts.google.com/signup" target="_blank" rel="noopener">Créez-en une gratuitement</a>, puis revenez sur ce lien.</div>
+      <button type="button" class="pin-back" onclick="ui.loginAvecMotDePasse=true; showLoginGate()">J’ai un email et un mot de passe donnés par l’école</button>
+      <button type="button" class="btn btn-install-pwa" style="display:none;width:100%;margin-top:10px;">📲 Installer l'application sur ce téléphone</button>${iosHint}
+    </div>`;
+}
+function copierLienCourant(){
+  const lien = window.location.href;
+  (navigator.clipboard ? navigator.clipboard.writeText(lien) : Promise.reject()).then(
+    () => toast('Lien copié : collez-le dans Chrome'),
+    () => { window.prompt('Copiez ce lien, puis collez-le dans Chrome :', lien); });
 }
 async function handleGoogleLogin(){
   const r = await connexionGoogle();
@@ -2520,6 +2563,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.10.18-24', nouveautes: {
+    commun: [],
+    parent: [ 'Inscription plus simple : dès l’ouverture du lien, un grand bouton « Continuer avec Google » et les 3 étapes expliquées.' ],
+    portier: [],
+    personnel: [ 'Applications Enseignants et Parents : l’écran d’ouverture propose d’abord l’inscription avec Google (plus de mot de passe demandé), et prévient si le lien a été ouvert dans WhatsApp ou Facebook.', 'Écran Enseignants : nouvelle rubrique « Inscriptions des enseignants » en haut — la fondation, la direction et le secrétariat voient les enseignants inscrits et les valident en un geste (le secrétariat reçoit aussi la notification).' ],
+  } },
   { version: '2026.10.18-23', nouveautes: {
     commun: [],
     parent: [],
@@ -4328,7 +4377,8 @@ async function supprimerPublication(id){
    Compte (sans rien télécharger d'autre) ce qui attend une action.
    ===================================================================== */
 const SUJETS_A_TRAITER = [
-  { cle:'acces', ic:'🔑', lib:'demande(s) d’accès à valider', vue:'parametres', table:'demandes_acces', filtre: q => q.eq('statut', 'en_attente'), roles:['direction','fondation'] },
+  { cle:'acces-ens', ic:'👩‍🏫', lib:'inscription(s) enseignant à valider', vue:'enseignants', table:'demandes_acces', filtre: q => q.eq('statut', 'en_attente').eq('role_demande', 'enseignant') },
+  { cle:'acces', ic:'🔑', lib:'demande(s) d’accès à valider', vue:'parametres', table:'demandes_acces', filtre: q => q.eq('statut', 'en_attente').neq('role_demande', 'enseignant'), roles:['direction','fondation'] },
   { cle:'preinsc', ic:'📥', lib:'pré-inscription(s) à rappeler', vue:'eleves', table:'preinscriptions', filtre: q => q.eq('statut', 'nouvelle') },
   { cle:'docs', ic:'📄', lib:'document(s) demandé(s) par les parents', vue:'eleves', table:'demandes_documents', filtre: q => q.eq('statut', 'en_attente') },
   { cle:'corr', ic:'✏️', lib:'correction(s) de fiche proposée(s)', vue:'eleves', table:'corrections_fiches', filtre: q => q.eq('statut', 'en_attente') },
@@ -6935,6 +6985,16 @@ function renderEnseignants(){
 
   return `
   <div class="view active">
+    <div class="panel" id="panneauInscriptionsEns">
+      <div class="panel-head">
+        <div><h2>Inscriptions des enseignants</h2><div class="sub" id="compteurInscriptionsEns">Chargement…</div></div>
+        <button type="button" class="btn secondary sm" onclick="chargerDemandesAcces()">Actualiser</button>
+      </div>
+      <div class="hint" style="margin-top:0;">Chaque enseignant ouvre le lien EcoMaZ-ENSEIGNANTS, touche « Continuer avec Google » et coche ses classes. Vérifiez ses classes puis touchez « Approuver » : sa fiche est créée et il ne voit que ses classes.</div>
+      <div id="demandesEnsBox"><div class="hint">Chargement…</div></div>
+      ${(setTimeout(chargerDemandesAcces, 0), '')}
+    </div>
+
     <div class="panel">
       <div class="panel-head">
         <div><h2>Liste des enseignants</h2><div class="sub">${list.length} enseignant(s)</div></div>
@@ -9866,11 +9926,19 @@ function allerAuxDemandesAcces(){
   setTimeout(() => { const z = document.getElementById('panneauDemandesAcces'); if(z) z.scrollIntoView({ behavior:'smooth', block:'start' }); }, 150);
 }
 async function chargerDemandesAcces(){
-  const box = $('#demandesAccesBox'); if(!box) return;
-  const { data, error } = await sb.from('demandes_acces').select('*').eq('statut','en_attente').order('created_at');
+  const boxEns = $('#demandesEnsBox');
+  const box = boxEns || $('#demandesAccesBox'); if(!box) return;
+  let q = sb.from('demandes_acces').select('*').eq('statut','en_attente').order('created_at');
+  if(boxEns) q = q.eq('role_demande', 'enseignant');
+  const { data, error } = await q;
   if(error){ box.innerHTML = `<div class="hint">Erreur : ${escapeHtml(error.message)}</div>`; return; }
   window.__demandesAcces = Object.fromEntries((data || []).map(d => [d.id, d]));
-  if(!data.length){ box.innerHTML = `<div class="etat-vide etat-vide-ok"><span class="etat-vide-ic" aria-hidden="true">${icone('circle-check')}</span><span>Aucune demande en attente.</span></div>`; return; }
+  if(boxEns){
+    const n = data.length, compteur = $('#compteurInscriptionsEns');
+    if(compteur) compteur.textContent = n ? `${n} enseignant${n > 1 ? 's attendent' : ' attend'} votre validation` : 'Aucune inscription en attente';
+    const panneau = $('#panneauInscriptionsEns'); if(panneau) panneau.classList.toggle('inscr-attente', n > 0);
+  }
+  if(!data.length){ box.innerHTML = `<div class="etat-vide etat-vide-ok"><span class="etat-vide-ic" aria-hidden="true">${icone('circle-check')}</span><span>${boxEns ? 'Aucune inscription en attente. Envoyez le lien EcoMaZ-ENSEIGNANTS ci-dessous : chaque enseignant s’inscrit avec Google et apparaît ici.' : 'Aucune demande en attente.'}</span></div>`; return; }
   const chiffres = t => String(t || '').replace(/\D/g, '').replace(/^225/, '').slice(-10);
   const sure = d => {
     if(d.role_demande !== 'parent') return false;
@@ -9966,7 +10034,8 @@ async function traiterDemandeAcces(id, approuver, parent){
     toast(approuver ? 'Enseignant validé ✅ : il ne voit que ses classes' : 'Demande refusée');
     if(approuver) proposerPrevenirApprouve(id);
     if(approuver){ try{ DB.enseignants = await dbSelectAll('enseignants_lecture'); DB.profiles = await dbSelectAll('profiles'); }catch(_e){} }
-    chargerDemandesAcces();
+    if(approuver && $('#demandesEnsBox')) renderView('enseignants'); else chargerDemandesAcces();
+    if(DB.aTraiter) DB.aTraiter.charge = 0;
     return;
   }
   const choix = choixDemandeParent(id, approuver && parent);
@@ -10294,7 +10363,7 @@ function renderParametres(){
     </div>` : ''}
 
     <div class="panel" id="panneauDemandesAcces">
-      <div class="panel-head"><div><h2>Demandes d’accès</h2><div class="sub">Parents, enseignants et portier qui se sont inscrits avec Google et attendent votre validation</div></div></div>
+      <div class="panel-head"><div><h2>Demandes d’accès</h2><div class="sub">Parents, enseignants et portier qui se sont inscrits avec Google et attendent votre validation (les inscriptions enseignants sont aussi dans l’écran Enseignants)</div></div></div>
       <div id="demandesAccesBox"><div class="hint">Chargement…</div></div>
       ${(setTimeout(chargerDemandesAcces,0),'')}
     </div>

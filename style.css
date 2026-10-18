@@ -1641,3 +1641,12 @@ body.theme-portier .appel-apercu{ color:var(--em-gold-400, #E8B04B); }
 .edt-imp-table td strong{ display:block; } .edt-imp-table td small{ display:block; color:var(--text-dim); font-size:11px; }
 .edt-imp-pause td{ background:var(--surface-2); text-align:center; font-weight:700; color:var(--text-dim); }
 @media print{ .edt-imp-table th, .edt-imp-table td{ border-color:#999; color:#000; } .edt-imp-pause td, .edt-imp-table th{ background:#eee; } .edt-imp-table td{ -webkit-print-color-adjust:exact; print-color-adjust:exact; } }
+/* ===== Applications dédiées : accueil « inscription avec Google » ===== */
+.accueil-inscription .btn-google{ display:inline-flex; align-items:center; justify-content:center; gap:10px; min-height:52px; font-size:17px; }
+.accueil-inscription .g-logo{ width:26px; height:26px; border-radius:50%; background:#fff; color:#1F5C46; font-weight:900; display:inline-flex; align-items:center; justify-content:center; }
+.etapes-inscription{ text-align:left; margin:14px 0 10px; padding-left:22px; display:flex; flex-direction:column; gap:6px; font-size:14px; }
+.alerte-inscription{ text-align:left; margin:10px 0 0; padding:12px; border-radius:12px; background:var(--amber-bg, #FFF4DC); color:var(--text, #14392D); border:1px solid color-mix(in srgb, var(--amber, #C98A12) 40%, transparent); font-size:14px; line-height:1.4; }
+body.theme-portier .alerte-inscription{ background:rgba(232,176,75,.12); color:inherit; }
+/* ===== Écran Enseignants : inscriptions en attente bien visibles ===== */
+#panneauInscriptionsEns.inscr-attente{ border:2px solid var(--amber, #C98A12); box-shadow:0 0 0 4px color-mix(in srgb, var(--amber, #C98A12) 15%, transparent); }
+#panneauInscriptionsEns.inscr-attente #compteurInscriptionsEns{ color:var(--amber-ink, #8A5A00); font-weight:800; }
