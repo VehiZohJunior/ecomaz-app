@@ -2400,6 +2400,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.10.18-6', nouveautes: {
+    commun: [ 'Nouvel écran de connexion : accueil « Bienvenue », choix du profil plus clair sur téléphone, logo ou initiales de l’école, champs plus grands.' ],
+    parent: [],
+    portier: [],
+    personnel: [],
+  } },
   { version: '2026.10.18-5', nouveautes: {
     commun: [],
     parent: [ 'Nouvelle carte « Aujourd’hui » en haut de l’accueil : présence du jour, prochain événement, devoirs. Plusieurs enfants ? Touchez son prénom pour changer.' ],
