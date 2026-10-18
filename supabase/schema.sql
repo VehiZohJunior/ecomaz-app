@@ -3629,3 +3629,27 @@ begin
 end;
 $function$
 ;
+-- =====================================================================
+-- 94. PROFILS : plus aucune écriture directe depuis l'application
+--     (2026-10-18). La règle « gestion profils par admin » permettait à
+--     une direction de modifier n'importe quel profil de son école, y
+--     compris le RÔLE (jusqu'à « développeur »). Aucun écran ne s'en
+--     servait : les comptes sont créés par les fonctions serveur sécurisées
+--     (validation des demandes, création d'école, comptes parents).
+--     + verrou : le rôle « développeur » ne peut être donné que par les
+--       outils serveur, jamais par un utilisateur connecté.
+-- =====================================================================
+drop policy if exists "gestion profils par admin" on profiles;
+
+create or replace function verrou_role_developpeur() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if new.role = 'developpeur' and (tg_op = 'INSERT' or old.role is distinct from 'developpeur')
+     and auth.uid() is not null then
+    raise exception 'Le rôle développeur ne peut pas être attribué depuis l’application.';
+  end if;
+  return new;
+end $$;
+drop trigger if exists verrou_role_developpeur on profiles;
+create trigger verrou_role_developpeur before insert or update on profiles
+  for each row execute function verrou_role_developpeur();
