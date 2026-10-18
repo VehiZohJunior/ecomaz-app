@@ -1693,3 +1693,14 @@ body.theme-portier .alerte-inscription{ background:rgba(232,176,75,.12); color:i
 .edt-rapide-choix:hover, .edt-rapide-choix:focus-visible{ border-color:var(--primary); }
 .edt-rapide-choix small{ color:var(--text-dim); font-size:13px; }
 .danger-texte{ color:var(--danger, #B5492F); }
+/* ===== Saisie groupée des versements déjà reçus ===== */
+.rv-liste{ display:flex; flex-direction:column; margin-top:8px; }
+.rv-eleve{ padding:12px 0; border-top:1px solid var(--border); }
+.rv-eleve:first-child{ border-top:0; }
+.rv-solde{ display:flex; justify-content:space-between; align-items:center; color:var(--text-dim); }
+.rv-echs{ display:grid; grid-template-columns:repeat(auto-fill, minmax(min(100%, 240px), 1fr)); gap:8px; margin-top:8px; }
+.rv-ech{ display:grid; grid-template-columns:1fr 118px auto; gap:6px; align-items:center; padding:8px; border-radius:12px; background:var(--surface-2); }
+.rv-lib{ display:flex; flex-direction:column; font-size:14px; font-weight:700; min-width:0; } .rv-lib small{ font-weight:400; color:var(--text-dim); font-size:12px; }
+.rv-montant{ min-height:40px; text-align:right; padding-left:6px; padding-right:8px; font-variant-numeric:tabular-nums; }
+.rv-montant.rv-trop{ border-color:var(--danger, #B5492F); background:color-mix(in srgb, var(--danger, #B5492F) 8%, transparent); }
+.rv-pied{ position:sticky; bottom:0; display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:10px; padding:12px 0 2px; margin-top:8px; border-top:1px solid var(--border); background:var(--surface, #fff); }

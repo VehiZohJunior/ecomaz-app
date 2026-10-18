@@ -2590,6 +2590,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.10.18-31', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Comptabilité → Scolarité : « Saisir les versements déjà reçus » — toute une classe sur un seul écran, bouton « Payée » par tranche ou montant libre, total en direct, enregistrement en une fois (contrôle : jamais plus que le reste dû).' ],
+  } },
   { version: '2026.10.18-30', nouveautes: {
     commun: [],
     parent: [],
@@ -9093,6 +9099,7 @@ function renderComptaScolarite(){
             ${DB.classes.map(c=>`<option value="${c.id}" ${classeId===c.id?'selected':''}>${c.nom}</option>`).join('')}
           </select>
           ${['direction','fondation'].includes(ui.role) ? `<button class="btn secondary" onclick="go('parametres')" title="Gérer les échéances (Frais d'inscription, versements...) depuis Paramètres">🎓 Échéances</button>` : ''}
+          ${grilleActive && eleves.length ? `<button class="btn" onclick="ouvrirRepriseVersements('${classeId}')">📥 Saisir les versements déjà reçus</button>` : ''}
           <button class="btn secondary" onclick="exporterScolariteExcel()">⬇️ Excel (toutes les classes)</button>
           ${grilleActive ? '' : `<button class="btn secondary" onclick="openFraisScolariteForm()">⚙️ Configurer les frais</button>`}
         </div>
@@ -9117,6 +9124,62 @@ function renderComptaScolarite(){
     </div>`;
 }
 
+/* ---------- Saisie groupée des versements déjà reçus (une classe, toutes les tranches) ---------- */
+function ouvrirRepriseVersements(classeId){
+  const c = DB.classes.find(x => x.id === classeId); if(!c) return;
+  const eleves = DB.eleves.filter(e => e.classeId === classeId && e.statut === 'Actif')
+    .sort((a, b) => (a.nom || '').localeCompare(b.nom || '') || (a.prenom || '').localeCompare(b.prenom || ''));
+  const blocs = eleves.map(e => {
+    const g = scolariteEleveParEcheance(e.id);
+    const ouvertes = g.detail.filter(d => d.montant > d.paye);
+    if(!ouvertes.length) return `<div class="rv-eleve rv-solde"><strong>${escapeHtml(eleveFullName(e))}</strong><span class="badge-etat ok">Soldé</span></div>`;
+    return `<div class="rv-eleve"><strong>${escapeHtml(eleveFullName(e))}</strong>
+      <div class="rv-echs">${ouvertes.map(d => { const reste = d.montant - d.paye; return `<div class="rv-ech">
+        <span class="rv-lib">${escapeHtml(d.label)}<small>reste ${fmtFCFA(reste)}</small></span>
+        <input type="number" inputmode="numeric" class="rv-montant" min="0" step="500" max="${reste}" placeholder="0" aria-label="${escapeHtml(eleveFullName(e) + ' — ' + d.label)}"
+          data-eleve="${e.id}" data-tranche="${escapeHtml(d.label)}" data-reste="${reste}" oninput="totalReprise()">
+        <button type="button" class="btn secondary sm" onclick="const i=this.previousElementSibling; i.value = i.value == ${reste} ? '' : ${reste}; totalReprise()">Payée</button>
+      </div>`; }).join('')}</div></div>`;
+  }).join('');
+  openModal(`Versements déjà reçus — ${c.nom}`, `
+    <p class="hint" style="margin-top:0;">Pour reprendre ce que les parents ont <strong>déjà payé</strong> (cahier, reçus papier). Touchez « Payée » si la tranche est réglée en entier, ou écrivez le montant versé. Laissez vide si rien n’a été payé.</p>
+    <div class="form-grid">
+      <div class="field"><label for="rvDate">Date des versements</label><input type="date" id="rvDate" value="${todayISO()}" max="${todayISO()}"></div>
+      <div class="field"><label for="rvMode">Mode de paiement</label><select id="rvMode">${MODES_PAIEMENT.map(m => `<option>${m}</option>`).join('')}</select></div>
+    </div>
+    <div class="rv-liste">${blocs}</div>
+    <div class="rv-pied"><span id="rvTotal">Rien de saisi pour le moment</span>
+      <span style="display:flex;gap:8px;"><button type="button" class="btn secondary" onclick="closeModal()">Annuler</button>
+      <button type="button" class="btn" id="rvBouton" onclick="enregistrerReprise('${classeId}')" disabled>Enregistrer</button></span></div>`);
+}
+function lignesReprise(){
+  return $$('.rv-montant').map(i => ({ i, montant: Math.round(Number(i.value) || 0), reste: Number(i.dataset.reste) })).filter(x => x.montant > 0);
+}
+function totalReprise(){
+  const l = lignesReprise(), total = l.reduce((t, x) => t + x.montant, 0);
+  const trop = l.filter(x => x.montant > x.reste);
+  $$('.rv-montant').forEach(i => i.classList.toggle('rv-trop', (Number(i.value) || 0) > Number(i.dataset.reste)));
+  const z = $('#rvTotal'), b = $('#rvBouton');
+  if(z) z.innerHTML = trop.length ? `<span style="color:var(--danger, #B5492F);">${trop.length} montant(s) plus grand(s) que le reste dû</span>`
+    : l.length ? `<strong>${l.length}</strong> versement${l.length > 1 ? 's' : ''} · total <strong>${fmtFCFA(total)}</strong>` : 'Rien de saisi pour le moment';
+  if(b){ b.disabled = !l.length || trop.length > 0; b.textContent = l.length ? `Enregistrer ${l.length} versement${l.length > 1 ? 's' : ''}` : 'Enregistrer'; }
+}
+async function enregistrerReprise(classeId){
+  const l = lignesReprise();
+  if(!l.length || l.some(x => x.montant > x.reste)) return;
+  const date = $('#rvDate').value || todayISO(), mode = $('#rvMode').value;
+  if(date > todayISO()){ toast('La date ne peut pas être dans le futur.'); return; }
+  const total = l.reduce((t, x) => t + x.montant, 0);
+  if(!confirm(`Enregistrer ${l.length} versement(s) pour un total de ${fmtFCFA(total)} ?`)) return;
+  const b = $('#rvBouton'); if(b) b.disabled = true;
+  try{
+    const ajoutes = await dbInsertMany('paiements_scolarite', l.map(x => ({ eleveId: x.i.dataset.eleve, montant: x.montant, tranche: x.i.dataset.tranche, date, modePaiement: mode })));
+    DB.paiementsScolarite.push(...ajoutes);
+  }catch(e){ if(b) b.disabled = false; alert('Erreur : ' + (e.message || e)); return; }
+  closeModal();
+  toast(`${l.length} versement${l.length > 1 ? 's' : ''} enregistré${l.length > 1 ? 's' : ''} ✅ (${fmtFCFA(total)})`);
+  renderView('comptabilite');
+}
 function optionsEcheancesScolarite(selectedLabel, classeId){
   const grille = echeancesDeClasse(classeId);
   if(grille.length){

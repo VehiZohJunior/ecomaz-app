@@ -178,6 +178,8 @@ for(const theme of THEMES){
         emarg: () => { ouvrirListeClasse(DB.classes[0].id, 'emargement'); },
         cartes: () => { ouvrirCartesScolaires(DB.classes[0].id); },
         relance: () => { ouvrirRelanceEnseignants(); },
+        reprise: () => { ouvrirRepriseVersements(ui.filters.comptaClasse || DB.classes[0].id); const i = document.querySelectorAll('.rv-ech button'); if(i[0]) i[0].click(); if(i[3]) i[3].click(); const m = document.querySelectorAll('.rv-montant'); if(m[5]){ m[5].value = 5000; totalReprise(); } },
+        repriseok: async () => { dbInsertMany = async (t, l) => l.map(r => ({ ...r, id: crypto.randomUUID() })); window.confirm = () => true; ouvrirRepriseVersements(ui.filters.comptaClasse || DB.classes[0].id); document.querySelectorAll('.rv-ech button').forEach((b, k) => { if(k % 2 === 0) b.click(); }); await enregistrerReprise(ui.filters.comptaClasse || DB.classes[0].id); },
         remplir: () => { ouvrirRemplissageEdt(ui.filters.ttClasse || DB.classes[0].id); },
         proposition: async () => { dbInsertMany = async (t, l) => l.map(r => ({ ...r, id: crypto.randomUUID() })); await remplirEdt(ui.filters.ttClasse || DB.classes[0].id, 'proposition'); },
         listeens: () => { ouvrirListeEnseignants(); },
