@@ -3385,3 +3385,21 @@ alter table objets_perdus drop constraint if exists objets_perdus_parent_nom;
 alter table objets_perdus add constraint objets_perdus_parent_nom check (char_length(coalesce(parent_nom, '')) <= 150);
 alter table absences_signalees drop constraint if exists absences_signalees_parent_nom;
 alter table absences_signalees add constraint absences_signalees_parent_nom check (char_length(coalesce(parent_nom, '')) <= 150);
+-- =====================================================================
+-- 87. Photos et vidéos de Vie de l'école : lecture du FICHIER soumise aux
+--     mêmes règles que la publication (2026-10-18). Avant : tout compte
+--     de l'école (portier, parents de toutes les classes) pouvait lire un
+--     fichier dont il connaissait le chemin. Maintenant : seulement si la
+--     personne a le droit de voir la publication (classe de son enfant,
+--     ou toute l'école ; personnel) et a passé la double vérification.
+-- =====================================================================
+drop policy if exists "publications lecture ecole" on storage.objects;
+create policy "publications lecture ecole" on storage.objects for select to authenticated
+  using (
+    bucket_id = 'publications'
+    and (storage.foldername(name))[1] = (public.mon_ecole_id())::text
+    and exists (select 1 from public.publications p
+                where p.id::text = (storage.foldername(name))[2]
+                  and public.peut_voir_publication(p.ecole_id, p.classe_ids))
+    and public.double_verification_ok()
+  );
