@@ -3485,3 +3485,21 @@ end $$;
 drop trigger if exists garder_frais_scolarite on classes;
 create trigger garder_frais_scolarite before insert or update on classes
   for each row execute function garder_frais_scolarite();
+-- =====================================================================
+-- 89. « Comment voudriez-vous que je vous appelle ? » (2026-10-18)
+--     Chaque utilisateur choisit son titre (civilité) et le nom à utiliser
+--     dans les salutations — pour lui-même seulement.
+-- =====================================================================
+alter table profiles add column if not exists nom_appel text check (char_length(nom_appel) between 1 and 80);
+create or replace function definir_appellation(p_civilite text, p_nom text) returns void
+language plpgsql security definer set search_path = public as $$
+declare v text := btrim(regexp_replace(coalesce(p_nom, ''), '\s+', ' ', 'g'));
+begin
+  if auth.uid() is null then raise exception 'Non authentifié'; end if;
+  if p_civilite not in ('M', 'F') then raise exception 'Choisissez votre titre.'; end if;
+  if char_length(v) < 1 or char_length(v) > 80 then raise exception 'Indiquez le nom à utiliser (80 caractères au plus).'; end if;
+  if v ~ '[<>{}]' then raise exception 'Caractères non autorisés dans le nom.'; end if;
+  update profiles set civilite = p_civilite, nom_appel = v where id = auth.uid();
+end $$;
+revoke all on function definir_appellation(text, text) from public, anon;
+grant execute on function definir_appellation(text, text) to authenticated;

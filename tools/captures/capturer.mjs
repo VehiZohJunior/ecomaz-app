@@ -173,7 +173,7 @@ for(const theme of THEMES){
         contacts: () => { ouvrirListeClasse(DB.classes[0].id, 'contacts'); },
         emarg: () => { ouvrirListeClasse(DB.classes[0].id, 'emargement'); },
         cartes: () => { ouvrirCartesScolaires(DB.classes[0].id); },
-        madame: () => { choisirCivilite('F'); },
+        repondre: () => { const f = document.querySelector('.question-appel'); f.querySelector('input[value=F]').click(); f.querySelector('#nomAppel').value = 'NAHI'; apercuAppellation(); f.requestSubmit(); },
         approuver1: () => { document.querySelector('.dem-carte .btn.sm').click(); },
         profil: () => { ui.eleveProfileId = DB.eleves[0].id; renderView('eleves'); window.scrollTo(0, 0); },
         ongletbulletin: () => { ui.eleveProfileId = DB.eleves[0].id; ui.filters.profilOnglet = 'bulletin'; renderView('eleves'); window.scrollTo(0, 0); },

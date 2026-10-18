@@ -1620,3 +1620,12 @@ button.role-card{ font:inherit; color:inherit; width:100%; display:flex; flex-di
 .pr-motif{ flex-basis:100%; color:var(--text-dim); font-size:13px; padding-left:2px; }
 @media (min-width:641px){ .pr-motif{ flex-basis:auto; } }
 @media (max-width:640px){ .profil-infos{ grid-template-columns:1fr 1fr !important; gap:12px 14px; } .profil-infos strong{ overflow-wrap:anywhere; } }
+/* ===== « Comment voudriez-vous que je vous appelle ? » ===== */
+.question-appel{ display:flex; flex-direction:column; gap:10px; margin:10px 0 4px; padding:14px; border-radius:16px; background:var(--primary-soft); border:1px solid color-mix(in srgb, var(--primary) 25%, var(--border)); max-width:520px; }
+.question-appel > strong{ font-size:16px; }
+.question-appel .field{ margin:0; } .question-appel input#nomAppel{ min-height:44px; }
+.appel-apercu{ font-weight:800; color:var(--primary-ink); }
+.appel-actions{ display:flex; align-items:center; gap:12px; }
+.appel-changer{ margin-top:4px; font-size:13px; }
+body.theme-portier .question-appel{ background:rgba(255,255,255,.06); border-color:rgba(255,255,255,.15); }
+body.theme-portier .appel-apercu{ color:var(--em-gold-400, #E8B04B); }

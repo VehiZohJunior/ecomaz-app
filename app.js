@@ -780,12 +780,22 @@ function classesVisibles(){
 const LIBELLES_ROLES = { direction:'Direction', fondation:'Fondation', secretariat:'Secrétariat', enseignant:'Enseignant', parent:'Parent', portier:'Portier', developpeur:'Développeur' };
 function titreTableauDeBord(role){ return 'Tableau de bord ' + (LIBELLES_ROLES[role || ui.role] || ''); }
 // Civilité : fiche enseignant (sexe) pour un enseignant, sinon le choix de la personne
+const TITRES_APPEL = {
+  direction: { M:'Monsieur le Directeur', F:'Madame la Directrice' },
+  fondation: { M:'Monsieur le Fondateur', F:'Madame la Fondatrice' },
+  secretariat: { M:'Monsieur', F:'Madame' },
+  enseignant: { M:'M.', F:'Maîtresse' },
+  parent: { M:'Papa', F:'Maman' },
+  portier: { M:'Monsieur', F:'Madame' },
+};
+// Civilité : celle que la personne a choisie, sinon la fiche enseignant (sexe)
 function civiliteCourante(){
+  if(session.civilite === 'M' || session.civilite === 'F') return session.civilite;
   if(ui.role === 'enseignant' && session.enseignantId){
     const t = (DB?.enseignants || []).find(x => x.id === session.enseignantId);
     if(t && (t.sexe === 'M' || t.sexe === 'F')) return t.sexe;
   }
-  return session.civilite === 'M' || session.civilite === 'F' ? session.civilite : null;
+  return null;
 }
 function nomPourSalutation(){
   let nom = String(session.nomComplet || '').trim();
@@ -793,36 +803,57 @@ function nomPourSalutation(){
   if(generique) nom = ui.role === 'direction' ? (DB?.meta?.directeurNom || '') : ui.role === 'fondation' ? (DB?.meta?.fondateurNom || '') : '';
   return nom.replace(/^(M\.|Mme|Mlle|Monsieur|Madame)\s+/i, '');
 }
-function salutation(){
-  const civ = civiliteCourante(), nom = nomPourSalutation();
-  const nomFamille = nom ? nom.split(/\s+/).pop().toUpperCase() : '';
-  const titres = {
-    direction: { M:'Monsieur le Directeur', F:'Madame la Directrice' },
-    fondation: { M:'Monsieur le Fondateur', F:'Madame la Fondatrice' },
-    secretariat: { M:'Monsieur', F:'Madame' },
-    enseignant: { M:'M.', F:'Maîtresse' },
-    parent: { M:'Papa', F:'Maman' },
-    portier: { M:'Monsieur', F:'Madame' },
-  }[ui.role];
+// Nom proposé par défaut : nom de famille pour un parent (« Maman NAHI »), nom complet sinon
+function nomAppelParDefaut(){
+  const nom = nomPourSalutation();
+  return ui.role === 'parent' && nom ? nom.split(/\s+/).pop().toUpperCase() : nom;
+}
+function texteSalutation(civ, nom){
+  const titres = TITRES_APPEL[ui.role];
   if(!titres || !civ) return 'Bonjour' + (nom ? ', ' + nom : '');
-  return `Bonjour, ${titres[civ]}${ui.role === 'parent' ? (nomFamille ? ' ' + nomFamille : '') : (nom ? ' ' + nom : '')}`;
+  return `Bonjour, ${titres[civ]}${nom ? ' ' + nom : ''}`;
 }
-// Petit choix « Monsieur / Madame » tant que la civilité est inconnue (une seule fois)
-function renderChoixCivilite(){
-  if(civiliteCourante()) return '';
-  const lib = { parent:['Papa', 'Maman'], enseignant:['Monsieur (M.)', 'Madame (Maîtresse)'] }[ui.role] || ['Monsieur', 'Madame'];
-  return `<div class="choix-civilite" role="group" aria-label="Comment souhaitez-vous être salué ?"><span>Comment souhaitez-vous être salué ?</span>
-    <button type="button" class="btn secondary sm" onclick="choisirCivilite('M')">${lib[0]}</button><button type="button" class="btn secondary sm" onclick="choisirCivilite('F')">${lib[1]}</button></div>`;
+function salutation(){ return texteSalutation(civiliteCourante(), session.nomAppel || nomAppelParDefaut()); }
+// « Comment voudriez-vous que je vous appelle ? » — posée à chaque utilisateur
+// tant qu'il n'a pas répondu (ou quand il veut changer)
+function renderQuestionAppel(){
+  if(!TITRES_APPEL[ui.role]) return '';
+  if(session.nomAppel && !ui.modifierAppel) return `<button type="button" class="lien-discret appel-changer" onclick="ui.modifierAppel=true; rafraichirAccueil()">Changer comment je vous appelle</button>`;
+  if(ui.appelPlusTard && !ui.modifierAppel) return '';
+  const t = TITRES_APPEL[ui.role], civ = civiliteCourante() || '', nom = session.nomAppel || nomAppelParDefaut();
+  return `<form class="question-appel" onsubmit="return enregistrerAppellation(event)">
+    <strong>Comment voudriez-vous que je vous appelle&nbsp;?</strong>
+    <div class="segmente seg-radio" role="radiogroup" aria-label="Votre titre">
+      ${['M', 'F'].map(k => `<label class="seg"><input type="radio" name="civ" value="${k}" ${civ === k ? 'checked' : ''} onchange="apercuAppellation()">${escapeHtml(t[k])}</label>`).join('')}
+    </div>
+    <div class="field"><label for="nomAppel">Votre nom</label><input id="nomAppel" name="nom" maxlength="80" value="${escapeHtml(nom)}" placeholder="Ex : ${ui.role === 'parent' ? 'KOUAMÉ' : 'Aya KOUAMÉ'}" oninput="apercuAppellation()" autocomplete="off"></div>
+    <div class="appel-apercu" id="appelApercu">${escapeHtml(texteSalutation(civ || null, nom))}</div>
+    <div class="appel-actions"><button type="submit" class="btn sm">Enregistrer</button>
+      <button type="button" class="lien-discret" onclick="ui.modifierAppel=false; ui.appelPlusTard=true; rafraichirAccueil()">${session.nomAppel ? 'Annuler' : 'Plus tard'}</button></div>
+  </form>`;
 }
-async function choisirCivilite(c){
-  const { error } = await sb.rpc('definir_civilite', { p_civilite: c });
-  if(error){ toast('Erreur : ' + error.message); return; }
-  session.civilite = c;
-  try{ const k = 'ecomaz_profil_cache'; const v = JSON.parse(localStorage.getItem(k) || 'null'); if(v){ v.civilite = c; localStorage.setItem(k, JSON.stringify(v)); } }catch(_e){}
+function apercuAppellation(){
+  const f = document.querySelector('.question-appel'); if(!f) return;
+  const civ = f.querySelector('input[name=civ]:checked')?.value || null;
+  const z = document.getElementById('appelApercu'); if(z) z.textContent = texteSalutation(civ, f.querySelector('#nomAppel').value.trim());
+}
+async function enregistrerAppellation(ev){
+  ev.preventDefault();
+  const f = ev.target, civ = f.querySelector('input[name=civ]:checked')?.value, nom = f.querySelector('#nomAppel').value.trim();
+  if(!civ){ toast('Choisissez votre titre.'); return false; }
+  if(!nom){ toast('Indiquez le nom à utiliser.'); return false; }
+  const { error } = await sb.rpc('definir_appellation', { p_civilite: civ, p_nom: nom });
+  if(error){ toast('Erreur : ' + error.message); return false; }
+  session.civilite = civ; session.nomAppel = nom; ui.modifierAppel = false;
+  try{ const k = 'ecomaz_profil_cache'; const v = JSON.parse(localStorage.getItem(k) || 'null'); if(v){ v.civilite = civ; v.nom_appel = nom; localStorage.setItem(k, JSON.stringify(v)); } }catch(_e){}
+  rafraichirAccueil();
+  toast('Merci, c’est noté !');
+  return false;
+}
+function rafraichirAccueil(){
   if(ui.role === 'parent'){ $('#viewContainer').innerHTML = renderParentDashboard(); }
   else if(ui.role === 'portier'){ refreshPortierDashboard(); }
   else renderView(ui.currentView || 'dashboard');
-  toast('C’est noté, merci !');
 }
 function go(view){
   if(!hasAccess(view)) view = 'dashboard';
@@ -1860,7 +1891,7 @@ function renderParentDashboard(){
       <div class="role-etiquette">${titreTableauDeBord('parent')}</div>
       <h2 class="parent-greeting">${escapeHtml(salutation())} <span class="salut-main em-wave">${window.EmIcones ? EmIcones.svg('hand') : '👋'}</span></h2>
       <p class="parent-greeting-sub">Voici la semaine de ${plusieurs ? 'vos enfants' : 'votre enfant'}.</p>
-      ${renderChoixCivilite()}
+      ${renderQuestionAppel()}
     </div>
     ${renderAujourdhuiParent(mesEnfants)}
     <div class="enfants${plusieurs ? ' enfants--carrousel' : ''} em-rise" style="--i:2">
@@ -2408,7 +2439,7 @@ function renderPortierDashboard(){
   // Mode par défaut : liste des classes, groupées par cycle.
   const cycles = [...new Set(DB.classes.map(c=>c.cycle))];
   return `<div class="view active">
-    <div class="portier-bonjour"><h2>${escapeHtml(salutation())}</h2>${renderChoixCivilite()}</div>
+    <div class="portier-bonjour"><h2>${escapeHtml(salutation())}</h2>${renderQuestionAppel()}</div>
     <div class="panel">
       <div class="panel-head">
         <div><h2>Le parent d’un élève est arrivé</h2><div class="sub">Choisissez une classe, ou tapez le nom de l’élève</div></div>
@@ -2476,6 +2507,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.10.18-19', nouveautes: {
+    commun: [ 'L’application vous demande : « Comment voudriez-vous que je vous appelle ? » — choisissez votre titre et votre nom, un aperçu s’affiche. Vous pouvez le changer à tout moment sur votre page d’accueil.' ],
+    parent: [],
+    portier: [],
+    personnel: [],
+  } },
   { version: '2026.10.18-18', nouveautes: {
     commun: [],
     parent: [],
@@ -3327,7 +3364,7 @@ function renderDashboard(){
   const dateLongue = new Date(today + 'T12:00:00').toLocaleDateString('fr-FR', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
   return `
   <div class="view active">
-    <div class="db-bonjour"><div><h2>${escapeHtml(salutation())}</h2><div class="db-date">${dateLongue}</div>${renderChoixCivilite()}</div>
+    <div class="db-bonjour"><div><h2>${escapeHtml(salutation())}</h2><div class="db-date">${dateLongue}</div>${renderQuestionAppel()}</div>
       ${['direction','fondation'].includes(ui.role) ? `<button type="button" class="btn secondary sm" onclick="ouvrirRapportMois()">${icone('file-text')} Rapport du mois</button>` : ''}</div>
     ${renderAFaireAujourdhui()}
     <div class="cards cards-2x2">
