@@ -86,6 +86,7 @@ for(const theme of THEMES){
     page.on('download', async d => { const f = join(sortie, d.suggestedFilename()); await d.saveAs(f); console.log('TÉLÉCHARGÉ : ' + f); });
     page.on('dialog', d => { console.log('DIALOGUE : ' + d.message()); d.accept(); });
     page.on('pageerror', e => console.log(`ERREUR PAGE (${largeur}px) : ${e.message}`));
+    page.on('console', m => { if(m.type() === 'error' && !/Failed to load resource|favicon|net::ERR/.test(m.text())) console.log(`CONSOLE (${largeur}px) : ${m.text().slice(0, 200)}`); });
     await page.goto('http://localhost:5190/', { waitUntil: 'networkidle' });
     await page.waitForTimeout(600);
     await page.evaluate(installerDemo, donnees);
@@ -173,6 +174,7 @@ for(const theme of THEMES){
         emarg: () => { ouvrirListeClasse(DB.classes[0].id, 'emargement'); },
         cartes: () => { ouvrirCartesScolaires(DB.classes[0].id); },
         madame: () => { choisirCivilite('F'); },
+        approuver1: () => { document.querySelector('.dem-carte .btn.sm').click(); },
         relies: () => { document.querySelector('.seg[data-etat="relie"]').click(); },
       };
       if(GESTES[extra]){ await page.evaluate(GESTES[extra]); await page.waitForTimeout(900); }

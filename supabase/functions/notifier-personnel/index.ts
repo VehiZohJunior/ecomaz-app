@@ -40,7 +40,8 @@ Deno.serve(async (req) => {
       if (!d) throw new Error('Demande introuvable');
       ecoleId = d.ecole_id; roles = ['direction', 'fondation'];
       titre = '🔔 Nouvelle demande d’accès';
-      texte = `${d.nom || 'Quelqu’un'} demande l’accès ${d.role_demande === 'portier' ? 'PORTIER' : 'PARENT'}. À valider dans Paramètres → Demandes d’accès.`;
+      const roleLib = ({ portier: 'PORTIER', enseignant: 'ENSEIGNANT', parent: 'PARENT' } as Record<string, string>)[d.role_demande] || String(d.role_demande || '').toUpperCase();
+      texte = `${d.nom || 'Quelqu’un'} demande l’accès ${roleLib}. À valider dans Paramètres → Demandes d’accès.`;
     } else if (type === 'absence') {
       const { data: a } = await admin.from('absences_signalees').select('ecole_id, eleve_id, date_debut, date_fin, motif')
         .eq('parent_id', user.id).gte('created_at', depuis).order('created_at', { ascending: false }).limit(1).maybeSingle();

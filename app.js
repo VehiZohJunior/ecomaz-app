@@ -2476,6 +2476,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.10.18-17', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Demandes d’accès : après chaque validation, un bouton « Prévenir sur WhatsApp » envoie à la personne un message prêt (« Votre accès est validé… ») pour qu’elle ne reste pas à attendre.' ],
+  } },
   { version: '2026.10.18-16', nouveautes: {
     commun: [ 'Chaque espace porte son nom (« Tableau de bord Direction », « Tableau de bord Parent »…) et vous salue selon votre titre (ex. « Bonjour, Monsieur le Directeur… », « Bonjour, Maman… »). Une seule fois, l’application vous demande « Monsieur » ou « Madame ».' ],
     parent: [],
@@ -9741,6 +9747,7 @@ async function chargerDemandesAcces(){
   const box = $('#demandesAccesBox'); if(!box) return;
   const { data, error } = await sb.from('demandes_acces').select('*').eq('statut','en_attente').order('created_at');
   if(error){ box.innerHTML = `<div class="hint">Erreur : ${escapeHtml(error.message)}</div>`; return; }
+  window.__demandesAcces = Object.fromEntries((data || []).map(d => [d.id, d]));
   if(!data.length){ box.innerHTML = `<div class="etat-vide etat-vide-ok"><span class="etat-vide-ic" aria-hidden="true">${icone('circle-check')}</span><span>Aucune demande en attente.</span></div>`; return; }
   const chiffres = t => String(t || '').replace(/\D/g, '').replace(/^225/, '').slice(-10);
   const sure = d => {
@@ -9835,6 +9842,7 @@ async function traiterDemandeAcces(id, approuver, parent){
     const { error } = await sb.rpc('traiter_demande_acces', { p_id: id, p_approuver: approuver, p_eleve_ids: [], p_classe_ids: classes, p_enseignant_id: approuver ? fiche : null });
     if(error){ toast('Erreur : ' + error.message); return; }
     toast(approuver ? 'Enseignant validé ✅ : il ne voit que ses classes' : 'Demande refusée');
+    if(approuver) proposerPrevenirApprouve(id);
     if(approuver){ try{ DB.enseignants = await dbSelectAll('enseignants_lecture'); DB.profiles = await dbSelectAll('profiles'); }catch(_e){} }
     chargerDemandesAcces();
     return;
@@ -9844,7 +9852,24 @@ async function traiterDemandeAcces(id, approuver, parent){
   const err = await appliquerDemandeAcces(id, approuver, choix);
   if(err){ toast('Erreur : ' + err); return; }
   toast(approuver ? 'Accès accordé ✅' : 'Demande refusée');
+  if(approuver) proposerPrevenirApprouve(id);
   chargerDemandesAcces();
+}
+// Après une validation : prévenir la personne sur WhatsApp (gratuit, message prêt)
+function proposerPrevenirApprouve(id){
+  const d = (window.__demandesAcces || {})[id]; if(!d) return;
+  const tels = telephonesWhatsapp(d.telephone);
+  const page = d.role_demande === 'enseignant' ? 'enseignant.html' : d.role_demande === 'portier' ? 'portier.html' : 'parent.html';
+  const message = `Bonjour ${d.nom || ''},
+
+Votre accès à l’application de ${DB.meta?.nomEcole || 'l’école'} est validé. Ouvrez l’application (ou ce lien) et connectez-vous avec le même compte Google :
+${lienApplication(page)}
+
+Bienvenue !`;
+  openModal('Accès accordé ✅', `
+    <p style="margin-top:0;"><strong>${escapeHtml(d.nom || '')}</strong> peut maintenant entrer dans l’application. Prévenez-le (ou la) pour qu’il (elle) ne reste pas à attendre :</p>
+    <div class="pe-invit-liste">${tels.map(n => `<a class="btn" href="https://wa.me/${n}?text=${encodeURIComponent(message)}" target="_blank" rel="noopener">Prévenir sur WhatsApp · ${n.replace(/^225/, '').replace(/(\d{2})(?=\d)/g, '$1 ')}</a>`).join('') || '<div class="hint">Aucun numéro WhatsApp dans la demande.</div>'}</div>
+    <div class="form-actions"><button type="button" class="btn secondary" onclick="closeModal()">Plus tard</button></div>`);
 }
 // Lit ce que la direction a coché sur la carte d'une demande parent
 function choixDemandeParent(id, parent){
