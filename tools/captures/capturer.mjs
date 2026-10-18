@@ -21,6 +21,12 @@ const RACINE = join(ICI, '..', '..');
 const [nom = 'essai', listeEcrans = 'dashboard', role = 'direction', option = ''] = process.argv.slice(2);
 const ecrans = listeEcrans.split(',').map(s => s.trim()).filter(Boolean);
 const donnees = JSON.parse(readFileSync(join(ICI, 'donnees-demo.json'), 'utf8'));
+// Console parent : comme la base (RLS), le parent ne voit que SES enfants → 2 élèves fictifs
+if(role === 'parent'){
+  const enfants = donnees.eleves.slice(0, 2).map(e => e.id);
+  for(const k of Object.keys(donnees)) if(Array.isArray(donnees[k]) && k !== 'eleves' && donnees[k][0] && 'eleve_id' in donnees[k][0]) donnees[k] = donnees[k].filter(r => enfants.includes(r.eleve_id));
+  donnees.eleves = donnees.eleves.filter(e => enfants.includes(e.id));
+}
 const LARGEURS = [[360, 780], [390, 844], [1440, 900]];
 const THEMES = ['light', 'dark'];
 const sortie = join(RACINE, 'captures', nom);
@@ -76,6 +82,8 @@ for(const theme of THEMES){
       ui.role = role;
       // Nouveautés marquées comme déjà vues AVANT l'entrée (sinon la fenêtre couvre l'écran)
       VERSIONS.forEach(v => { try{ localStorage.setItem(`ecomaz_nouveautes_${v.version}_apercu-demo`, '1'); }catch(_e){} });
+      if(role === 'parent'){ session.nomComplet = 'Parent Démo'; DB = await chargerDBParent(); enterAppParent(); return; }
+      if(role === 'portier'){ session.nomComplet = 'Portier Démo'; DB = await chargerDBPortier(); enterAppPortier(); return; }
       DB = await chargerDB();
       // Option « parents » : 3 comptes parents FICTIFS en mémoire seulement (jamais en base),
       // pour photographier aussi l'état « Compte relié »
@@ -120,7 +128,10 @@ for(const theme of THEMES){
       // « ecran:onglet » : ouvre un sous-onglet (ex. comptabilite:scolarite)
       const [ecranOnglet, extra] = ecranBrut.split('+');
       const [ecran, onglet] = ecranOnglet.split(':');
-      await page.evaluate(([v, o]) => { closeModal && closeModal(); if(o){ ui.filters.comptaTab = o; ui.filters.cahierOnglet = o; ui.filters.presEnsOnglet = o; } go(v); window.scrollTo(0, 0); }, [ecran, onglet]);
+      await page.evaluate(([v, o, r]) => { closeModal && closeModal();
+        if(r === 'parent'){ navParent(v); window.scrollTo(0, 0); return; }
+        if(r === 'portier'){ window.scrollTo(0, 0); return; }
+        if(o){ ui.filters.comptaTab = o; ui.filters.cahierOnglet = o; ui.filters.presEnsOnglet = o; } go(v); window.scrollTo(0, 0); }, [ecran, onglet, role]);
       await page.waitForTimeout(900);
       if(extra === 'centre') await page.evaluate(() => { toggleCentre(true); });
       // Gestes d'essai (aucune écriture) : ouvrir une feuille ou un menu avant la photo
