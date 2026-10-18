@@ -2628,6 +2628,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.10.18-42', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Tableau de bord : encart « Dans les 3 prochaines semaines » (congés, compositions, sorties, fêtes, d’après l’agenda de l’école).', 'Agenda : toutes les dates de l’année s’affichent toujours, même après un passage par le tableau de bord.' ],
+  } },
   { version: '2026.10.18-41', nouveautes: {
     commun: [],
     parent: [],
@@ -3615,6 +3621,7 @@ function renderDashboard(){
       ${['direction','fondation'].includes(ui.role) ? `<button type="button" class="btn secondary sm" onclick="ouvrirRapportMois()">${icone('file-text')} Rapport du mois</button>` : ''}</div>
     ${ui.role === 'enseignant' && !session.enseignantId ? renderJeMEnrole() : ''}
     ${renderAFaireAujourdhui()}
+    ${renderProchainesDatesEcole()}
     <div class="cards cards-2x2">
       ${kpi(0, icone('graduation-cap'), 'var(--primary-dim)', totalEleves, 'Élèves inscrits')}
       ${kpi(1, icone('presentation'), 'var(--purple-bg)', presEnsToday.length ? `${ensPresents}/${totalEns}` : totalEns, presEnsToday.length ? 'Enseignants présents aujourd’hui' : 'Enseignants (pointage non fait)')}
@@ -3859,8 +3866,7 @@ function renderMaJournee(){
   if(maFiche && !(maFiche.classesAssignees || []).length) return renderJeMEnrole() + renderListeCollegues();
   // Données chargées une fois (absences signalées, agenda), puis le tableau de bord se réaffiche
   if(DB.absencesSignalees === undefined){ DB.absencesSignalees = null; chargerAbsencesSignalees().then(() => { if(ui.currentView === 'dashboard') renderView('dashboard'); }).catch(() => { DB.absencesSignalees = []; }); }
-  if(DB.agenda === undefined){ DB.agenda = null; sb.from('evenements_agenda').select('*').eq('ecole_id', session.ecoleId).gte('date_fin', todayISO()).order('date_debut').limit(20)
-    .then(({ data }) => { DB.agenda = rowsToCamel(data || []); if(ui.currentView === 'dashboard') renderView('dashboard'); }); }
+  chargerAgenda();
   if(DB.devoirs === undefined){ DB.devoirs = null; sb.from('devoirs').select('*').eq('ecole_id', session.ecoleId).gte('pour_le', todayISO()).order('pour_le')
     .then(({ data }) => { DB.devoirs = rowsToCamel(data || []); if(ui.currentView === 'dashboard') renderView('dashboard'); }); }
   chargerSecuriteEleves();
@@ -5875,6 +5881,24 @@ const TYPES_AGENDA = {
   reunion: { lib:'Réunion de parents', ic:'👪' }, fete: { lib:'Fête / cérémonie', ic:'🎉' },
   sortie: { lib:'Sortie / excursion', ic:'🚌' }, autre: { lib:'Autre', ic:'📌' },
 };
+// Tableau de bord du personnel : les dates des 3 prochaines semaines (congés, compositions, sorties…)
+function renderProchainesDatesEcole(){
+  if(!['secretariat','direction','fondation'].includes(ui.role)) return '';
+  chargerAgenda();
+  if(!DB.agenda) return '';
+  const auj = todayISO(), limite = decalerJours(auj, 21);
+  const evs = DB.agenda.filter(e => e.dateFin >= auj && e.dateDebut <= limite).slice(0, 6);
+  if(!evs.length) return '';
+  const classes = ids => !ids || !ids.length ? '' : ids.length === DB.classes.length ? '' : ' · ' + ids.map(id => classeName(id)).join(', ');
+  return `<div class="panel prochaines-dates">
+    <div class="panel-head"><div><h2>${icone('calendar')} Dans les 3 prochaines semaines</h2><div class="sub">D’après l’agenda de l’école — les parents concernés reçoivent un rappel la veille</div></div>
+      <button type="button" class="btn secondary sm" onclick="go('agenda')">Tout l’agenda</button></div>
+    <ul class="pd-liste">${evs.map(ev => `<li class="pd-ligne pd-${ev.type}">
+      <span class="pd-ic" aria-hidden="true">${(TYPES_AGENDA[ev.type] || TYPES_AGENDA.autre).ic}</span>
+      <span class="pd-txt"><strong>${escapeHtml(ev.titre)}</strong><small>${datesAgenda(ev)}${escapeHtml(classes(ev.classeIds))}</small></span>
+      <span class="pd-delai">${delaiAgenda(ev)}</span></li>`).join('')}</ul>
+  </div>`;
+}
 function datesAgenda(ev){
   return ev.dateDebut === ev.dateFin ? fmtDate(ev.dateDebut) : `du ${fmtDate(ev.dateDebut)} au ${fmtDate(ev.dateFin)}`;
 }
@@ -5983,12 +6007,15 @@ async function noterReponseAgenda(evenementId, eleveId, reponse){
   }catch(e){ alert('Erreur : ' + e.message); }
 }
 // Application école : page Agenda
+// Agenda complet de l'école (passé et à venir), chargé une seule fois et partagé par tous les écrans
+function chargerAgenda(){
+  if(DB.agenda !== undefined) return;
+  DB.agenda = null;
+  sb.from('evenements_agenda').select('*').eq('ecole_id', session.ecoleId).order('date_debut')
+    .then(({ data }) => { DB.agenda = rowsToCamel(data || []); if(['dashboard', 'agenda'].includes(ui.currentView)) renderView(ui.currentView); });
+}
 function renderAgenda(){
-  if(DB.agenda === undefined){
-    DB.agenda = null;
-    sb.from('evenements_agenda').select('*').eq('ecole_id', session.ecoleId).order('date_debut')
-      .then(({ data }) => { DB.agenda = rowsToCamel(data || []); if(ui.currentView === 'agenda') renderView('agenda'); });
-  }
+  chargerAgenda();
   const gestion = ['secretariat','direction','fondation'].includes(ui.role);
   const tous = ui.filters.agendaPasses;
   const liste = (DB.agenda || []).filter(e => tous || e.dateFin >= todayISO());

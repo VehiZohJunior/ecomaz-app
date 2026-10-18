@@ -1729,3 +1729,12 @@ body.theme-portier .alerte-inscription{ background:rgba(232,176,75,.12); color:i
 .edtl-imp-seance span{ font-weight:800; font-variant-numeric:tabular-nums; }
 .edtl-imp-pause{ text-align:center; background:#eef1ef; color:#555; padding:1px; margin:0 0 2px; font-style:italic; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
 @media print{ .edtl-impression .edtl-legende{ font-size:9px; margin-top:6px; } }
+
+/* ===== Tableau de bord : dates des 3 prochaines semaines ===== */
+.pd-liste{ list-style:none; margin:0; padding:0; }
+.pd-ligne{ display:flex; align-items:center; gap:12px; padding:10px 0; border-top:1px solid var(--border); }
+.pd-ligne:first-child{ border-top:0; }
+.pd-ic{ font-size:20px; width:28px; text-align:center; }
+.pd-txt{ flex:1; display:flex; flex-direction:column; min-width:0; } .pd-txt small{ color:var(--text-dim); font-size:13px; }
+.pd-delai{ font-weight:800; font-size:13px; color:var(--primary-ink, var(--primary)); white-space:nowrap; }
+.pd-vacances .pd-delai{ color:var(--amber-ink, #8A5A00); }
