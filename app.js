@@ -808,6 +808,21 @@ function nomPourSalutation(){
   if(generique) nom = ui.role === 'direction' ? (DB?.meta?.directeurNom || '') : ui.role === 'fondation' ? (DB?.meta?.fondateurNom || '') : '';
   return nom.replace(/^(M\.|Mme|Mlle|Monsieur|Madame)\s+/i, '');
 }
+// Signature visible par les autres (messages, publications, commentaires) :
+// le nom choisi par la personne, sinon son nom de compte s'il n'est pas un
+// intitulé technique, sinon son rôle et l'école. Les comptes ne sont pas modifiés.
+function estIntituleTechnique(nom){
+  nom = String(nom || '').trim();
+  return !nom || /^(direction|fondation|secr[ée]tariat|enseignant|parent|portier|directeur|fondateur|compte)\b/i.test(nom)
+    || /(^|\s)(test|essai|d[ée]mo)(\s|$)/i.test(nom);
+}
+function signatureAuteur(){
+  const nom = String(session.nomAppel || '').trim() || (estIntituleTechnique(session.nomComplet) ? '' : String(session.nomComplet || '').trim());
+  if(nom) return nom;
+  const roles = { direction:'La direction', fondation:'La fondation', secretariat:'Le secrétariat', enseignant:'L’enseignant(e)', portier:'Le portier', parent:'Parent' };
+  const r = roles[ui.role] || '';
+  return ui.role === 'parent' ? r : [r, DB?.meta?.nomEcole].filter(Boolean).join(' — ');
+}
 // Nom proposé par défaut : nom de famille pour un parent (« Maman NAHI »), nom complet sinon
 function nomAppelParDefaut(){
   const nom = nomPourSalutation();
@@ -1590,7 +1605,7 @@ async function handleSignalerAbsence(ev){
   try{
     const { data, error } = await sb.from('absences_signalees').insert({
       eleve_id: fd.get('eleveId'), date_debut: fd.get('dateDebut'), date_fin: fd.get('dateFin'),
-      motif: fd.get('motif'), commentaire: (fd.get('commentaire') || '').trim(), parent_nom: session.nomComplet || '',
+      motif: fd.get('motif'), commentaire: (fd.get('commentaire') || '').trim(), parent_nom: signatureAuteur(),
     }).select().single();
     if(error) throw error;
     DB.absencesSignalees = (DB.absencesSignalees || []).concat(rowToCamel(data));
@@ -2076,7 +2091,7 @@ async function handleSignalerObjetPerdu(ev){
   try{
     const { data, error } = await sb.from('objets_perdus').insert({
       eleve_id: fd.get('eleveId'), objet: fd.get('objet').trim(), description: (fd.get('description') || '').trim(),
-      date_constat: fd.get('dateConstat'), parent_nom: session.nomComplet || '',
+      date_constat: fd.get('dateConstat'), parent_nom: signatureAuteur(),
     }).select().single();
     if(error) throw error;
     DB.objetsPerdus = [rowToCamel(data)].concat(DB.objetsPerdus || []);
@@ -2299,7 +2314,7 @@ async function envoyerMessageEcole(ev){
   const fd = new FormData(ev.target), bouton = ev.target.querySelector('button[type=submit]');
   bouton.disabled = true;
   try{
-    const { data, error } = await sb.from('messages_internes').insert({ destinataire_type: 'ecole', eleve_id: fd.get('eleveId'), contenu: fd.get('contenu').trim(), auteur_nom: session.nomComplet || '' }).select().single();
+    const { data, error } = await sb.from('messages_internes').insert({ destinataire_type: 'ecole', eleve_id: fd.get('eleveId'), contenu: fd.get('contenu').trim(), auteur_nom: signatureAuteur() }).select().single();
     if(error) throw error;
     DB.messagesInternes = [rowToCamel(data)].concat(DB.messagesInternes || []);
     sb.functions.invoke('notifier-personnel', { body: { type: 'message' } }).catch(() => {});
@@ -2366,7 +2381,7 @@ async function handleEnvoyerMessage(ev){
   const payload = {
     destinataire_type: destinataireType,
     contenu: fd.get('contenu').trim(),
-    auteur_nom: session.nomComplet || '',
+    auteur_nom: signatureAuteur(),
   };
   if(destinataireType==='parent') payload.eleve_id = fd.get('eleveId');
   else payload.enseignant_id = fd.get('enseignantId');
@@ -2423,7 +2438,7 @@ async function handleEnvoyerSuggestion(ev){
   const contenu = new FormData(ev.target).get('contenu').trim();
   try{
     const { error } = await sb.from('suggestions').insert({
-      contenu, auteur_nom: session.nomComplet || '', auteur_role: ui.role || '',
+      contenu, auteur_nom: signatureAuteur(), auteur_role: ui.role || '',
     });
     if(error) throw error;
     closeModal();
@@ -2591,11 +2606,11 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
-  { version: '2026.10.18-34', nouveautes: {
+  { version: '2026.10.18-35', nouveautes: {
     commun: [],
     parent: [],
     portier: [],
-    personnel: [ 'Textes revus : salutation sans intitulé technique de compte, message du lien de paiement en ligne plus clair.' ],
+    personnel: [ 'Textes revus : salutation et signature des messages, publications et commentaires sans intitulé technique de compte (nom choisi par la personne, sinon « Le secrétariat — nom de l’école »…), message du lien de paiement en ligne plus clair.' ],
   } },
   { version: '2026.10.18-33', nouveautes: {
     commun: [],
@@ -4375,7 +4390,7 @@ async function envoyerMessageRenforcement(ev){
   if(!cibles.length) return alert('Aucun élève inscrit n’a de parent relié.'), false;
   if(!confirm(`Envoyer ce message aux parents de ${cibles.length} élève(s) du renforcement ?`)) return false;
   try{
-    const lignes = cibles.map(e => ({ destinataire_type: 'parent', eleve_id: e.id, contenu: '📘 Renforcement — ' + contenu, auteur_nom: session.nomComplet || '' }));
+    const lignes = cibles.map(e => ({ destinataire_type: 'parent', eleve_id: e.id, contenu: '📘 Renforcement — ' + contenu, auteur_nom: signatureAuteur() }));
     const { data, error } = await sb.from('messages_internes').insert(lignes).select();
     if(error) throw error;
     DB.messagesInternes = rowsToCamel(data).concat(DB.messagesInternes || []);
@@ -4509,7 +4524,7 @@ async function envoyerCommentaire(ev, pubId){
   const champ = ev.target.querySelector('input'), texte = champ.value.trim();
   if(!texte) return false;
   try{
-    const { data, error } = await sb.from('publication_commentaires').insert({ publication_id: pubId, texte, auteur_nom: session.nomComplet || '' }).select().single();
+    const { data, error } = await sb.from('publication_commentaires').insert({ publication_id: pubId, texte, auteur_nom: signatureAuteur() }).select().single();
     if(error) throw error;
     (DB.fil.commentaires[pubId] = DB.fil.commentaires[pubId] || []).push(rowToCamel(data));
     rafraichirPublication(pubId);
@@ -4624,7 +4639,7 @@ async function publierEvenement(ev){
   let pubId = null; const chemins = [];
   try{
     const { data: pub, error } = await sb.from('publications').insert({ titre: fd.get('titre').trim(), texte: (fd.get('texte') || '').trim(),
-      date_evenement: fd.get('dateEvenement') || null, classe_ids: classeIds, auteur_nom: session.nomComplet || '' }).select().single();
+      date_evenement: fd.get('dateEvenement') || null, classe_ids: classeIds, auteur_nom: signatureAuteur() }).select().single();
     if(error) throw error;
     pubId = pub.id;
     const lignes = [];
