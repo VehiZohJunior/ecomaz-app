@@ -1102,6 +1102,8 @@ function renderLoginGate(step, error, loading){
     ? (ecoleV ? escapeHtml(nomApplication(ecoleV.nom_ecole)) : t('app_name'))
     : (espace ? t('login_espace_prefix') + t('espace_'+espace.key+'_label') : t('app_name'));
   const iosHint = fixe ? aideInstallation() : '';
+  // Ce téléphone s'est déjà connecté par mot de passe : on montre directement ce formulaire
+  if(fixe && ui.loginAvecMotDePasse === undefined){ try{ ui.loginAvecMotDePasse = localStorage.getItem('ecomaz_login_mdp_' + fixe) === '1'; }catch(_e){ ui.loginAvecMotDePasse = false; } }
   if(fixe && !ui.loginAvecMotDePasse) return renderAccueilInscription(logoHtml, titreLogin, error, iosHint);
   return `
     <div class="login-card">
@@ -1124,7 +1126,7 @@ function renderLoginGate(step, error, loading){
         <div class="pin-error">${error ? escapeHtml(error) : ''}</div>
         <button class="btn" type="submit" style="width:100%;margin-top:14px;" ${loading?'disabled':''}>${loading?t('btn_login_loading'):t('btn_login')}</button>
         <button type="button" class="pin-back" onclick="showForgotPassword()">${t('btn_forgot')}</button>
-        ${fixe ? `<button type="button" class="pin-back" onclick="ui.loginAvecMotDePasse=false; showLoginGate()">← Revenir à l’inscription avec Google</button>` : `<button type="button" class="pin-back" onclick="showEspaces()">${t('btn_change_espace')}</button>`}
+        ${fixe ? `<button type="button" class="pin-back" onclick="ui.loginAvecMotDePasse=false; try{localStorage.removeItem('ecomaz_login_mdp_' + window.ESPACE_FIXE)}catch(_e){}; showLoginGate()">← Se connecter ou s’inscrire avec Google</button>` : `<button type="button" class="pin-back" onclick="showEspaces()">${t('btn_change_espace')}</button>`}
       </form>
       ${fixe ? `<div class="sub" style="margin:16px 0 8px;">— ou —</div>
         <button type="button" class="btn secondary" style="width:100%;" onclick="handleGoogleLogin()">🔵 Continuer avec Google</button>
@@ -1207,7 +1209,7 @@ function renderAccueilInscription(logoHtml, titreLogin, error, iosHint){
         <span class="g-logo" aria-hidden="true">G</span> Continuer avec Google</button>
       <ol class="etapes-inscription">${etapes.map(e => `<li>${escapeHtml(e)}</li>`).join('')}</ol>
       <div class="sub" style="font-size:var(--fs-xs);">Pas encore d’adresse Gmail ? <a href="https://accounts.google.com/signup" target="_blank" rel="noopener">Créez-en une gratuitement</a>, puis revenez sur ce lien.</div>
-      <button type="button" class="pin-back" onclick="ui.loginAvecMotDePasse=true; showLoginGate()">J’ai un email et un mot de passe donnés par l’école</button>
+      <button type="button" class="pin-back" onclick="ui.loginAvecMotDePasse=true; try{localStorage.setItem('ecomaz_login_mdp_' + window.ESPACE_FIXE, '1')}catch(_e){}; showLoginGate()">J’ai un email et un mot de passe donnés par l’école</button>
       <button type="button" class="btn btn-install-pwa" style="display:none;width:100%;margin-top:10px;">📲 Installer l'application sur ce téléphone</button>${iosHint}
     </div>`;
 }
@@ -2627,6 +2629,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.10.18-38', nouveautes: {
+    commun: [ 'Connexion : si vous utilisez un email et un mot de passe, votre téléphone s’en souvient et affiche directement ce formulaire.' ],
+    parent: [],
+    portier: [],
+    personnel: [],
+  } },
   { version: '2026.10.18-37', nouveautes: {
     commun: [],
     parent: [ 'Bienvenue : à la première ouverture, un petit guide montre l’essentiel — recevoir les alertes, signaler une absence, écrire à l’école.' ],
