@@ -21,6 +21,14 @@ const RACINE = join(ICI, '..', '..');
 const [nom = 'essai', listeEcrans = 'dashboard', role = 'direction', option = ''] = process.argv.slice(2);
 const ecrans = listeEcrans.split(',').map(s => s.trim()).filter(Boolean);
 const donnees = JSON.parse(readFileSync(join(ICI, 'donnees-demo.json'), 'utf8'));
+// Option « demandes » : 3 demandes d'accès FICTIVES en mémoire (2 parents « sûrs », 1 enseignant)
+if(option.split(',').includes('demandes')){
+  const [e1, e2] = donnees.eleves;
+  donnees.demandes_acces = [
+    { id: 'dem-1', ecole_id: donnees._ecole_id, role_demande: 'parent', statut: 'en_attente', nom: e1.parent_nom || 'Parent Un', email: 'parent1@exemple.ci', telephone: e1.parent_tel, eleve_ids: [e1.id], created_at: '2026-10-18T08:00:00Z' },
+    { id: 'dem-2', ecole_id: donnees._ecole_id, role_demande: 'parent', statut: 'en_attente', nom: e2.parent_nom || 'Parent Deux', email: 'parent2@exemple.ci', telephone: e2.parent_tel, eleve_ids: [e2.id], created_at: '2026-10-18T08:05:00Z' },
+    { id: 'dem-3', ecole_id: donnees._ecole_id, role_demande: 'enseignant', statut: 'en_attente', nom: 'Awa Konan', email: 'ens@exemple.ci', telephone: '0700000099', classe_ids: [donnees.classes[0].id], created_at: '2026-10-18T08:10:00Z' } ];
+}
 // Console parent : comme la base (RLS), le parent ne voit que SES enfants → 2 élèves fictifs
 if(role === 'parent'){
   const enfants = donnees.eleves.slice(0, 2).map(e => e.id);
@@ -75,6 +83,7 @@ for(const theme of THEMES){
     const page = await contexte.newPage();
     // Option « lundi » : l'horloge de la page affiche lundi 19/10/2026 10:15 (jour de classe)
     if(option.split(',').includes('lundi')) await page.clock.setFixedTime(new Date('2026-10-19T10:15:00'));
+    page.on('dialog', d => { console.log('DIALOGUE : ' + d.message()); d.accept(); });
     page.on('pageerror', e => console.log(`ERREUR PAGE (${largeur}px) : ${e.message}`));
     await page.goto('http://localhost:5190/', { waitUntil: 'networkidle' });
     await page.waitForTimeout(600);
@@ -151,9 +160,11 @@ for(const theme of THEMES){
         succes: () => { const e = DB.eleves[0]; $('#viewContainer').innerHTML = renderEtatPortier('ok', e, { heure: '07h42' }); },
         refus: () => { const e = DB.eleves[0]; $('#viewContainer').innerHTML = renderEtatPortier('erreur', e, { message: 'Pas de connexion internet.' }); },
         groupe: () => { ouvrirMessageGroupeClasse(DB.classes[0].id); },
+        demandes: () => { document.getElementById('panneauDemandesAcces').scrollIntoView({ block: 'start' }); window.scrollBy(0, -70); },
+        approuver: () => { approuverDemandesSures(); },
         relies: () => { document.querySelector('.seg[data-etat="relie"]').click(); },
       };
-      if(GESTES[extra]){ await page.evaluate(GESTES[extra]); await page.waitForTimeout(400); }
+      if(GESTES[extra]){ await page.evaluate(GESTES[extra]); await page.waitForTimeout(900); }
       if(extra === 'centre') await page.waitForTimeout(400);
       const mesure = await page.evaluate(() => { const t = document.querySelector('.topbar'); return t ? Math.round(t.getBoundingClientRect().height) : 0; });
       console.log(`${ecranBrut} ${largeur}px ${theme} : en-tête ${mesure}px`);

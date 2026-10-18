@@ -2423,6 +2423,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.10.18-9', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Demandes d’accès : « Traiter » (À faire aujourd’hui) mène directement aux demandes ; les demandes de parents dont le téléphone correspond à la fiche de l’enfant sont marquées « Sûre » et peuvent être approuvées d’un coup.' ],
+  } },
   { version: '2026.10.18-8', nouveautes: {
     commun: [ 'Ouverture de l’application : un écran « Ouverture de votre espace… » remplace la page vide ; si la connexion internet manque, un message clair et un bouton « Réessayer » s’affichent — vous n’êtes plus renvoyé à l’écran de connexion.' ],
     parent: [],
@@ -3082,7 +3088,7 @@ function renderAFaireAujourdhui(){
     chargerATraiter();
     const c = DB.aTraiter?.compteurs || {};
     SUJETS_A_TRAITER.filter(su => (!su.roles || su.roles.includes(ui.role)) && (c[su.cle] || 0) > 0)
-      .forEach(su => lignes.push({ ic:'mail', texte:`${c[su.cle]} ${su.lib}`, detail:'', bouton:'Traiter', action:`DB.aTraiter.charge=0; go('${su.vue}')` }));
+      .forEach(su => lignes.push({ ic:'mail', texte:`${c[su.cle]} ${su.lib}`, detail:'', bouton:'Traiter', action:`DB.aTraiter.charge=0; go('${su.vue}')${su.cle === 'acces' ? "; allerAuxDemandesAcces()" : ''}` }));
   }
   return `<section class="panel afaire" aria-labelledby="titreAFaire">
     <div class="afaire-tete"><h2 id="titreAFaire">À faire aujourd’hui</h2>${lignes.length ? `<span class="afaire-compte">${lignes.length}</span>` : ''}</div>
@@ -9456,12 +9462,24 @@ async function handleSaveHoraires(ev){
 /* ---------------------------------------------------------------------
    ZONE DE L'ÉTABLISSEMENT (géofence) — utilisée par le pointage GPS.
    --------------------------------------------------------------------- */
+function allerAuxDemandesAcces(){
+  setTimeout(() => { const z = document.getElementById('panneauDemandesAcces'); if(z) z.scrollIntoView({ behavior:'smooth', block:'start' }); }, 150);
+}
 async function chargerDemandesAcces(){
   const box = $('#demandesAccesBox'); if(!box) return;
   const { data, error } = await sb.from('demandes_acces').select('*').eq('statut','en_attente').order('created_at');
   if(error){ box.innerHTML = `<div class="hint">Erreur : ${escapeHtml(error.message)}</div>`; return; }
-  if(!data.length){ box.innerHTML = '<div class="hint">Aucune demande en attente.</div>'; return; }
-  box.innerHTML = data.map(d=>{
+  if(!data.length){ box.innerHTML = `<div class="etat-vide etat-vide-ok"><span class="etat-vide-ic" aria-hidden="true">${icone('circle-check')}</span><span>Aucune demande en attente.</span></div>`; return; }
+  const chiffres = t => String(t || '').replace(/\D/g, '').replace(/^225/, '').slice(-10);
+  const sure = d => {
+    if(d.role_demande !== 'parent') return false;
+    const tel = chiffres(d.telephone), enfants = (d.eleve_ids || []).map(id => eleveById(id)).filter(Boolean);
+    return tel.length >= 8 && enfants.length > 0 && enfants.every(e => telephonesWhatsapp(e.parentTel).map(chiffres).includes(tel));
+  };
+  const nbSures = data.filter(sure).length;
+  const entete = `<div class="dem-resume"><span>${data.length} demande${data.length > 1 ? 's' : ''} en attente${nbSures ? ` · <strong>${nbSures} sûre${nbSures > 1 ? 's' : ''}</strong> (téléphone identique à la fiche de l’enfant)` : ''}</span>
+    ${nbSures > 1 ? `<button type="button" class="btn sm" onclick="approuverDemandesSures()">Approuver les ${nbSures} demandes sûres</button>` : ''}</div>`;
+  box.innerHTML = entete + data.map(d=>{
     const parent = d.role_demande === 'parent', enseignant = d.role_demande === 'enseignant';
     const opts = (DB.eleves||[]).filter(e=>e.statut==='Actif').map(e=>`<option value="${e.id}">${escapeHtml(e.nom)} ${escapeHtml(e.prenom)}</option>`).join('');
     if(enseignant){
@@ -9482,14 +9500,14 @@ async function chargerDemandesAcces(){
         parNom && parTel && parNom.id === parTel.id ? '<span class="badge green">✅ Nom identique</span>' : '',
         classesFiche.size ? (memesClasses ? '<span class="badge green">✅ Classes cochées = classes de la fiche</span>' : '<span class="badge amber">⚠️ Classes cochées différentes de la fiche</span>') : '',
       ].join(' ') : '<span class="badge">Aucune fiche enseignant correspondante : une nouvelle sera créée</span>';
-      return `<div style="border:1px solid var(--border);border-radius:var(--r-card);padding:12px;margin-bottom:10px;">
-        <strong>👩‍🏫 Enseignant — ${escapeHtml(d.nom)}</strong>
+      return `<div class="dem-carte">
+        <strong>Enseignant — ${escapeHtml(d.nom)}</strong>
         <div class="hint">${escapeHtml(d.email||'')}${d.telephone ? ' · ' + escapeHtml(d.telephone) : ''}</div>
         <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;">${indices}</div>
         <div class="hint" style="margin:8px 0 4px;">Classes cochées par l’enseignant — vérifiez :</div>
         <div style="display:flex;flex-wrap:wrap;gap:8px;">${DB.classes.map(c => `<label style="display:flex;align-items:center;gap:6px;"><input type="checkbox" class="demClasseVal_${d.id}" value="${c.id}" ${choisies.has(c.id)?'checked':''}> ${escapeHtml(c.nom)}</label>`).join('')}</div>
         <select id="demFiche_${d.id}" style="width:100%;margin:8px 0;"><option value="">Créer une nouvelle fiche enseignant</option>${libres.map(t => `<option value="${t.id}" ${suggere && suggere.id===t.id?'selected':''}>Relier à la fiche existante : ${escapeHtml(ensFullName(t))}</option>`).join('')}</select>
-        <button class="btn sm" onclick="traiterDemandeAcces('${d.id}', true, 'enseignant')">✅ Approuver</button>
+        <button class="btn sm" onclick="traiterDemandeAcces('${d.id}', true, 'enseignant')">Approuver</button>
         <button class="btn secondary sm" onclick="traiterDemandeAcces('${d.id}', false, 'enseignant')">Refuser</button>
       </div>`;
     }
@@ -9498,14 +9516,14 @@ async function chargerDemandesAcces(){
     // noté sur la fiche, ou contient le nom / prénom de l'élève
     const choisisParParent = (d.eleve_ids || []).map(id => eleveById(id)).filter(Boolean);
     const probables = parent ? (choisisParParent.length ? choisisParParent : enfantsProbables(d)) : [];
-    return `<div style="border:1px solid var(--border);border-radius:var(--r-card);padding:12px;margin-bottom:10px;">
-      <strong>${parent?'👪 Parent':'🚪 Portier'} — ${escapeHtml(d.nom)}</strong>
+    return `<div class="dem-carte"${sure(d) ? ` data-sure="${d.id}"` : ''}>
+      <strong>${parent?'Parent':'Portier'} — ${escapeHtml(d.nom)}</strong>${sure(d) ? ' <span class="badge-etat ok">Sûre</span>' : ''}
       <div class="hint">${escapeHtml(d.email||'')}${d.telephone ? ' · 📱 ' + escapeHtml(d.telephone) : ''}${d.message?` · « ${escapeHtml(d.message)} »`:''}</div>
       ${parent && probables.length ? `<div class="hint" style="margin:8px 0 4px;">${choisisParParent.length ? 'Enfant(s) coché(s) par le parent' : 'Enfant(s) probable(s), d’après les noms'} — vérifiez avant d'approuver :</div>
         ${probables.map(e => `${indiceConfianceParent(d, e)}<label style="display:flex;align-items:center;gap:8px;margin:2px 0;"><input type="checkbox" class="demEnfant_${d.id}" value="${e.id}" checked> ${escapeHtml(eleveFullName(e))} — ${escapeHtml(classeName(e.classeId))} <span class="hint">(parent sur la fiche : ${escapeHtml(e.parentNom || '—')})</span></label>`).join('')}` : ''}
       ${parent && d.telephone && probables.some(e => !telephonesWhatsapp(e.parentTel).length) ? `<label style="display:flex;align-items:center;gap:8px;margin:6px 0;"><input type="checkbox" id="demTelFiche_${d.id}" data-tel="${escapeHtml(d.telephone)}" checked> Enregistrer ce numéro sur la fiche des enfants qui n’en ont pas</label>` : ''}
       ${parent ? `<select id="demEleve_${d.id}" style="width:100%;margin:8px 0;"><option value="">${probables.length ? '— Ajouter un autre enfant… —' : '— Lier à l’enfant… —'}</option>${opts}</select>` : ''}
-      <button class="btn sm" onclick="traiterDemandeAcces('${d.id}', true, ${parent})">✅ Approuver</button>
+      <button class="btn sm" onclick="traiterDemandeAcces('${d.id}', true, ${parent})">Approuver</button>
       <button class="btn secondary sm" onclick="traiterDemandeAcces('${d.id}', false, ${parent})">Refuser</button>
     </div>`;
   }).join('');
@@ -9549,25 +9567,44 @@ async function traiterDemandeAcces(id, approuver, parent){
     chargerDemandesAcces();
     return;
   }
-  let eleves = [];
-  if(approuver && parent){
-    const coches = $$('.demEnfant_' + id).filter(c => c.checked).map(c => c.value);
-    const v = $('#demEleve_'+id).value;
-    eleves = [...new Set(coches.concat(v ? [v] : []))];
-    if(!eleves.length){ toast("Choisissez l'enfant à lier à ce parent."); return; }
-  }
-  const telDemande = approuver && parent && $('#demTelFiche_' + id)?.checked ? ($('#demTelFiche_' + id).dataset.tel || '') : '';
-  const { error } = await sb.rpc('traiter_demande_acces', { p_id: id, p_approuver: approuver, p_eleve_ids: eleves, p_classe_ids: [], p_enseignant_id: null });
-  if(error){ toast('Erreur : ' + error.message); return; }
-  if(telDemande){
-    for(const eid of eleves){
+  const choix = choixDemandeParent(id, approuver && parent);
+  if(approuver && parent && !choix.eleves.length){ toast("Choisissez l'enfant à lier à ce parent."); return; }
+  const err = await appliquerDemandeAcces(id, approuver, choix);
+  if(err){ toast('Erreur : ' + err); return; }
+  toast(approuver ? 'Accès accordé ✅' : 'Demande refusée');
+  chargerDemandesAcces();
+}
+// Lit ce que la direction a coché sur la carte d'une demande parent
+function choixDemandeParent(id, parent){
+  if(!parent) return { eleves: [], tel: '' };
+  const coches = $$('.demEnfant_' + id).filter(c => c.checked).map(c => c.value);
+  const v = $('#demEleve_' + id)?.value;
+  const tel = $('#demTelFiche_' + id)?.checked ? ($('#demTelFiche_' + id).dataset.tel || '') : '';
+  return { eleves: [...new Set(coches.concat(v ? [v] : []))], tel };
+}
+// Même fonction sécurisée côté base (traiter_demande_acces) ; renvoie le message d'erreur ou null
+async function appliquerDemandeAcces(id, approuver, choix){
+  const { error } = await sb.rpc('traiter_demande_acces', { p_id: id, p_approuver: approuver, p_eleve_ids: approuver ? choix.eleves : [], p_classe_ids: [], p_enseignant_id: null });
+  if(error) return error.message;
+  if(approuver && choix.tel){
+    for(const eid of choix.eleves){
       const e = eleveById(eid);
       if(e && !telephonesWhatsapp(e.parentTel).length){
-        try{ await dbUpdate('eleves', eid, { parentTel: telDemande }); e.parentTel = telDemande; }catch(_e){}
+        try{ await dbUpdate('eleves', eid, { parentTel: choix.tel }); e.parentTel = choix.tel; }catch(_e){}
       }
     }
   }
-  toast(approuver ? 'Accès accordé ✅' : 'Demande refusée');
+  return null;
+}
+// Approuve d'un coup les demandes parent « sûres » (téléphone identique à la fiche de chaque enfant)
+async function approuverDemandesSures(){
+  const ids = $$('[data-sure]').map(el => el.dataset.sure);
+  if(!ids.length) return;
+  if(!confirm(`Approuver ${ids.length} parents dont le téléphone correspond à la fiche de leur enfant ? Chacun verra uniquement son ou ses enfants.`)) return;
+  const choix = ids.map(id => ({ id, ...choixDemandeParent(id, true) })).filter(c => c.eleves.length);
+  let ok = 0; const erreurs = [];
+  for(const c of choix){ const err = await appliquerDemandeAcces(c.id, true, c); if(err) erreurs.push(err); else ok++; }
+  toast(erreurs.length ? `${ok} accès accordé(s) · ${erreurs.length} erreur(s) : ${erreurs[0]}` : `${ok} accès accordés ✅`);
   chargerDemandesAcces();
 }
 function lienApplication(page){
@@ -9830,8 +9867,8 @@ function renderParametres(){
       ${renderGeofence()}
     </div>
 
-    <div class="panel">
-      <div class="panel-head"><div><h2>🔔 Demandes d'accès (Parents &amp; Portier)</h2><div class="sub">Personnes qui se sont connectées avec Google et attendent votre validation</div></div></div>
+    <div class="panel" id="panneauDemandesAcces">
+      <div class="panel-head"><div><h2>Demandes d’accès</h2><div class="sub">Parents, enseignants et portier qui se sont inscrits avec Google et attendent votre validation</div></div></div>
       <div id="demandesAccesBox"><div class="hint">Chargement…</div></div>
       ${(setTimeout(chargerDemandesAcces,0),'')}
     </div>
