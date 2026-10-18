@@ -2507,6 +2507,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.10.18-21', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Notes : une fois les bulletins d’un trimestre publiés, ses notes sont verrouillées (seules la direction et la fondation peuvent corriger). Chaque modification de note est gardée dans un historique (Notes & Bulletins → Historique des modifications de notes).' ],
+  } },
   { version: '2026.10.18-20', nouveautes: {
     commun: [],
     parent: [],
@@ -6670,6 +6676,8 @@ function renderNotes(){
     ${['direction','fondation'].includes(ui.role) ? `<div class="panel">
       <div class="panel-head"><div><h2>📒 Bulletins visibles par les parents</h2><div class="sub">Publiez un trimestre quand toutes les notes sont saisies : chaque parent verra le bulletin de SES enfants dans son application</div></div></div>
       <div style="display:flex;flex-wrap:wrap;gap:14px;">${TRIMESTRES.map(t => `<label style="display:flex;align-items:center;gap:8px;font-weight:700;"><input type="checkbox" ${(DB.meta.bulletinsPublies || []).includes(t) ? 'checked' : ''} onchange="publierBulletins('${t}', this.checked)"> ${t} publié</label>`).join('')}</div>
+      <div class="hint" style="margin:10px 0 0;">Une fois un trimestre publié, ses notes sont verrouillées : seules la direction et la fondation peuvent encore les corriger, et chaque correction est gardée dans l’historique.</div>
+      <button type="button" class="btn secondary sm" style="margin-top:10px;" onclick="ouvrirHistoriqueNotes()">${icone('scroll-text')} Historique des modifications de notes</button>
     </div>` : ''}
 
     <div class="panel">
@@ -6685,6 +6693,7 @@ function renderNotes(){
           ${TRIMESTRES.map(t=>`<option ${f.trimestre===t?'selected':''}>${t}</option>`).join('')}
         </select>
       </div>
+      ${(DB.meta.bulletinsPublies || []).includes(f.trimestre) && !['direction','fondation'].includes(ui.role) ? `<div class="banniere-discrete" style="margin-bottom:10px;"><span>${icone('lock')}</span><span>Les bulletins du ${escapeHtml(f.trimestre)} sont publiés : ces notes sont verrouillées. Pour une correction, adressez-vous à la direction.</span></div>` : ''}
       ${eleves.length===0 ? `<div class="empty-state"><div class="em-ic">📝</div>Aucun élève actif dans cette classe.</div>` : `
       <div class="table-wrap"><table id="tableNotes">
         <thead><tr><th>Élève</th><th>Moy. de classe /20 <span class="hint">(Camps de base)</span></th><th>Note Composition /20</th></tr></thead>
@@ -6696,6 +6705,19 @@ function renderNotes(){
   </div>`;
 }
 
+// Historique des modifications de notes (direction / fondation) — schema.sql section 98
+async function ouvrirHistoriqueNotes(){
+  openModal('Historique des modifications de notes', '<div class="hint">Chargement…</div>');
+  const { data, error } = await sb.from('journal_notes').select('*').eq('ecole_id', session.ecoleId).order('created_at', { ascending: false }).limit(100);
+  if(error){ $('#modalBody').innerHTML = `<div class="hint">Erreur : ${escapeHtml(error.message)}</div>`; return; }
+  const libs = { modification:'Modifiée', suppression:'Supprimée', ajout_apres_publication:'Ajoutée après publication' };
+  $('#modalBody').innerHTML = !data.length
+    ? `<div class="etat-vide etat-vide-ok"><span class="etat-vide-ic" aria-hidden="true">${icone('circle-check')}</span><span>Aucune note modifiée pour l’instant.</span></div>`
+    : `<p class="hint" style="margin-top:0;">Les 100 dernières modifications, notées automatiquement par la base (impossible à effacer).</p>
+       <ul class="liste-compacte hist-notes">${data.map(j => { const e = eleveById(j.eleve_id); return `<li class="lc-ligne"><span class="lc-txt" style="display:flex;flex-direction:column;">
+         <strong>${escapeHtml(e ? eleveFullName(e) : 'Élève')} · ${escapeHtml(j.matiere || '')} · ${escapeHtml(j.trimestre || '')}</strong>
+         <small>${libs[j.action] || j.action} : ${j.note_avant ?? '—'} → ${j.note_apres ?? '—'} · par ${escapeHtml(j.auteur_nom || '?')} (${escapeHtml(j.auteur_role || '')}) · ${new Date(j.created_at).toLocaleString('fr-FR', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' })}</small></span></li>`; }).join('')}</ul>`;
+}
 async function saveNotesTable(){
   const f = ui.filters.notes;
   const inputs = $$('#tableNotes input');

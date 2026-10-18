@@ -3728,3 +3728,59 @@ begin
     execute format('create policy %I on public.%I for delete using (ecole_id = mon_ecole_id() and est_admin())', 'suppression ' || t || ' direction', t);
   end loop;
 end $$;
+-- =====================================================================
+-- 98. Notes : historique des modifications + verrou après publication
+--     (décision de Vehi, 2026-10-18). Toute modification ou suppression
+--     d'une note est historisée par la base (qui, quand, avant/après).
+--     Quand les bulletins d'un trimestre sont publiés (année en cours),
+--     les notes de ce trimestre ne peuvent plus être ajoutées, modifiées
+--     ou supprimées que par la direction / la fondation.
+-- =====================================================================
+create table if not exists journal_notes (
+  id bigserial primary key,
+  ecole_id uuid not null references ecoles(id) on delete cascade,
+  note_id uuid,
+  eleve_id uuid,
+  matiere text, trimestre text, annee_scolaire text,
+  action text not null check (action in ('modification','suppression','ajout_apres_publication')),
+  note_avant numeric, note_apres numeric,
+  auteur_id uuid, auteur_nom text default '', auteur_role text default '',
+  created_at timestamptz not null default now()
+);
+create index if not exists journal_notes_ecole on journal_notes (ecole_id, created_at desc);
+alter table journal_notes enable row level security;
+drop policy if exists "lecture journal_notes" on journal_notes;
+create policy "lecture journal_notes" on journal_notes for select using (ecole_id = mon_ecole_id() and est_admin());
+drop policy if exists "double verification" on journal_notes;
+create policy "double verification" on journal_notes as restrictive for all to authenticated
+  using (double_verification_ok()) with check (double_verification_ok());
+
+create or replace function verrou_et_journal_notes() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare r record; e record; v_nom text; v_role text; publie boolean;
+begin
+  r := case when tg_op = 'DELETE' then old else new end;
+  select annee_scolaire, coalesce(bulletins_publies, '{}') bp into e from ecoles where id = r.ecole_id;
+  publie := r.trimestre = any (e.bp) and coalesce(r.annee_scolaire, e.annee_scolaire) = e.annee_scolaire;
+  if tg_op = 'UPDATE' then
+    publie := publie or (old.trimestre = any (e.bp) and coalesce(old.annee_scolaire, e.annee_scolaire) = e.annee_scolaire);
+  end if;
+  if publie and auth.uid() is not null and not est_admin() then
+    raise exception 'Les bulletins du % sont publiés : seule la direction peut encore modifier ces notes.', r.trimestre;
+  end if;
+  if tg_op = 'INSERT' and not publie then return new; end if;
+  if tg_op = 'UPDATE' and old.note is not distinct from new.note and old.matiere is not distinct from new.matiere and old.trimestre is not distinct from new.trimestre then
+    return new;   -- rien de visible n'a changé
+  end if;
+  select nom_complet, role::text into v_nom, v_role from profiles where id = auth.uid();
+  insert into journal_notes (ecole_id, note_id, eleve_id, matiere, trimestre, annee_scolaire, action, note_avant, note_apres, auteur_id, auteur_nom, auteur_role)
+  values (r.ecole_id, r.id, r.eleve_id, r.matiere, r.trimestre, r.annee_scolaire,
+          case tg_op when 'INSERT' then 'ajout_apres_publication' when 'UPDATE' then 'modification' else 'suppression' end,
+          case when tg_op = 'INSERT' then null else old.note end,
+          case when tg_op = 'DELETE' then null else new.note end,
+          auth.uid(), coalesce(v_nom, ''), coalesce(v_role, ''));
+  return case when tg_op = 'DELETE' then old else new end;
+end $$;
+drop trigger if exists verrou_et_journal_notes on notes;
+create trigger verrou_et_journal_notes before insert or update or delete on notes
+  for each row execute function verrou_et_journal_notes();
