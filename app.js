@@ -1238,7 +1238,11 @@ async function showDemandeAcces(){
     <div class="sub" style="font-weight:700;">${parent ? 'Inscription parent' : enseignant ? 'Inscription enseignant' : 'Demande d’accès portier'}</div>
     <div class="sub">Compte Google : <strong>${escapeHtml(user.email||'')}</strong></div>
     <form class="pin-pad" onsubmit="return handleDemandeAcces(event)">
-      <div class="field" style="text-align:left;margin-bottom:10px;"><label>Votre nom complet (prénom et nom)</label><input type="text" id="demNom" required minlength="3" value="${escapeHtml(nomDefaut)}"></div>
+      <div class="field" style="text-align:left;margin-bottom:10px;"><label>Vous êtes</label><div class="segmente seg-radio" role="radiogroup" aria-label="Civilité">
+        ${(parent ? [['M', 'Papa'], ['F', 'Maman']] : [['M', 'Monsieur'], ['F', 'Madame']]).map(([k, l]) => `<label class="seg"><input type="radio" name="demCiv" value="${k}" required>${l}</label>`).join('')}</div></div>
+      ${enseignant ? `<div class="field" style="text-align:left;margin-bottom:10px;"><label for="demNomFamille">Votre NOM</label><input type="text" id="demNomFamille" required minlength="2" maxlength="60" placeholder="Ex : KOUAKOU" style="text-transform:uppercase;" autocomplete="family-name"></div>
+        <div class="field" style="text-align:left;margin-bottom:10px;"><label for="demPrenom">Vos prénoms</label><input type="text" id="demPrenom" required minlength="2" maxlength="60" placeholder="Ex : Amenan Clémentine" autocomplete="given-name"></div>`
+      : `<div class="field" style="text-align:left;margin-bottom:10px;"><label>Votre nom complet (prénom et nom)</label><input type="text" id="demNom" required minlength="3" value="${escapeHtml(nomDefaut)}"></div>`}
       ${enseignant ? `<div class="field" style="text-align:left;margin-bottom:10px;"><label>Votre numéro WhatsApp</label><input type="tel" id="demTel" required placeholder="07 00 00 00 00"></div>
         <div class="field" style="text-align:left;"><label>Cochez la ou les classes dont vous êtes l’enseignant(e)</label><div class="enrol-liste">${classesHtml}</div></div>` : ''}
       ${parent ? `<div class="field" style="text-align:left;margin-bottom:10px;"><label>Votre numéro WhatsApp</label><input type="tel" id="demTel" required placeholder="07 00 00 00 00" oninput="if(this.value.replace(/\D/g, '').length >= 10) rechercherEnfantDemande(document.getElementById('demRecherche')?.value || '')"><div class="hint" style="margin:4px 0 0;">Celui que vous avez donné à l’école : vos enfants apparaissent tout seuls et votre demande est validée plus vite.</div></div>
@@ -1275,7 +1279,14 @@ function choisirEnfantDemande(id, coche, libelle){
 async function handleDemandeAcces(ev){
   ev.preventDefault();
   const fixe = window.ESPACE_FIXE;
-  const ligne = { ecole_id: window.ECOLE_VITRINE.id, role_demande: fixe, nom: $('#demNom').value.trim(), message: ($('#demMsg')?.value || '').trim() };
+  const civilite = document.querySelector('input[name=demCiv]:checked')?.value || null;
+  if(!civilite){ $('#demErr').textContent = 'Choisissez ' + (fixe === 'parent' ? 'Papa ou Maman.' : 'Monsieur ou Madame.'); return false; }
+  const ligne = { ecole_id: window.ECOLE_VITRINE.id, role_demande: fixe, civilite, nom: ($('#demNom')?.value || '').trim(), message: ($('#demMsg')?.value || '').trim() };
+  if(fixe === 'enseignant'){
+    ligne.prenom = $('#demPrenom').value.trim().replace(/\s+/g, ' ');
+    ligne.nom_famille = $('#demNomFamille').value.trim().replace(/\s+/g, ' ').toUpperCase();
+    ligne.nom = `${ligne.prenom} ${ligne.nom_famille}`;
+  }
   if(fixe === 'parent'){
     ligne.eleve_ids = [...(window.__enfantsChoisis || new Map()).keys()];
     if(!ligne.eleve_ids.length){ $('#demErr').textContent = 'Cherchez et cochez au moins un enfant.'; return false; }
@@ -2568,6 +2579,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.10.18-27', nouveautes: {
+    commun: [],
+    parent: [ 'Inscription : choisissez Papa ou Maman, l’application vous salue ensuite comme il faut.' ],
+    portier: [],
+    personnel: [ 'Inscription des enseignants : Monsieur / Madame, NOM et prénoms demandés séparément — la fiche créée à la validation est exacte (plus de nom découpé au hasard).' ],
+  } },
   { version: '2026.10.18-26', nouveautes: {
     commun: [],
     parent: [],

@@ -3912,3 +3912,91 @@ select
   case when est_perso_admin() or e.id = mon_enseignant_id() then e.classes_demandees else null end as classes_demandees
 from enseignants e
 where e.ecole_id = mon_ecole_id() or developpeur_a_acces(e.ecole_id);
+
+-- =====================================================================
+-- 103. INSCRIPTION GOOGLE : CIVILITÉ, NOM ET PRÉNOMS SÉPARÉS (2026-10-18)
+-- =====================================================================
+-- « Aboya kouadio simplice » était découpé au hasard (dernier mot = nom).
+-- L'enseignant saisit maintenant Monsieur/Madame, son NOM et ses prénoms
+-- séparément ; la fiche et la salutation sont exactes dès la validation.
+alter table demandes_acces add column if not exists prenom text not null default '';
+alter table demandes_acces add column if not exists nom_famille text not null default '';
+alter table demandes_acces add column if not exists civilite text;
+alter table demandes_acces drop constraint if exists demandes_acces_identite;
+alter table demandes_acces add constraint demandes_acces_identite check (
+  char_length(prenom) <= 60 and char_length(nom_famille) <= 60 and (civilite is null or civilite in ('M','F')));
+create or replace function traiter_demande_acces(p_id uuid, p_approuver boolean, p_eleve_ids uuid[] default '{}',
+                                                 p_classe_ids text[] default '{}', p_enseignant_id uuid default null)
+returns void language plpgsql security definer set search_path = public as $$
+declare d demandes_acces%rowtype; e uuid; v_ens uuid; v_mat text; v_prenom text; v_nom text;
+begin
+  select * into d from demandes_acces where id = p_id for update;
+  if not found or d.ecole_id is distinct from mon_ecole_id() or not est_perso_admin() then
+    raise exception 'Demande introuvable ou accès refusé';
+  end if;
+  if d.statut <> 'en_attente' then raise exception 'Demande déjà traitée'; end if;
+  if not p_approuver then
+    update demandes_acces set statut='refusee', traite_par=auth.uid() where id=p_id;
+    return;
+  end if;
+  if d.role_demande = 'portier' and not est_admin() then
+    raise exception 'Seule la direction peut approuver un portier';
+  end if;
+  if d.role_demande = 'parent' and coalesce(array_length(p_eleve_ids,1),0) = 0 then
+    raise exception 'Choisissez au moins un enfant pour ce parent';
+  end if;
+  if d.role_demande = 'enseignant' and coalesce(array_length(p_classe_ids,1),0) = 0 then
+    raise exception 'Choisissez au moins une classe pour cet enseignant';
+  end if;
+  if exists (select 1 from profiles where id = d.user_id) then
+    raise exception 'Ce compte a déjà un profil';
+  end if;
+
+  if d.role_demande = 'enseignant' then
+    if exists (select 1 from unnest(p_classe_ids) c where not exists (select 1 from classes where id = c and ecole_id = d.ecole_id)) then
+      raise exception 'Classe invalide';
+    end if;
+    if p_enseignant_id is not null then
+      -- fiche déjà créée par l'école : on la relie (si elle n'a pas déjà un compte)
+      if not exists (select 1 from enseignants where id = p_enseignant_id and ecole_id = d.ecole_id)
+         or exists (select 1 from profiles where enseignant_id = p_enseignant_id) then
+        raise exception 'Fiche enseignant invalide ou déjà reliée à un compte';
+      end if;
+      update enseignants set classes_assignees = p_classe_ids, statut = 'Actif', sexe = coalesce(sexe, d.civilite),
+        telephone = coalesce(nullif(d.telephone, ''), telephone) where id = p_enseignant_id;
+      v_ens := p_enseignant_id;
+    else
+      if d.nom_famille <> '' and d.prenom <> '' then
+        -- NOM et prénoms saisis séparément par l'enseignant : aucun découpage à deviner
+        v_nom := upper(trim(d.nom_famille)); v_prenom := trim(d.prenom);
+      else
+        v_nom := upper(split_part(trim(d.nom), ' ', array_length(string_to_array(trim(d.nom), ' '), 1)));
+        v_prenom := trim(regexp_replace(trim(d.nom), '\s+\S+$', ''));
+        if v_prenom = '' then v_prenom := v_nom; end if;
+      end if;
+      select 'ENS-' || lpad((coalesce(max(nullif(regexp_replace(matricule, '\D', '', 'g'), '')::int), 0) + 1)::text, 3, '0')
+        into v_mat from enseignants where ecole_id = d.ecole_id and matricule like 'ENS-%';
+      insert into enseignants (ecole_id, matricule, nom, prenom, sexe, telephone, classes_assignees, statut, date_embauche)
+        values (d.ecole_id, v_mat, v_nom, v_prenom, d.civilite, d.telephone, p_classe_ids, 'Actif', current_date)
+        returning id into v_ens;
+    end if;
+    insert into profiles (id, ecole_id, role, nom_complet, enseignant_id, civilite, nom_appel)
+      values (d.user_id, d.ecole_id, 'enseignant', d.nom, v_ens, d.civilite,
+              case when d.civilite is not null then d.nom end);
+  else
+    insert into profiles (id, ecole_id, role, nom_complet, civilite)
+      values (d.user_id, d.ecole_id, d.role_demande::role_utilisateur, d.nom, d.civilite);
+  end if;
+
+  if d.role_demande = 'parent' then
+    foreach e in array p_eleve_ids loop
+      if not exists (select 1 from eleves where id = e and ecole_id = d.ecole_id) then
+        raise exception 'Élève invalide';
+      end if;
+      insert into parents_eleves (ecole_id, parent_profile_id, eleve_id) values (d.ecole_id, d.user_id, e);
+    end loop;
+  end if;
+  update demandes_acces set statut='approuvee', traite_par=auth.uid() where id=p_id;
+end $$;
+revoke all on function traiter_demande_acces(uuid,boolean,uuid[],text[],uuid) from public, anon;
+grant execute on function traiter_demande_acces(uuid,boolean,uuid[],text[],uuid) to authenticated;

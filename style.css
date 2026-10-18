@@ -1665,3 +1665,7 @@ body.theme-portier .alerte-inscription{ background:rgba(232,176,75,.12); color:i
 .collegue-txt{ display:flex; flex-direction:column; min-width:0; }
 .collegue-txt small{ color:var(--text-dim); font-size:13px; }
 .enrole-a-valider{ display:flex; flex-direction:column; gap:10px; margin-bottom:10px; }
+
+/* Choix Monsieur / Madame : pas de barre de défilement parasite (écran d’inscription) */
+.seg-radio{ overflow-y:hidden; }
+.login-card .seg-radio input{ margin:0; height:100%; }
