@@ -2361,6 +2361,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.10.18-2', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Pointage des enseignants : onglets Aujourd’hui / Journal / Alertes, une carte claire par enseignant (arrivée, départ, badge QR ou GPS) avec 3 boutons Présent / Absent / Retard ; explication du pointage GPS.' ],
+  } },
   { version: '2026.10.18-1', nouveautes: {
     commun: [],
     parent: [],
