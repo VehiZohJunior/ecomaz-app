@@ -373,6 +373,80 @@ tbody td input[type=number]{ width:90px; }
 .cj-valider .appel-compteur{ margin:0; font-size:13px; }
 @media (max-width:900px){ body.has-bottom-nav .cj-valider{ bottom:calc(60px + env(safe-area-inset-bottom, 0px)); } }
 @media (min-width:900px){ .cj-liste .appel-ligne{ grid-template-columns:minmax(0,1fr) 320px minmax(0,220px); align-items:center; } .appel-present .cj-motif{ display:block; visibility:hidden; } }
+/* ----- Menu « ⋯ » générique ----- */
+.menu-plus{ position:relative; flex:0 0 auto; }
+.menu-plus > summary{ list-style:none; cursor:pointer; }
+.menu-plus > summary::-webkit-details-marker{ display:none; }
+.menu-plus-liste{ position:absolute; right:0; top:calc(100% + 4px); z-index:30; min-width:220px; padding:6px; border:1px solid var(--border); border-radius:12px; background:var(--surface-1); box-shadow:0 8px 24px rgba(0,0,0,.18); }
+.menu-plus-liste .btn-reset{ display:block; width:100%; min-height:44px; padding:0 12px; text-align:left; border-radius:8px; color:var(--text); }
+.menu-plus-liste .btn-reset:hover{ background:var(--surface-2); }
+.menu-plus-liste .btn-reset.danger{ color:var(--accent-ink); }
+/* ----- Tableau d'affichage (DESIGN.md §11) ----- */
+.ta-lien{ padding:10px 12px; border-radius:10px; background:var(--surface-2); font-size:13px; color:var(--text-dim); overflow-wrap:anywhere; user-select:all; }
+.honneur-grille{ display:grid; grid-template-columns:repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap:12px; }
+.honneur-carte{ position:relative; display:flex; flex-direction:column; align-items:center; text-align:center; gap:6px; padding:18px 14px 14px; border-radius:18px; min-width:0;
+  background:linear-gradient(160deg, color-mix(in srgb, var(--em-gold-400, #E8B04B) 22%, var(--surface-1)), var(--surface-1) 70%); border:1px solid color-mix(in srgb, var(--em-gold-400, #E8B04B) 45%, var(--border)); }
+.honneur-trimestre{ background:linear-gradient(160deg, color-mix(in srgb, var(--primary) 18%, var(--surface-1)), var(--surface-1) 70%); border-color:color-mix(in srgb, var(--primary) 35%, var(--border)); }
+.honneur-annee{ background:linear-gradient(160deg, color-mix(in srgb, var(--accent) 18%, var(--surface-1)), var(--surface-1) 70%); border-color:color-mix(in srgb, var(--accent) 35%, var(--border)); }
+.honneur-vide{ background:var(--surface-1); border:1px dashed var(--border-strong); }
+.honneur-medaille{ position:absolute; top:12px; right:12px; color:var(--em-gold-400, #E8B04B); }
+.honneur-medaille svg{ width:22px; height:22px; }
+.honneur-medaille.vide{ position:static; color:var(--text-faint, var(--text-dim)); }
+.honneur-periode{ font-size:12px; font-weight:800; letter-spacing:.04em; text-transform:uppercase; color:var(--text-dim); }
+.honneur-avatar{ width:56px; height:56px; font-size:18px; margin-top:4px; }
+.honneur-nom{ font-size:17px; overflow-wrap:anywhere; }
+.honneur-libelle{ font-size:13px; color:var(--text-dim); }
+.ta-bandeau{ overflow:hidden; border-radius:10px; background:var(--em-green-900, #14392D); color:#fff; padding:10px 0; margin-bottom:12px; }
+.ta-bandeau-txt{ display:inline-block; white-space:nowrap; padding-left:100%; animation:taDefile 22s linear infinite; font-weight:700; }
+.ta-sep{ margin:0 14px; color:var(--em-gold-400, #E8B04B); }
+@keyframes taDefile{ to{ transform:translateX(-100%); } }
+@media (prefers-reduced-motion: reduce){ .ta-bandeau-txt{ animation:none; padding:0 12px; white-space:normal; } }
+.ta-ajout{ display:flex; gap:8px; margin-bottom:12px; }
+.ta-ajout input{ flex:1; min-width:0; min-height:44px; }
+.ta-actus .lc-txt{ display:flex; flex-direction:column; gap:2px; flex:1; min-width:0; }
+.ta-actus .lc-txt strong{ font-weight:600; white-space:normal; overflow-wrap:anywhere; }
+.ta-actus .lc-txt small{ color:var(--text-dim); font-size:12px; }
+.suggestions-puces{ display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; }
+.puce-suggestion{ min-height:32px; padding:0 12px; border:1px solid var(--border); border-radius:999px; background:var(--surface-2); color:var(--text); font:inherit; font-size:13px; cursor:pointer; }
+.puce-suggestion:hover{ border-color:var(--primary); color:var(--primary-ink); }
+/* ----- Vie de l'école : formulaire en sections ----- */
+.form-section{ border:0; margin:0 0 20px; padding:0; min-width:0; }
+.form-section legend{ display:flex; align-items:center; gap:8px; padding:0; margin-bottom:10px; font-weight:800; font-size:15px; }
+.fs-num{ display:inline-flex; align-items:center; justify-content:center; width:24px; height:24px; border-radius:50%; background:var(--primary-soft); color:var(--primary-ink); font-size:13px; }
+.zone-envoi{ position:relative; display:flex; align-items:center; gap:12px; padding:16px; border:2px dashed var(--border-strong); border-radius:14px; background:var(--surface-2); cursor:pointer; flex-wrap:wrap; }
+.zone-envoi:hover, .zone-envoi:focus-within{ border-color:var(--primary); }
+.zone-envoi.rempli{ border-style:solid; border-color:var(--primary); background:var(--primary-soft); }
+.zone-envoi input[type=file]{ position:absolute; inset:0; opacity:0; cursor:pointer; width:100%; }
+.ze-ic{ display:inline-flex; width:44px; height:44px; align-items:center; justify-content:center; border-radius:12px; background:var(--surface-1); color:var(--primary); flex:0 0 auto; }
+.ze-txt{ display:flex; flex-direction:column; flex:1; min-width:150px; } .ze-txt small{ color:var(--text-dim); }
+.ze-etat{ font-size:13px; font-weight:700; color:var(--text-dim); }
+.seg-radio .seg{ display:inline-flex; align-items:center; position:relative; }
+.seg-radio .seg input{ position:absolute; opacity:0; pointer-events:none; }
+.seg-radio .seg:has(input:checked){ background:var(--surface-1); color:var(--text); box-shadow:var(--shadow-1); }
+.seg-radio .seg:focus-within{ outline:2px solid var(--primary); outline-offset:1px; }
+.choix-classes{ flex-wrap:wrap; gap:8px; margin-top:10px; }
+.puce-case{ position:relative; cursor:pointer; }
+.puce-case input{ position:absolute; opacity:0; }
+.puce-case span{ display:inline-flex; align-items:center; min-height:36px; padding:0 12px; border:1px solid var(--border); border-radius:999px; font-size:14px; }
+.puce-case input:checked + span{ background:var(--primary-soft); border-color:var(--primary); color:var(--primary-ink); font-weight:700; }
+.puce-case input:focus-visible + span{ outline:2px solid var(--primary); outline-offset:1px; }
+.fil-tete .menu-plus{ margin-left:auto; }
+/* ----- Programmes pédagogiques ----- */
+.prog-filtres{ display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-bottom:14px; }
+.puce-select.petit{ min-height:36px; font-size:14px; background-color:var(--surface-2); color:var(--text); font-weight:600; max-width:100%; }
+.puce-select.petit.actif{ background-color:var(--primary-soft); color:var(--primary-ink); border-color:var(--primary); }
+.prog-grille{ display:grid; grid-template-columns:repeat(auto-fill, minmax(min(100%, 280px), 1fr)); gap:12px; }
+.prog-carte{ display:flex; flex-direction:column; gap:6px; min-width:0; padding:14px; border:1px solid var(--border); border-radius:16px; background:var(--surface-1); }
+.prog-tete{ display:flex; align-items:center; gap:8px; }
+.prog-tri{ font-size:12px; color:var(--text-dim); font-weight:700; }
+.prog-tete .menu-plus{ margin-left:auto; }
+.prog-matiere{ font-size:16px; overflow-wrap:anywhere; }
+.prog-ens{ color:var(--text-dim); font-size:14px; overflow-wrap:anywhere; }
+.prog-avancee{ display:flex; align-items:center; gap:10px; margin-top:4px; font-variant-numeric:tabular-nums; }
+.prog-avancee .sc-piste{ height:8px; }
+.prog-ok{ background:var(--success) !important; } .prog-moyen{ background:var(--em-gold-400, #E8B04B) !important; } .prog-bas{ background:var(--accent) !important; }
+.prog-pied{ display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:6px; padding-top:10px; border-top:1px solid var(--border); }
+.prog-pied small{ color:var(--text-dim); }
 /* ----- Pointage des enseignants (DESIGN.md §11) ----- */
 .pens-onglets{ margin-bottom:14px; }
 .pens-ok{ color:var(--success); } .pens-ko{ color:var(--accent-ink); }

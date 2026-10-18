@@ -3702,7 +3702,7 @@ function renderPublication(p){
       <div class="fil-avatar" aria-hidden="true">${DB.meta?.logo ? `<img src="${escapeHtml(DB.meta.logo)}" alt="">` : 'E'}</div>
       <div class="fil-qui"><strong>${escapeHtml(DB.meta?.nomEcole || 'École')}</strong>
         <span>${new Date(p.createdAt).toLocaleDateString('fr-FR', {day:'numeric', month:'long'})}${p.dateEvenement ? ' · événement du ' + fmtDate(p.dateEvenement) : ''} · ${escapeHtml(cible)}</span></div>
-      ${estGestionnaireFil() ? `<button type="button" class="btn secondary sm" onclick="supprimerPublication('${p.id}')">Supprimer</button>` : ''}
+      ${estGestionnaireFil() ? menuPlus([{ label: 'Supprimer la publication', danger: true, onclick: `supprimerPublication('${p.id}')` }]) : ''}
     </header>
     <h3 class="fil-titre">${escapeHtml(p.titre)}</h3>
     ${p.texte ? `<p class="fil-texte">${escapeHtml(p.texte)}</p>` : ''}
@@ -3810,20 +3810,31 @@ function renderVieEcole(){
   const classes = DB.classes || [];
   return `<div class="view active">
     ${estGestionnaireFil() ? `<div class="panel">
-      <div class="panel-head"><div><h2>📸 Publier un événement</h2><div class="sub">Photos et vidéos visibles uniquement par les parents et le personnel de l’école</div></div></div>
-      <form onsubmit="return publierEvenement(event)">
-        <div class="form-grid">
-          <div class="field"><label>Titre</label><input name="titre" required minlength="2" maxlength="150" placeholder="Ex : Fête de fin d’année"></div>
-          <div class="field"><label>Date de l’événement</label><input type="date" name="dateEvenement" value="${todayISO()}"></div>
-          <div class="field span2"><label>Texte (facultatif)</label><textarea name="texte" rows="3" maxlength="3000" placeholder="Racontez l’événement…"></textarea></div>
-          <div class="field span2"><label>Photos et vidéos</label><input type="file" name="fichiers" accept="image/*,video/mp4,video/quicktime,video/webm" multiple>
-            <div class="hint" style="margin:4px 0 0;">Les photos sont allégées automatiquement. Vidéos : 25 Mo maximum (environ 1 minute) ; pour une vidéo plus longue, mettez-la sur YouTube en « non répertoriée » et collez le lien ci-dessous.</div></div>
-          <div class="field span2"><label>Lien YouTube (facultatif)</label><input name="youtube" placeholder="https://youtu.be/…"></div>
-          <div class="field span2"><label>Qui peut voir ?</label>
-            <select name="cible" onchange="document.getElementById('choixClassesPub').style.display = this.value === 'classes' ? 'flex' : 'none'"><option value="tous">Toute l’école</option><option value="classes">Certaines classes seulement</option></select>
-            <div id="choixClassesPub" style="display:none;flex-wrap:wrap;gap:10px;margin-top:8px;">${classes.map(c => `<label style="display:flex;align-items:center;gap:6px;"><input type="checkbox" name="classe" value="${c.id}"> ${escapeHtml(c.nom)}</label>`).join('')}</div></div>
-        </div>
-        <div class="hint">🔒 Droit à l’image : ne publiez que des enfants dont les parents sont d’accord.</div>
+      <div class="panel-head"><div><h2>Publier un événement</h2><div class="sub">Visible uniquement par les parents et le personnel de l’école</div></div></div>
+      <form onsubmit="return publierEvenement(event)" class="form-sections">
+        <fieldset class="form-section"><legend><span class="fs-num">1</span>Titre et date</legend>
+          <div class="form-grid">
+            <div class="field"><label for="pubTitre">Titre</label><input id="pubTitre" name="titre" required minlength="2" maxlength="150" placeholder="Ex : Fête de fin d’année"></div>
+            <div class="field"><label for="pubDate">Date de l’événement</label><input id="pubDate" type="date" name="dateEvenement" value="${todayISO()}"></div>
+          </div></fieldset>
+        <fieldset class="form-section"><legend><span class="fs-num">2</span>Texte</legend>
+          <div class="field"><label for="pubTexte">Racontez l’événement (facultatif)</label><textarea id="pubTexte" name="texte" rows="3" maxlength="3000" placeholder="Ce qui s’est passé, ce dont les parents doivent se souvenir…"></textarea></div></fieldset>
+        <fieldset class="form-section"><legend><span class="fs-num">3</span>Photos et vidéos</legend>
+          <label class="zone-envoi">
+            <input type="file" name="fichiers" accept="image/*,video/mp4,video/quicktime,video/webm" multiple onchange="const n=this.files.length; this.closest('.zone-envoi').querySelector('.ze-etat').textContent = n ? n + (n > 1 ? ' fichiers choisis' : ' fichier choisi') : 'Aucun fichier choisi'; this.closest('.zone-envoi').classList.toggle('rempli', n > 0)">
+            <span class="ze-ic" aria-hidden="true">${icone('camera')}</span>
+            <span class="ze-txt"><strong>Ajouter des photos ou des vidéos</strong><small>Touchez ici pour choisir dans la galerie</small></span>
+            <span class="ze-etat">Aucun fichier choisi</span>
+          </label>
+          <div class="hint" style="margin:6px 0 0;">Les photos sont allégées automatiquement. Vidéos : 25 Mo maximum (environ 1 minute) ; pour une vidéo plus longue, mettez-la sur YouTube en « non répertoriée » et collez le lien ci-dessous.</div>
+          <div class="field" style="margin-top:12px;"><label for="pubYoutube">Lien YouTube (facultatif)</label><input id="pubYoutube" name="youtube" placeholder="https://youtu.be/…"></div></fieldset>
+        <fieldset class="form-section"><legend><span class="fs-num">4</span>Qui peut voir ?</legend>
+          <div class="segmente seg-radio" role="radiogroup" aria-label="Qui peut voir ?">
+            <label class="seg"><input type="radio" name="cible" value="tous" checked onchange="document.getElementById('choixClassesPub').style.display='none'">Toute l’école</label>
+            <label class="seg"><input type="radio" name="cible" value="classes" onchange="document.getElementById('choixClassesPub').style.display='flex'">Certaines classes</label>
+          </div>
+          <div id="choixClassesPub" class="choix-classes" style="display:none;">${classes.map(c => `<label class="puce-case"><input type="checkbox" name="classe" value="${c.id}"><span>${escapeHtml(c.nom)}</span></label>`).join('')}</div>
+          <div class="hint" style="margin:10px 0 0;">${icone('lock')} Droit à l’image : ne publiez que des enfants dont les parents sont d’accord.</div></fieldset>
         <div id="progressionPub" class="hint"></div>
         <div class="form-actions"><button class="btn" type="submit" id="btnPublier">Publier</button></div>
       </form>
@@ -7202,53 +7213,41 @@ function renderProgrammes(){
   if(f.trimestre) list = list.filter(p=>p.trimestre===f.trimestre);
   list.sort((a,b)=> classeName(a.classeId).localeCompare(classeName(b.classeId)));
 
-  const rows = list.map(p=>{
+  const cartes = list.map(p=>{
     const t = enseignantById(p.enseignantId);
-    return `<tr>
-      <td><span class="badge blue">${classeName(p.classeId)}</span></td>
-      <td>${escapeHtml(p.matiere)}</td>
-      <td>${escapeHtml(ensFullName(t))}</td>
-      <td>${p.trimestre}</td>
-      <td style="min-width:140px;">
-        <div style="display:flex;align-items:center;gap:8px;">
-          <div class="progress" style="flex:1;"><div style="width:${p.progression}%;background:${p.progression>=75?'var(--green)':p.progression>=40?'var(--amber)':'var(--red)'};"></div></div>
-          <span style="font-size:var(--fs-xs);font-weight:700;">${p.progression}%</span>
-        </div>
-      </td>
-      <td>${fmtDate(p.dateMaj)}</td>
-      <td style="white-space:nowrap;">
-        <button class="icon-btn" title="Modifier" onclick="openProgrammeForm('${p.id}')">✏️</button>
-        <button class="icon-btn danger" title="Supprimer" onclick="deleteProgramme('${p.id}')">🗑️</button>
-      </td>
-    </tr>`;
+    const niveau = p.progression>=75 ? 'ok' : p.progression>=40 ? 'moyen' : 'bas';
+    return `<article class="prog-carte">
+      <header class="prog-tete"><span class="puce-classe">${escapeHtml(classeName(p.classeId))}</span><span class="prog-tri">${escapeHtml(p.trimestre)}</span>
+        ${menuPlus([{ label: 'Supprimer ce programme', danger: true, onclick: `deleteProgramme('${p.id}')` }])}</header>
+      <strong class="prog-matiere">${escapeHtml(p.matiere)}</strong>
+      <span class="prog-ens">${escapeHtml(ensFullName(t))}</span>
+      <div class="prog-avancee"><div class="sc-piste"><div class="prog-${niveau}" style="width:${p.progression}%"></div></div><strong>${p.progression} %</strong></div>
+      <footer class="prog-pied"><small>Mis à jour le ${fmtDate(p.dateMaj)}</small><button type="button" class="btn secondary sm" onclick="openProgrammeForm('${p.id}')">Modifier</button></footer>
+    </article>`;
   }).join('');
+  const filtresActifs = !!(f.classeId || f.enseignantId || f.trimestre);
 
   return `
   <div class="view active">
     <div class="panel">
       <div class="panel-head">
-        <div><h2>Programmes pédagogiques</h2><div class="sub">${list.length} entrée(s) · Suivi de la progression des enseignants</div></div>
-        <button class="btn" onclick="openProgrammeForm()">+ Nouveau programme</button>
+        <div><h2>Progression des enseignants</h2><div class="sub">${list.length} programme${list.length > 1 ? 's' : ''}${filtresActifs ? ' pour ces filtres' : ''}</div></div>
+        <button class="btn" onclick="openProgrammeForm()">${icone('plus')} Nouveau programme</button>
       </div>
-      <div class="filters">
-        <select onchange="ui.filters.prog.classeId=this.value; renderView('programmes')">
+      <div class="prog-filtres">
+        <select class="puce-select petit${f.classeId ? ' actif' : ''}" aria-label="Classe" onchange="ui.filters.prog.classeId=this.value; renderView('programmes')">
           <option value="">Toutes les classes</option>
-          ${DB.classes.map(c=>`<option value="${c.id}" ${f.classeId===c.id?'selected':''}>${c.nom}</option>`).join('')}
+          ${DB.classes.map(c=>`<option value="${c.id}" ${f.classeId===c.id?'selected':''}>${escapeHtml(c.nom)}</option>`).join('')}
         </select>
-        <select onchange="ui.filters.prog.enseignantId=this.value; renderView('programmes')">
+        <select class="puce-select petit${f.enseignantId ? ' actif' : ''}" aria-label="Enseignant" onchange="ui.filters.prog.enseignantId=this.value; renderView('programmes')">
           <option value="">Tous les enseignants</option>
-          ${DB.enseignants.map(t=>`<option value="${t.id}" ${f.enseignantId===t.id?'selected':''}>${ensFullName(t)}</option>`).join('')}
+          ${DB.enseignants.map(t=>`<option value="${t.id}" ${f.enseignantId===t.id?'selected':''}>${escapeHtml(ensFullName(t))}</option>`).join('')}
         </select>
-        <select onchange="ui.filters.prog.trimestre=this.value; renderView('programmes')">
-          <option value="">Tous les trimestres</option>
-          ${TRIMESTRES.map(t=>`<option ${f.trimestre===t?'selected':''}>${t}</option>`).join('')}
-        </select>
+        <div class="segmente" role="group" aria-label="Trimestre">${[['', 'Tous'], ...TRIMESTRES.map(t => [t, 'T' + t.slice(-1)])].map(([v, l]) => `<button type="button" class="seg${f.trimestre === v ? ' actif' : ''}" ${v ? `title="${v}"` : ''} onclick="ui.filters.prog.trimestre='${v}'; renderView('programmes')">${l}</button>`).join('')}</div>
+        ${filtresActifs ? `<button type="button" class="lien-discret" onclick="ui.filters.prog={classeId:'', enseignantId:'', trimestre:''}; renderView('programmes')">Effacer les filtres</button>` : ''}
       </div>
-      ${list.length===0 ? `<div class="empty-state"><div class="em-ic">📚</div>Aucun programme enregistré pour ces critères.</div>` : `
-      <div class="table-wrap"><table>
-        <thead><tr><th>Classe</th><th>Matière</th><th>Enseignant</th><th>Trimestre</th><th>Progression</th><th>Mise à jour</th><th>Actions</th></tr></thead>
-        <tbody>${rows}</tbody>
-      </table></div>`}
+      ${list.length===0 ? `<div class="etat-vide"><span class="etat-vide-ic" aria-hidden="true">${icone('book-open-check')}</span><span>${filtresActifs ? 'Aucun programme pour ces filtres.' : 'Aucun programme enregistré.'} <button type="button" class="lien-discret" onclick="openProgrammeForm()">Ajouter un programme</button></span></div>`
+        : `<div class="prog-grille">${cartes}</div>`}
     </div>
   </div>`;
 }
@@ -9059,33 +9058,46 @@ const HONNEUR_CATEGORIES = [
 function honneurActuel(categorie, periode){
   return (DB.tableauHonneur||[]).find(h=>h.categorie===categorie && h.periode===periode);
 }
+// Menu « ⋯ » : les actions secondaires (dont Supprimer) ne dominent plus l'écran
+function menuPlus(actions, libelle){
+  return `<details class="menu-plus"><summary class="btn secondary sm" aria-label="${escapeHtml(libelle || 'Plus d’actions')}" title="${escapeHtml(libelle || 'Plus d’actions')}">⋯</summary>
+    <div class="menu-plus-liste">${actions.map(a => `<button type="button" class="btn-reset${a.danger ? ' danger' : ''}" onclick="this.closest('details').open=false; ${a.onclick}">${escapeHtml(a.label)}</button>`).join('')}</div></details>`;
+}
 function renderTableauAffichage(){
   const base = location.href.replace(/[^/]*$/, '');
   const lienPublic = `${base}affichage.html?ecole=${session.ecoleId}`;
+  const actus = (DB.actualitesAffichage||[]).slice().sort((a,b)=> (b.createdAt||'').localeCompare(a.createdAt||''));
   return `<div class="view active">
     <div class="panel">
       <div class="panel-head">
-        <div><h2>🖥️ Écran d'affichage public</h2><div class="sub">Lien à ouvrir sur la TV/tablette du hall — aucune connexion nécessaire</div></div>
-        <button class="btn secondary sm" onclick="copierLienAffichage('${lienPublic}')">🔗 Copier le lien</button>
+        <div><h2>Écran du hall</h2><div class="sub">À ouvrir sur la télévision ou la tablette de l’entrée — aucune connexion nécessaire</div></div>
+        <button class="btn secondary sm" onclick="copierLienAffichage('${lienPublic}')">${icone('link')} Copier le lien</button>
       </div>
-      <div class="hint" style="word-break:break-all;">${escapeHtml(lienPublic)}</div>
+      <div class="ta-lien">${escapeHtml(lienPublic)}</div>
     </div>
 
     ${HONNEUR_CATEGORIES.map(cat=>`
       <div class="panel">
-        <div class="panel-head"><div><h2>${cat.icon} ${escapeHtml(cat.label)} à l'honneur</h2></div></div>
-        <div class="grid-3">
+        <div class="panel-head"><div><h2>${cat.id === 'eleve' ? 'Élèves à l’honneur' : 'Enseignants à l’honneur'}</h2><div class="sub">Affichés en grand sur l’écran du hall</div></div></div>
+        <div class="honneur-grille">
           ${HONNEUR_PERIODES.map(per=>{
             const h = honneurActuel(cat.id, per.id);
-            return `<div class="panel" style="background:var(--surface-2);">
-              <div class="hint">${per.label}</div>
-              ${h ? `
-                <strong style="font-size:var(--fs-md);">${escapeHtml(h.nomAffiche)}</strong>
-                <div class="meta">${escapeHtml(h.classeOuMatiere||'')}</div>
-                <div class="hint" style="margin-top:4px;">${escapeHtml(h.libellePeriode||'')}</div>
-              ` : `<div class="empty" style="padding:8px 0;">Non défini</div>`}
-              <button class="btn secondary sm" style="width:100%;margin-top:10px;" onclick="ouvrirModifierHonneur('${cat.id}','${per.id}')">✏️ Modifier</button>
-            </div>`;
+            const titre = `${cat.id === 'eleve' ? 'Élève' : 'Enseignant(e)'} ${per.id === 'mois' ? 'du mois' : per.id === 'trimestre' ? 'du trimestre' : 'de l’année'}`;
+            return h ? `<article class="honneur-carte honneur-${per.id}">
+                <span class="honneur-medaille" aria-hidden="true">${icone('trophy')}</span>
+                <span class="honneur-periode">${titre}</span>
+                <span class="lc-avatar honneur-avatar" aria-hidden="true">${escapeHtml(initials(...String(h.nomAffiche || '? ?').split(' ')))}</span>
+                <strong class="honneur-nom">${escapeHtml(h.nomAffiche)}</strong>
+                ${h.classeOuMatiere ? `<span class="puce-classe">${escapeHtml(h.classeOuMatiere)}</span>` : ''}
+                ${h.libellePeriode ? `<span class="honneur-libelle">${escapeHtml(h.libellePeriode)}</span>` : ''}
+                <button type="button" class="lien-discret" onclick="ouvrirModifierHonneur('${cat.id}','${per.id}')">Modifier</button>
+              </article>`
+              : `<article class="honneur-carte honneur-vide">
+                <span class="honneur-periode">${titre}</span>
+                <span class="honneur-medaille vide" aria-hidden="true">${icone('trophy')}</span>
+                <span class="hint" style="margin:0;">Personne pour l’instant</span>
+                <button type="button" class="btn secondary sm" onclick="ouvrirModifierHonneur('${cat.id}','${per.id}')">Choisir</button>
+              </article>`;
           }).join('')}
         </div>
       </div>
@@ -9093,11 +9105,12 @@ function renderTableauAffichage(){
 
     <div class="panel">
       <div class="panel-head">
-        <div><h2>📰 Bannière d'actualités</h2><div class="sub">Défile sur l'écran d'affichage</div></div>
+        <div><h2>Bannière d’actualités</h2><div class="sub">Défile en bas de l’écran du hall</div></div>
       </div>
-      <form onsubmit="return handleAjouterActualite(event)" style="display:flex;gap:8px;margin-bottom:14px;">
-        <input type="text" id="nouvelleActualite" placeholder="Ex : Réunion de parents le 15 octobre à 17h" style="flex:1;" required>
-        <button class="btn sm" type="submit">+ Ajouter</button>
+      <div class="ta-bandeau" aria-label="Aperçu du défilement"><div class="ta-bandeau-txt">${actus.length ? actus.map(a => escapeHtml(a.texte)).join('<span class="ta-sep">•</span>') : 'Vos annonces défileront ici.'}</div></div>
+      <form onsubmit="return handleAjouterActualite(event)" class="ta-ajout">
+        <input type="text" id="nouvelleActualite" placeholder="Ex : Réunion de parents le 15 octobre à 17h" aria-label="Nouvelle annonce" required>
+        <button class="btn" type="submit">Ajouter</button>
       </form>
       ${renderListeActualites()}
     </div>
@@ -9105,18 +9118,21 @@ function renderTableauAffichage(){
 }
 function renderListeActualites(){
   const actus = (DB.actualitesAffichage||[]).slice().sort((a,b)=> (b.createdAt||'').localeCompare(a.createdAt||''));
-  if(!actus.length) return `<div class="empty">Aucune actualité pour l'instant.</div>`;
-  return `<table class="table">
-    <tbody>
-      ${actus.map(a=>`<tr>
-        <td>${escapeHtml(a.texte)}</td>
-        <td style="text-align:right;white-space:nowrap;"><button class="btn secondary sm" onclick="handleSupprimerActualite('${a.id}')">Supprimer</button></td>
-      </tr>`).join('')}
-    </tbody>
-  </table>`;
+  if(!actus.length) return `<div class="etat-vide"><span class="etat-vide-ic" aria-hidden="true">${icone('newspaper')}</span><span>Aucune annonce pour l’instant. Écrivez la première ci-dessus.</span></div>`;
+  return `<ul class="liste-compacte ta-actus">${actus.map(a => `<li class="lc-ligne">
+      <span class="lc-txt"><strong>${escapeHtml(a.texte)}</strong>${a.createdAt ? `<small>Ajoutée le ${fmtDate(String(a.createdAt).slice(0, 10))}</small>` : ''}</span>
+      ${menuPlus([{ label: 'Supprimer l’annonce', danger: true, onclick: `handleSupprimerActualite('${a.id}')` }])}
+    </li>`).join('')}</ul>`;
 }
 function copierLienAffichage(lien){
   navigator.clipboard?.writeText(lien).then(()=>toast('Lien copié')).catch(()=>toast('Impossible de copier — sélectionnez le lien manuellement'));
+}
+function suggestionsPeriode(periode){
+  const d = new Date(), mois = d.toLocaleDateString('fr-FR', { month:'long', year:'numeric' });
+  const annee = DB.meta?.anneeScolaire || '';
+  const m = d.getMonth(), tri = m >= 8 && m <= 11 ? '1er trimestre' : m <= 2 ? '2e trimestre' : '3e trimestre';
+  const cap = t => t.charAt(0).toUpperCase() + t.slice(1);
+  return periode === 'mois' ? [cap(mois)] : periode === 'trimestre' ? [`${cap(tri)} ${annee}`.trim()] : [`Année scolaire ${annee}`.trim()];
 }
 function ouvrirModifierHonneur(categorie, periode){
   const h = honneurActuel(categorie, periode) || {};
@@ -9130,13 +9146,14 @@ function ouvrirModifierHonneur(categorie, periode){
       <div class="field">
         <label>${estEleve?'Élève':'Enseignant(e)'}</label>
         <select id="honneurPersonneId" required>
-          <option value="">— Choisir —</option>
+          <option value="">${estEleve ? 'Choisir un élève' : 'Choisir un enseignant'}</option>
           ${options}
         </select>
       </div>
       <div class="field">
-        <label>Période affichée (ex : "Septembre 2026")</label>
-        <input type="text" id="honneurLibellePeriode" value="${escapeHtml(h.libellePeriode||'')}">
+        <label for="honneurLibellePeriode">Période affichée</label>
+        <input type="text" id="honneurLibellePeriode" value="${escapeHtml(h.libellePeriode||'')}" placeholder="Ex : Octobre 2026">
+        <div class="suggestions-puces">${suggestionsPeriode(periode).map(t => `<button type="button" class="puce-suggestion" onclick="document.getElementById('honneurLibellePeriode').value=this.textContent">${escapeHtml(t)}</button>`).join('')}</div>
       </div>
       <div class="field">
         <label>Commentaire (optionnel)</label>

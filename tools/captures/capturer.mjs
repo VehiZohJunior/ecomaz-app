@@ -97,6 +97,17 @@ for(const theme of THEMES){
         DB.alertesPointage = [{ id: 'al-1', enseignantId: b.id, date: auj, heure: '07:50:00', raison: 'Badge présenté depuis une capture d’écran', score: 82 }];
         DB.presencesEnseignants = DB.presencesEnseignants.concat([{ id: 'pe-1', enseignantId: a.id, date: auj, statut: 'Présent', heureArrivee: '07:24', methode: 'QR', motif: '' }, { id: 'pe-2', enseignantId: b.id, date: auj, statut: 'Retard', heureArrivee: '07:51', minutesRetard: 21, methode: 'GPS', motif: 'Embouteillage' }]);
       }
+      // Option « vie » : tableau d'honneur, annonces, programmes et une publication FICTIFS en mémoire seulement
+      if(option.split(',').includes('vie')){
+        const [e1, e2] = DB.eleves, [t1, t2] = DB.enseignants, c = DB.classes;
+        DB.tableauHonneur = [
+          { categorie: 'eleve', periode: 'mois', nomAffiche: eleveFullName(e1), classeOuMatiere: classeName(e1.classeId), libellePeriode: 'Octobre 2026' },
+          { categorie: 'eleve', periode: 'trimestre', nomAffiche: eleveFullName(e2), classeOuMatiere: classeName(e2.classeId), libellePeriode: '1er trimestre 2026-2027' },
+          { categorie: 'enseignant', periode: 'mois', nomAffiche: ensFullName(t1), classeOuMatiere: 'Mathématiques', libellePeriode: 'Octobre 2026' } ];
+        DB.actualitesAffichage = [ { id: 'ac-1', texte: 'Réunion des parents le vendredi 24 octobre à 17h', createdAt: '2026-10-16T09:00:00Z' }, { id: 'ac-2', texte: 'Vaccination gratuite à l’infirmerie mardi matin', createdAt: '2026-10-14T09:00:00Z' } ];
+        DB.programmes = [0, 1, 2, 3].map(i => ({ id: 'pr-' + i, classeId: c[i % c.length].id, enseignantId: (i % 2 ? t2 : t1).id, matiere: ['Mathématiques', 'Français', 'Éveil', 'Lecture'][i], trimestre: 'Trimestre 1', progression: [85, 55, 20, 100][i], dateMaj: '2026-10-15' }));
+        DB.fil = { charge: true, fin: true, pubs: [{ id: 'pub-1', titre: 'Journée de la lecture', texte: 'Les élèves du CP ont présenté leurs livres préférés aux parents. Merci à tous pour votre présence !', createdAt: '2026-10-16T10:00:00Z', dateEvenement: '2026-10-15', classeIds: null }], medias: {}, reactions: { 'pub-1': [{ type: 'coeur', userId: 'x' }, { type: 'bravo', userId: 'y' }] }, commentaires: {}, ouverts: {}, urls: {} };
+      }
       if(option.split(',').includes('parents')){
         const el = DB.eleves.slice(0, 4);
         DB.profiles = (DB.profiles || []).concat(el.slice(0, 3).map((e, i) => ({ id: 'parent-fictif-' + i, role: 'parent', nomComplet: e.parentNom || ('Parent ' + e.nom) })));
@@ -118,6 +129,8 @@ for(const theme of THEMES){
         plus: () => { const d = document.querySelector('.pe-carte[data-etat="non"] .pe-plus'); d.open = true; d.scrollIntoView({ block: 'center' }); },
         inviter: () => { document.querySelector('.pe-carte[data-etat="non"] .pe-actions .btn').click(); },
         absent: () => { document.querySelectorAll('.cj-btn[data-s="Absent"]')[1].click(); document.querySelectorAll('.cj-btn[data-s="Retard"]')[2].click(); },
+        menu: () => { const d = [...document.querySelectorAll('.menu-plus')].pop(); d.open = true; d.scrollIntoView({ block: 'center' }); },
+        classes: () => { const r = document.querySelector('input[name=cible][value=classes]'); r.click(); document.querySelectorAll('input[name=classe]')[1].click(); r.scrollIntoView({ block: 'center' }); },
         relies: () => { document.querySelector('.seg[data-etat="relie"]').click(); },
       };
       if(GESTES[extra]){ await page.evaluate(GESTES[extra]); await page.waitForTimeout(400); }
