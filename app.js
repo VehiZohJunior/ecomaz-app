@@ -2590,6 +2590,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.10.18-32', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Tableau de bord — « Mise en route de l’école » : boutons qui ouvrent directement « Remplir rapidement », « Versements déjà reçus » et « Relancer les non-inscrits » ; emploi du temps compté classe par classe ; aussi visible par le secrétariat (ses étapes).' ],
+  } },
   { version: '2026.10.18-31', nouveautes: {
     commun: [],
     parent: [],
@@ -3738,19 +3744,25 @@ function etapesMiseEnRoute(){
   const appelsRecents = (DB.presencesEleves || []).filter(p => p.date >= semaine).length;
   const m = DB.meta || {};
   const comptesEnseignants = (DB.profiles || []).filter(pr => pr.role === 'enseignant' && pr.enseignantId).length;
+  const classesAvecEdt = (DB.classes || []).filter(c => (DB.emploiTemps || []).some(e => e.classeId === c.id));
+  const classeSansEdt = (DB.classes || []).find(c => !classesAvecEdt.includes(c));
   return [
     { ok: (DB.classes || []).length > 0, titre: 'Classes créées', detail: `${(DB.classes || []).length} classe(s)`, vue: 'parametres', bouton: 'Paramètres' },
     { ok: actifs.length > 0, titre: 'Élèves inscrits', detail: `${actifs.length} élève(s) actif(s)`, vue: 'eleves', bouton: 'Élèves' },
     { ok: ensActifs > 0, titre: 'Enseignants saisis', detail: ensActifs ? `${ensActifs} enseignant(s)` : 'Aucun enseignant : pas de pointage, ni d’appel par les enseignants', vue: 'enseignants', bouton: 'Ajouter les enseignants' },
     { ok: actifs.length > 0 && relies / actifs.length >= 0.8, titre: 'Parents reliés à leur enfant', detail: `${relies} / ${actifs.length} — sans lien, le parent ne reçoit ni annonces ni alertes`, vue: 'liens-parents', bouton: 'Relier les parents' },
     { ok: appelsRecents > 0, titre: 'Appel fait cette semaine', detail: appelsRecents ? `${appelsRecents} présence(s) enregistrée(s) en 7 jours` : 'Aucun appel depuis 7 jours : les parents ne sont pas prévenus des absences', vue: 'presences-eleves', bouton: 'Faire l’appel' },
-    { ok: (DB.paiementsScolarite || []).length > 0, titre: 'Paiements de scolarité enregistrés', detail: (DB.paiementsScolarite || []).length ? `${DB.paiementsScolarite.length} paiement(s)` : 'Aucun paiement saisi : pas de reçus, ni de suivi des impayés', vue: 'comptabilite', bouton: 'Comptabilité' },
-    { ok: (DB.emploiTemps || []).length > 0, titre: 'Emploi du temps', detail: (DB.emploiTemps || []).length ? 'rempli' : 'vide', vue: 'emploi-temps', bouton: 'Emploi du temps' },
+    { ok: (DB.paiementsScolarite || []).length > 0, titre: 'Paiements de scolarité enregistrés', detail: (DB.paiementsScolarite || []).length ? `${DB.paiementsScolarite.length} paiement(s)` : 'Aucun paiement saisi : reprenez le cahier de caisse classe par classe (« Versements déjà reçus »)', vue: 'comptabilite', bouton: 'Saisir les versements reçus',
+      action: (DB.echeancesScolarite || []).length && (DB.classes || []).length ? `ui.filters.comptaTab='scolarite'; ui.filters.comptaClasse='${(DB.classes[0] || {}).id}'; go('comptabilite'); setTimeout(() => ouvrirRepriseVersements('${(DB.classes[0] || {}).id}'), 200)` : null },
+    { ok: (DB.classes || []).length > 0 && !classeSansEdt, titre: 'Emploi du temps de chaque classe', detail: `${classesAvecEdt.length} / ${(DB.classes || []).length} classe(s) remplie(s)${classeSansEdt ? ' — sans lui, la « Ma journée » des enseignants reste vide' : ''}`, vue: 'emploi-temps', bouton: 'Remplir rapidement',
+      action: classeSansEdt ? `ui.filters.ttClasse='${classeSansEdt.id}'; go('emploi-temps'); setTimeout(() => ouvrirRemplissageEdt('${classeSansEdt.id}'), 200)` : null },
     { ok: m.geofenceLatitude != null, titre: 'Zone de l’école (pointage GPS)', detail: m.geofenceLatitude != null ? 'définie' : 'non définie', vue: 'parametres', bouton: 'Paramètres' },
     { ok: !!m.logo, titre: 'Logo de l’école', detail: m.logo ? 'ajouté' : 'non ajouté (apparaît sur les reçus et les applications)', vue: 'parametres', bouton: 'Paramètres' },
     { ok: !!(m.directeurNom && m.telephone), titre: 'Nom du directeur et téléphone de l’école', detail: !m.directeurNom ? 'nom du directeur manquant (signature des certificats et des reçus)' : !m.telephone ? 'téléphone manquant (bouton « Appeler » des parents)' : 'renseignés', vue: 'parametres', bouton: 'Paramètres' },
     { ok: (DB.echeancesScolarite || []).length > 0, titre: 'Scolarité et tranches paramétrées', detail: (DB.echeancesScolarite || []).length ? `${DB.echeancesScolarite.length} tranche(s)` : 'aucune tranche : pas de reste à payer ni de relances', vue: 'parametres', bouton: 'Paramètres' },
-    { ok: comptesEnseignants > 0, titre: 'Enseignants inscrits dans leur application', detail: comptesEnseignants ? `${comptesEnseignants} compte(s) enseignant relié(s)` : 'aucun : envoyez le lien EcoMaZ-ENSEIGNANTS (appel, devoirs, « Ma journée »)', vue: 'enseignants', bouton: '📲 Envoyer le lien par WhatsApp', action: "window.open('https://wa.me/?text=' + encodeURIComponent(messagePartageApplication('enseignant.html')), '_blank')" },
+    { ok: ensActifs > 0 && comptesEnseignants >= ensActifs, titre: 'Enseignants inscrits dans leur application', detail: `${comptesEnseignants} / ${Math.max(ensActifs, comptesEnseignants)} enseignant(s) avec leur compte — appel, devoirs, « Ma journée »`, vue: 'enseignants',
+      bouton: ensActifs > comptesEnseignants ? 'Relancer les non-inscrits' : '📲 Envoyer le lien par WhatsApp',
+      action: ensActifs > comptesEnseignants ? "go('enseignants'); setTimeout(ouvrirRelanceEnseignants, 200)" : "window.open('https://wa.me/?text=' + encodeURIComponent(messagePartageApplication('enseignant.html')), '_blank')" },
   ];
 }
 // Tableau de bord ENSEIGNANT : « Ma journée », classe par classe
@@ -3952,8 +3964,9 @@ function renderFriseDuJour(classes){
     </li>`; }).join('')}</ol>`;
 }
 function renderMiseEnRoute(){
-  if(!['direction','fondation'].includes(ui.role)) return '';
-  const etapes = etapesMiseEnRoute(), faites = etapes.filter(e => e.ok).length;
+  if(!['direction','fondation','secretariat'].includes(ui.role)) return '';
+  // Le secrétariat n'ouvre pas les Paramètres : il voit seulement les étapes qu'il peut faire
+  const etapes = etapesMiseEnRoute().filter(e => ui.role !== 'secretariat' || e.vue !== 'parametres'), faites = etapes.filter(e => e.ok).length;
   if(faites === etapes.length) return '';
   const pct = Math.round(100 * faites / etapes.length);
   const ouvert = ui.filters.miseEnRouteOuvert !== false;
