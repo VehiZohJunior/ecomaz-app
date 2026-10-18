@@ -4000,3 +4000,22 @@ begin
 end $$;
 revoke all on function traiter_demande_acces(uuid,boolean,uuid[],text[],uuid) from public, anon;
 grant execute on function traiter_demande_acces(uuid,boolean,uuid[],text[],uuid) to authenticated;
+
+-- =====================================================================
+-- 104. EMPLOI DU TEMPS AUX HORAIRES RÉELS DE L'ÉCOLE (2026-10-18)
+-- =====================================================================
+-- Les emplois du temps officiels (PNAPAS) ont des séances de 10 à 40 min,
+-- différentes chaque jour, et parfois deux versions dans l'année (CP1 :
+-- semaines 1 à 8, puis 9 à 32). Une séance peut donc porter ses propres
+-- heures et une période de validité. Sans heures : grille classique.
+alter table emploi_temps add column if not exists heure_debut time;
+alter table emploi_temps add column if not exists heure_fin time;
+alter table emploi_temps add column if not exists valable_du date;
+alter table emploi_temps add column if not exists valable_au date;
+alter table emploi_temps drop constraint if exists emploi_temps_heures;
+alter table emploi_temps add constraint emploi_temps_heures check (
+  (heure_debut is null and heure_fin is null) or (heure_debut is not null and heure_fin is not null and heure_fin > heure_debut));
+alter table emploi_temps drop constraint if exists emploi_temps_validite;
+alter table emploi_temps add constraint emploi_temps_validite check (valable_du is null or valable_au is null or valable_au >= valable_du);
+alter table emploi_temps drop constraint if exists emploi_temps_matiere_taille;
+alter table emploi_temps add constraint emploi_temps_matiere_taille check (char_length(coalesce(matiere, '')) <= 120);

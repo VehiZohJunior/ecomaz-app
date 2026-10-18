@@ -1708,3 +1708,24 @@ body.theme-portier .alerte-inscription{ background:rgba(232,176,75,.12); color:i
 .relance-par-cta{ display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:10px 16px; padding:14px; margin-bottom:12px; border-radius:14px; background:var(--primary-soft); border:1px solid color-mix(in srgb, var(--primary) 25%, var(--border)); }
 .relance-par-cta > div{ display:flex; flex-direction:column; gap:4px; max-width:560px; }
 .relance-par-cta span{ color:var(--text-dim); font-size:14px; }
+/* ===== Emploi du temps aux horaires réels ===== */
+.edtl-versions{ margin:0 0 10px; flex-wrap:wrap; }
+.edtl-legende{ display:flex; flex-wrap:wrap; gap:6px 14px; margin:0 0 12px; font-size:12px; color:var(--text-dim); }
+.edtl-legende span{ display:inline-flex; align-items:center; gap:6px; } .edtl-legende i{ width:12px; height:12px; border-radius:3px; display:inline-block; }
+.edtl-grille{ display:grid; gap:10px; align-items:start; }
+.edtl-jour h3{ margin:0 0 8px; font-size:15px; text-align:center; padding:6px; border-radius:10px; background:var(--surface-2); }
+.edtl-jour.aujourdhui h3{ background:var(--primary); color:#fff; }
+.edtl-liste{ list-style:none; margin:0 0 8px; padding:0; display:flex; flex-direction:column; gap:4px; }
+.edtl-seance{ display:flex; gap:8px; align-items:flex-start; padding:6px 8px; border-radius:10px; border-left:5px solid var(--mat); background:color-mix(in srgb, var(--mat) 9%, var(--surface, #fff)); }
+.edtl-seance.en-cours{ box-shadow:0 0 0 2px var(--mat); }
+.edtl-heure{ display:flex; flex-direction:column; font-weight:800; font-size:12px; min-width:40px; font-variant-numeric:tabular-nums; } .edtl-heure small{ font-weight:600; color:var(--text-dim); }
+.edtl-txt{ flex:1; display:flex; flex-direction:column; font-size:13px; line-height:1.25; min-width:0; } .edtl-txt small{ color:var(--text-dim); font-size:11px; }
+.edtl-act .icon-btn{ width:26px; height:26px; font-size:12px; }
+.edtl-pause{ display:flex; justify-content:space-between; gap:8px; padding:4px 8px; border-radius:8px; background:var(--surface-2); color:var(--text-dim); font-size:12px; }
+.edtl-imp-table{ width:100%; border-collapse:collapse; table-layout:fixed; font-size:10px; }
+.edtl-imp-table th{ background:#1F5C46; color:#fff; padding:5px; border:1px solid #cfd8d3; }
+.edtl-imp-table td{ vertical-align:top; padding:3px; border:1px solid #cfd8d3; }
+.edtl-imp-seance{ border-left:4px solid #999; padding:1px 4px; margin:0 0 2px; line-height:1.2; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+.edtl-imp-seance span{ font-weight:800; font-variant-numeric:tabular-nums; }
+.edtl-imp-pause{ text-align:center; background:#eef1ef; color:#555; padding:1px; margin:0 0 2px; font-style:italic; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+@media print{ .edtl-impression .edtl-legende{ font-size:9px; margin-top:6px; } }
