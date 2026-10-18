@@ -3293,3 +3293,64 @@ begin
 
   return format('%s élèves, %s classes, %s enseignants créés (fictifs)', n, array_length(classes, 1), array_length(ens_ids, 1));
 end $$;
+-- =====================================================================
+-- 84. Recherche d'élève pendant l'inscription d'un parent : anti-aspiration
+--     (2026-10-18). Avant : tout compte Google connecté pouvait chercher
+--     sans limite avec 3 lettres et reconstituer la liste des élèves.
+--     Maintenant : enfants proposés d'abord par le téléphone du parent
+--     (identique à la fiche), recherche par DÉBUT de nom seulement,
+--     20 recherches par heure et par compte, journal invisible (7 jours).
+-- =====================================================================
+create table if not exists recherches_demande (
+  id bigserial primary key,
+  user_id uuid not null default auth.uid(),
+  ecole_id uuid,
+  created_at timestamptz not null default now()
+);
+create index if not exists recherches_demande_user on recherches_demande (user_id, created_at);
+alter table recherches_demande enable row level security;
+-- aucune politique « permissive » : personne ne lit ni n'écrit cette table
+-- depuis l'application ; seule la fonction ci-dessous y écrit.
+drop policy if exists "double verification" on recherches_demande;
+create policy "double verification" on recherches_demande as restrictive for all to authenticated
+  using (double_verification_ok()) with check (double_verification_ok());
+
+drop function if exists rechercher_eleves_demande(uuid, text);
+create or replace function rechercher_eleves_demande(p_ecole uuid, p_texte text, p_tel text default null)
+returns table (id uuid, prenom text, nom text, classe text)
+language plpgsql volatile security definer set search_path = public as $$
+declare
+  t text := lower(trim(coalesce(p_texte, '')));
+  v_tel text := right(regexp_replace(regexp_replace(coalesce(p_tel, ''), '\D', '', 'g'), '^225', ''), 10);
+  n int;
+begin
+  if auth.uid() is null then raise exception 'Non authentifié'; end if;
+  select count(*) into n from recherches_demande r where r.user_id = auth.uid() and r.created_at > now() - interval '1 hour';
+  if n >= 20 then raise exception 'Trop de recherches : réessayez dans une heure, ou demandez l’aide de l’école.'; end if;
+  insert into recherches_demande (user_id, ecole_id) values (auth.uid(), p_ecole);
+  delete from recherches_demande r where r.created_at < now() - interval '7 days';
+
+  -- 1) Téléphone du parent identique à celui de la fiche : ses enfants directement
+  if char_length(v_tel) = 10 then
+    return query
+      select e.id, e.prenom, e.nom, c.nom
+      from eleves e join ecoles ec on ec.id = e.ecole_id and ec.actif
+      left join classes c on c.id = e.classe_id
+      where e.ecole_id = p_ecole and e.statut = 'Actif'
+        and regexp_replace(coalesce(e.parent_tel, ''), '\D', '', 'g') like '%' || v_tel || '%'
+      order by e.nom, e.prenom limit 8;
+    if found then return; end if;
+  end if;
+
+  -- 2) Sinon : recherche par le DÉBUT d'un mot du nom ou du prénom (3 lettres minimum)
+  if char_length(t) < 3 then return; end if;
+  return query
+    select e.id, e.prenom, e.nom, c.nom
+    from eleves e join ecoles ec on ec.id = e.ecole_id and ec.actif
+    left join classes c on c.id = e.classe_id
+    where e.ecole_id = p_ecole and e.statut = 'Actif'
+      and (' ' || lower(e.nom || ' ' || e.prenom)) like '% ' || t || '%'
+    order by e.nom, e.prenom limit 8;
+end $$;
+revoke all on function rechercher_eleves_demande(uuid, text, text) from public, anon;
+grant execute on function rechercher_eleves_demande(uuid, text, text) to authenticated;

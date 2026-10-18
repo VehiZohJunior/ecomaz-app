@@ -1114,9 +1114,9 @@ async function showDemandeAcces(){
       <div class="field" style="text-align:left;margin-bottom:10px;"><label>Votre nom complet (prénom et nom)</label><input type="text" id="demNom" required minlength="3" value="${escapeHtml(nomDefaut)}"></div>
       ${enseignant ? `<div class="field" style="text-align:left;margin-bottom:10px;"><label>Votre numéro WhatsApp</label><input type="tel" id="demTel" required placeholder="07 00 00 00 00"></div>
         <div class="field" style="text-align:left;"><label>Cochez la ou les classes dont vous êtes l’enseignant(e)</label><div class="enrol-liste">${classesHtml}</div></div>` : ''}
-      ${parent ? `<div class="field" style="text-align:left;margin-bottom:10px;"><label>Votre numéro WhatsApp</label><input type="tel" id="demTel" required placeholder="07 00 00 00 00"><div class="hint" style="margin:4px 0 0;">Celui que vous avez donné à l’école : votre demande sera validée plus vite.</div></div>
-        <div class="field" style="text-align:left;"><label>Cherchez et cochez votre enfant (ou vos enfants)</label>
-          <input type="search" id="demRecherche" placeholder="Tapez au moins 3 lettres du nom" oninput="rechercherEnfantDemande(this.value)" autocomplete="off">
+      ${parent ? `<div class="field" style="text-align:left;margin-bottom:10px;"><label>Votre numéro WhatsApp</label><input type="tel" id="demTel" required placeholder="07 00 00 00 00" oninput="if(this.value.replace(/\D/g, '').length >= 10) rechercherEnfantDemande(document.getElementById('demRecherche')?.value || '')"><div class="hint" style="margin:4px 0 0;">Celui que vous avez donné à l’école : vos enfants apparaissent tout seuls et votre demande est validée plus vite.</div></div>
+        <div class="field" style="text-align:left;"><label>Cochez votre enfant (ou vos enfants)</label>
+          <input type="search" id="demRecherche" placeholder="Sinon, tapez le début de son nom ou de son prénom" oninput="rechercherEnfantDemande(this.value)" autocomplete="off">
           <div class="enrol-liste" id="demResultats"></div>
           <div id="demChoisis" class="enrol-choisis"></div></div>` : ''}
       ${!parent && !enseignant ? `<div class="field" style="text-align:left;"><label>Message pour la direction (facultatif)</label><input type="text" id="demMsg"></div>` : ''}
@@ -1131,11 +1131,13 @@ function rechercherEnfantDemande(texte){
   clearTimeout(__minuteurRechercheEnfant);
   __minuteurRechercheEnfant = setTimeout(async () => {
     const zone = document.getElementById('demResultats'); if(!zone) return;
-    if(texte.trim().length < 3){ zone.innerHTML = ''; return; }
-    const { data } = await sb.rpc('rechercher_eleves_demande', { p_ecole: window.ECOLE_VITRINE.id, p_texte: texte });
+    const tel = (document.getElementById('demTel')?.value || '').replace(/\D/g, '');
+    if(texte.trim().length < 3 && tel.length < 10){ zone.innerHTML = ''; return; }
+    const { data, error } = await sb.rpc('rechercher_eleves_demande', { p_ecole: window.ECOLE_VITRINE.id, p_texte: texte, p_tel: tel.length >= 10 ? tel : null });
+    if(error){ zone.innerHTML = `<div class="hint" style="color:var(--accent-ink);">${escapeHtml(/Trop de recherches/.test(error.message) ? error.message : 'Recherche impossible pour le moment : vérifiez la connexion internet.')}</div>`; return; }
     zone.innerHTML = (data || []).map(e => `<label class="enrol-choix"><input type="checkbox" ${window.__enfantsChoisis.has(e.id) ? 'checked' : ''}
       onchange="choisirEnfantDemande('${e.id}', this.checked, ${escapeHtml(JSON.stringify(`${e.prenom} ${e.nom} — ${e.classe || ''}`))})"> ${escapeHtml(e.prenom + ' ' + e.nom)} <span class="hint">${escapeHtml(e.classe || '')}</span></label>`).join('')
-      || '<div class="hint">Aucun élève trouvé : vérifiez l’orthographe.</div>';
+      || (texte.trim().length >= 3 ? '<div class="hint">Aucun élève trouvé : tapez le début du nom ou du prénom, sans faute.</div>' : '');
   }, 300);
 }
 function choisirEnfantDemande(id, coche, libelle){
@@ -2423,6 +2425,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.10.18-12', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Sécurité : à l’inscription d’un parent, ses enfants sont proposés d’après son numéro (s’il correspond à la fiche) ; la recherche par nom est limitée pour protéger la liste des élèves.' ],
+  } },
   { version: '2026.10.18-11', nouveautes: {
     commun: [],
     parent: [],
