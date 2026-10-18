@@ -2361,6 +2361,14 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.10.18-3', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Tableau d’affichage : élèves et enseignants à l’honneur en cartes de célébration, aperçu de la bannière qui défile.',
+      'Vie de l’école : formulaire de publication en 4 étapes, ajout de photos plus simple, choix « Toute l’école / Certaines classes ».',
+      'Programmes : filtres compacts (classe, enseignant, T1/T2/T3) et une carte par programme avec sa progression.' ],
+  } },
   { version: '2026.10.18-2', nouveautes: {
     commun: [],
     parent: [],
