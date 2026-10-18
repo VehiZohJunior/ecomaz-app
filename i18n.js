@@ -28,7 +28,8 @@ const TRADUCTIONS = {
     app_name: 'EcoMaZ',
     brand_tagline: 'Garderie · Maternelle · Primaire',
 
-    espaces_sub: 'Sélectionnez votre espace pour continuer',
+    espaces_bienvenue: 'Bienvenue sur EcoMaZ',
+    espaces_sub: 'Choisissez votre espace pour continuer',
     espace_enseignant_label: 'Enseignant(e)',
     espace_enseignant_desc: 'Notes, présences élèves, emploi du temps, programmes.',
     espace_secretariat_label: 'Secrétariat',
@@ -101,7 +102,8 @@ const TRADUCTIONS = {
     app_name: 'EcoMaZ',
     brand_tagline: 'Daycare · Preschool · Primary',
 
-    espaces_sub: 'Select your space to continue',
+    espaces_bienvenue: 'Welcome to EcoMaZ',
+    espaces_sub: 'Choose your space to continue',
     espace_enseignant_label: 'Teacher',
     espace_enseignant_desc: 'Grades, student attendance, timetable, syllabus.',
     espace_secretariat_label: 'Front Office',

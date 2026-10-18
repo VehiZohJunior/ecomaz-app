@@ -1489,3 +1489,31 @@ td:has(> .amount), th.montant{ text-align:right; }
 .gate-eleve-action svg{ width:18px; height:18px; vertical-align:-3px; }
 body.theme-portier .etat-vide{ color:var(--em-gate-text, #EEF3F0); }
 .gate-fiche .gate-av{ color:var(--em-green-900, #14392D) !important; font-size:22px !important; font-weight:900 !important; }
+/* ===== Refonte étape 9 : écran de connexion (DESIGN.md §11) ===== */
+/* Motif en filigrane (chapeaux, livres, étoiles) aux couleurs de la marque */
+.login-gate::before{ content:''; position:fixed; inset:0; pointer-events:none; opacity:.07;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120' viewBox='0 0 120 120' fill='none' stroke='%231F5C46' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M14 30l16-8 16 8-16 8z'/%3E%3Cpath d='M20 33v7c6 4 14 4 20 0v-7'/%3E%3Cpath d='M72 78h18a4 4 0 0 1 4 4v14H76a4 4 0 0 0-4 4z'/%3E%3Cpath d='M72 78v22'/%3E%3Cpath d='M92 22l2 5 5 1-4 3 1 5-4-3-4 3 1-5-4-3 5-1z'/%3E%3Ccircle cx='28' cy='92' r='3'/%3E%3C/svg%3E");
+  background-size:120px 120px; }
+:root[data-theme="dark"] .login-gate::before{ opacity:.06; filter:invert(1); }
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .login-gate::before{ opacity:.06; filter:invert(1); } }
+.login-card{ z-index:1; }
+.login-marque{ background:var(--em-green-700, #1F5C46); color:#fff; font-size:30px; font-weight:900; border-radius:18px; }
+.login-initiales{ display:flex; align-items:center; justify-content:center; width:100%; height:100%; background:var(--em-gold-400, #E8B04B); color:var(--em-green-900, #14392D); font-size:24px; font-weight:900; }
+.login-card h1{ font-size:24px; }
+/* Choix du profil : de vrais boutons, une ligne large par profil sur téléphone */
+button.role-card{ font:inherit; color:inherit; width:100%; display:flex; flex-direction:column; align-items:center; gap:4px; }
+.role-card .rtxt{ display:flex; flex-direction:column; }
+.role-card .rchev{ display:none; }
+.role-card:focus-visible{ outline:3px solid var(--primary); outline-offset:2px; }
+@media (max-width:640px){
+  .login-card{ padding:28px 18px; }
+  .role-grid{ grid-template-columns:1fr; gap:10px; }
+  button.role-card{ flex-direction:row; align-items:center; text-align:left; gap:14px; padding:14px 14px; min-height:72px; }
+  .role-card .ric{ margin:0; flex:0 0 auto; width:44px; height:44px; display:inline-flex; align-items:center; justify-content:center; border-radius:12px; background:var(--surface-1); }
+  .role-card .rtxt{ flex:1; min-width:0; }
+  .role-card .rlabel{ font-size:16px; }
+  .role-card .rchev{ display:block; font-size:26px; color:var(--text-dim); line-height:1; }
+}
+/* Champs larges */
+.login-card .field input{ min-height:48px; font-size:16px; }
+.login-card .btn[type=submit]{ min-height:48px; font-size:16px; }

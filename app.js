@@ -931,16 +931,17 @@ function renderLoginGate(step, error, loading){
     return `
     <div class="login-card">
       ${langSwitcherHtml()}
-      <div class="login-logo">🎓</div>
-      <h1>${t('app_name')}</h1>
+      <div class="login-logo login-marque" aria-hidden="true">E</div>
+      <h1>${t('espaces_bienvenue')}</h1>
       <div class="sub">${t('espaces_sub')}</div>
       <div class="role-grid">
         ${ESPACES_PERSONNEL.map(e=>`
-          <div class="role-card" onclick="chooseEspace('${e.key}')">
-            <div class="ric">${e.ic}</div>
-            <div class="rlabel">${t('espace_'+e.key+'_label')}</div>
-            <div class="rdesc">${t('espace_'+e.key+'_desc')}</div>
-          </div>`).join('')}
+          <button type="button" class="role-card" onclick="chooseEspace('${e.key}')">
+            <span class="ric">${e.ic}</span>
+            <span class="rtxt"><span class="rlabel">${t('espace_'+e.key+'_label')}</span>
+            <span class="rdesc">${t('espace_'+e.key+'_desc')}</span></span>
+            <span class="rchev" aria-hidden="true">›</span>
+          </button>`).join('')}
       </div>
     </div>`;
   }
@@ -995,6 +996,7 @@ function renderLoginGate(step, error, loading){
   const ecoleV = window.ECOLE_VITRINE;
   const logoHtml = (fixe && ecoleV && ecoleV.logo_url)
     ? `<img src="${escapeHtml(ecoleV.logo_url)}" alt="" style="width:64px;height:64px;border-radius:var(--r-lg);object-fit:cover;background:#fff;">`
+    : (fixe && ecoleV && ecoleV.nom_ecole) ? `<span class="login-initiales">${escapeHtml(String(ecoleV.nom_ecole).replace(/^(école|ecole|groupe scolaire|gs)\s+/i, '').split(/\s+/).slice(0, 2).map(m => m.charAt(0)).join('').toUpperCase())}</span>`
     : (espace ? espace.ic : '🎓');
   const titreLogin = fixe
     ? (ecoleV ? escapeHtml(nomApplication(ecoleV.nom_ecole)) : t('app_name'))
