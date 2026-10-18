@@ -3653,3 +3653,25 @@ end $$;
 drop trigger if exists verrou_role_developpeur on profiles;
 create trigger verrou_role_developpeur before insert or update on profiles
   for each row execute function verrou_role_developpeur();
+-- =====================================================================
+-- 95. École : réglages réservés au développeur (2026-10-18). Une direction
+--     pouvait modifier « actif » (réactiver une école suspendue),
+--     « limite_remplissage_mensuelle » (quota du remplissage intelligent,
+--     payant) et « est_demo ». Désormais seuls le développeur et les
+--     outils serveur peuvent les changer ; le reste de la fiche école reste
+--     modifiable par la direction / la fondation.
+-- =====================================================================
+create or replace function verrou_reglages_plateforme() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if auth.uid() is not null and not est_developpeur() and (
+       new.actif is distinct from old.actif
+    or new.limite_remplissage_mensuelle is distinct from old.limite_remplissage_mensuelle
+    or new.est_demo is distinct from old.est_demo) then
+    raise exception 'Ce réglage est géré par EcoMaZ (activation, quota, démonstration).';
+  end if;
+  return new;
+end $$;
+drop trigger if exists verrou_reglages_plateforme on ecoles;
+create trigger verrou_reglages_plateforme before update on ecoles
+  for each row execute function verrou_reglages_plateforme();
