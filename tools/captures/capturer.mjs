@@ -69,7 +69,7 @@ function installerDemo(D){
     };
     return q;
   };
-  sb.rpc = () => Promise.resolve({ data: [], error: null });
+  sb.rpc = (nom) => Promise.resolve({ data: nom === 'compteur_portier_jour' ? 7 : [], error: null });
   try{ Object.defineProperty(sb, 'functions', { value: { invoke: async () => ({ data: { ok: true }, error: null }) }, configurable: true }); }catch(_e){}
   sb.auth.mfa.getAuthenticatorAssuranceLevel = async () => ({ data: { currentLevel: 'aal1', nextLevel: 'aal1' } });
 }

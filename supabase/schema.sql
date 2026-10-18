@@ -3804,3 +3804,53 @@ end $$;
 drop trigger if exists verrou_appreciations on bulletins_commentaires;
 create trigger verrou_appreciations before insert or update or delete on bulletins_commentaires
   for each row execute function verrou_appreciations();
+-- =====================================================================
+-- 100. Compteur du jour au portail (DESIGN.md §11 Console Portier) :
+--      uniquement un NOMBRE (signalements d'aujourd'hui de son école),
+--      aucun nom — 2026-10-18.
+-- =====================================================================
+create or replace function compteur_portier_jour() returns int
+language sql stable security definer set search_path = public as $$
+  select case when est_portier() or est_perso_admin() then
+    (select count(*)::int from notifications_portier
+      where ecole_id = mon_ecole_id() and created_at >= date_trunc('day', now()) and created_at < date_trunc('day', now()) + interval '1 day')
+  else null end
+$$;
+revoke all on function compteur_portier_jour() from public, anon;
+grant execute on function compteur_portier_jour() to authenticated;
+-- 101. Recherche d'élève (inscription) : la limite de 20/heure ne s'applique
+--      pas au personnel administratif (qui voit déjà tous les élèves) — 2026-10-18
+create or replace function rechercher_eleves_demande(p_ecole uuid, p_texte text, p_tel text default null)
+returns table (id uuid, prenom text, nom text, classe text)
+language plpgsql volatile security definer set search_path = public as $$
+declare
+  t text := lower(trim(coalesce(p_texte, '')));
+  v_tel text := right(regexp_replace(regexp_replace(coalesce(p_tel, ''), '\D', '', 'g'), '^225', ''), 10);
+  n int;
+begin
+  if auth.uid() is null then raise exception 'Non authentifié'; end if;
+  if not est_perso_admin() then
+    select count(*) into n from recherches_demande r where r.user_id = auth.uid() and r.created_at > now() - interval '1 hour';
+    if n >= 20 then raise exception 'Trop de recherches : réessayez dans une heure, ou demandez l’aide de l’école.'; end if;
+    insert into recherches_demande (user_id, ecole_id) values (auth.uid(), p_ecole);
+  end if;
+  delete from recherches_demande r where r.created_at < now() - interval '7 days';
+  if char_length(v_tel) = 10 then
+    return query
+      select e.id, e.prenom, e.nom, c.nom
+      from eleves e join ecoles ec on ec.id = e.ecole_id and ec.actif
+      left join classes c on c.id = e.classe_id
+      where e.ecole_id = p_ecole and e.statut = 'Actif'
+        and regexp_replace(coalesce(e.parent_tel, ''), '\D', '', 'g') like '%' || v_tel || '%'
+      order by e.nom, e.prenom limit 8;
+    if found then return; end if;
+  end if;
+  if char_length(t) < 3 then return; end if;
+  return query
+    select e.id, e.prenom, e.nom, c.nom
+    from eleves e join ecoles ec on ec.id = e.ecole_id and ec.actif
+    left join classes c on c.id = e.classe_id
+    where e.ecole_id = p_ecole and e.statut = 'Actif'
+      and (' ' || lower(e.nom || ' ' || e.prenom)) like '% ' || t || '%'
+    order by e.nom, e.prenom limit 8;
+end $$;

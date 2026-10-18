@@ -2385,9 +2385,11 @@ function enterAppPortier(){
     <span class="sr-only">${escapeHtml(window.ESPACE_FIXE ? nomApplication() : 'Espace Portier')}</span>`;
   const pill = $('#topbarPill');
   pill.innerHTML = `<span class="gate-etat"><span class="gate-point" aria-hidden="true"></span>En service</span>
+    <span class="gate-compteur" id="gateCompteur" title="Parents signalés aujourd’hui">Aujourd’hui : <strong>…</strong></span>
     <button class="btn secondary sm" onclick="logoutRole()">🔒 Déconnexion</button>`;
   ui.filters.portierRecherche = '';
   refreshPortierDashboard();
+  majCompteurPortier();
   startIdleWatcher();
   afficherNouveautes();
 }
@@ -2482,6 +2484,16 @@ function renderEtatPortier(etat, e, detail){
       ${e ? `<button class="gate-btn-principal em-press" onclick="handleNotifierPortier('${e.id}')">Réessayer</button>` : ''}
       <button class="gate-btn-contour em-press" onclick="refreshPortierDashboard()">Retour à la liste</button></div></div>`;
 }
+// Compteur du jour (DESIGN.md §11) : uniquement un nombre, jamais de nom (schema.sql section 100)
+async function majCompteurPortier(){
+  const z = document.querySelector('#gateCompteur strong'); if(!z) return;
+  try{
+    const { data, error } = await sb.rpc('compteur_portier_jour');
+    if(error || data === null || data === undefined) throw error || new Error('');
+    z.textContent = data;
+    z.parentElement.title = `${data} parent${data > 1 ? 's' : ''} signalé${data > 1 ? 's' : ''} aujourd’hui`;
+  }catch(_e){ z.textContent = '—'; }
+}
 async function handleNotifierPortier(eleveId){
   const e = (DB.eleves||[]).find(x => x.id === eleveId);
   $('#viewContainer').innerHTML = renderEtatPortier('envoi', e);
@@ -2497,6 +2509,7 @@ async function handleNotifierPortier(eleveId){
     afficherAutorisesPortier(eleveId);
     if(navigator.vibrate) try{ navigator.vibrate(30); }catch(_e){}
     toast('Enseignant prévenu · signalement enregistré');
+    majCompteurPortier();
   }catch(err){
     $('#viewContainer').innerHTML = renderEtatPortier('erreur', e, { message: err && err.message ? 'Erreur : ' + err.message : '' });
     if(navigator.vibrate) try{ navigator.vibrate([60,40,60]); }catch(_e){}
@@ -2507,6 +2520,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.10.18-22', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [ 'En haut de l’écran : le nombre de parents signalés aujourd’hui.' ],
+    personnel: [ 'Bulletins : après publication d’un trimestre, l’appréciation du titulaire est verrouillée comme les notes (seules la direction et la fondation peuvent la corriger).' ],
+  } },
   { version: '2026.10.18-21', nouveautes: {
     commun: [],
     parent: [],
