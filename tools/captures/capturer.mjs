@@ -178,6 +178,8 @@ for(const theme of THEMES){
         emarg: () => { ouvrirListeClasse(DB.classes[0].id, 'emargement'); },
         cartes: () => { ouvrirCartesScolaires(DB.classes[0].id); },
         relance: () => { ouvrirRelanceEnseignants(); },
+        remplir: () => { ouvrirRemplissageEdt(ui.filters.ttClasse || DB.classes[0].id); },
+        proposition: async () => { dbInsertMany = async (t, l) => l.map(r => ({ ...r, id: crypto.randomUUID() })); await remplirEdt(ui.filters.ttClasse || DB.classes[0].id, 'proposition'); },
         listeens: () => { ouvrirListeEnseignants(); },
         repondre: () => { const f = document.querySelector('.question-appel'); f.querySelector('input[value=F]').click(); f.querySelector('#nomAppel').value = 'NAHI'; apercuAppellation(); f.requestSubmit(); },
         approuver1: () => { document.querySelector('.dem-carte .btn.sm').click(); },

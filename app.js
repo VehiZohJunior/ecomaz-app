@@ -2590,6 +2590,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.10.18-30', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Emploi du temps : bouton « Remplir rapidement » — proposition automatique de la semaine, copie du lundi sur tous les jours ou copie d’une autre classe (seules les cases vides sont remplies), puis vous ajustez.', 'Emploi du temps : compteur de créneaux remplis, titulaire proposé en premier, cours possible sans enseignant attribué ; les enseignants consultent sans boutons de modification.' ],
+  } },
   { version: '2026.10.18-29', nouveautes: {
     commun: [],
     parent: [],
@@ -7873,6 +7879,9 @@ function renderEmploiTemps(){
   const jourActuel = JOURS[(maintenant.getDay() + 6) % 7] || null;   // samedi/dimanche -> aucun
   const hhmm = `${String(maintenant.getHours()).padStart(2,'0')}:${String(maintenant.getMinutes()).padStart(2,'0')}`;
   const estEnCours = (p, jour) => jour === jourActuel && p.debut <= hhmm && hhmm < p.fin;
+  const modif = ['secretariat','direction','fondation'].includes(ui.role);
+  const nbCours = periodes.filter(p => p.type !== 'pause').length * JOURS.length;
+  const nbRemplis = DB.emploiTemps.filter(e => e.classeId === classeId).length;
 
   let rowsHtml = '';
   periodes.forEach((p,i)=>{
@@ -7890,14 +7899,14 @@ function renderEmploiTemps(){
             ${estEnCours(p, jour) ? '<span class="tt-badge-encours">En cours</span>' : ''}
             <b>${escapeHtml(entry.matiere)}</b>
             <span>${escapeHtml(ensFullName(t))}</span>
-            <div style="margin-top:5px;display:flex;gap:4px;">
+            ${modif ? `<div style="margin-top:5px;display:flex;gap:4px;">
               <button class="icon-btn" style="width:22px;height:22px;font-size:var(--fs-xs);" onclick="openSlotForm('${classeId}','${jour}',${i})">✏️</button>
               <button class="icon-btn danger" style="width:22px;height:22px;font-size:var(--fs-xs);" onclick="clearSlot('${entry.id}')">✕</button>
-            </div>
+            </div>` : ''}
           </div>
         </td>`;
       } else {
-        rowsHtml += `<td><button type="button" class="edt-vide" style="width:100%;" onclick="openSlotForm('${classeId}','${jour}',${i})">+ Ajouter</button></td>`;
+        rowsHtml += modif ? `<td><button type="button" class="edt-vide" style="width:100%;" onclick="openSlotForm('${classeId}','${jour}',${i})">+ Ajouter</button></td>` : '<td></td>';
       }
     });
     rowsHtml += `</tr>`;
@@ -7909,24 +7918,26 @@ function renderEmploiTemps(){
     if(p.type === 'pause') return `<li class="edt-pause"><span>${p.debut} – ${p.fin}</span><strong>${escapeHtml(p.label)}</strong></li>`;
     const entry = DB.emploiTemps.find(e => e.classeId === classeId && e.jour === jourVu && e.slotIndex === i);
     const heure = `<span class="edt-heure"><strong>${p.debut}</strong><small>${p.fin}</small></span>`;
-    if(!entry) return `<li class="edt-ligne">${heure}<button type="button" class="edt-vide" onclick="openSlotForm('${classeId}','${jourVu}',${i})">+ Ajouter un cours</button></li>`;
+    if(!entry) return `<li class="edt-ligne">${heure}${modif ? `<button type="button" class="edt-vide" onclick="openSlotForm('${classeId}','${jourVu}',${i})">+ Ajouter un cours</button>` : '<span class="hint" style="margin:0;">—</span>'}</li>`;
     const t = enseignantById(entry.enseignantId), enCours = estEnCours(p, jourVu);
     return `<li class="edt-ligne">${heure}<div class="edt-cours${enCours ? ' en-cours' : ''}" style="--mat:${couleurMatiere(entry.matiere)}">
       <span class="edt-txt"><strong>${escapeHtml(entry.matiere)}</strong><small>${escapeHtml(ensFullName(t))}</small>${enCours ? '<span class="tt-badge-encours">En cours</span>' : ''}</span>
-      <span class="edt-act"><button type="button" class="btn secondary sm" onclick="openSlotForm('${classeId}','${jourVu}',${i})">Modifier</button><button type="button" class="icon-btn danger" aria-label="Vider ce créneau" title="Vider ce créneau" onclick="clearSlot('${entry.id}')">✕</button></span>
+      ${modif ? `<span class="edt-act"><button type="button" class="btn secondary sm" onclick="openSlotForm('${classeId}','${jourVu}',${i})">Modifier</button><button type="button" class="icon-btn danger" aria-label="Vider ce créneau" title="Vider ce créneau" onclick="clearSlot('${entry.id}')">✕</button></span>` : ''}
     </div></li>`;
   }).join('');
   return `
   <div class="view active">
     <div class="panel">
       <div class="panel-head">
-        <div><h2>Emploi du temps</h2><div class="sub">${c.nom} · ${c.cycle}</div></div>
+        <div><h2>Emploi du temps</h2><div class="sub">${c.nom} · ${c.cycle} · ${nbRemplis} / ${nbCours} créneaux remplis</div></div>
         <span style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
         <select class="puce-select" aria-label="Classe" onchange="ui.filters.ttClasse=this.value; renderView('emploi-temps')">
           ${mesClasses.map(cl=>`<option value="${cl.id}" ${classeId===cl.id?'selected':''}>${cl.nom}</option>`).join('')}
         </select>
+        ${modif ? `<button type="button" class="btn sm" onclick="ouvrirRemplissageEdt('${classeId}')">⚡ Remplir rapidement</button>` : ''}
         <button type="button" class="btn secondary sm" onclick="imprimerEmploiTemps('${classeId}')">${icone('printer')} Imprimer</button></span>
       </div>
+      ${modif && !nbRemplis ? `<div class="banniere-discrete" style="margin-bottom:12px;"><span>⚡</span><span>Cet emploi du temps est vide. Touchez <strong>« Remplir rapidement »</strong> : une proposition est préparée en un geste, vous n’avez plus qu’à ajuster.</span></div>` : ''}
       <div class="seulement-mobile">
         <div class="segmente edt-jours" role="tablist" aria-label="Jour">${JOURS.map(j => `<button type="button" role="tab" class="seg${j === jourVu ? ' actif' : ''}" aria-selected="${j === jourVu}" onclick="ui.filters.ttJour='${j}'; renderView('emploi-temps')">${j.slice(0, 3)}${j === jourActuel ? '<span class="edt-auj" aria-label="aujourd’hui"></span>' : ''}</button>`).join('')}</div>
         <ul class="edt-liste">${listeJour}</ul>
@@ -7972,7 +7983,9 @@ function openSlotForm(classeId, jour, slotIndex){
   const c = DB.classes.find(x=>x.id===classeId);
   const matieres = MATIERES_BY_CYCLE[c.cycle];
   const existing = DB.emploiTemps.find(e=>e.classeId===classeId && e.jour===jour && e.slotIndex===slotIndex);
-  const eligibleEns = DB.enseignants.filter(t=>t.classesAssignees.includes(classeId) || t.statut==='Actif');
+  const eligibleEns = DB.enseignants.filter(t => t.statut === 'Actif')
+    .sort((a, b) => Number((b.classesAssignees || []).includes(classeId)) - Number((a.classesAssignees || []).includes(classeId)) || (a.nom || '').localeCompare(b.nom || ''));
+  const parDefaut = existing ? existing.enseignantId : titulaireClasse(classeId)?.id;
   openModal(`Créneau — ${jour}`, `
     <form onsubmit="return handleSaveSlot(event,'${classeId}','${jour}',${slotIndex},'${existing?existing.id:''}')">
       <div class="form-grid single">
@@ -7980,7 +7993,7 @@ function openSlotForm(classeId, jour, slotIndex){
           <select name="matiere">${matieres.map(m=>`<option ${existing?.matiere===m?'selected':''}>${m}</option>`).join('')}</select>
         </div>
         <div class="field"><label>Enseignant</label>
-          <select name="enseignantId">${eligibleEns.map(t=>`<option value="${t.id}" ${existing?.enseignantId===t.id?'selected':''}>${ensFullName(t)}</option>`).join('')}</select>
+          <select name="enseignantId"><option value="">— À attribuer plus tard —</option>${eligibleEns.map(t=>`<option value="${t.id}" ${parDefaut===t.id?'selected':''}>${escapeHtml(ensFullName(t))}${(t.classesAssignees || []).includes(classeId) ? ' (sa classe)' : ''}</option>`).join('')}</select>
         </div>
       </div>
       <div class="form-actions">
@@ -7993,7 +8006,7 @@ function openSlotForm(classeId, jour, slotIndex){
 async function handleSaveSlot(ev, classeId, jour, slotIndex, existingId){
   ev.preventDefault();
   const fd = new FormData(ev.target);
-  const matiere = fd.get('matiere'), enseignantId = fd.get('enseignantId');
+  const matiere = fd.get('matiere'), enseignantId = fd.get('enseignantId') || null;
   try{
     if(existingId){
       await dbUpdate('emploi_temps', existingId, {matiere, enseignantId});
@@ -8008,6 +8021,65 @@ async function handleSaveSlot(ev, classeId, jour, slotIndex, existingId){
   return false;
 }
 
+// Titulaire : premier enseignant actif dont la fiche porte cette classe
+function titulaireClasse(classeId){
+  return DB.enseignants.find(t => t.statut === 'Actif' && (t.classesAssignees || []).includes(classeId)) || null;
+}
+function ouvrirRemplissageEdt(classeId){
+  const c = DB.classes.find(x => x.id === classeId); if(!c) return;
+  const tit = titulaireClasse(classeId);
+  const aLundi = DB.emploiTemps.some(e => e.classeId === classeId && e.jour === JOURS[0]);
+  const sources = DB.classes.filter(x => x.id !== classeId && x.cycle === c.cycle && DB.emploiTemps.some(e => e.classeId === x.id));
+  const nb = DB.emploiTemps.filter(e => e.classeId === classeId).length;
+  openModal(`Remplir rapidement — ${c.nom}`, `
+    <p class="hint" style="margin-top:0;">Seuls les créneaux <strong>vides</strong> sont remplis : rien de ce qui est déjà saisi n’est écrasé. Enseignant proposé : ${tit ? `<strong>${escapeHtml(ensFullName(tit))}</strong> (titulaire)` : '<strong>à attribuer plus tard</strong> (aucun enseignant n’a encore cette classe sur sa fiche)'}.</p>
+    <div class="edt-rapide">
+      <button type="button" class="edt-rapide-choix" onclick="remplirEdt('${classeId}','proposition')"><strong>✨ Proposition automatique</strong><small>Les matières du ${escapeHtml(c.cycle.toLowerCase())} réparties sur la semaine, les matières principales le matin. À ajuster ensuite.</small></button>
+      ${aLundi ? `<button type="button" class="edt-rapide-choix" onclick="remplirEdt('${classeId}','lundi')"><strong>📋 Copier le lundi sur toute la semaine</strong><small>Les cours du lundi sont recopiés du mardi au vendredi.</small></button>` : ''}
+      ${sources.map(x => `<button type="button" class="edt-rapide-choix" onclick="remplirEdt('${classeId}','classe','${x.id}')"><strong>📑 Copier l’emploi du temps de ${escapeHtml(x.nom)}</strong><small>Mêmes matières aux mêmes heures, avec l’enseignant de ${escapeHtml(c.nom)}.</small></button>`).join('')}
+    </div>
+    ${nb ? `<div class="form-actions" style="justify-content:flex-start;"><button type="button" class="btn secondary sm danger-texte" onclick="viderEdtClasse('${classeId}')">Vider tout l’emploi du temps de ${escapeHtml(c.nom)} (${nb} créneaux)</button></div>` : ''}`);
+}
+async function remplirEdt(classeId, mode, sourceId){
+  const c = DB.classes.find(x => x.id === classeId); if(!c) return;
+  const periodes = PERIODES_BY_CYCLE[c.cycle] || [];
+  const cours = periodes.map((p, i) => p.type === 'pause' ? null : i).filter(i => i !== null);
+  const occupe = (j, i) => DB.emploiTemps.some(e => e.classeId === classeId && e.jour === j && e.slotIndex === i);
+  const tit = titulaireClasse(classeId)?.id || null;
+  const mats = MATIERES_BY_CYCLE[c.cycle] || [];
+  const lignes = [];
+  JOURS.forEach((j, d) => cours.forEach((i, k) => {
+    if(occupe(j, i)) return;
+    let matiere = null;
+    if(mode === 'proposition' && mats.length){
+      // Matières principales (début de liste) le matin ; les autres tournent sur la semaine
+      const principales = mats.slice(0, Math.min(2, mats.length)), autres = mats.slice(principales.length);
+      matiere = k < principales.length ? principales[(k + d) % principales.length] : (autres.length ? autres[(k - principales.length + d * 2) % autres.length] : principales[k % principales.length]);
+    } else if(mode === 'lundi'){
+      matiere = DB.emploiTemps.find(e => e.classeId === classeId && e.jour === JOURS[0] && e.slotIndex === i)?.matiere || null;
+    } else if(mode === 'classe'){
+      matiere = DB.emploiTemps.find(e => e.classeId === sourceId && e.jour === j && e.slotIndex === i)?.matiere || null;
+    }
+    if(matiere) lignes.push({ classeId, jour: j, slotIndex: i, matiere, enseignantId: tit });
+  }));
+  if(!lignes.length){ toast('Rien à remplir : tous les créneaux concernés sont déjà pris.'); return; }
+  try{
+    const ajoutes = await dbInsertMany('emploi_temps', lignes);
+    DB.emploiTemps.push(...ajoutes);
+  }catch(e){ alert('Erreur : ' + (e.message || e)); return; }
+  closeModal();
+  toast(`${lignes.length} créneau${lignes.length > 1 ? 'x' : ''} rempli${lignes.length > 1 ? 's' : ''} ✅ — ajustez si besoin`);
+  renderView('emploi-temps');
+}
+async function viderEdtClasse(classeId){
+  const c = DB.classes.find(x => x.id === classeId); if(!c) return;
+  if(!confirm(`Vider TOUT l’emploi du temps de ${c.nom} ? Cette action ne peut pas être annulée.`)) return;
+  const { error } = await exigerEffet(sb.from('emploi_temps').delete().eq('classe_id', classeId).eq('ecole_id', session.ecoleId));
+  if(error){ alert('Erreur : ' + error.message); return; }
+  DB.emploiTemps = DB.emploiTemps.filter(e => e.classeId !== classeId);
+  closeModal(); toast('Emploi du temps vidé');
+  renderView('emploi-temps');
+}
 async function clearSlot(entryId){
   if(!confirm('Vider ce créneau ?')) return;
   try{

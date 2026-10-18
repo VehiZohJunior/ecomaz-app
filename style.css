@@ -1687,3 +1687,9 @@ body.theme-portier .alerte-inscription{ background:rgba(232,176,75,.12); color:i
 /* Liste des enseignants imprimée : matières plus compactes */
 .lc-ens td:nth-child(5){ font-size:11px; line-height:1.25; }
 .lc-ens td:nth-child(3){ min-width:120px; }
+/* ===== Emploi du temps : remplissage rapide ===== */
+.edt-rapide{ display:flex; flex-direction:column; gap:10px; }
+.edt-rapide-choix{ display:flex; flex-direction:column; gap:4px; text-align:left; padding:14px; border-radius:14px; border:1px solid var(--border); background:var(--surface, #fff); color:inherit; font:inherit; cursor:pointer; min-height:44px; }
+.edt-rapide-choix:hover, .edt-rapide-choix:focus-visible{ border-color:var(--primary); }
+.edt-rapide-choix small{ color:var(--text-dim); font-size:13px; }
+.danger-texte{ color:var(--danger, #B5492F); }
