@@ -2590,6 +2590,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.10.18-33', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Parents ↔ Élèves : « Inviter les familles » — un message WhatsApp personnel par numéro (prénoms des enfants, frères et sœurs regroupés, lien, numéro à utiliser pour être reconnu tout seul), suivi « Envoyé le … », filtre par classe.' ],
+  } },
   { version: '2026.10.18-32', nouveautes: {
     commun: [],
     parent: [],
@@ -3750,7 +3756,7 @@ function etapesMiseEnRoute(){
     { ok: (DB.classes || []).length > 0, titre: 'Classes créées', detail: `${(DB.classes || []).length} classe(s)`, vue: 'parametres', bouton: 'Paramètres' },
     { ok: actifs.length > 0, titre: 'Élèves inscrits', detail: `${actifs.length} élève(s) actif(s)`, vue: 'eleves', bouton: 'Élèves' },
     { ok: ensActifs > 0, titre: 'Enseignants saisis', detail: ensActifs ? `${ensActifs} enseignant(s)` : 'Aucun enseignant : pas de pointage, ni d’appel par les enseignants', vue: 'enseignants', bouton: 'Ajouter les enseignants' },
-    { ok: actifs.length > 0 && relies / actifs.length >= 0.8, titre: 'Parents reliés à leur enfant', detail: `${relies} / ${actifs.length} — sans lien, le parent ne reçoit ni annonces ni alertes`, vue: 'liens-parents', bouton: 'Relier les parents' },
+    { ok: actifs.length > 0 && relies / actifs.length >= 0.8, titre: 'Parents reliés à leur enfant', detail: `${relies} / ${actifs.length} — sans lien, le parent ne reçoit ni annonces ni alertes`, vue: 'liens-parents', bouton: 'Inviter les familles', action: "go('liens-parents'); setTimeout(() => ouvrirRelanceParents(), 200)" },
     { ok: appelsRecents > 0, titre: 'Appel fait cette semaine', detail: appelsRecents ? `${appelsRecents} présence(s) enregistrée(s) en 7 jours` : 'Aucun appel depuis 7 jours : les parents ne sont pas prévenus des absences', vue: 'presences-eleves', bouton: 'Faire l’appel' },
     { ok: (DB.paiementsScolarite || []).length > 0, titre: 'Paiements de scolarité enregistrés', detail: (DB.paiementsScolarite || []).length ? `${DB.paiementsScolarite.length} paiement(s)` : 'Aucun paiement saisi : reprenez le cahier de caisse classe par classe (« Versements déjà reçus »)', vue: 'comptabilite', bouton: 'Saisir les versements reçus',
       action: (DB.echeancesScolarite || []).length && (DB.classes || []).length ? `ui.filters.comptaTab='scolarite'; ui.filters.comptaClasse='${(DB.classes[0] || {}).id}'; go('comptabilite'); setTimeout(() => ouvrirRepriseVersements('${(DB.classes[0] || {}).id}'), 200)` : null },
@@ -4071,8 +4077,10 @@ function renderLiensParents(){
 
     <div class="panel">
       <div class="panel-head"><div><h2>Inviter les parents</h2><div class="sub">À glisser dans le cahier de liaison ou à afficher à l’entrée</div></div></div>
+      ${sansParent.length ? `<div class="relance-par-cta"><div><strong>Inviter chaque famille sur WhatsApp</strong><span>${famillesARelancer().length} famille(s) à inviter : un message personnel par numéro, frères et sœurs regroupés. Le parent est reconnu tout seul grâce à son numéro.</span></div>
+        <button type="button" class="btn" onclick="ouvrirRelanceParents()">${icone('send') || '📲'} Inviter les familles</button></div>` : ''}
       <div class="pe-invit">
-        <button class="btn" onclick="ouvrirCouponsInvitation(true)">🖨️ Coupons (élèves non reliés)</button>
+        <button class="btn${sansParent.length ? ' secondary' : ''}" onclick="ouvrirCouponsInvitation(true)">🖨️ Coupons (élèves non reliés)</button>
         <button class="btn secondary" onclick="ouvrirCouponsInvitation(false)">Coupons pour tous</button>
         <button class="btn secondary" onclick="imprimerAffiche('parent.html')">🖨️ Affiche A4</button>
       </div>
@@ -4126,6 +4134,59 @@ function copierMessageGroupe(){
   (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject()).then(() => toast('Message copié : collez-le dans le groupe'), () => window.prompt('Copiez ce message :', t));
 }
 // Feuille « Inviter » : choix du numéro, envoi par WhatsApp (gratuit)
+/* ---------- Invitation famille par famille (un numéro = une famille, frères et sœurs regroupés) ---------- */
+function famillesARelancer(classeId){
+  const familles = new Map();
+  DB.eleves.filter(e => e.statut === 'Actif' && !parentsDeLEleve(e.id).length && (!classeId || e.classeId === classeId)).forEach(e => {
+    const tel = telsDeFiche(e)[0] || ('sans:' + e.id);
+    if(!familles.has(tel)) familles.set(tel, { tel: tel.startsWith('sans:') ? null : tel, enfants: [], parentNom: e.parentNom || '' });
+    familles.get(tel).enfants.push(e);
+  });
+  const rang = id => DB.classes.findIndex(c => c.id === id);
+  return [...familles.values()].sort((a, b) => (!a.tel) - (!b.tel) || rang(a.enfants[0].classeId) - rang(b.enfants[0].classeId) || a.enfants[0].nom.localeCompare(b.enfants[0].nom));
+}
+function cleRelancesParents(){ return 'ecomaz_relances_parents_' + (session.ecoleId || ''); }
+function relancesParents(){ try{ return JSON.parse(localStorage.getItem(cleRelancesParents()) || '{}'); }catch(_e){ return {}; } }
+function messageInvitationFamille(f){
+  const enfants = f.enfants.map(e => `${e.prenom} (${classeName(e.classeId)})`);
+  const liste = enfants.length > 1 ? enfants.slice(0, -1).join(', ') + ' et ' + enfants[enfants.length - 1] : enfants[0];
+  return `Bonjour, parent de ${liste},\n\n`
+    + `${DB.meta.nomEcole} vous informe désormais par l’application EcoMaZ-PARENTS D'ELEVES : absences, devoirs, scolarité, annonces.\n\n`
+    + `1. Ouvrez ce lien dans Chrome : ${lienApplication('parent.html')}\n`
+    + `2. Touchez « Continuer avec Google »\n`
+    + `3. Indiquez ce numéro WhatsApp (${telLisible(f.tel)}) : ${f.enfants.length > 1 ? 'vos enfants apparaissent' : 'votre enfant apparaît'} tout seul${f.enfants.length > 1 ? 's' : ''}, cochez et envoyez.\n\n`
+    + `L’école valide ensuite votre accès. Merci !`;
+}
+function ouvrirRelanceParents(classeId){
+  classeId = classeId || '';
+  const familles = famillesARelancer(classeId || null), envois = relancesParents();
+  const avecTel = familles.filter(f => f.tel), sansTel = familles.filter(f => !f.tel);
+  const faites = avecTel.filter(f => envois[f.tel]).length;
+  const ligne = f => {
+    const envoye = f.tel && envois[f.tel];
+    return `<li class="relance-ligne${envoye ? ' envoye' : ''}"${f.tel ? ` id="relpar_${f.tel}"` : ''}>
+      <span class="relance-txt"><strong>${f.enfants.map(e => escapeHtml(eleveFullName(e))).join(' · ')}</strong>
+        <small>${[...new Set(f.enfants.map(e => classeName(e.classeId)))].map(escapeHtml).join(', ')}${f.parentNom ? ' · parent : ' + escapeHtml(f.parentNom) : ''}</small></span>
+      <span class="relance-actions">${f.tel
+        ? `<a class="btn sm" href="https://wa.me/225${f.tel}?text=${encodeURIComponent(messageInvitationFamille(f))}" target="_blank" rel="noopener" onclick="marquerRelanceParent('${f.tel}')">WhatsApp · ${telLisible(f.tel)}</a>${envoye ? `<span class="badge-etat ok">Envoyé le ${fmtDate(envoye)}</span>` : ''}`
+        : `<button type="button" class="btn secondary sm" onclick="closeModal(); ui.eleveProfileId='${f.enfants[0].id}'; go('eleves')">Numéro à corriger</button>`}</span>
+    </li>`;
+  };
+  openModal('Inviter les familles sur WhatsApp', `
+    <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;margin-bottom:8px;">
+      <select class="puce-select petit" aria-label="Classe" onchange="ouvrirRelanceParents(this.value)"><option value="">Toutes les classes</option>${DB.classes.map(c => `<option value="${c.id}" ${classeId === c.id ? 'selected' : ''}>${escapeHtml(c.nom)}</option>`).join('')}</select>
+      <span class="hint" style="margin:0;"><strong>${faites}</strong> / ${avecTel.length} famille(s) invitée(s) depuis ce téléphone</span>
+    </div>
+    <p class="hint" style="margin-top:0;">Touchez « WhatsApp » : le message personnel est prêt (prénoms des enfants, lien, numéro à utiliser). Envoyez-le, revenez ici, passez à la famille suivante. Leurs demandes arrivent en haut de « Parents ↔ Élèves », marquées « Sûre ».</p>
+    ${familles.length ? `<ul class="relance-liste">${avecTel.concat(sansTel).map(ligne).join('')}</ul>` : '<div class="etat-vide etat-vide-ok"><span>Toutes les familles de cette sélection sont déjà reliées 🎉</span></div>'}
+    <div class="form-actions"><button type="button" class="btn secondary" onclick="closeModal()">Fermer</button></div>`);
+}
+function marquerRelanceParent(tel){
+  const envois = relancesParents(); envois[tel] = todayISO();
+  try{ localStorage.setItem(cleRelancesParents(), JSON.stringify(envois)); }catch(_e){}
+  const li = document.getElementById('relpar_' + tel);
+  if(li && !li.classList.contains('envoye')){ li.classList.add('envoye'); li.querySelector('.relance-actions')?.insertAdjacentHTML('beforeend', `<span class="badge-etat ok">Envoyé le ${fmtDate(todayISO())}</span>`); }
+}
 function ouvrirInvitationParent(eleveId){
   const e = eleveById(eleveId); if(!e) return;
   const tels = telsDeFiche(e);

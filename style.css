@@ -1704,3 +1704,7 @@ body.theme-portier .alerte-inscription{ background:rgba(232,176,75,.12); color:i
 .rv-montant{ min-height:40px; text-align:right; padding-left:6px; padding-right:8px; font-variant-numeric:tabular-nums; }
 .rv-montant.rv-trop{ border-color:var(--danger, #B5492F); background:color-mix(in srgb, var(--danger, #B5492F) 8%, transparent); }
 .rv-pied{ position:sticky; bottom:0; display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:10px; padding:12px 0 2px; margin-top:8px; border-top:1px solid var(--border); background:var(--surface, #fff); }
+/* ===== Invitation des familles une par une ===== */
+.relance-par-cta{ display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:10px 16px; padding:14px; margin-bottom:12px; border-radius:14px; background:var(--primary-soft); border:1px solid color-mix(in srgb, var(--primary) 25%, var(--border)); }
+.relance-par-cta > div{ display:flex; flex-direction:column; gap:4px; max-width:560px; }
+.relance-par-cta span{ color:var(--text-dim); font-size:14px; }

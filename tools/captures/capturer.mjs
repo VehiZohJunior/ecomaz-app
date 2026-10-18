@@ -178,6 +178,7 @@ for(const theme of THEMES){
         emarg: () => { ouvrirListeClasse(DB.classes[0].id, 'emargement'); },
         cartes: () => { ouvrirCartesScolaires(DB.classes[0].id); },
         relance: () => { ouvrirRelanceEnseignants(); },
+        relpar: () => { ouvrirRelanceParents(); const a = document.querySelector('.relance-ligne a'); if(a){ a.removeAttribute('href'); a.click(); } },
         meredt: async () => { eval(etapesMiseEnRoute().find(e => e.bouton === 'Remplir rapidement').action); await new Promise(r => setTimeout(r, 500)); },
         merpaie: async () => { eval(etapesMiseEnRoute().find(e => e.bouton === 'Saisir les versements reçus').action); await new Promise(r => setTimeout(r, 500)); },
         reprise: () => { ouvrirRepriseVersements(ui.filters.comptaClasse || DB.classes[0].id); const i = document.querySelectorAll('.rv-ech button'); if(i[0]) i[0].click(); if(i[3]) i[3].click(); const m = document.querySelectorAll('.rv-montant'); if(m[5]){ m[5].value = 5000; totalReprise(); } },
