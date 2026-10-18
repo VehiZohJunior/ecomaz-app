@@ -2361,6 +2361,14 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.10.18-4', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Sur téléphone, toutes les listes (élèves, enseignants, devoirs, agenda, notes…) sont plus lisibles : plus aucun texte qui se chevauche.',
+      'Les boutons ont un nom (« Voir le profil », « Modifier »…) ; « Supprimer » est rangé dans le menu « ⋯ ».',
+      'Les fenêtres s’ouvrent depuis le bas de l’écran sur téléphone. Appel des élèves : 3 boutons Présent / Absent / Retard.' ],
+  } },
   { version: '2026.10.18-3', nouveautes: {
     commun: [],
     parent: [],
