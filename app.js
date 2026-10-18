@@ -2606,6 +2606,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.10.18-36', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Élèves → Fiches à vérifier : signale aussi un âge inhabituel pour la classe (date de naissance probablement mal saisie) et les doublons possibles (même nom et prénom). Rien n’est modifié automatiquement : vous vérifiez et corrigez.' ],
+  } },
   { version: '2026.10.18-35', nouveautes: {
     commun: [],
     parent: [],
@@ -6281,7 +6287,25 @@ function numerosParentValides(tel){
     .map(m => m.replace(/\D/g, '').replace(/^225/, '')).filter(m => m.length);
   return morceaux.length > 0 && morceaux.every(m => m.length === 10);
 }
-function problemesFicheEleve(e){
+// Âges habituels par cycle (en années, à la date du jour) : au-delà, la date de naissance mérite un coup d'œil
+const AGES_CYCLE = { 'Garderie':[0, 4], 'Maternelle':[2, 7], 'Primaire':[5, 15], 'Collège':[10, 19], 'Lycée':[13, 23] };
+function ageEnAnnees(iso){
+  const n = new Date(iso + 'T12:00:00'), a = new Date(todayISO() + 'T12:00:00');
+  let age = a.getFullYear() - n.getFullYear();
+  if(a.getMonth() < n.getMonth() || (a.getMonth() === n.getMonth() && a.getDate() < n.getDate())) age--;
+  return age;
+}
+// Doublons possibles : même nom et même prénom (accents et majuscules ignorés) parmi les élèves actifs
+function doublonsEleves(){
+  const groupes = {};
+  DB.eleves.filter(e => e.statut === 'Actif').forEach(e => {
+    const cle = simplifierTexte(`${e.nom} ${e.prenom}`); (groupes[cle] = groupes[cle] || []).push(e);
+  });
+  const res = {};
+  Object.values(groupes).filter(g => g.length > 1).forEach(g => g.forEach(e => { res[e.id] = g.filter(x => x.id !== e.id); }));
+  return res;
+}
+function problemesFicheEleve(e, doublons){
   const p = [];
   const erreurDate = verifierDatesEleve(e.dateNaissance, e.dateInscription);
   if(!e.dateNaissance) p.push('date de naissance manquante');
@@ -6290,12 +6314,20 @@ function problemesFicheEleve(e){
   if(!String(e.parentTel || '').trim()) p.push('numéro du parent manquant');
   else if(!numerosParentValides(e.parentTel)) p.push('numéro du parent à vérifier (10 chiffres attendus)');
   if(!String(e.parentNom || '').trim()) p.push('nom du parent manquant');
+  if(e.dateNaissance && !erreurDate){
+    const c = DB.classes.find(x => x.id === e.classeId), plage = c && AGES_CYCLE[c.cycle];
+    const age = ageEnAnnees(e.dateNaissance);
+    if(plage && (age < plage[0] || age > plage[1])) p.push(`${age < 1 ? 'moins d’1 an' : age + ' an' + (age > 1 ? 's' : '')} : âge inhabituel en ${c.nom} — date de naissance à vérifier`);
+  }
+  const autres = doublons && doublons[e.id];
+  if(autres && autres.length) p.push(`doublon possible avec ${autres.map(x => `${eleveFullName(x)} (${classeName(x.classeId)}${x.dateNaissance ? ', né(e) le ' + fmtDate(x.dateNaissance) : ''})`).join(', ')} — vérifier avant toute action`);
   return p;
 }
 function renderFichesAVerifier(){
   if(!['secretariat','direction','fondation'].includes(ui.role)) return '';
+  const doublons = doublonsEleves();
   const fiches = DB.eleves.filter(e => e.statut === 'Actif')
-    .map(e => ({ e, p: problemesFicheEleve(e) })).filter(x => x.p.length)
+    .map(e => ({ e, p: problemesFicheEleve(e, doublons) })).filter(x => x.p.length)
     .sort((a, b) => a.e.nom.localeCompare(b.e.nom));
   if(fiches.length === 0) return '';
   const ouvert = ui.filters.fichesAVerifierOuvert;
