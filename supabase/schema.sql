@@ -3354,3 +3354,20 @@ begin
 end $$;
 revoke all on function rechercher_eleves_demande(uuid, text, text) from public, anon;
 grant execute on function rechercher_eleves_demande(uuid, text, text) to authenticated;
+-- =====================================================================
+-- 85. Demandes d'accès : champs bornés et e-mail non falsifiable (2026-10-18)
+--     L'e-mail affiché à la direction est forcément celui du compte Google
+--     qui fait la demande ; tailles maximales contre le remplissage abusif.
+-- =====================================================================
+alter table demandes_acces drop constraint if exists demandes_acces_tailles;
+alter table demandes_acces add constraint demandes_acces_tailles check (
+  char_length(nom) <= 120 and char_length(coalesce(message, '')) <= 1000
+  and char_length(coalesce(telephone, '')) <= 40
+  and coalesce(cardinality(eleve_ids), 0) <= 10 and coalesce(cardinality(classe_ids), 0) <= 30);
+drop policy if exists "creation demande acces" on demandes_acces;
+create policy "creation demande acces" on demandes_acces for insert
+  with check (
+    user_id = auth.uid() and statut = 'en_attente' and traite_par is null
+    and email is not distinct from (auth.jwt() ->> 'email')
+    and not exists (select 1 from profiles p where p.id = auth.uid())
+  );
