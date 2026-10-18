@@ -1396,3 +1396,49 @@ td:has(> .amount), th.montant{ text-align:right; }
 .mj-classe{ border:1px solid var(--border); border-radius:var(--r-card); padding:10px 12px; }
 .mj-tete{ display:flex; justify-content:space-between; align-items:baseline; margin-bottom:6px; }
 .mj-ligne{ font-size:var(--fs-sm, 14px); margin-top:6px; display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
+
+/* ===== Refonte étape 7 (DESIGN.md §8) : règles transversales ===== */
+/* Tableaux en cartes sur téléphone : libellé AU-DESSUS de la valeur (plus aucun chevauchement) */
+@media (max-width:640px){
+  table.is-cards td{ display:block; height:auto !important; min-height:0; text-align:left; padding:6px 0; overflow-wrap:anywhere; }
+  table.is-cards td[data-label]:not([data-label=""])::before{ display:block; margin-bottom:2px; font-size:12px; text-transform:none; }
+  table.is-cards td:has(.row-name){ display:flex; padding-bottom:8px; }
+  table.is-cards td[data-label]:has(.row-name)::before{ display:none; }
+  table.is-cards td:has(> button, > .btn, > a.btn, > .icon-btn, > .menu-plus){ display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+  table.is-cards td:has(> button, > .btn, > a.btn, > .icon-btn, > .menu-plus)::before{ flex-basis:100%; margin:0; }
+  table.is-cards td:has(input:not([type=checkbox]):not([type=radio]), select, textarea){ display:flex; }
+  table.is-cards td .hint{ display:block; margin:2px 0 0; }
+  table.is-cards td > br{ display:block; content:''; }
+  table.is-cards tr{ border:1px solid var(--border); border-radius:14px; margin-bottom:10px; background:var(--surface-1); }
+  table.is-cards tr:last-child{ border-bottom:1px solid var(--border); }
+  /* Boutons-icônes dans une carte : le libellé devient visible (DESIGN.md §8 « Actions ») */
+  table.is-cards .icon-btn[aria-label]{ width:auto; min-width:44px; height:40px; padding:0 12px; display:inline-flex; align-items:center; gap:6px; font-size:14px; }
+  table.is-cards .icon-btn[aria-label]::after{ content:attr(aria-label); font-weight:600; font-size:13px; }
+  table.is-cards .icon-btn.danger[aria-label]{ color:var(--accent-ink); }
+}
+/* Fenêtres : feuille coulissante depuis le bas sur téléphone */
+@media screen and (max-width:640px){
+  .modal-backdrop{ align-items:flex-end; padding:0; overflow:hidden; }
+  .modal{ max-width:none; max-height:92dvh; overflow-y:auto; border-radius:20px 20px 0 0; animation:feuilleMonte 250ms cubic-bezier(.2,.8,.2,1); padding-bottom:env(safe-area-inset-bottom, 0px); }
+  .modal-header{ position:sticky; top:0; z-index:2; background:var(--surface-1); padding-top:18px; }
+  .modal-header::before{ content:''; position:absolute; top:7px; left:50%; width:40px; height:4px; margin-left:-20px; border-radius:2px; background:var(--border-strong); }
+}
+@keyframes feuilleMonte{ from{ transform:translateY(100%); } to{ transform:none; } }
+@media (prefers-reduced-motion: reduce){ .modal{ animation:none !important; } }
+/* Formulaires : libellé à 6 px du champ, 20 px entre deux groupes */
+.field{ gap:6px; }
+.form-grid{ row-gap:20px; }
+:not(.form-grid) > .field + .field{ margin-top:20px; }
+/* Liens dans le texte : couleur primaire, jamais le bleu par défaut */
+.view-container a:not(.btn):not(.nav-item):not(.lien-discret), .modal-body a:not(.btn){ color:var(--primary-ink); text-decoration:none; font-weight:600; }
+.view-container a:not(.btn):not(.nav-item):not(.lien-discret):hover, .modal-body a:not(.btn):hover{ text-decoration:underline; }
+/* Boutons « Supprimer » rangés dans le menu « ⋯ » (theme.js) : libellé toujours visible */
+.menu-plus-liste .icon-btn{ display:flex; width:100%; height:auto; min-height:44px; align-items:center; gap:8px; padding:0 12px; border:0; background:transparent; text-align:left; font-size:14px; }
+.menu-plus-liste .icon-btn:hover{ background:var(--surface-2); }
+.menu-plus-liste .icon-btn[aria-label]::after{ content:attr(aria-label); font-weight:600; }
+.menu-plus-liste .icon-btn.danger{ color:var(--accent-ink); }
+.menu-plus{ display:inline-block; vertical-align:middle; }
+/* Actions des tableaux : libellé visible aussi sur ordinateur (DESIGN.md §8) */
+.table-wrap td .icon-btn[aria-label]:not(.menu-plus-liste .icon-btn){ width:auto; min-width:36px; padding:0 10px; display:inline-flex; align-items:center; gap:6px; font-size:14px; white-space:nowrap; }
+.table-wrap td .icon-btn[aria-label]:not(.menu-plus-liste .icon-btn)::after{ content:attr(aria-label); font-weight:600; font-size:13px; }
+.table-wrap td .badge{ white-space:nowrap; }

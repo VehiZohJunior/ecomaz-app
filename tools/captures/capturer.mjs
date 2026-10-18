@@ -131,6 +131,7 @@ for(const theme of THEMES){
         absent: () => { document.querySelectorAll('.cj-btn[data-s="Absent"]')[1].click(); document.querySelectorAll('.cj-btn[data-s="Retard"]')[2].click(); },
         menu: () => { const d = [...document.querySelectorAll('.menu-plus')].pop(); d.open = true; d.scrollIntoView({ block: 'center' }); },
         classes: () => { const r = document.querySelector('input[name=cible][value=classes]'); r.click(); document.querySelectorAll('input[name=classe]')[1].click(); r.scrollIntoView({ block: 'center' }); },
+        modal: () => { openEleveForm(); },
         relies: () => { document.querySelector('.seg[data-etat="relie"]').click(); },
       };
       if(GESTES[extra]){ await page.evaluate(GESTES[extra]); await page.waitForTimeout(400); }

@@ -91,6 +91,12 @@
 
   /* ---- Tableaux -> cartes sur téléphone : on recopie l'en-tête de chaque
         colonne dans un attribut data-label de chaque cellule ---- */
+  // Menus « ⋯ » : se ferment après un choix ou un toucher ailleurs
+  document.addEventListener('click', e => {
+    document.querySelectorAll('details.menu-plus[open]').forEach(d => {
+      if(!d.contains(e.target) || e.target.closest('.menu-plus-liste button')) d.open = false;
+    });
+  });
   function etiqueterTableaux(racine){
     // tableaux posés « nus » dans un bloc : on les enveloppe pour qu'ils défilent au lieu de déborder
     (racine || document).querySelectorAll('table:not(.timetable)').forEach(t => {
@@ -108,6 +114,17 @@
         [...tr.children].forEach((td, i) => { if(td.tagName === 'TD') td.setAttribute('data-label', libelles[i] || ''); });
       });
       t.classList.add('is-cards');
+      // Refonte (DESIGN.md §8) : « Supprimer » ne se répète plus en gros sur chaque ligne,
+      // il passe dans un menu « ⋯ » (même bouton, même action : on le déplace seulement)
+      t.querySelectorAll('tbody td').forEach(td => {
+        const danger = [...td.children].filter(b => b.matches('.icon-btn.danger'));
+        if(!danger.length || td.querySelector('.menu-plus')) return;
+        const menu = document.createElement('details');
+        menu.className = 'menu-plus';
+        menu.innerHTML = '<summary class="btn secondary sm" aria-label="Plus d’actions" title="Plus d’actions">⋯</summary><div class="menu-plus-liste"></div>';
+        danger.forEach(b => { if(!b.getAttribute('aria-label')) b.setAttribute('aria-label', b.getAttribute('title') || 'Supprimer'); menu.lastChild.appendChild(b); });
+        td.appendChild(menu);
+      });
     });
   }
 

@@ -4373,15 +4373,15 @@ function renderCahierAppel(){
 }
 // Appel du jour dans le cahier : mêmes champs (.sel-statut, data-motif) et même
 // enregistrement que l'écran « Pointage élèves » — alerte aux parents incluse.
-function renderAppelDuJour(classeId, eleves){
-  const auj = todayISO();
+function renderAppelDuJour(classeId, eleves, date){
+  const auj = date || todayISO();
   ui.filters.presEleves = { classeId, date: auj };
   if(DB.absencesSignalees === undefined){
     DB.absencesSignalees = null;
     chargerAbsencesSignalees().then(() => { if(ui.currentView === 'cahier-appel') renderView('cahier-appel'); }).catch(() => { DB.absencesSignalees = []; });
   }
   if(!eleves.length) return '<div class="empty-state"><div class="em-ic">📒</div>Aucun élève actif dans cette classe.</div>';
-  const jourIso = ((new Date().getDay() + 6) % 7) + 1;
+  const jourIso = ((new Date(auj + 'T12:00:00').getDay() + 6) % 7) + 1;
   const jourDeClasse = (DB.horairesAnnonces?.joursCours || [1, 2, 3, 4, 5]).includes(jourIso);
   const dejaFait = DB.presencesEleves.some(p => p.date === auj && p.classeId === classeId);
   const lignes = eleves.map(e => {
@@ -4396,8 +4396,8 @@ function renderAppelDuJour(classeId, eleves){
       <input type="text" class="cj-motif" data-motif="${e.id}" placeholder="Motif (facultatif)" aria-label="Motif" value="${escapeHtml(motif || '')}">
     </li>`;
   }).join('');
-  return `${!jourDeClasse ? `<div class="section-note">Aujourd’hui n’est pas un jour de classe. Vous pouvez quand même faire l’appel si besoin.</div>` : ''}
-    ${dejaFait ? `<div class="banniere-discrete" style="margin-bottom:10px;"><span>${icone('circle-check')}</span><span>L’appel d’aujourd’hui est déjà enregistré. Vous pouvez le corriger puis valider à nouveau.</span></div>` : ''}
+  return `${!jourDeClasse ? `<div class="section-note">${auj === todayISO() ? 'Aujourd’hui n’est' : 'Ce jour n’est'} pas un jour de classe. Vous pouvez quand même faire l’appel si besoin.</div>` : ''}
+    ${dejaFait ? `<div class="banniere-discrete" style="margin-bottom:10px;"><span>${icone('circle-check')}</span><span>L’appel ${auj === todayISO() ? 'd’aujourd’hui' : 'de ce jour'} est déjà enregistré. Vous pouvez le corriger puis valider à nouveau.</span></div>` : ''}
     <div class="cj-haut"><button type="button" class="btn secondary sm" onclick="tousPresents()">${icone('check')} Tous présents</button><span class="hint" style="margin:0;">${fmtDate(auj)}</span></div>
     <ul class="cj-liste">${lignes}</ul>
     <div class="cj-valider"><span class="appel-compteur" id="appelCompteur"></span><button type="button" class="btn" onclick="validerAppelDuJour()">Valider l’appel</button></div>
@@ -4411,7 +4411,7 @@ function choisirStatutAppel(eleveId, statut){
 }
 async function validerAppelDuJour(){
   await savePresencesEleves();
-  if(ui.currentView === 'cahier-appel') renderView('cahier-appel');
+  if(ui.currentView !== 'presences-eleves') renderView(ui.currentView);
 }
 async function basculerCahierAppel(eleveId, date){
   if(date > todayISO()) return;
@@ -6313,23 +6313,6 @@ function renderPresencesEleves(){
   }
   const eleves = DB.eleves.filter(e=>e.classeId===f.classeId && e.statut==='Actif').sort((a,b)=>a.nom.localeCompare(b.nom));
   const nbSignalees = eleves.filter(e => absenceSignalee(e.id, f.date)).length;
-  const rows = eleves.map(e=>{
-    const rec = DB.presencesEleves.find(p=>p.eleveId===e.id && p.date===f.date);
-    const sig = absenceSignalee(e.id, f.date);
-    const statut = rec ? rec.statut : (sig ? 'Absent' : 'Présent');
-    return `<tr class="appel-ligne appel-${statut === 'Présent' ? 'present' : statut === 'Absent' ? 'absent' : 'retard'}" data-ligne="${e.id}">
-      <td class="appel-nom" onclick="basculerStatutAppel('${e.id}')" title="Toucher : Présent → Absent → Retard"><div class="row-name"><span class="avatar">${initials(e.prenom,e.nom)}</span>${escapeHtml(eleveFullName(e))}</div>${sig ? `<span class="badge amber" title="${escapeHtml(sig.commentaire || '')}">Absence signalée par le parent : ${escapeHtml(sig.motif)}</span>` : ''}</td>
-      <td>
-        <select data-eleve="${e.id}" class="sel-statut" onchange="majLigneAppel('${e.id}')">
-          <option ${statut==='Présent'?'selected':''}>Présent</option>
-          <option ${statut==='Absent'?'selected':''}>Absent</option>
-          <option ${statut==='Retard'?'selected':''}>Retard</option>
-        </select>
-      </td>
-      <td><input type="text" data-motif="${e.id}" placeholder="Motif (optionnel)" value="${escapeHtml(rec ? rec.motif : (sig ? sig.motif + (sig.commentaire ? ' — ' + sig.commentaire : '') : ''))}" style="width:100%;padding:7px 9px;border:1px solid var(--border);border-radius:var(--r-control);"></td>
-    </tr>`;
-  }).join('');
-
   const recent = DB.presencesEleves.slice().sort((a,b)=>b.date.localeCompare(a.date)).slice(0,20);
   const recentRows = recent.map(p=>{
     const e = eleveById(p.eleveId);
@@ -6341,8 +6324,8 @@ function renderPresencesEleves(){
   return `
   <div class="view active">
     <div class="panel">
-      <div class="panel-head"><div><h2>Feuille de présence — élèves</h2><div class="sub">Marquer la présence par classe et par date</div></div></div>
-      ${nbSignalees ? `<div class="section-note">📝 ${nbSignalees} absence(s) signalée(s) à l'avance par les parents : déjà marquée(s) « Absent » ci-dessous. Vérifiez puis enregistrez.</div>` : ''}
+      <div class="panel-head"><div><h2>Feuille de présence</h2><div class="sub">Par classe et par date</div></div></div>
+      ${nbSignalees ? `<div class="section-note">${nbSignalees} absence(s) signalée(s) à l'avance par les parents : déjà marquée(s) « Absent » ci-dessous. Vérifiez puis enregistrez.</div>` : ''}
       <div class="filters">
         <select onchange="ui.filters.presEleves.classeId=this.value; renderView('presences-eleves')">
           ${mesClasses.map(c=>`<option value="${c.id}" ${f.classeId===c.id?'selected':''}>${c.nom}</option>`).join('')}
@@ -6350,16 +6333,7 @@ function renderPresencesEleves(){
         <input type="date" value="${f.date}" onchange="ui.filters.presEleves.date=this.value; renderView('presences-eleves')">
       </div>
       ${eleves.length===0 ? `<div class="empty-state"><div class="em-ic">✅</div>Aucun élève actif dans cette classe.</div>` : `
-      <div class="appel-outils">
-        <button type="button" class="btn secondary sm" onclick="tousPresents()">✅ Tous présents</button>
-        <span class="hint" style="margin:0;">Puis touchez le <strong>nom</strong> des absents (2ᵉ toucher : retard).</span>
-        <span class="appel-compteur" id="appelCompteur"></span>
-      </div>
-      <div class="table-wrap"><table id="tablePresences">
-        <thead><tr><th>Élève</th><th style="width:160px;">Statut</th><th>Motif</th></tr></thead>
-        <tbody>${rows}</tbody>
-      </table></div>
-      <div class="form-actions"><button class="btn" onclick="savePresencesEleves()">Enregistrer la présence</button></div>${(setTimeout(majCompteurAppel, 0), '')}`}
+      ${renderAppelDuJour(f.classeId, eleves, f.date)}`}
     </div>
     ${renderPrevenirParentsWhatsapp(f)}
 
