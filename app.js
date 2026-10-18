@@ -1031,6 +1031,29 @@ function renderLoginGate(step, error, loading){
       ${fixe ? `<button type="button" class="btn btn-install-pwa" style="display:none;width:100%;margin-top:10px;">📲 Installer l'application sur ce téléphone</button>${iosHint}` : ''}
     </div>`;
 }
+// Démarrage : écran de chargement et écran d'erreur réseau (sans déconnecter)
+function afficherChargementDemarrage(){
+  const gate = $('#loginGate'); if(!gate) return;
+  gate.classList.add('open');
+  gate.innerHTML = `<div class="login-card demarrage" role="status" aria-live="polite">
+    <div class="login-logo login-marque demarrage-logo" aria-hidden="true">E</div>
+    <h1>Ouverture de votre espace…</h1>
+    <div class="sub">Nous chargeons les données de votre école.</div>
+    <div class="demarrage-barre" aria-hidden="true"><div></div></div>
+  </div>`;
+}
+function afficherErreurDemarrage(){
+  const gate = $('#loginGate'); if(!gate) return;
+  $('#appRoot').style.display = 'none';
+  gate.classList.add('open');
+  gate.innerHTML = `<div class="login-card demarrage" role="alert">
+    <div class="login-logo" aria-hidden="true">${icone('plug') || '⚠️'}</div>
+    <h1>Connexion impossible pour le moment</h1>
+    <div class="sub">Vos données sont en sécurité et vous êtes toujours connecté(e). Vérifiez la connexion internet (données mobiles ou Wi-Fi), puis réessayez.</div>
+    <button type="button" class="btn" style="width:100%;" onclick="location.reload()">Réessayer</button>
+    <button type="button" class="pin-back" onclick="showEspaces()">Revenir à l’écran de connexion</button>
+  </div>`;
+}
 function showEspaces(){
   if(window.ESPACE_FIXE){ chooseEspace(window.ESPACE_FIXE); return; }
   stopIdleWatcher();
@@ -2400,6 +2423,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.10.18-8', nouveautes: {
+    commun: [ 'Ouverture de l’application : un écran « Ouverture de votre espace… » remplace la page vide ; si la connexion internet manque, un message clair et un bouton « Réessayer » s’affichent — vous n’êtes plus renvoyé à l’écran de connexion.' ],
+    parent: [],
+    portier: [],
+    personnel: [],
+  } },
   { version: '2026.10.18-7', nouveautes: {
     commun: [],
     parent: [],
@@ -10461,12 +10490,21 @@ async function journaliserCompta(tableCible, enregistrementId, action, donneesAv
   });
   await new Promise(r => setTimeout(r, 300));
   if(recoveryMode) return;
+  // Écran « Chargement » au lieu d'une page vide pendant l'ouverture (connexion lente)
+  if(await utilisateurAuthCourant()) afficherChargementDemarrage();
   if(window.ESPACE_FIXE_PRET) await window.ESPACE_FIXE_PRET;
 
   // Restaure une session Supabase existante (l'utilisateur avait déjà une session active)
-  const profil = await chargerProfilCourant();
+  let profil = null;
+  try{ profil = await chargerProfilCourant(); }catch(_e){ profil = null; }
   if(profil){
-    try{ await entrerSelonRole(); return; }catch(e){ /* si le chargement échoue, on retombe sur l'écran de connexion */ }
+    try{ await entrerSelonRole(); return; }
+    catch(e){
+      // Compte suspendu / mauvais espace : message de l'écran de connexion (inchangé).
+      // Sinon (réseau) : on NE déconnecte PAS — écran clair avec « Réessayer ».
+      if(e && e.suspendu){ showLoginGate(e.message); return; }
+      afficherErreurDemarrage(); return;
+    }
   }
   if(window.ESPACE_FIXE && await utilisateurAuthCourant()){ showDemandeAcces(); return; }
   showEspaces();

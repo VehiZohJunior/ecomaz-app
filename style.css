@@ -1533,3 +1533,11 @@ button.role-card{ font:inherit; color:inherit; width:100%; display:flex; flex-di
 .invit-ens.replie{ background:var(--surface-2); border-color:var(--border); }
 .invit-ens.replie .invit-ens-qr{ flex-basis:72px; width:72px; height:72px; }
 @media (max-width:520px){ .invit-ens{ flex-direction:column; align-items:stretch; } .invit-ens-qr{ align-self:center; } }
+/* ===== Démarrage : chargement et erreur réseau ===== */
+.login-card.demarrage{ max-width:420px; }
+.demarrage-logo{ animation:demarragePouls 1.6s ease-in-out infinite; }
+@keyframes demarragePouls{ 0%,100%{ transform:scale(1); } 50%{ transform:scale(1.06); } }
+.demarrage-barre{ height:6px; border-radius:999px; background:var(--surface-2); overflow:hidden; margin-top:6px; }
+.demarrage-barre div{ width:40%; height:100%; border-radius:999px; background:var(--primary); animation:demarrageGlisse 1.2s ease-in-out infinite; }
+@keyframes demarrageGlisse{ from{ transform:translateX(-100%); } to{ transform:translateX(250%); } }
+@media (prefers-reduced-motion: reduce){ .demarrage-logo, .demarrage-barre div{ animation:none; } .demarrage-barre div{ width:100%; opacity:.4; } }

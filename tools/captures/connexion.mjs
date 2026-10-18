@@ -19,6 +19,8 @@ const ECRANS = [
   ['espaces', '/', () => showEspaces()],
   ['formulaire', '/', () => chooseEspace('direction')],
   ['oubli', '/', () => showForgotPassword()],
+  ['chargement', '/', () => afficherChargementDemarrage()],
+  ['erreur-reseau', '/', () => afficherErreurDemarrage()],
   ['parent', `/parent.html?ecole=${ecole}`, null],
   ['enseignant', `/enseignant.html?ecole=${ecole}`, null],
 ];
