@@ -3784,3 +3784,23 @@ end $$;
 drop trigger if exists verrou_et_journal_notes on notes;
 create trigger verrou_et_journal_notes before insert or update or delete on notes
   for each row execute function verrou_et_journal_notes();
+-- =====================================================================
+-- 99. Appréciations des bulletins : même verrou que les notes après
+--     publication du trimestre (année en cours) — direction / fondation
+--     seulement (2026-10-18, cohérent avec la décision de Vehi).
+-- =====================================================================
+create or replace function verrou_appreciations() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare r record; e record;
+begin
+  r := case when tg_op = 'DELETE' then old else new end;
+  select annee_scolaire, coalesce(bulletins_publies, '{}') bp into e from ecoles where id = r.ecole_id;
+  if r.trimestre = any (e.bp) and coalesce(r.annee_scolaire, e.annee_scolaire) = e.annee_scolaire
+     and auth.uid() is not null and not est_admin() then
+    raise exception 'Les bulletins du % sont publiés : seule la direction peut encore modifier l’appréciation.', r.trimestre;
+  end if;
+  return case when tg_op = 'DELETE' then old else new end;
+end $$;
+drop trigger if exists verrou_appreciations on bulletins_commentaires;
+create trigger verrou_appreciations before insert or update or delete on bulletins_commentaires
+  for each row execute function verrou_appreciations();
