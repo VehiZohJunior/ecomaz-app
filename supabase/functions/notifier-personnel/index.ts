@@ -38,10 +38,10 @@ Deno.serve(async (req) => {
       const { data: d } = await admin.from('demandes_acces').select('ecole_id, nom, role_demande').eq('user_id', user.id)
         .eq('statut', 'en_attente').gte('created_at', depuis).order('created_at', { ascending: false }).limit(1).maybeSingle();
       if (!d) throw new Error('Demande introuvable');
-      ecoleId = d.ecole_id; roles = d.role_demande === 'enseignant' ? ['direction', 'fondation', 'secretariat'] : ['direction', 'fondation'];
+      ecoleId = d.ecole_id; roles = d.role_demande === 'portier' ? ['direction', 'fondation'] : ['direction', 'fondation', 'secretariat'];
       titre = '🔔 Nouvelle demande d’accès';
       const roleLib = ({ portier: 'PORTIER', enseignant: 'ENSEIGNANT', parent: 'PARENT' } as Record<string, string>)[d.role_demande] || String(d.role_demande || '').toUpperCase();
-      texte = `${d.nom || 'Quelqu’un'} demande l’accès ${roleLib}. À valider dans ${d.role_demande === 'enseignant' ? 'Enseignants → Inscriptions des enseignants' : 'Paramètres → Demandes d’accès'}.`;
+      texte = `${d.nom || 'Quelqu’un'} demande l’accès ${roleLib}. À valider dans ${d.role_demande === 'enseignant' ? 'Enseignants → Inscriptions des enseignants' : d.role_demande === 'parent' ? 'Parents ↔ Élèves → Inscriptions des parents' : 'Paramètres → Demandes d’accès'}.`;
     } else if (type === 'absence') {
       const { data: a } = await admin.from('absences_signalees').select('ecole_id, eleve_id, date_debut, date_fin, motif')
         .eq('parent_id', user.id).gte('created_at', depuis).order('created_at', { ascending: false }).limit(1).maybeSingle();

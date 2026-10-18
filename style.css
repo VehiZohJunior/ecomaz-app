@@ -1648,5 +1648,5 @@ body.theme-portier .appel-apercu{ color:var(--em-gold-400, #E8B04B); }
 .alerte-inscription{ text-align:left; margin:10px 0 0; padding:12px; border-radius:12px; background:var(--amber-bg, #FFF4DC); color:var(--text, #14392D); border:1px solid color-mix(in srgb, var(--amber, #C98A12) 40%, transparent); font-size:14px; line-height:1.4; }
 body.theme-portier .alerte-inscription{ background:rgba(232,176,75,.12); color:inherit; }
 /* ===== Écran Enseignants : inscriptions en attente bien visibles ===== */
-#panneauInscriptionsEns.inscr-attente{ border:2px solid var(--amber, #C98A12); box-shadow:0 0 0 4px color-mix(in srgb, var(--amber, #C98A12) 15%, transparent); }
-#panneauInscriptionsEns.inscr-attente #compteurInscriptionsEns{ color:var(--amber-ink, #8A5A00); font-weight:800; }
+.panneau-inscriptions.inscr-attente{ border:2px solid var(--amber, #C98A12); box-shadow:0 0 0 4px color-mix(in srgb, var(--amber, #C98A12) 15%, transparent); }
+.panneau-inscriptions.inscr-attente #compteurInscriptions{ color:var(--amber-ink, #8A5A00); font-weight:800; }

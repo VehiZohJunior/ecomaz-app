@@ -2563,6 +2563,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.10.18-25', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Parents ↔ Élèves : nouvelle rubrique « Inscriptions des parents » en haut — la fondation, la direction et le secrétariat valident les parents inscrits avec Google (les demandes « sûres » en un seul geste), et la liste se met à jour aussitôt.' ],
+  } },
   { version: '2026.10.18-24', nouveautes: {
     commun: [],
     parent: [ 'Inscription plus simple : dès l’ouverture du lien, un grand bouton « Continuer avec Google » et les 3 étapes expliquées.' ],
@@ -3828,6 +3834,15 @@ function renderLiensParents(){
     </article>`;
   };
   return `<div class="view active">
+    <div class="panel panneau-inscriptions">
+      <div class="panel-head">
+        <div><h2>Inscriptions des parents</h2><div class="sub" id="compteurInscriptions">Chargement…</div></div>
+        <button type="button" class="btn secondary sm" onclick="chargerDemandesAcces()">Actualiser</button>
+      </div>
+      <div class="hint" style="margin-top:0;">Le parent s’inscrit avec Google et coche son enfant. « Sûre » = son téléphone est celui de la fiche de l’enfant. Vérifiez puis touchez « Approuver » : il ne verra que son ou ses enfants.</div>
+      <div data-demandes-role="parent"><div class="hint">Chargement…</div></div>
+      ${(setTimeout(chargerDemandesAcces, 0), '')}
+    </div>
     <div class="section-note">👪 Un élève relié au compte de son parent permet à ce parent de recevoir <strong>uniquement</strong> ce qui concerne son enfant : absences, annonces de son cycle, cours de renforcement, objets perdus et messages de l'école.</div>
     <div class="panel">
       <div class="panel-head"><div><h2>Élèves et parents</h2><div class="sub"><strong class="${sansParent.length ? 'pe-a-faire' : ''}">${sansParent.length ? `${sansParent.length} élève${sansParent.length > 1 ? 's' : ''} non relié${sansParent.length > 1 ? 's' : ''}` : 'Tous les élèves sont reliés 🎉'}</strong> · ${eleves.length - sansParent.length} / ${eleves.length} reliés · ${parents.length} compte${parents.length > 1 ? 's' : ''} parent${parents.length > 1 ? 's' : ''}</div></div></div>
@@ -4378,7 +4393,8 @@ async function supprimerPublication(id){
    ===================================================================== */
 const SUJETS_A_TRAITER = [
   { cle:'acces-ens', ic:'👩‍🏫', lib:'inscription(s) enseignant à valider', vue:'enseignants', table:'demandes_acces', filtre: q => q.eq('statut', 'en_attente').eq('role_demande', 'enseignant') },
-  { cle:'acces', ic:'🔑', lib:'demande(s) d’accès à valider', vue:'parametres', table:'demandes_acces', filtre: q => q.eq('statut', 'en_attente').neq('role_demande', 'enseignant'), roles:['direction','fondation'] },
+  { cle:'acces-par', ic:'👪', lib:'inscription(s) parent à valider', vue:'liens-parents', table:'demandes_acces', filtre: q => q.eq('statut', 'en_attente').eq('role_demande', 'parent') },
+  { cle:'acces', ic:'🔑', lib:'demande(s) d’accès portier à valider', vue:'parametres', table:'demandes_acces', filtre: q => q.eq('statut', 'en_attente').eq('role_demande', 'portier'), roles:['direction','fondation'] },
   { cle:'preinsc', ic:'📥', lib:'pré-inscription(s) à rappeler', vue:'eleves', table:'preinscriptions', filtre: q => q.eq('statut', 'nouvelle') },
   { cle:'docs', ic:'📄', lib:'document(s) demandé(s) par les parents', vue:'eleves', table:'demandes_documents', filtre: q => q.eq('statut', 'en_attente') },
   { cle:'corr', ic:'✏️', lib:'correction(s) de fiche proposée(s)', vue:'eleves', table:'corrections_fiches', filtre: q => q.eq('statut', 'en_attente') },
@@ -6985,13 +7001,13 @@ function renderEnseignants(){
 
   return `
   <div class="view active">
-    <div class="panel" id="panneauInscriptionsEns">
+    <div class="panel panneau-inscriptions" id="panneauInscriptionsEns">
       <div class="panel-head">
-        <div><h2>Inscriptions des enseignants</h2><div class="sub" id="compteurInscriptionsEns">Chargement…</div></div>
+        <div><h2>Inscriptions des enseignants</h2><div class="sub" id="compteurInscriptions">Chargement…</div></div>
         <button type="button" class="btn secondary sm" onclick="chargerDemandesAcces()">Actualiser</button>
       </div>
       <div class="hint" style="margin-top:0;">Chaque enseignant ouvre le lien EcoMaZ-ENSEIGNANTS, touche « Continuer avec Google » et coche ses classes. Vérifiez ses classes puis touchez « Approuver » : sa fiche est créée et il ne voit que ses classes.</div>
-      <div id="demandesEnsBox"><div class="hint">Chargement…</div></div>
+      <div id="demandesEnsBox" data-demandes-role="enseignant"><div class="hint">Chargement…</div></div>
       ${(setTimeout(chargerDemandesAcces, 0), '')}
     </div>
 
@@ -9926,19 +9942,23 @@ function allerAuxDemandesAcces(){
   setTimeout(() => { const z = document.getElementById('panneauDemandesAcces'); if(z) z.scrollIntoView({ behavior:'smooth', block:'start' }); }, 150);
 }
 async function chargerDemandesAcces(){
-  const boxEns = $('#demandesEnsBox');
-  const box = boxEns || $('#demandesAccesBox'); if(!box) return;
+  const boxRole = document.querySelector('[data-demandes-role]');
+  const role = boxRole?.dataset.demandesRole || null;
+  const box = boxRole || $('#demandesAccesBox'); if(!box) return;
   let q = sb.from('demandes_acces').select('*').eq('statut','en_attente').order('created_at');
-  if(boxEns) q = q.eq('role_demande', 'enseignant');
+  if(role) q = q.eq('role_demande', role);
   const { data, error } = await q;
   if(error){ box.innerHTML = `<div class="hint">Erreur : ${escapeHtml(error.message)}</div>`; return; }
   window.__demandesAcces = Object.fromEntries((data || []).map(d => [d.id, d]));
-  if(boxEns){
-    const n = data.length, compteur = $('#compteurInscriptionsEns');
-    if(compteur) compteur.textContent = n ? `${n} enseignant${n > 1 ? 's attendent' : ' attend'} votre validation` : 'Aucune inscription en attente';
-    const panneau = $('#panneauInscriptionsEns'); if(panneau) panneau.classList.toggle('inscr-attente', n > 0);
+  if(role){
+    const n = data.length, qui = role === 'enseignant' ? 'enseignant' : 'parent';
+    const compteur = $('#compteurInscriptions');
+    if(compteur) compteur.textContent = n ? `${n} ${qui}${n > 1 ? 's attendent' : ' attend'} votre validation` : 'Aucune inscription en attente';
+    const panneau = $('.panneau-inscriptions'); if(panneau) panneau.classList.toggle('inscr-attente', n > 0);
   }
-  if(!data.length){ box.innerHTML = `<div class="etat-vide etat-vide-ok"><span class="etat-vide-ic" aria-hidden="true">${icone('circle-check')}</span><span>${boxEns ? 'Aucune inscription en attente. Envoyez le lien EcoMaZ-ENSEIGNANTS ci-dessous : chaque enseignant s’inscrit avec Google et apparaît ici.' : 'Aucune demande en attente.'}</span></div>`; return; }
+  const videRole = { enseignant: 'Aucune inscription en attente. Envoyez le lien EcoMaZ-ENSEIGNANTS ci-dessous : chaque enseignant s’inscrit avec Google et apparaît ici.',
+    parent: 'Aucune inscription en attente. Chaque parent qui s’inscrit avec Google dans l’application PARENTS D’ELEVES apparaît ici.' };
+  if(!data.length){ box.innerHTML = `<div class="etat-vide etat-vide-ok"><span class="etat-vide-ic" aria-hidden="true">${icone('circle-check')}</span><span>${videRole[role] || 'Aucune demande en attente.'}</span></div>`; return; }
   const chiffres = t => String(t || '').replace(/\D/g, '').replace(/^225/, '').slice(-10);
   const sure = d => {
     if(d.role_demande !== 'parent') return false;
@@ -10044,7 +10064,12 @@ async function traiterDemandeAcces(id, approuver, parent){
   if(err){ toast('Erreur : ' + err); return; }
   toast(approuver ? 'Accès accordé ✅' : 'Demande refusée');
   if(approuver) proposerPrevenirApprouve(id);
-  chargerDemandesAcces();
+  if(DB.aTraiter) DB.aTraiter.charge = 0;
+  if(approuver && ui.currentView === 'liens-parents') await rechargerLiensParents(); else chargerDemandesAcces();
+}
+async function rechargerLiensParents(){
+  try{ DB.profiles = await dbSelectAll('profiles'); DB.parentsEleves = await dbSelectAll('parents_eleves'); }catch(_e){}
+  renderView('liens-parents');
 }
 // Après une validation : prévenir la personne sur WhatsApp (gratuit, message prêt)
 function proposerPrevenirApprouve(id){
@@ -10093,7 +10118,8 @@ async function approuverDemandesSures(){
   let ok = 0; const erreurs = [];
   for(const c of choix){ const err = await appliquerDemandeAcces(c.id, true, c); if(err) erreurs.push(err); else ok++; }
   toast(erreurs.length ? `${ok} accès accordé(s) · ${erreurs.length} erreur(s) : ${erreurs[0]}` : `${ok} accès accordés ✅`);
-  chargerDemandesAcces();
+  if(DB.aTraiter) DB.aTraiter.charge = 0;
+  if(ok && ui.currentView === 'liens-parents') await rechargerLiensParents(); else chargerDemandesAcces();
 }
 function lienApplication(page){
   const base = window.location.href.replace(/[^/]*([?#].*)?$/, '');
