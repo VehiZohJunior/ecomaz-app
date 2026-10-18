@@ -3607,3 +3607,25 @@ create or replace function developpeur_a_acces(p_ecole_id uuid) returns boolean
 language sql stable security definer set search_path = public as $$
   select est_developpeur() and exists (select 1 from ecoles where id = p_ecole_id and acces_support_developpeur)
 $$;
+-- 93. remplir_notification_portier : comparaison sûre (is distinct from) — 2026-10-18
+CREATE OR REPLACE FUNCTION public.remplir_notification_portier()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare
+  v_eleve record;
+begin
+  select id, nom, prenom, classe_id, ecole_id into v_eleve from eleves where id = new.eleve_id;
+  if v_eleve is null or v_eleve.ecole_id is distinct from mon_ecole_id() then
+    raise exception 'Ã‰lÃ¨ve introuvable dans votre Ã©cole';
+  end if;
+  new.ecole_id := v_eleve.ecole_id;
+  new.eleve_nom := v_eleve.prenom || ' ' || v_eleve.nom;
+  new.classe_id := v_eleve.classe_id;
+  new.vue := false;
+  return new;
+end;
+$function$
+;
