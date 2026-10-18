@@ -3534,3 +3534,76 @@ begin
     execute format('create index if not exists %I on public.%I (ecole_id, annee_scolaire)', t || '_annee', t);
   end loop;
 end $$;
+-- =====================================================================
+-- 91. Santé des écoles : demandes d'accès en attente (2026-10-18)
+-- =====================================================================
+drop function if exists sante_ecoles();
+create or replace function sante_ecoles()
+returns table (ecole_id uuid, eleves_actifs int, eleves_relies int, enseignants int, jours_appel_7j int,
+               paiements_30j int, publications int, telephones_abonnes int, derniere_activite date,
+               comptes_enseignants int, devoirs_30j int, messages_parents_30j int, messages_lus_30j int, preinscriptions_30j int,
+               demandes_attente int, plus_ancienne_demande_jours int)
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if not est_developpeur() then raise exception 'Réservé au compte développeur'; end if;
+  return query
+  select e.id,
+    (select count(*)::int from eleves el where el.ecole_id = e.id and el.statut = 'Actif'),
+    (select count(distinct pe.eleve_id)::int from parents_eleves pe join eleves el on el.id = pe.eleve_id where pe.ecole_id = e.id and el.statut = 'Actif'),
+    (select count(*)::int from enseignants t where t.ecole_id = e.id and t.statut = 'Actif'),
+    (select count(distinct p.date)::int from presences_eleves p where p.ecole_id = e.id and p.date >= current_date - 7),
+    (select count(*)::int from paiements_scolarite ps where ps.ecole_id = e.id and ps.date >= current_date - 30),
+    (select count(*)::int from publications pu where pu.ecole_id = e.id),
+    (select count(*)::int from push_abonnements pa where pa.ecole_id = e.id),
+    greatest(
+      (select max(p.date) from presences_eleves p where p.ecole_id = e.id),
+      (select max(ps.date) from paiements_scolarite ps where ps.ecole_id = e.id),
+      (select max(pu.created_at)::date from publications pu where pu.ecole_id = e.id),
+      (select max(m.created_at)::date from messages_internes m where m.ecole_id = e.id),
+      (select max(d.created_at)::date from devoirs d where d.ecole_id = e.id),
+      (select max(el.date_inscription) from eleves el where el.ecole_id = e.id and el.date_inscription <= current_date)
+    ),
+    (select count(*)::int from profiles pr where pr.ecole_id = e.id and pr.role = 'enseignant' and pr.enseignant_id is not null),
+    (select count(*)::int from devoirs d where d.ecole_id = e.id and d.created_at >= now() - interval '30 days'),
+    (select count(*)::int from messages_internes m where m.ecole_id = e.id and m.destinataire_type = 'parent' and m.created_at >= now() - interval '30 days'),
+    (select count(*)::int from messages_internes m where m.ecole_id = e.id and m.destinataire_type = 'parent' and m.lu and m.created_at >= now() - interval '30 days'),
+    (select count(*)::int from preinscriptions pi where pi.ecole_id = e.id and pi.created_at >= now() - interval '30 days'),
+    (select count(*)::int from demandes_acces da where da.ecole_id = e.id and da.statut = 'en_attente'),
+    (select (current_date - min(da.created_at)::date)::int from demandes_acces da where da.ecole_id = e.id and da.statut = 'en_attente')
+  from ecoles e;
+end $$;
+revoke all on function sante_ecoles() from public, anon;
+grant execute on function sante_ecoles() to authenticated;
+-- =====================================================================
+-- 92. FAILLE CORRIGÉE (2026-10-18) : pour un compte connecté SANS profil
+--     (ex. inscription Google pas encore validée), est_developpeur() etc.
+--     renvoyaient NULL au lieu de false ; dans les fonctions « if not
+--     est_developpeur() then raise », NULL ne bloquait pas : sante_ecoles,
+--     comptes_double_verification, reinitialiser_double_verification,
+--     preparer/remplir_ecole_demo, erreurs_recentes étaient appelables.
+--     Toutes les vérifications de rôle renvoient désormais true ou false.
+-- =====================================================================
+create or replace function est_developpeur() returns boolean
+language sql stable security definer set search_path = public as $$
+  select coalesce((select role = 'developpeur' from profiles where id = auth.uid()), false)
+$$;
+create or replace function est_admin() returns boolean
+language sql stable security definer set search_path = public as $$
+  select coalesce(mon_role() in ('direction','fondation'), false)
+$$;
+create or replace function est_perso_admin() returns boolean
+language sql stable security definer set search_path = public as $$
+  select coalesce(mon_role() in ('secretariat','direction','fondation'), false)
+$$;
+create or replace function est_parent() returns boolean
+language sql stable security definer set search_path = public as $$
+  select coalesce(mon_role() = 'parent', false)
+$$;
+create or replace function est_portier() returns boolean
+language sql stable security definer set search_path = public as $$
+  select coalesce(mon_role() = 'portier', false)
+$$;
+create or replace function developpeur_a_acces(p_ecole_id uuid) returns boolean
+language sql stable security definer set search_path = public as $$
+  select est_developpeur() and exists (select 1 from ecoles where id = p_ecole_id and acces_support_developpeur)
+$$;
