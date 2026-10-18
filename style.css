@@ -1676,3 +1676,14 @@ body.theme-portier .alerte-inscription{ background:rgba(232,176,75,.12); color:i
 .pp-geste:hover, .pp-geste:focus-visible{ border-color:var(--primary); }
 .pp-num{ flex:0 0 auto; width:30px; height:30px; border-radius:50%; background:var(--primary); color:#fff; font-weight:900; display:inline-flex; align-items:center; justify-content:center; }
 .pp-txt{ display:flex; flex-direction:column; gap:4px; } .pp-txt strong{ display:inline-flex; align-items:center; gap:6px; } .pp-txt small{ color:var(--text-dim); font-size:13px; line-height:1.35; }
+/* ===== Relance des enseignants non inscrits ===== */
+.relance-liste{ list-style:none; margin:0; padding:0; }
+.relance-ligne{ display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px 12px; padding:12px 0; border-top:1px solid var(--border); }
+.relance-ligne:first-child{ border-top:0; }
+.relance-ligne.envoye .relance-txt strong{ color:var(--text-dim); }
+.relance-txt{ display:flex; flex-direction:column; min-width:0; } .relance-txt small{ color:var(--text-dim); font-size:13px; }
+.relance-actions{ display:flex; flex-wrap:wrap; align-items:center; gap:6px; }
+
+/* Liste des enseignants imprimée : matières plus compactes */
+.lc-ens td:nth-child(5){ font-size:11px; line-height:1.25; }
+.lc-ens td:nth-child(3){ min-width:120px; }

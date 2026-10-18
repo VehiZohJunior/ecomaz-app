@@ -2590,6 +2590,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.10.18-29', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Enseignants : bouton « Relancer les non-inscrits » — un message WhatsApp personnel et prêt à envoyer pour chaque enseignant qui n’a pas encore son compte.', 'Enseignants : « Imprimer la liste » — liste A4 du personnel enseignant (classes, matières, téléphone, inscrit ou non).' ],
+  } },
   { version: '2026.10.18-28', nouveautes: {
     commun: [],
     parent: [ 'Après votre inscription : laissez la page ouverte, elle s’ouvre toute seule dès que l’école a validé.' ],
@@ -7163,6 +7169,7 @@ async function envoyerNotificationAbsenceEleve(eleveId, date, motif){
    --------------------------------------------------------------------- */
 function renderEnseignants(){
   const list = DB.enseignants.slice().sort((a,b)=>a.nom.localeCompare(b.nom));
+  const sansCompte = list.filter(t => t.statut === 'Actif' && !(DB.profiles || []).some(p => p.enseignantId === t.id)).length;
   const rows = list.map(t=>{
     const profilLie = (DB.profiles||[]).find(p=>p.enseignantId===t.id);
     return `
@@ -7197,8 +7204,12 @@ function renderEnseignants(){
 
     <div class="panel">
       <div class="panel-head">
-        <div><h2>Liste des enseignants</h2><div class="sub">${list.length} enseignant(s)</div></div>
-        <button class="btn" onclick="openEnseignantForm()">+ Nouvel enseignant</button>
+        <div><h2>Liste des enseignants</h2><div class="sub">${list.length} enseignant(s)${sansCompte ? ` · <strong class="pe-a-faire">${sansCompte} pas encore inscrit${sansCompte > 1 ? 's' : ''}</strong>` : ''}</div></div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;">
+          ${sansCompte ? `<button type="button" class="btn secondary sm" onclick="ouvrirRelanceEnseignants()">${icone('send') || '📲'} Relancer les non-inscrits</button>` : ''}
+          ${list.length ? `<button type="button" class="btn secondary sm" onclick="ouvrirListeEnseignants()">${icone('printer')} Imprimer la liste</button>` : ''}
+          <button class="btn" onclick="openEnseignantForm()">+ Nouvel enseignant</button>
+        </div>
       </div>
       ${renderInvitationEnseignants()}
       <div class="table-wrap"><table>
@@ -7227,6 +7238,58 @@ function renderInvitationEnseignants(){
       </div>
     </div>
   </div>`;
+}
+/* ---------- Relance des enseignants qui ont une fiche mais pas encore de compte ---------- */
+function titreEnseignant(t){ return t.sexe === 'F' ? 'Maîtresse' : t.sexe === 'M' ? 'M.' : ''; }
+function ouvrirRelanceEnseignants(){
+  const liste = DB.enseignants.filter(t => t.statut === 'Actif' && !(DB.profiles || []).some(p => p.enseignantId === t.id))
+    .sort((a, b) => (a.nom || '').localeCompare(b.nom || ''));
+  window.__relancesEnvoyees = window.__relancesEnvoyees || new Set();
+  const ligne = t => {
+    const tels = telephonesWhatsapp(t.telephone);
+    const bonjour = `Bonjour ${[titreEnseignant(t), t.prenom, t.nom].filter(Boolean).join(' ')},\n\n`;
+    const texte = encodeURIComponent(bonjour + messagePartageApplication('enseignant.html'));
+    const envoye = window.__relancesEnvoyees.has(t.id);
+    return `<li class="relance-ligne${envoye ? ' envoye' : ''}" id="relance_${t.id}">
+      <span class="relance-txt"><strong>${escapeHtml([titreEnseignant(t), t.prenom, t.nom].filter(Boolean).join(' '))}</strong>
+        <small>${(t.classesAssignees || []).map(id => escapeHtml(classeName(id))).join(', ') || 'Aucune classe sur la fiche'}</small></span>
+      <span class="relance-actions">${tels.length ? tels.map(n => `<a class="btn sm" href="https://wa.me/${n}?text=${texte}" target="_blank" rel="noopener" onclick="marquerRelance('${t.id}')">WhatsApp · ${n.replace(/^225/, '').replace(/(\d{2})(?=\d)/g, '$1 ')}</a>`).join('')
+        : `<button type="button" class="btn secondary sm" onclick="closeModal(); openEnseignantForm('${t.id}')">Ajouter son numéro</button>`}
+        ${envoye ? '<span class="badge-etat ok">Envoyé</span>' : ''}</span>
+    </li>`;
+  };
+  openModal(`Relancer les enseignants pas encore inscrits (${liste.length})`, `
+    <p class="hint" style="margin-top:0;">Un message personnel par enseignant, avec le lien de son application. Touchez « WhatsApp » : le message est prêt, il n’y a plus qu’à l’envoyer. Quand il s’inscrit, sa demande arrive en haut de l’écran Enseignants : choisissez « Relier à la fiche existante ».</p>
+    ${liste.length ? `<ul class="relance-liste">${liste.map(ligne).join('')}</ul>` : '<div class="etat-vide etat-vide-ok"><span>Tous vos enseignants ont leur compte 🎉</span></div>'}
+    <div class="form-actions"><button type="button" class="btn secondary" onclick="closeModal()">Fermer</button></div>`);
+}
+function marquerRelance(id){
+  (window.__relancesEnvoyees = window.__relancesEnvoyees || new Set()).add(id);
+  const li = document.getElementById('relance_' + id);
+  if(li && !li.classList.contains('envoye')){ li.classList.add('envoye'); li.querySelector('.relance-actions')?.insertAdjacentHTML('beforeend', '<span class="badge-etat ok">Envoyé</span>'); }
+}
+/* ---------- Liste des enseignants imprimable (A4) ---------- */
+function ouvrirListeEnseignants(){
+  const m = DB.meta || {};
+  const liste = DB.enseignants.filter(t => t.statut === 'Actif').sort((a, b) => (a.nom || '').localeCompare(b.nom || '') || (a.prenom || '').localeCompare(b.prenom || ''));
+  const h = liste.filter(t => t.sexe === 'M').length, f = liste.filter(t => t.sexe === 'F').length;
+  const aCompte = t => (DB.profiles || []).some(p => p.enseignantId === t.id);
+  openModal('Liste des enseignants', `
+    <div class="form-actions no-print" style="margin-top:0;justify-content:flex-end;"><button type="button" class="btn" onclick="window.print()">${icone('printer')} Imprimer / PDF</button></div>
+    <section class="liste-classe">
+      <div class="recu-head">${m.logo ? `<img src="${escapeHtml(m.logo)}" alt="">` : `<div class="recu-logo-ph">🎓</div>`}
+        <div><strong>${escapeHtml(m.nomEcole || '')}</strong><div class="hint">${escapeHtml(m.adresse || '')}${m.telephone ? ' · ' + escapeHtml(m.telephone) : ''}</div></div>
+        <div style="margin-left:auto;text-align:right;"><strong>LISTE DU PERSONNEL ENSEIGNANT</strong><div class="hint">${escapeHtml(m.anneeScolaire || '')}</div></div></div>
+      <div class="lc-resume">Effectif : <strong>${liste.length}</strong> · Hommes : <strong>${h}</strong> · Femmes : <strong>${f}</strong> · Inscrits dans l’application : <strong>${liste.filter(aCompte).length}</strong></div>
+      <table class="lc-table lc-ens"><thead><tr><th>N°</th><th>Matricule</th><th>Nom et prénom(s)</th><th>Classe(s)</th><th>Matière(s)</th><th>Téléphone</th><th>Appli</th></tr></thead>
+        <tbody>${liste.map((t, i) => `<tr><td>${i + 1}</td><td>${escapeHtml(t.matricule || '')}</td>
+          <td><strong>${escapeHtml(String(t.nom || '').toUpperCase())}</strong> ${escapeHtml(t.prenom || '')}</td>
+          <td>${(t.classesAssignees || []).map(id => escapeHtml(classeName(id))).join(', ')}</td>
+          <td>${escapeHtml((t.matieres || []).join(', '))}</td>
+          <td style="white-space:nowrap;">${escapeHtml(t.telephone || '')}</td>
+          <td>${aCompte(t) ? 'Oui' : 'Non'}</td></tr>`).join('')}</tbody></table>
+      <div class="hint" style="margin-top:8px;">Imprimé le ${fmtDate(todayISO())} — document interne : ne pas afficher (contient des numéros de téléphone)</div>
+    </section>`);
 }
 function ouvrirAccesPersonnel(enseignantId){
   const t = enseignantById(enseignantId); if(!t) return;
@@ -10321,7 +10384,7 @@ function copierLienApplication(page){
 function messagePartageApplication(page){
   const nomApp = page === 'parent.html' ? `EcoMaZ-PARENTS D'ELEVES ${DB.meta.nomEcole}` : page === 'enseignant.html' ? `EcoMaZ-ENSEIGNANTS ${DB.meta.nomEcole}` : `EcoMaZ-PORTIER ${DB.meta.nomEcole}`;
   if(page === 'enseignant.html') return `Bonjour, voici l'application ${nomApp} :\n${lienApplication(page)}\n\n`
-    + `Ouvrez-la dans Chrome (Android) ou Safari (iPhone), touchez « Continuer avec Google », écrivez votre nom et cochez votre ou vos classes. La direction validera votre inscription.`;
+    + `Ouvrez-la dans Chrome (Android) ou Safari (iPhone), touchez « Continuer avec Google », choisissez Monsieur ou Madame, écrivez votre NOM, vos prénoms et cochez votre ou vos classes. La direction validera votre inscription.`;
   return `Bonjour, voici l'application ${nomApp} :\n${lienApplication(page)}\n\n`
     + `Pour l'installer : ouvrez ce lien dans Chrome (Android) ou Safari (iPhone), puis touchez « Installer l'application sur ce téléphone » `
     + `(sur iPhone : Partager → Sur l'écran d'accueil). Connectez-vous ensuite avec Google : l'école validera votre accès.`;

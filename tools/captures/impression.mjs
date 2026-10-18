@@ -23,6 +23,7 @@ const DOCS = [
   ['affiche', "imprimerAffiche('parent.html')"],
   ['liste', "ouvrirListeClasse(DB.classes[0].id, 'emargement')"],
   ['emploi-du-temps', "imprimerEmploiTemps(DB.classes[0].id)"],
+  ['liste-enseignants', "ouvrirListeEnseignants()"],
 ];
 const b = await chromium.launch({ channel: 'msedge', headless: true });
 for(const [doc, geste] of DOCS){
