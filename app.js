@@ -2629,6 +2629,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.10.18-39', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Comptabilité → Scolarité : « Relancer les retards » — un message WhatsApp courtois par famille (tranches échues non soldées, montant, échéance), frères et sœurs regroupés, suivi « Relancé le … ». Bloqué tant qu’aucun versement n’est saisi.' ],
+  } },
   { version: '2026.10.18-38', nouveautes: {
     commun: [ 'Connexion : si vous utilisez un email et un mot de passe, votre téléphone s’en souvient et affiche directement ce formulaire.' ],
     parent: [],
@@ -9263,6 +9269,7 @@ function renderComptaScolarite(){
           </select>
           ${['direction','fondation'].includes(ui.role) ? `<button class="btn secondary" onclick="go('parametres')" title="Gérer les échéances (Frais d'inscription, versements...) depuis Paramètres">🎓 Échéances</button>` : ''}
           ${grilleActive && eleves.length ? `<button class="btn" onclick="ouvrirRepriseVersements('${classeId}')">📥 Saisir les versements déjà reçus</button>` : ''}
+          ${grilleActive ? `<button class="btn secondary" onclick="ouvrirRelanceImpayes('${classeId}')">📲 Relancer les retards</button>` : ''}
           <button class="btn secondary" onclick="exporterScolariteExcel()">⬇️ Excel (toutes les classes)</button>
           ${grilleActive ? '' : `<button class="btn secondary" onclick="openFraisScolariteForm()">⚙️ Configurer les frais</button>`}
         </div>
@@ -9342,6 +9349,71 @@ async function enregistrerReprise(classeId){
   closeModal();
   toast(`${l.length} versement${l.length > 1 ? 's' : ''} enregistré${l.length > 1 ? 's' : ''} ✅ (${fmtFCFA(total)})`);
   renderView('comptabilite');
+}
+/* ---------- Relance des retards de scolarité par WhatsApp, famille par famille ---------- */
+// Tranches échues (date dépassée) et non soldées d'un élève
+function retardsEleve(e){
+  const auj = todayISO();
+  const paye = {};
+  (DB.paiementsScolarite || []).filter(p => p.eleveId === e.id).forEach(p => { paye[p.tranche] = (paye[p.tranche] || 0) + Number(p.montant || 0); });
+  return echeancesDeClasse(e.classeId).filter(x => x.dateEcheance && x.dateEcheance < auj)
+    .map(x => ({ label: x.label, date: x.dateEcheance, reste: Math.max(0, Number(x.montant || 0) - (paye[x.label] || 0)) })).filter(x => x.reste > 0);
+}
+function famillesEnRetard(classeId){
+  const familles = new Map();
+  DB.eleves.filter(e => e.statut === 'Actif' && (!classeId || e.classeId === classeId)).forEach(e => {
+    const r = retardsEleve(e); if(!r.length) return;
+    const tel = telsDeFiche(e)[0] || ('sans:' + e.id);
+    if(!familles.has(tel)) familles.set(tel, { tel: tel.startsWith('sans:') ? null : tel, enfants: [] });
+    familles.get(tel).enfants.push({ e, r, total: r.reduce((t, x) => t + x.reste, 0) });
+  });
+  const rang = id => DB.classes.findIndex(c => c.id === id);
+  return [...familles.values()].map(f => ({ ...f, total: f.enfants.reduce((t, x) => t + x.total, 0) }))
+    .sort((a, b) => (!a.tel) - (!b.tel) || rang(a.enfants[0].e.classeId) - rang(b.enfants[0].e.classeId) || a.enfants[0].e.nom.localeCompare(b.enfants[0].e.nom));
+}
+function messageRelanceImpayes(f){
+  const m = DB.meta || {};
+  const lignes = f.enfants.map(({ e, r }) => `• ${e.prenom} ${String(e.nom || '').toUpperCase()} (${classeName(e.classeId)}) : ${r.map(x => `${x.label} (échéance du ${fmtDate(x.date)}) — ${fmtFCFA(x.reste)}`).join(' ; ')}`).join('\n');
+  return `Bonjour,\n\nSauf erreur de notre part, ${f.enfants.length > 1 ? 'les montants suivants restent' : 'le montant suivant reste'} à régler pour la scolarité :\n${lignes}\n\nTotal : ${fmtFCFA(f.total)}.\n\n`
+    + `Merci de bien vouloir passer au secrétariat${m.telephone ? ' ou de nous contacter au ' + m.telephone : ''}. Si le règlement a déjà été effectué, merci de ne pas tenir compte de ce message et de nous le signaler.\n\n`
+    + `${ui.role === 'secretariat' ? 'Le secrétariat' : 'La direction'} — ${m.nomEcole || ''}`;
+}
+function cleRelancesImpayes(){ return 'ecomaz_relances_impayes_' + (session.ecoleId || ''); }
+function relancesImpayes(){ try{ return JSON.parse(localStorage.getItem(cleRelancesImpayes()) || '{}'); }catch(_e){ return {}; } }
+function ouvrirRelanceImpayes(classeId){
+  classeId = classeId || '';
+  if(!(DB.paiementsScolarite || []).length){
+    openModal('Relancer les retards de scolarité', `
+      <div class="etat-vide"><span class="etat-vide-ic" aria-hidden="true">${icone('triangle-alert')}</span><span>Aucun paiement n’est encore enregistré : toutes les familles apparaîtraient en retard à tort. Saisissez d’abord les versements déjà reçus (bouton « Saisir les versements déjà reçus »), puis revenez ici.</span></div>
+      <div class="form-actions"><button type="button" class="btn secondary" onclick="closeModal()">Fermer</button></div>`);
+    return;
+  }
+  const familles = famillesEnRetard(classeId || null), envois = relancesImpayes();
+  const total = familles.reduce((t, f) => t + f.total, 0);
+  const ligne = f => {
+    const envoye = f.tel && envois[f.tel];
+    return `<li class="relance-ligne${envoye ? ' envoye' : ''}"${f.tel ? ` id="relimp_${f.tel}"` : ''}>
+      <span class="relance-txt"><strong>${f.enfants.map(x => escapeHtml(eleveFullName(x.e))).join(' · ')}</strong>
+        <small>${f.enfants.map(x => `${escapeHtml(classeName(x.e.classeId))} : ${x.r.map(r => escapeHtml(r.label)).join(', ')}`).join(' · ')} — <strong>${fmtFCFA(f.total)}</strong></small></span>
+      <span class="relance-actions">${f.tel
+        ? `<a class="btn sm" href="https://wa.me/225${f.tel}?text=${encodeURIComponent(messageRelanceImpayes(f))}" target="_blank" rel="noopener" onclick="marquerRelanceImpayes('${f.tel}')">WhatsApp · ${telLisible(f.tel)}</a>${envoye ? `<span class="badge-etat ok">Relancé le ${fmtDate(envoye)}</span>` : ''}`
+        : `<span class="hint" style="margin:0;">Numéro à corriger sur la fiche</span>`}</span>
+    </li>`;
+  };
+  openModal('Relancer les retards de scolarité', `
+    <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;margin-bottom:8px;">
+      <select class="puce-select petit" aria-label="Classe" onchange="ouvrirRelanceImpayes(this.value)"><option value="">Toutes les classes</option>${DB.classes.map(c => `<option value="${c.id}" ${classeId === c.id ? 'selected' : ''}>${escapeHtml(c.nom)}</option>`).join('')}</select>
+      <span class="hint" style="margin:0;"><strong>${familles.length}</strong> famille(s) en retard · ${fmtFCFA(total)}</span>
+    </div>
+    <p class="hint" style="margin-top:0;">Seules les tranches dont la date est <strong>dépassée</strong> sont comptées. Le message est courtois, signé par l’établissement, et invite à signaler un règlement déjà fait. Vérifiez que les paiements sont à jour avant d’envoyer.</p>
+    ${familles.length ? `<ul class="relance-liste">${familles.map(ligne).join('')}</ul>` : '<div class="etat-vide etat-vide-ok"><span>Aucun retard de paiement pour cette sélection 🎉</span></div>'}
+    <div class="form-actions"><button type="button" class="btn secondary" onclick="closeModal()">Fermer</button></div>`);
+}
+function marquerRelanceImpayes(tel){
+  const envois = relancesImpayes(); envois[tel] = todayISO();
+  try{ localStorage.setItem(cleRelancesImpayes(), JSON.stringify(envois)); }catch(_e){}
+  const li = document.getElementById('relimp_' + tel);
+  if(li && !li.classList.contains('envoye')){ li.classList.add('envoye'); li.querySelector('.relance-actions')?.insertAdjacentHTML('beforeend', `<span class="badge-etat ok">Relancé le ${fmtDate(todayISO())}</span>`); }
 }
 function optionsEcheancesScolarite(selectedLabel, classeId){
   const grille = echeancesDeClasse(classeId);
