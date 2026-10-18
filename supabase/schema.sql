@@ -3503,3 +3503,34 @@ begin
 end $$;
 revoke all on function definir_appellation(text, text) from public, anon;
 grant execute on function definir_appellation(text, text) to authenticated;
+-- =====================================================================
+-- 90. Année scolaire sur les données qui en dépendent (2026-2027) — étape 1
+--     de la fin d'année : chaque paiement, cotisation, note, évaluation,
+--     échéance, appréciation et résultat de bulletin porte son année
+--     scolaire (remplie automatiquement avec l'année en cours de l'école).
+--     Invisible pour l'école ; servira au passage à l'année suivante.
+-- =====================================================================
+create or replace function fixer_annee_scolaire() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if tg_op = 'INSERT' then
+    if new.annee_scolaire is null or new.annee_scolaire = '' then
+      select annee_scolaire into new.annee_scolaire from ecoles where id = new.ecole_id;
+    end if;
+  else
+    new.annee_scolaire := old.annee_scolaire;   -- une donnée ne change jamais d'année
+  end if;
+  return new;
+end $$;
+
+do $$
+declare t text;
+begin
+  foreach t in array array['paiements_scolarite','paiements_cotisations','notes','evaluations','echeances_scolarite','bulletins_commentaires','bulletins_resultats'] loop
+    execute format('alter table public.%I add column if not exists annee_scolaire text', t);
+    execute format('update public.%I x set annee_scolaire = e.annee_scolaire from public.ecoles e where e.id = x.ecole_id and x.annee_scolaire is null', t);
+    execute format('drop trigger if exists fixer_annee_scolaire on public.%I', t);
+    execute format('create trigger fixer_annee_scolaire before insert or update on public.%I for each row execute function fixer_annee_scolaire()', t);
+    execute format('create index if not exists %I on public.%I (ecole_id, annee_scolaire)', t || '_annee', t);
+  end loop;
+end $$;

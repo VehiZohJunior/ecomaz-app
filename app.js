@@ -10268,6 +10268,14 @@ async function handleSaveMeta(ev){
     directeurNom: fd.get('directeurNom').trim(), fondateurNom: fd.get('fondateurNom').trim(),
     heureArriveeAttendue: fd.get('heureArriveeAttendue') || DB.meta.heureArriveeAttendue,
   };
+  // Changer d'année scolaire ici ne fait passer aucun élève en classe supérieure :
+  // le passage complet se fera avec l'assistant de fin d'année.
+  if(patch.anneeScolaire && patch.anneeScolaire !== DB.meta.anneeScolaire
+     && !confirm(`Changer l’année scolaire de « ${DB.meta.anneeScolaire} » à « ${patch.anneeScolaire} » ?
+
+Attention : cela ne fait passer aucun élève en classe supérieure. Les nouveaux paiements et les nouvelles notes seront rangés dans « ${patch.anneeScolaire} ». En fin d’année, utilisez plutôt l’assistant de fin d’année (il sera prêt avant juin 2027).`)){
+    return false;
+  }
   try{
     const { error } = await exigerEffet(sb.from('ecoles').update(objToSnake(patch)).eq('id', session.ecoleId));
     if(error) throw error;
