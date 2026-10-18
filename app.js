@@ -776,12 +776,60 @@ function classesVisibles(){
   return DB.classes;
 }
 
+/* ---------- Tableau de bord par rôle et salutations personnalisées ---------- */
+const LIBELLES_ROLES = { direction:'Direction', fondation:'Fondation', secretariat:'Secrétariat', enseignant:'Enseignant', parent:'Parent', portier:'Portier', developpeur:'Développeur' };
+function titreTableauDeBord(role){ return 'Tableau de bord ' + (LIBELLES_ROLES[role || ui.role] || ''); }
+// Civilité : fiche enseignant (sexe) pour un enseignant, sinon le choix de la personne
+function civiliteCourante(){
+  if(ui.role === 'enseignant' && session.enseignantId){
+    const t = (DB?.enseignants || []).find(x => x.id === session.enseignantId);
+    if(t && (t.sexe === 'M' || t.sexe === 'F')) return t.sexe;
+  }
+  return session.civilite === 'M' || session.civilite === 'F' ? session.civilite : null;
+}
+function nomPourSalutation(){
+  let nom = String(session.nomComplet || '').trim();
+  const generique = !nom || /^(direction|fondation|secr[ée]tariat|enseignant\(?e?\)?|parent|portier|directeur|fondateur)$/i.test(nom);
+  if(generique) nom = ui.role === 'direction' ? (DB?.meta?.directeurNom || '') : ui.role === 'fondation' ? (DB?.meta?.fondateurNom || '') : '';
+  return nom.replace(/^(M\.|Mme|Mlle|Monsieur|Madame)\s+/i, '');
+}
+function salutation(){
+  const civ = civiliteCourante(), nom = nomPourSalutation();
+  const nomFamille = nom ? nom.split(/\s+/).pop().toUpperCase() : '';
+  const titres = {
+    direction: { M:'Monsieur le Directeur', F:'Madame la Directrice' },
+    fondation: { M:'Monsieur le Fondateur', F:'Madame la Fondatrice' },
+    secretariat: { M:'Monsieur', F:'Madame' },
+    enseignant: { M:'M.', F:'Maîtresse' },
+    parent: { M:'Papa', F:'Maman' },
+    portier: { M:'Monsieur', F:'Madame' },
+  }[ui.role];
+  if(!titres || !civ) return 'Bonjour' + (nom ? ', ' + nom : '');
+  return `Bonjour, ${titres[civ]}${ui.role === 'parent' ? (nomFamille ? ' ' + nomFamille : '') : (nom ? ' ' + nom : '')}`;
+}
+// Petit choix « Monsieur / Madame » tant que la civilité est inconnue (une seule fois)
+function renderChoixCivilite(){
+  if(civiliteCourante()) return '';
+  const lib = { parent:['Papa', 'Maman'], enseignant:['Monsieur (M.)', 'Madame (Maîtresse)'] }[ui.role] || ['Monsieur', 'Madame'];
+  return `<div class="choix-civilite" role="group" aria-label="Comment souhaitez-vous être salué ?"><span>Comment souhaitez-vous être salué ?</span>
+    <button type="button" class="btn secondary sm" onclick="choisirCivilite('M')">${lib[0]}</button><button type="button" class="btn secondary sm" onclick="choisirCivilite('F')">${lib[1]}</button></div>`;
+}
+async function choisirCivilite(c){
+  const { error } = await sb.rpc('definir_civilite', { p_civilite: c });
+  if(error){ toast('Erreur : ' + error.message); return; }
+  session.civilite = c;
+  try{ const k = 'ecomaz_profil_cache'; const v = JSON.parse(localStorage.getItem(k) || 'null'); if(v){ v.civilite = c; localStorage.setItem(k, JSON.stringify(v)); } }catch(_e){}
+  if(ui.role === 'parent'){ $('#viewContainer').innerHTML = renderParentDashboard(); }
+  else if(ui.role === 'portier'){ refreshPortierDashboard(); }
+  else renderView(ui.currentView || 'dashboard');
+  toast('C’est noté, merci !');
+}
 function go(view){
   if(!hasAccess(view)) view = 'dashboard';
   if(ui.currentView === 'pointage-scan' && view !== 'pointage-scan' && typeof arreterScanPointage === 'function') arreterScanPointage();
   if(view!==('eleves')) ui.eleveProfileId = null;
   $$('.nav-item').forEach(b=>b.classList.toggle('active', b.dataset.view===view));
-  $('#viewTitle').textContent = VIEW_TITLES[view] || '';
+  $('#viewTitle').textContent = view === 'dashboard' ? titreTableauDeBord() : (VIEW_TITLES[view] || '');
   ui.currentView = view;
   renderView(view);
   $('#sidebar').classList.remove('open');
@@ -1809,8 +1857,10 @@ function renderParentDashboard(){
     ${renderAnnonceDuMoment()}
     ${renderAlerteAbsence(mesEnfants)}
     <div class="em-rise" style="--i:1">
-      <h2 class="parent-greeting">Bonjour${prenomParent ? ', ' + escapeHtml(prenomParent) : ''} <span class="salut-main em-wave">${window.EmIcones ? EmIcones.svg('hand') : '👋'}</span></h2>
+      <div class="role-etiquette">${titreTableauDeBord('parent')}</div>
+      <h2 class="parent-greeting">${escapeHtml(salutation())} <span class="salut-main em-wave">${window.EmIcones ? EmIcones.svg('hand') : '👋'}</span></h2>
       <p class="parent-greeting-sub">Voici la semaine de ${plusieurs ? 'vos enfants' : 'votre enfant'}.</p>
+      ${renderChoixCivilite()}
     </div>
     ${renderAujourdhuiParent(mesEnfants)}
     <div class="enfants${plusieurs ? ' enfants--carrousel' : ''} em-rise" style="--i:2">
@@ -2299,7 +2349,7 @@ function enterAppPortier(){
   $('#sidebar').style.display = 'none';
   $('#burger').style.display = 'none';
   applyBranding();
-  $('#viewTitle').innerHTML = `<span class="gate-sur">Portail · ${escapeHtml(DB.meta.nomEcole || '')}</span>
+  $('#viewTitle').innerHTML = `<span class="gate-sur">${titreTableauDeBord('portier')} · ${escapeHtml(DB.meta.nomEcole || '')}</span>
     <span class="gate-titre">Arrivée des parents</span>
     <span class="sr-only">${escapeHtml(window.ESPACE_FIXE ? nomApplication() : 'Espace Portier')}</span>`;
   const pill = $('#topbarPill');
@@ -2358,6 +2408,7 @@ function renderPortierDashboard(){
   // Mode par défaut : liste des classes, groupées par cycle.
   const cycles = [...new Set(DB.classes.map(c=>c.cycle))];
   return `<div class="view active">
+    <div class="portier-bonjour"><h2>${escapeHtml(salutation())}</h2>${renderChoixCivilite()}</div>
     <div class="panel">
       <div class="panel-head">
         <div><h2>Le parent d’un élève est arrivé</h2><div class="sub">Choisissez une classe, ou tapez le nom de l’élève</div></div>
@@ -2425,6 +2476,13 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.10.18-16', nouveautes: {
+    commun: [ 'Chaque espace porte son nom (« Tableau de bord Direction », « Tableau de bord Parent »…) et vous salue selon votre titre (ex. « Bonjour, Monsieur le Directeur… », « Bonjour, Maman… »). Une seule fois, l’application vous demande « Monsieur » ou « Madame ».' ],
+    parent: [],
+    portier: [],
+    personnel: [ 'Enseignants : chaque enseignant a son propre compte et ne voit que ses classes — et seulement ses matières si des matières sont cochées sur sa fiche.',
+      'Scolarité et tranches de versement : modifiables uniquement par la direction et la fondation. Les salaires restent visibles uniquement par la direction et la fondation.' ],
+  } },
   { version: '2026.10.18-15', nouveautes: {
     commun: [],
     parent: [],
@@ -3257,7 +3315,7 @@ function renderDashboard(){
   const dateLongue = new Date(today + 'T12:00:00').toLocaleDateString('fr-FR', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
   return `
   <div class="view active">
-    <div class="db-bonjour"><div><h2>Bonjour${prenom ? ' ' + escapeHtml(prenom) : ''}</h2><div class="db-date">${dateLongue}</div></div>
+    <div class="db-bonjour"><div><h2>${escapeHtml(salutation())}</h2><div class="db-date">${dateLongue}</div>${renderChoixCivilite()}</div>
       ${['direction','fondation'].includes(ui.role) ? `<button type="button" class="btn secondary sm" onclick="ouvrirRapportMois()">${icone('file-text')} Rapport du mois</button>` : ''}</div>
     ${renderAFaireAujourdhui()}
     <div class="cards cards-2x2">
@@ -6764,10 +6822,10 @@ function renderEnseignants(){
       <td>${t.matieres.join(', ')}</td>
       <td>${escapeHtml(t.telephone)}</td>
       <td><span class="badge ${t.statut==='Actif'?'green':'gray'}">${t.statut}</span></td>
-      <td>${profilLie ? `<span class="badge green">🔗 Accès personnel</span>` : `<span class="badge gray">Compte partagé</span>`}</td>
+      <td>${profilLie ? `<span class="badge green">Compte personnel</span>` : `<span class="badge amber">Pas encore inscrit</span>`}</td>
       <td style="white-space:nowrap;">
         <button class="icon-btn" title="Modifier" onclick="openEnseignantForm('${t.id}')">✏️</button>
-        <button class="icon-btn" title="Accès personnel" onclick="ouvrirAccesPersonnel('${t.id}')">🔗</button>
+        <button class="icon-btn" title="${profilLie ? 'Son compte' : 'Inviter'}" onclick="ouvrirAccesPersonnel('${t.id}')">🔗</button>
         <button class="icon-btn danger" title="Supprimer" onclick="deleteEnseignant('${t.id}')">🗑️</button>
       </td>
     </tr>`;
@@ -6809,34 +6867,35 @@ function renderInvitationEnseignants(){
   </div>`;
 }
 function ouvrirAccesPersonnel(enseignantId){
-  const t = enseignantById(enseignantId);
+  const t = enseignantById(enseignantId); if(!t) return;
   const profilLie = (DB.profiles||[]).find(p=>p.enseignantId===enseignantId);
+  const classes = t.classesAssignees.map(cid=>classeName(cid)).join(', ') || 'aucune classe';
+  const matieres = (t.matieres || []).length ? t.matieres.join(', ') : 'toutes les matières de ses classes';
   if(profilLie){
-    openModal('Accès personnel — ' + ensFullName(t), `
-      <div class="section-note">✅ ${escapeHtml(ensFullName(t))} a déjà un accès personnel — ce compte ne voit que ses classes assignées (${t.classesAssignees.map(cid=>classeName(cid)).join(', ') || 'aucune classe assignée'}).</div>
-      <div class="hint">Pour retirer cet accès personnel (le compte redevient un compte partagé classique), exécutez dans Supabase SQL Editor :</div>
-      <pre style="background:var(--surface-2);padding:12px;border-radius:var(--r-control);font-size:var(--fs-xs);overflow-x:auto;white-space:pre-wrap;">update profiles set enseignant_id = null where enseignant_id = '${enseignantId}';</pre>
-      <div class="form-actions"><button type="button" class="btn secondary" onclick="closeModal()">Fermer</button></div>
-    `);
+    openModal('Compte de ' + ensFullName(t), `
+      <div class="banniere-discrete" style="margin-bottom:10px;"><span>${icone('circle-check')}</span><span>${escapeHtml(ensFullName(t))} a son <strong>compte personnel</strong>. Personne d’autre ne l’utilise.</span></div>
+      <dl class="acces-ens"><div><dt>Classes visibles</dt><dd>${escapeHtml(classes)}</dd></div><div><dt>Matières</dt><dd>${escapeHtml(matieres)}</dd></div></dl>
+      <div class="hint">Il ou elle ne voit que ces classes${(t.matieres || []).length ? ' et ces matières' : ''} : pas les autres enseignants, ni les salaires, ni la scolarité. Pour changer ses classes ou ses matières, modifiez sa fiche.</div>
+      <div class="form-actions"><button type="button" class="btn secondary" onclick="closeModal()">Fermer</button><button type="button" class="btn" onclick="closeModal(); openEnseignantForm('${t.id}')">Modifier la fiche</button></div>`);
     return;
   }
-  openModal('Donner un accès personnel — ' + ensFullName(t), `
-    <div class="section-note">📋 Cette opération se fait en 2 étapes, comme pour les autres comptes (Direction, Fondation…) :</div>
-    <ol style="padding-left:20px;line-height:1.8;font-size:var(--fs-sm);">
-      <li>Supabase Dashboard → <strong>Authentication → Users → Add user</strong> — créez un compte avec l'email et le mot de passe personnels de ${escapeHtml(ensFullName(t))}. Notez l'<strong>UID</strong> généré.</li>
-      <li>Dans <strong>SQL Editor</strong>, collez cette requête en remplaçant <code>&lt;UID&gt;</code> par l'UID obtenu :</li>
-    </ol>
-    <pre style="background:var(--surface-2);padding:12px;border-radius:var(--r-control);font-size:var(--fs-xs);overflow-x:auto;white-space:pre-wrap;">insert into profiles (id, ecole_id, role, nom_complet, enseignant_id)
-values ('&lt;UID&gt;', '${session.ecoleId}', 'enseignant', '${escapeHtml(ensFullName(t)).replace(/'/g,"''")}', '${enseignantId}');</pre>
-    <div class="hint">Une fois exécuté, ${escapeHtml(ensFullName(t))} se connectera avec son propre email/mot de passe (espace "Enseignant(e)") et ne verra que ses classes : ${t.classesAssignees.map(cid=>classeName(cid)).join(', ') || 'aucune classe assignée pour le moment — assignez-lui une classe avant de continuer'}.</div>
-    <div class="form-actions"><button type="button" class="btn secondary" onclick="closeModal()">Fermer</button></div>
-  `);
+  const tels = telephonesWhatsapp(t.telephone);
+  const texte = encodeURIComponent(messagePartageApplication('enseignant.html'));
+  openModal('Inviter ' + ensFullName(t), `
+    <p class="hint" style="margin-top:0;">Chaque enseignant a son <strong>propre compte</strong>. ${escapeHtml(ensFullName(t))} ouvre le lien, touche « Continuer avec Google » et coche ses classes ; vous validez dans Paramètres → Demandes d’accès en choisissant « Relier à la fiche existante : ${escapeHtml(ensFullName(t))} ».</p>
+    <dl class="acces-ens"><div><dt>Il ou elle verra</dt><dd>${escapeHtml(classes)} — ${escapeHtml(matieres)}</dd></div></dl>
+    <div class="form-actions" style="flex-wrap:wrap;">
+      ${tels.map(n => `<a class="btn" href="https://wa.me/${n}?text=${texte}" target="_blank" rel="noopener">Envoyer sur WhatsApp · ${n.replace(/^225/, '').replace(/(\d{2})(?=\d)/g, '$1 ')}</a>`).join('')}
+      <button type="button" class="btn secondary" onclick="copierLienApplication('enseignant.html')">Copier le lien</button>
+      <button type="button" class="btn secondary" onclick="closeModal()">Fermer</button>
+    </div>`);
 }
 
 function openEnseignantForm(id){
   const t = id ? enseignantById(id) : null;
   const allMatieres = [...new Set(Object.values(MATIERES_BY_CYCLE).flat())];
   openModal(t ? "Modifier l'enseignant" : 'Nouvel enseignant', `
+    <div class="hint" style="margin-top:0;">Si vous cochez des <strong>matières</strong>, l’enseignant ne verra et ne saisira que ces matières dans ses classes. Sans matière cochée : toutes les matières de ses classes.</div>
     <form id="formEns" onsubmit="return handleSaveEnseignant(event)">
       <input type="hidden" name="id" value="${t?t.id:''}">
       <button type="button" class="btn secondary sm" style="margin-bottom:14px;" onclick="ouvrirRemplissageIntelligent('enseignant', SCHEMA_ENSEIGNANT, (r)=>appliquerRemplissage('formEns', r))">✨ Remplir automatiquement</button>
@@ -8512,7 +8571,7 @@ function renderComptaScolarite(){
           <select onchange="ui.filters.comptaClasse=this.value; renderView('comptabilite')">
             ${DB.classes.map(c=>`<option value="${c.id}" ${classeId===c.id?'selected':''}>${c.nom}</option>`).join('')}
           </select>
-          <button class="btn secondary" onclick="renderView('parametres')" title="Gérer les échéances (Frais d'inscription, versements...) depuis Paramètres">🎓 Échéances</button>
+          ${['direction','fondation'].includes(ui.role) ? `<button class="btn secondary" onclick="go('parametres')" title="Gérer les échéances (Frais d'inscription, versements...) depuis Paramètres">🎓 Échéances</button>` : ''}
           <button class="btn secondary" onclick="exporterScolariteExcel()">⬇️ Excel (toutes les classes)</button>
           ${grilleActive ? '' : `<button class="btn secondary" onclick="openFraisScolariteForm()">⚙️ Configurer les frais</button>`}
         </div>

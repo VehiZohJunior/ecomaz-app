@@ -3403,3 +3403,85 @@ create policy "publications lecture ecole" on storage.objects for select to auth
                   and public.peut_voir_publication(p.ecole_id, p.classe_ids))
     and public.double_verification_ok()
   );
+-- =====================================================================
+-- 88. Civilité, matières des enseignants, scolarité réservée (2026-10-18)
+-- =====================================================================
+-- a) Civilité (Monsieur / Madame) pour les salutations : chacun la choisit
+--    pour lui-même seulement (aucune autre colonne du profil modifiable).
+alter table profiles add column if not exists civilite text check (civilite in ('M', 'F'));
+create or replace function definir_civilite(p_civilite text) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if auth.uid() is null then raise exception 'Non authentifié'; end if;
+  if p_civilite not in ('M', 'F') then raise exception 'Civilité invalide'; end if;
+  update profiles set civilite = p_civilite where id = auth.uid();
+end $$;
+revoke all on function definir_civilite(text) from public, anon;
+grant execute on function definir_civilite(text) to authenticated;
+
+-- b) Matières : un enseignant qui a des matières cochées ne voit et ne saisit
+--    que celles-ci (dans ses classes). Sans matière cochée : toutes (cas du primaire).
+create or replace function mes_matieres() returns text[]
+language sql stable security definer set search_path = public as $$
+  select coalesce(matieres, '{}') from enseignants where id = mon_enseignant_id()
+$$;
+create or replace function matiere_autorisee(p_matiere text) returns boolean
+language sql stable security definer set search_path = public as $$
+  select mon_role() is distinct from 'enseignant'::role_utilisateur
+      or coalesce(trim(p_matiere), '') = ''
+      or coalesce(cardinality(mes_matieres()), 0) = 0
+      or lower(trim(p_matiere)) in (select lower(trim(m)) from unnest(mes_matieres()) m)
+$$;
+revoke all on function mes_matieres() from public, anon;
+revoke all on function matiere_autorisee(text) from public, anon;
+grant execute on function mes_matieres() to authenticated;
+grant execute on function matiere_autorisee(text) to authenticated;
+
+drop policy if exists "acces notes" on notes;
+create policy "acces notes" on notes for all using (
+  ecole_id = mon_ecole_id() and (est_perso_admin() or (
+    exists (select 1 from eleves e where e.id = notes.eleve_id and e.classe_id = any (mes_classes()))
+    and matiere_autorisee(notes.matiere))));
+
+drop policy if exists "acces evaluations" on evaluations;
+create policy "acces evaluations" on evaluations for all
+  using (ecole_id = mon_ecole_id() and (est_perso_admin() or (mon_role() = 'enseignant'::role_utilisateur
+    and classe_id = any (mes_classes()) and matiere_autorisee(matiere))))
+  with check (ecole_id = mon_ecole_id() and (est_perso_admin() or (mon_role() = 'enseignant'::role_utilisateur
+    and classe_id = any (mes_classes()) and matiere_autorisee(matiere)))
+    and exists (select 1 from classes c where c.id = evaluations.classe_id and c.ecole_id = evaluations.ecole_id));
+
+drop policy if exists "gestion devoirs" on devoirs;
+create policy "gestion devoirs" on devoirs for all
+  using (ecole_id = mon_ecole_id() and (est_perso_admin() or (mon_role() = 'enseignant'::role_utilisateur
+    and classe_id = any (mes_classes()) and matiere_autorisee(matiere))))
+  with check (ecole_id = mon_ecole_id() and (est_perso_admin() or (mon_role() = 'enseignant'::role_utilisateur
+    and classe_id = any (mes_classes()) and matiere_autorisee(matiere)))
+    and exists (select 1 from classes c where c.id = devoirs.classe_id and c.ecole_id = devoirs.ecole_id));
+
+drop policy if exists "acces programmes" on programmes;
+create policy "acces programmes" on programmes for all using (
+  ecole_id = mon_ecole_id() and (est_perso_admin() or (classe_id = any (mes_classes()) and matiere_autorisee(matiere))));
+
+-- c) Scolarité : montants annuels (classes.frais_scolarite) et échéances /
+--    tranches : modification réservée à la direction et à la fondation.
+drop policy if exists "acces echeances_scolarite" on echeances_scolarite;
+create policy "acces echeances_scolarite" on echeances_scolarite for all
+  using (ecole_id = mon_ecole_id() and est_admin())
+  with check (ecole_id = mon_ecole_id() and est_admin());
+
+create or replace function garder_frais_scolarite() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if auth.uid() is not null and not est_admin() then
+    if tg_op = 'INSERT' and coalesce(new.frais_scolarite, 0) <> 0 then
+      raise exception 'Seules la direction et la fondation peuvent définir la scolarité.';
+    elsif tg_op = 'UPDATE' and new.frais_scolarite is distinct from old.frais_scolarite then
+      raise exception 'Seules la direction et la fondation peuvent modifier la scolarité.';
+    end if;
+  end if;
+  return new;
+end $$;
+drop trigger if exists garder_frais_scolarite on classes;
+create trigger garder_frais_scolarite before insert or update on classes
+  for each row execute function garder_frais_scolarite();

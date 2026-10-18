@@ -90,12 +90,15 @@ for(const theme of THEMES){
     await page.waitForTimeout(600);
     await page.evaluate(installerDemo, donnees);
     await page.evaluate(async ({ eid, role, option }) => {
-      session.userId = 'apercu-demo'; session.ecoleId = eid; session.role = role; session.nomComplet = 'Directeur Démo';
+      session.userId = 'apercu-demo'; session.ecoleId = eid; session.role = role;
+      // Noms et civilités FICTIFS pour vérifier les salutations (secrétariat sans civilité : montre le choix)
+      const P = { direction:['Junior ZOH','M'], fondation:['Blanche KOUAMÉ','F'], secretariat:['Aminata DIALLO',null], enseignant:['Clémentine KOUAKOU',null], parent:['Awa NAHI','F'], portier:['Koffi KONAN','M'] }[role] || ['Démo', null];
+      session.nomComplet = P[0]; session.civilite = P[1];
       ui.role = role;
       // Nouveautés marquées comme déjà vues AVANT l'entrée (sinon la fenêtre couvre l'écran)
       VERSIONS.forEach(v => { try{ localStorage.setItem(`ecomaz_nouveautes_${v.version}_apercu-demo`, '1'); }catch(_e){} });
-      if(role === 'parent'){ session.nomComplet = 'Parent Démo'; DB = await chargerDBParent(); enterAppParent(); return; }
-      if(role === 'portier'){ session.nomComplet = 'Portier Démo'; DB = await chargerDBPortier(); enterAppPortier(); return; }
+      if(role === 'parent'){ DB = await chargerDBParent(); enterAppParent(); return; }
+      if(role === 'portier'){ DB = await chargerDBPortier(); enterAppPortier(); return; }
       DB = await chargerDB();
       if(role === 'enseignant' && DB.enseignants[0]){ session.enseignantId = DB.enseignants[0].id; DB.enseignants[0].classesAssignees = DB.enseignants[0].classesAssignees && DB.enseignants[0].classesAssignees.length ? DB.enseignants[0].classesAssignees : [DB.classes[0].id]; }
       // Option « parents » : 3 comptes parents FICTIFS en mémoire seulement (jamais en base),
@@ -169,6 +172,7 @@ for(const theme of THEMES){
         contacts: () => { ouvrirListeClasse(DB.classes[0].id, 'contacts'); },
         emarg: () => { ouvrirListeClasse(DB.classes[0].id, 'emargement'); },
         cartes: () => { ouvrirCartesScolaires(DB.classes[0].id); },
+        madame: () => { choisirCivilite('F'); },
         relies: () => { document.querySelector('.seg[data-etat="relie"]').click(); },
       };
       if(GESTES[extra]){ await page.evaluate(GESTES[extra]); await page.waitForTimeout(900); }

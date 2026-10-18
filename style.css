@@ -1599,3 +1599,8 @@ button.role-card{ font:inherit; color:inherit; width:100%; display:flex; flex-di
   .bo-table th{ white-space:normal; font-size:10px; }
   .bo-table td{ font-size:11px; }
 }
+/* ===== Salutations et rôles ===== */
+.choix-civilite{ display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:8px; font-size:14px; color:var(--text-dim); }
+.role-etiquette{ display:inline-block; margin-bottom:6px; padding:2px 10px; border-radius:999px; background:var(--primary-soft); color:var(--primary-ink); font-size:12px; font-weight:800; letter-spacing:.02em; }
+.portier-bonjour{ margin:0 0 12px; } .portier-bonjour h2{ margin:0; font-size:20px; }
+.acces-ens{ margin:0 0 10px; display:grid; gap:6px; } .acces-ens div{ display:flex; gap:10px; } .acces-ens dt{ min-width:120px; color:var(--text-dim); } .acces-ens dd{ margin:0; font-weight:700; }

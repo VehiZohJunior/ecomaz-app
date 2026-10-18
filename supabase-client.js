@@ -32,7 +32,7 @@ function objToSnake(obj){
 /* ---------------------------------------------------------------------
    Session courante (utilisateur connecté)
    --------------------------------------------------------------------- */
-const session = { userId:null, ecoleId:null, role:null, nomComplet:'', enseignantId:null };
+const session = { userId:null, ecoleId:null, role:null, nomComplet:'', enseignantId:null, civilite:null };
 
 // "getSession()" lit la session déjà en mémoire/localStorage, sans appel
 // réseau (sauf si le jeton doit être rafraîchi) — contrairement à
@@ -50,6 +50,7 @@ async function chargerProfilCourant(){
     session.ecoleId = data.ecole_id;
     session.role = data.role;
     session.nomComplet = data.nom_complet || '';
+    session.civilite = data.civilite || null;
     session.enseignantId = data.enseignant_id || null;
     try{ localStorage.setItem('ecomaz_profil_cache', JSON.stringify(data)); }catch(_e){}
     return data;
@@ -65,6 +66,7 @@ async function chargerProfilCourant(){
         session.ecoleId = cache.ecole_id;
         session.role = cache.role;
         session.nomComplet = cache.nom_complet || '';
+        session.civilite = cache.civilite || null;
         session.enseignantId = cache.enseignant_id || null;
         return cache;
       }
