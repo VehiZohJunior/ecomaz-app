@@ -2520,6 +2520,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.10.18-23', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Emploi du temps : bouton « Imprimer » — une page A4 par classe (horaires, matières, enseignants, récréations), à afficher en classe ou à donner aux parents.' ],
+  } },
   { version: '2026.10.18-22', nouveautes: {
     commun: [],
     parent: [],
@@ -7592,9 +7598,11 @@ function renderEmploiTemps(){
     <div class="panel">
       <div class="panel-head">
         <div><h2>Emploi du temps</h2><div class="sub">${c.nom} · ${c.cycle}</div></div>
+        <span style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
         <select class="puce-select" aria-label="Classe" onchange="ui.filters.ttClasse=this.value; renderView('emploi-temps')">
           ${mesClasses.map(cl=>`<option value="${cl.id}" ${classeId===cl.id?'selected':''}>${cl.nom}</option>`).join('')}
         </select>
+        <button type="button" class="btn secondary sm" onclick="imprimerEmploiTemps('${classeId}')">${icone('printer')} Imprimer</button></span>
       </div>
       <div class="seulement-mobile">
         <div class="segmente edt-jours" role="tablist" aria-label="Jour">${JOURS.map(j => `<button type="button" role="tab" class="seg${j === jourVu ? ' actif' : ''}" aria-selected="${j === jourVu}" onclick="ui.filters.ttJour='${j}'; renderView('emploi-temps')">${j.slice(0, 3)}${j === jourActuel ? '<span class="edt-auj" aria-label="aujourd’hui"></span>' : ''}</button>`).join('')}</div>
@@ -7614,6 +7622,28 @@ const COULEURS_MATIERES = ['#2E7D62', '#B5492F', '#C48A1E', '#3E7C8A', '#7A5C99'
 function couleurMatiere(m){
   let h = 0; for(const ch of String(m || '')) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
   return COULEURS_MATIERES[h % COULEURS_MATIERES.length];
+}
+// Emploi du temps imprimable (A4) : à afficher en classe ou à remettre aux parents
+function imprimerEmploiTemps(classeId){
+  const c = DB.classes.find(x => x.id === classeId); if(!c) return;
+  const m = DB.meta || {};
+  const periodes = PERIODES_BY_CYCLE[c.cycle] || [];
+  const lignes = periodes.map((p, i) => p.type === 'pause'
+    ? `<tr class="edt-imp-pause"><td>${p.debut} – ${p.fin}</td><td colspan="${JOURS.length}">${escapeHtml(p.label)}</td></tr>`
+    : `<tr><td class="edt-imp-heure">${p.debut}<br>${p.fin}</td>${JOURS.map(j => {
+        const e = DB.emploiTemps.find(x => x.classeId === classeId && x.jour === j && x.slotIndex === i);
+        if(!e) return '<td></td>';
+        const t = enseignantById(e.enseignantId);
+        return `<td style="border-left:4px solid ${couleurMatiere(e.matiere)};"><strong>${escapeHtml(e.matiere)}</strong>${t ? `<small>${escapeHtml(ensFullName(t))}</small>` : ''}</td>`;
+      }).join('')}</tr>`).join('');
+  openModal(`Emploi du temps — ${c.nom}`, `
+    <div class="form-actions no-print" style="margin-top:0;justify-content:flex-end;"><button type="button" class="btn" onclick="window.print()">${icone('printer')} Imprimer / PDF</button></div>
+    <section class="edt-impression">
+      <div class="recu-head">${m.logo ? `<img src="${escapeHtml(m.logo)}" alt="">` : `<div class="recu-logo-ph">🎓</div>`}
+        <div><strong>${escapeHtml(m.nomEcole || '')}</strong><div class="hint">${escapeHtml(m.adresse || '')}</div></div>
+        <div style="margin-left:auto;text-align:right;"><strong>EMPLOI DU TEMPS</strong><div class="hint">${escapeHtml(c.nom)} · ${escapeHtml(m.anneeScolaire || '')}</div></div></div>
+      <table class="edt-imp-table"><thead><tr><th>Horaire</th>${JOURS.map(j => `<th>${j}</th>`).join('')}</tr></thead><tbody>${lignes}</tbody></table>
+    </section>`);
 }
 function openSlotForm(classeId, jour, slotIndex){
   const c = DB.classes.find(x=>x.id===classeId);

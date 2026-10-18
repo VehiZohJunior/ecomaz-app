@@ -22,6 +22,7 @@ const DOCS = [
   ['badges', "ouvrirBadgesQR()"],
   ['affiche', "imprimerAffiche('parent.html')"],
   ['liste', "ouvrirListeClasse(DB.classes[0].id, 'emargement')"],
+  ['emploi-du-temps', "imprimerEmploiTemps(DB.classes[0].id)"],
 ];
 const b = await chromium.launch({ channel: 'msedge', headless: true });
 for(const [doc, geste] of DOCS){
@@ -33,7 +34,9 @@ for(const [doc, geste] of DOCS){
   try{
     await p.evaluate(async ([eid, g]) => { session.userId = 'x'; session.ecoleId = eid; session.role = 'direction'; ui.role = 'direction';
       VERSIONS.forEach(v => { try{ localStorage.setItem('ecomaz_nouveautes_' + v.version + '_x', '1'); }catch(e){} });
-      DB = await chargerDB(); enterApp(); eval(g); }, [D._ecole_id, geste]);
+      DB = await chargerDB();
+      if(!DB.emploiTemps.length){ const mats = ['Langage','Graphisme','Éveil','Motricité']; DB.classes.forEach((c, ci) => JOURS.forEach((j, ji) => (PERIODES_BY_CYCLE[c.cycle] || []).forEach((p, i) => { if(p.type === 'cours') DB.emploiTemps.push({ id: 'x' + ci + ji + i, classeId: c.id, jour: j, slotIndex: i, matiere: mats[(i + ji) % mats.length], enseignantId: (DB.enseignants[0] || {}).id }); }))); }
+      enterApp(); eval(g); }, [D._ecole_id, geste]);
   }catch(e){ erreurs.push(e.message); }
   await p.waitForTimeout(900);
   const f = join(sortie, doc + '.pdf');

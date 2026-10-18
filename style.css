@@ -1632,3 +1632,12 @@ body.theme-portier .appel-apercu{ color:var(--em-gold-400, #E8B04B); }
 /* Compteur du jour au portail */
 .gate-compteur{ display:inline-flex; align-items:center; gap:4px; padding:4px 10px; border-radius:999px; background:rgba(232,176,75,.15); color:var(--em-gold-400, #E8B04B); font-size:12px; font-weight:700; white-space:nowrap; }
 .gate-compteur strong{ font-size:14px; }
+/* ===== Emploi du temps imprimable ===== */
+.edt-impression{ background:var(--surface-1); overflow-x:auto; }
+.edt-imp-table{ width:100%; min-width:0 !important; border-collapse:collapse; font-size:13px; table-layout:fixed; }
+.edt-imp-table th, .edt-imp-table td{ border:1px solid var(--border); padding:6px; vertical-align:top; height:auto !important; }
+.edt-imp-table th{ background:var(--surface-2); font-size:12px; text-transform:uppercase; }
+.edt-imp-table th:first-child, .edt-imp-heure{ width:76px; text-align:center; font-weight:700; font-variant-numeric:tabular-nums; }
+.edt-imp-table td strong{ display:block; } .edt-imp-table td small{ display:block; color:var(--text-dim); font-size:11px; }
+.edt-imp-pause td{ background:var(--surface-2); text-align:center; font-weight:700; color:var(--text-dim); }
+@media print{ .edt-imp-table th, .edt-imp-table td{ border-color:#999; color:#000; } .edt-imp-pause td, .edt-imp-table th{ background:#eee; } .edt-imp-table td{ -webkit-print-color-adjust:exact; print-color-adjust:exact; } }
