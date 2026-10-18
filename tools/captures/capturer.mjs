@@ -79,7 +79,15 @@ for(const theme of THEMES){
       DB = await chargerDB();
       // Option « parents » : 3 comptes parents FICTIFS en mémoire seulement (jamais en base),
       // pour photographier aussi l'état « Compte relié »
-      if(option === 'parents'){
+      // Option « edt » : emploi du temps FICTIF en mémoire seulement
+      if(option.split(',').includes('edt')){
+        const mats = ['Mathématiques', 'Français', 'Éveil', 'Lecture', 'Écriture', 'Anglais', 'Sport'];
+        DB.emploiTemps = [];
+        DB.classes.forEach((c, ci) => ['Lundi','Mardi','Mercredi','Jeudi','Vendredi'].forEach((j, ji) => (PERIODES_BY_CYCLE[c.cycle] || []).forEach((p, i) => {
+          if(p.type === 'cours' && (i + ji) % 4 !== 3) DB.emploiTemps.push({ id: `edt-${ci}-${ji}-${i}`, classeId: c.id, jour: j, slotIndex: i, matiere: mats[(i + ji + ci) % mats.length], enseignantId: (DB.enseignants[ci % DB.enseignants.length] || {}).id });
+        })));
+      }
+      if(option.split(',').includes('parents')){
         const el = DB.eleves.slice(0, 4);
         DB.profiles = (DB.profiles || []).concat(el.slice(0, 3).map((e, i) => ({ id: 'parent-fictif-' + i, role: 'parent', nomComplet: e.parentNom || ('Parent ' + e.nom) })));
         DB.parentsEleves = (DB.parentsEleves || []).concat(el.slice(0, 3).map((e, i) => ({ id: 'lien-fictif-' + i, parentProfileId: 'parent-fictif-' + i, eleveId: e.id })));
@@ -91,7 +99,7 @@ for(const theme of THEMES){
       // « ecran:onglet » : ouvre un sous-onglet (ex. comptabilite:scolarite)
       const [ecranOnglet, extra] = ecranBrut.split('+');
       const [ecran, onglet] = ecranOnglet.split(':');
-      await page.evaluate(([v, o]) => { closeModal && closeModal(); if(o) ui.filters.comptaTab = o; go(v); window.scrollTo(0, 0); }, [ecran, onglet]);
+      await page.evaluate(([v, o]) => { closeModal && closeModal(); if(o){ ui.filters.comptaTab = o; ui.filters.cahierOnglet = o; } go(v); window.scrollTo(0, 0); }, [ecran, onglet]);
       await page.waitForTimeout(900);
       if(extra === 'centre') await page.evaluate(() => { toggleCentre(true); });
       // Gestes d'essai (aucune écriture) : ouvrir une feuille ou un menu avant la photo
@@ -99,6 +107,7 @@ for(const theme of THEMES){
         relier: () => { const d = document.querySelector('.pe-carte[data-etat="non"] .pe-relier'); d.open = true; const c = d.querySelector('.pe-cherche'); c.value = 'aka'; c.dispatchEvent(new Event('input')); d.scrollIntoView({ block: 'center' }); },
         plus: () => { const d = document.querySelector('.pe-carte[data-etat="non"] .pe-plus'); d.open = true; d.scrollIntoView({ block: 'center' }); },
         inviter: () => { document.querySelector('.pe-carte[data-etat="non"] .pe-actions .btn').click(); },
+        absent: () => { document.querySelectorAll('.cj-btn[data-s="Absent"]')[1].click(); document.querySelectorAll('.cj-btn[data-s="Retard"]')[2].click(); },
         relies: () => { document.querySelector('.seg[data-etat="relie"]').click(); },
       };
       if(GESTES[extra]){ await page.evaluate(GESTES[extra]); await page.waitForTimeout(400); }

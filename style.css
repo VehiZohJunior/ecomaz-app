@@ -316,6 +316,63 @@ tbody td input[type=number]{ width:90px; }
 .bulle-dropdown h4{ margin:0 0 var(--sp-3); font-size:var(--fs-sm); }
 /* ===== Refonte (DESIGN.md §6, §8, §11) : composants communs du tableau de bord ===== */
 .db-bonjour{ margin:0 0 12px; }
+/* ----- Emploi du temps (DESIGN.md §11) ----- */
+.puce-select{ min-height:40px; padding:0 34px 0 14px; border-radius:999px; border:1px solid var(--border); background-color:var(--primary-soft); color:var(--primary-ink); font:inherit; font-weight:700; }
+.edt-jours{ width:100%; margin-bottom:12px; }
+.edt-jours .seg{ flex:1 1 0; position:relative; }
+.edt-auj{ position:absolute; top:5px; right:7px; width:6px; height:6px; border-radius:50%; background:var(--accent); }
+.edt-liste{ list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:8px; }
+.edt-ligne{ display:grid; grid-template-columns:52px minmax(0,1fr); gap:10px; align-items:stretch; }
+.edt-heure{ display:flex; flex-direction:column; padding-top:8px; font-variant-numeric:tabular-nums; }
+.edt-heure strong{ font-size:14px; } .edt-heure small{ font-size:12px; color:var(--text-dim); }
+.edt-cours{ display:flex; flex-wrap:wrap; align-items:center; gap:8px; min-width:0; padding:10px 10px 10px 12px; border-radius:12px; background:color-mix(in srgb, var(--mat) 10%, var(--surface-1)); border:1px solid color-mix(in srgb, var(--mat) 25%, var(--border)); border-left:4px solid var(--mat); }
+.edt-cours.en-cours{ box-shadow:0 0 0 2px var(--em-gold-400, #E8B04B); }
+.edt-txt{ flex:1 1 9em; min-width:0; display:flex; flex-direction:column; align-items:flex-start; gap:2px; }
+.edt-txt strong{ overflow-wrap:break-word; hyphens:auto; } .edt-txt small{ color:var(--text-dim); font-size:13px; overflow-wrap:anywhere; }
+.edt-act{ display:flex; gap:6px; align-items:center; flex:0 0 auto; margin-left:auto; }
+.timetable .tt-slot[style*="--mat"]{ background:color-mix(in srgb, var(--mat) 10%, var(--surface-1)); border-left:4px solid var(--mat); }
+.timetable .tt-slot[style*="--mat"] b{ color:var(--text); }
+.edt-vide{ min-height:44px; border:1px dashed var(--border-strong); border-radius:12px; background:transparent; color:var(--text-dim); font:inherit; font-size:14px; text-align:left; padding:0 12px; cursor:pointer; }
+.edt-vide:hover{ color:var(--primary-ink); border-color:var(--primary); }
+.edt-pause{ display:flex; justify-content:space-between; gap:10px; padding:6px 12px; border-radius:8px; background:var(--surface-2); color:var(--text-dim); font-size:13px; }
+.edt-pause strong{ color:var(--text); font-weight:700; }
+/* ----- Cahier d'appel (DESIGN.md §8 et §11) ----- */
+.ca-barre{ display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px; margin-bottom:12px; }
+.ca-mois{ display:flex; align-items:center; justify-content:center; gap:12px; margin-bottom:10px; }
+.ca-mois strong{ min-width:140px; text-align:center; text-transform:capitalize; font-size:16px; }
+.ca-fleche{ width:44px; height:44px; border:1px solid var(--border); border-radius:12px; background:var(--surface-1); color:var(--text); font-size:22px; line-height:1; cursor:pointer; }
+.ca-fleche:hover{ background:var(--surface-2); }
+.ca-defile{ position:relative; }
+@media (max-width:900px){
+  .ca-defile{ -webkit-mask-image:linear-gradient(to right, #000 calc(100% - 28px), transparent); mask-image:linear-gradient(to right, #000 calc(100% - 28px), transparent); }
+  .ca-table .ca-nom{ min-width:0; }
+  .ca-nom-txt{ display:block; max-width:104px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+}
+.ca-table .ca-a, .ca-pastille.ca-a{ background:var(--accent-soft); color:var(--accent-ink); }
+.ca-table .ca-r, .ca-pastille.ca-r{ background:var(--em-gold-100, #fbf0d9); color:color-mix(in srgb, var(--em-gold-400, #E8B04B) 40%, var(--text)); }
+.ca-table .ca-p, .ca-pastille.ca-p{ color:var(--success); }
+.ca-table th.ca-auj, .ca-table td.ca-auj{ background:var(--primary-soft); color:var(--primary-ink); }
+.ca-legende{ display:flex; flex-wrap:wrap; gap:6px 14px; align-items:center; margin-top:10px; font-size:13px; }
+.ca-legende span{ display:inline-flex; align-items:center; gap:6px; }
+.ca-pastille{ display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; border-radius:6px; font-style:normal; font-weight:800; border:1px solid var(--border); }
+.cj-haut{ display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px; }
+.cj-liste{ list-style:none; margin:0; padding:0; display:flex; flex-direction:column; }
+.cj-liste .appel-ligne{ display:grid; grid-template-columns:minmax(0,1fr); gap:8px; padding:12px 0; border-top:1px solid var(--border); }
+.cj-eleve{ display:flex; align-items:center; gap:10px; min-width:0; }
+.cj-nom{ display:flex; flex-direction:column; min-width:0; } .cj-nom strong{ overflow-wrap:anywhere; }
+.cj-signale{ color:var(--accent-ink); font-size:12px; }
+.cj-etats{ display:grid; grid-template-columns:repeat(3, 1fr); gap:6px; }
+.cj-btn{ min-height:44px; border:1px solid var(--border); border-radius:10px; background:var(--surface-1); color:var(--text-dim); font:inherit; font-size:14px; font-weight:700; cursor:pointer; }
+.appel-present .cj-btn[data-s="Présent"]{ background:var(--success-soft); border-color:var(--success); color:var(--success); }
+.appel-absent .cj-btn[data-s="Absent"]{ background:var(--accent-soft); border-color:var(--accent); color:var(--accent-ink); }
+.appel-retard .cj-btn[data-s="Retard"]{ background:var(--em-gold-100, #fbf0d9); border-color:var(--em-gold-400, #E8B04B); color:color-mix(in srgb, var(--em-gold-400, #E8B04B) 40%, var(--text)); }
+.cj-liste .appel-ligne.appel-absent, .cj-liste .appel-ligne.appel-retard{ background:transparent; }
+.cj-motif{ min-height:40px; padding:0 10px; border:1px solid var(--border); border-radius:10px; background:var(--surface-1); color:var(--text); font:inherit; }
+.appel-present .cj-motif{ display:none; }
+.cj-valider{ position:sticky; bottom:0; z-index:20; display:flex; align-items:center; justify-content:space-between; gap:10px; margin:8px -16px -16px; padding:10px 16px calc(10px + env(safe-area-inset-bottom, 0px)); background:color-mix(in srgb, var(--surface-1) 94%, transparent); -webkit-backdrop-filter:blur(10px); backdrop-filter:blur(10px); border-top:1px solid var(--border); }
+.cj-valider .appel-compteur{ margin:0; font-size:13px; }
+@media (max-width:900px){ body.has-bottom-nav .cj-valider{ bottom:calc(60px + env(safe-area-inset-bottom, 0px)); } }
+@media (min-width:900px){ .cj-liste .appel-ligne{ grid-template-columns:minmax(0,1fr) 320px minmax(0,220px); align-items:center; } .appel-present .cj-motif{ display:block; visibility:hidden; } }
 /* ----- Parents ↔ Élèves (DESIGN.md §11) ----- */
 .pe-grille{ display:grid; grid-template-columns:repeat(auto-fill, minmax(min(100%, 320px), 1fr)); gap:12px; align-items:start; }
 .pe-carte{ min-width:0; border:1px solid var(--border); border-radius:16px; padding:14px; background:var(--surface-1); display:flex; flex-direction:column; gap:10px; overflow:hidden; }

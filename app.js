@@ -4298,8 +4298,10 @@ function renderCahierAppel(){
   const pres = DB.presencesEleves.filter(p => p.date.startsWith(f.mois) && eleves.some(e => e.id === p.eleveId));
   const cle = (e, d) => pres.find(p => p.eleveId === e.id && p.date === d);
   const nomMois = new Date(f.mois + '-15T12:00:00').toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+  // Refonte (DESIGN.md §11) : onglet « Aujourd'hui » par défaut sur téléphone, « Mois » sur ordinateur
+  const onglet = ui.filters.cahierOnglet || (window.innerWidth < 900 ? 'jour' : 'mois');
   // Sur téléphone : le registre s'ouvre directement sur la colonne d'aujourd'hui
-  setTimeout(() => { const t = document.querySelector('.ca-table .ca-auj'); if(t && t.scrollIntoView) t.scrollIntoView({ inline: 'center', block: 'nearest' }); }, 0);
+  if(onglet === 'mois') setTimeout(() => { const t = document.querySelector('.ca-table .ca-auj'); if(t && t.scrollIntoView) t.scrollIntoView({ inline: 'center', block: 'nearest' }); }, 0);
   const decale = n => { const [a, m] = f.mois.split('-').map(Number); const d = new Date(a, m - 1 + n, 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; };
   const cellule = (e, d) => {
     const p = cle(e, d), s = p ? p.statut : '';
@@ -4310,28 +4312,74 @@ function renderCahierAppel(){
   };
   return `<div class="view active">
     <div class="panel cahier-appel">
-      <div class="panel-head no-print"><div><h2>📒 Cahier d’appel</h2><div class="sub">Touchez une case pour la changer : vide → • présent → A absent → R retard → vide. Les jours futurs sont verrouillés.</div></div>
+      <div class="panel-head no-print"><div><h2>📒 Cahier d’appel</h2><div class="sub">${onglet === 'jour' ? 'Choisissez Présent, Absent ou Retard pour chaque élève, puis validez.' : 'Touchez une case pour la changer : vide → • présent → A absent → R retard → vide. Les jours futurs sont verrouillés.'}</div></div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;">
           <button class="btn secondary sm" onclick="exporterCahierAppel()">⬇️ Excel</button>
           <button class="btn secondary sm" onclick="window.print()">🖨️ Imprimer</button></div></div>
-      <div class="filters no-print">
-        <select onchange="ui.filters.cahier.classeId=this.value; renderView('cahier-appel')">${mesClasses.map(c => `<option value="${c.id}" ${c.id === f.classeId ? 'selected' : ''}>${escapeHtml(c.nom)}</option>`).join('')}</select>
-        <button class="btn secondary sm" onclick="ui.filters.cahier.mois='${decale(-1)}'; renderView('cahier-appel')">◀</button>
-        <strong style="text-transform:capitalize;align-self:center;">${nomMois}</strong>
-        <button class="btn secondary sm" onclick="ui.filters.cahier.mois='${decale(1)}'; renderView('cahier-appel')">▶</button>
+      <div class="ca-barre no-print">
+        <select class="puce-select" aria-label="Classe" onchange="ui.filters.cahier.classeId=this.value; renderView('cahier-appel')">${mesClasses.map(c => `<option value="${c.id}" ${c.id === f.classeId ? 'selected' : ''}>${escapeHtml(c.nom)}</option>`).join('')}</select>
+        <div class="segmente" role="tablist" aria-label="Affichage">${[['jour', 'Aujourd’hui'], ['mois', 'Mois']].map(([k, l]) => `<button type="button" role="tab" class="seg${onglet === k ? ' actif' : ''}" aria-selected="${onglet === k}" onclick="ui.filters.cahierOnglet='${k}'; renderView('cahier-appel')">${l}</button>`).join('')}</div>
+      </div>
+      ${onglet === 'jour' ? renderAppelDuJour(f.classeId, eleves) : `
+      <div class="ca-mois no-print">
+        <button type="button" class="ca-fleche" aria-label="Mois précédent" onclick="ui.filters.cahier.mois='${decale(-1)}'; renderView('cahier-appel')">‹</button>
+        <strong>${nomMois}</strong>
+        <button type="button" class="ca-fleche" aria-label="Mois suivant" onclick="ui.filters.cahier.mois='${decale(1)}'; renderView('cahier-appel')">›</button>
       </div>
       <div class="print-only"><h2>${escapeHtml(DB.meta?.nomEcole || '')} — Cahier d’appel · ${escapeHtml(classeName(f.classeId))} · <span style="text-transform:capitalize;">${nomMois}</span></h2></div>
       ${!eleves.length ? '<div class="empty-state"><div class="em-ic">📒</div>Aucun élève actif dans cette classe.</div>' : `
-      <div class="table-wrap"><table class="ca-table">
+      <div class="table-wrap ca-defile"><table class="ca-table">
         <thead><tr><th class="ca-nom">Élève</th>${jours.map(d => `<th class="ca-jour${d === auj ? ' ca-auj' : ''}">${new Date(d + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'narrow' })}<br>${Number(d.slice(8))}</th>`).join('')}<th>Abs.</th><th>Ret.</th><th>Prés. %</th></tr></thead>
         <tbody>${eleves.map(e => { const ps = pres.filter(p => p.eleveId === e.id), a = ps.filter(p => p.statut === 'Absent').length, r = ps.filter(p => p.statut === 'Retard').length;
-          return `<tr><td class="ca-nom">${escapeHtml(eleveFullName(e))}</td>${jours.map(d => cellule(e, d)).join('')}<td class="ca-tot">${a || ''}</td><td class="ca-tot">${r || ''}</td><td class="ca-tot">${ps.length ? Math.round(100 * (ps.length - a) / ps.length) + ' %' : '—'}</td></tr>`; }).join('')}</tbody>
+          return `<tr><td class="ca-nom" title="${escapeHtml(eleveFullName(e))}"><span class="ca-nom-txt">${escapeHtml(eleveFullName(e))}</span></td>${jours.map(d => cellule(e, d)).join('')}<td class="ca-tot">${a || ''}</td><td class="ca-tot">${r || ''}</td><td class="ca-tot">${ps.length ? Math.round(100 * (ps.length - a) / ps.length) + ' %' : '—'}</td></tr>`; }).join('')}</tbody>
         <tfoot><tr><td class="ca-nom"><strong>Présents</strong></td>${jours.map(d => { const ps = pres.filter(p => p.date === d); return `<td class="ca-tot">${ps.length ? ps.filter(p => p.statut !== 'Absent').length : ''}</td>`; }).join('')}<td colspan="3"></td></tr></tfoot>
       </table></div>
-      <div class="hint">• présent · <span class="ca-a" style="padding:0 4px;">A</span> absent · <span class="ca-r" style="padding:0 4px;">R</span> retard. Une absence saisie pour aujourd’hui prévient le parent, comme l’appel du jour.</div>
-      <div class="signatures print-only"><div class="sign-box"><div class="sign-role">L’enseignant(e)</div><div class="sign-line">&nbsp;</div></div><div class="sign-box"><div class="sign-role">La Direction</div><div class="sign-line">&nbsp;</div></div></div>`}
+      <div class="ca-legende"><span><i class="ca-pastille ca-p">•</i> Présent</span><span><i class="ca-pastille ca-a">A</i> Absent</span><span><i class="ca-pastille ca-r">R</i> Retard</span><span class="hint" style="margin:0;">Une absence saisie pour aujourd’hui prévient le parent.</span></div>
+      <div class="signatures print-only"><div class="sign-box"><div class="sign-role">L’enseignant(e)</div><div class="sign-line">&nbsp;</div></div><div class="sign-box"><div class="sign-role">La Direction</div><div class="sign-line">&nbsp;</div></div></div>`}`}
     </div>
   </div>`;
+}
+// Appel du jour dans le cahier : mêmes champs (.sel-statut, data-motif) et même
+// enregistrement que l'écran « Pointage élèves » — alerte aux parents incluse.
+function renderAppelDuJour(classeId, eleves){
+  const auj = todayISO();
+  ui.filters.presEleves = { classeId, date: auj };
+  if(DB.absencesSignalees === undefined){
+    DB.absencesSignalees = null;
+    chargerAbsencesSignalees().then(() => { if(ui.currentView === 'cahier-appel') renderView('cahier-appel'); }).catch(() => { DB.absencesSignalees = []; });
+  }
+  if(!eleves.length) return '<div class="empty-state"><div class="em-ic">📒</div>Aucun élève actif dans cette classe.</div>';
+  const jourIso = ((new Date().getDay() + 6) % 7) + 1;
+  const jourDeClasse = (DB.horairesAnnonces?.joursCours || [1, 2, 3, 4, 5]).includes(jourIso);
+  const dejaFait = DB.presencesEleves.some(p => p.date === auj && p.classeId === classeId);
+  const lignes = eleves.map(e => {
+    const rec = DB.presencesEleves.find(p => p.eleveId === e.id && p.date === auj);
+    const sig = absenceSignalee(e.id, auj);
+    const statut = rec ? rec.statut : (sig ? 'Absent' : 'Présent');
+    const motif = rec ? rec.motif : (sig ? sig.motif + (sig.commentaire ? ' — ' + sig.commentaire : '') : '');
+    return `<li class="appel-ligne appel-${statut === 'Présent' ? 'present' : statut === 'Absent' ? 'absent' : 'retard'}" data-ligne="${e.id}">
+      <div class="cj-eleve"><span class="lc-avatar" aria-hidden="true">${escapeHtml(initials(e.prenom, e.nom))}</span><span class="cj-nom"><strong>${escapeHtml(eleveFullName(e))}</strong>${sig ? `<small class="cj-signale">Absence signalée : ${escapeHtml(sig.motif)}</small>` : ''}</span></div>
+      <div class="cj-etats" role="group" aria-label="Statut de ${escapeHtml(eleveFullName(e))}">${['Présent', 'Absent', 'Retard'].map(st => `<button type="button" class="cj-btn" data-s="${st}" onclick="choisirStatutAppel('${e.id}','${st}')">${st}</button>`).join('')}</div>
+      <select class="sel-statut" data-eleve="${e.id}" hidden aria-hidden="true">${['Présent', 'Absent', 'Retard'].map(st => `<option ${statut === st ? 'selected' : ''}>${st}</option>`).join('')}</select>
+      <input type="text" class="cj-motif" data-motif="${e.id}" placeholder="Motif (facultatif)" aria-label="Motif" value="${escapeHtml(motif || '')}">
+    </li>`;
+  }).join('');
+  return `${!jourDeClasse ? `<div class="section-note">Aujourd’hui n’est pas un jour de classe. Vous pouvez quand même faire l’appel si besoin.</div>` : ''}
+    ${dejaFait ? `<div class="banniere-discrete" style="margin-bottom:10px;"><span>${icone('circle-check')}</span><span>L’appel d’aujourd’hui est déjà enregistré. Vous pouvez le corriger puis valider à nouveau.</span></div>` : ''}
+    <div class="cj-haut"><button type="button" class="btn secondary sm" onclick="tousPresents()">${icone('check')} Tous présents</button><span class="hint" style="margin:0;">${fmtDate(auj)}</span></div>
+    <ul class="cj-liste">${lignes}</ul>
+    <div class="cj-valider"><span class="appel-compteur" id="appelCompteur"></span><button type="button" class="btn" onclick="validerAppelDuJour()">Valider l’appel</button></div>
+    ${(setTimeout(majCompteurAppel, 0), '')}`;
+}
+function choisirStatutAppel(eleveId, statut){
+  const sel = document.querySelector(`.sel-statut[data-eleve="${eleveId}"]`); if(!sel) return;
+  sel.value = statut;
+  if(navigator.vibrate) try{ navigator.vibrate(10); }catch(_e){}
+  majLigneAppel(eleveId);
+}
+async function validerAppelDuJour(){
+  await savePresencesEleves();
+  if(ui.currentView === 'cahier-appel') renderView('cahier-appel');
 }
 async function basculerCahierAppel(eleveId, date){
   if(date > todayISO()) return;
@@ -7034,7 +7082,7 @@ function renderEmploiTemps(){
       if(entry){
         const t = enseignantById(entry.enseignantId);
         rowsHtml += `<td${estEnCours(p, jour) ? ' class="tt-encours"' : ''}>
-          <div class="tt-slot">
+          <div class="tt-slot" style="--mat:${couleurMatiere(entry.matiere)}">
             ${estEnCours(p, jour) ? '<span class="tt-badge-encours">En cours</span>' : ''}
             <b>${escapeHtml(entry.matiere)}</b>
             <span>${escapeHtml(ensFullName(t))}</span>
@@ -7045,22 +7093,39 @@ function renderEmploiTemps(){
           </div>
         </td>`;
       } else {
-        rowsHtml += `<td><button class="icon-btn" style="width:100%;" onclick="openSlotForm('${classeId}','${jour}',${i})">+ Ajouter</button></td>`;
+        rowsHtml += `<td><button type="button" class="edt-vide" style="width:100%;" onclick="openSlotForm('${classeId}','${jour}',${i})">+ Ajouter</button></td>`;
       }
     });
     rowsHtml += `</tr>`;
   });
 
+  // Refonte (DESIGN.md §11) : sur téléphone, un jour à la fois en liste verticale
+  const jourVu = JOURS.includes(ui.filters.ttJour) ? ui.filters.ttJour : (jourActuel || JOURS[0]);
+  const listeJour = periodes.map((p, i) => {
+    if(p.type === 'pause') return `<li class="edt-pause"><span>${p.debut} – ${p.fin}</span><strong>${escapeHtml(p.label)}</strong></li>`;
+    const entry = DB.emploiTemps.find(e => e.classeId === classeId && e.jour === jourVu && e.slotIndex === i);
+    const heure = `<span class="edt-heure"><strong>${p.debut}</strong><small>${p.fin}</small></span>`;
+    if(!entry) return `<li class="edt-ligne">${heure}<button type="button" class="edt-vide" onclick="openSlotForm('${classeId}','${jourVu}',${i})">+ Ajouter un cours</button></li>`;
+    const t = enseignantById(entry.enseignantId), enCours = estEnCours(p, jourVu);
+    return `<li class="edt-ligne">${heure}<div class="edt-cours${enCours ? ' en-cours' : ''}" style="--mat:${couleurMatiere(entry.matiere)}">
+      <span class="edt-txt"><strong>${escapeHtml(entry.matiere)}</strong><small>${escapeHtml(ensFullName(t))}</small>${enCours ? '<span class="tt-badge-encours">En cours</span>' : ''}</span>
+      <span class="edt-act"><button type="button" class="btn secondary sm" onclick="openSlotForm('${classeId}','${jourVu}',${i})">Modifier</button><button type="button" class="icon-btn danger" aria-label="Vider ce créneau" title="Vider ce créneau" onclick="clearSlot('${entry.id}')">✕</button></span>
+    </div></li>`;
+  }).join('');
   return `
   <div class="view active">
     <div class="panel">
       <div class="panel-head">
         <div><h2>Emploi du temps</h2><div class="sub">${c.nom} · ${c.cycle}</div></div>
-        <select onchange="ui.filters.ttClasse=this.value; renderView('emploi-temps')">
+        <select class="puce-select" aria-label="Classe" onchange="ui.filters.ttClasse=this.value; renderView('emploi-temps')">
           ${mesClasses.map(cl=>`<option value="${cl.id}" ${classeId===cl.id?'selected':''}>${cl.nom}</option>`).join('')}
         </select>
       </div>
-      <div class="table-wrap">
+      <div class="seulement-mobile">
+        <div class="segmente edt-jours" role="tablist" aria-label="Jour">${JOURS.map(j => `<button type="button" role="tab" class="seg${j === jourVu ? ' actif' : ''}" aria-selected="${j === jourVu}" onclick="ui.filters.ttJour='${j}'; renderView('emploi-temps')">${j.slice(0, 3)}${j === jourActuel ? '<span class="edt-auj" aria-label="aujourd’hui"></span>' : ''}</button>`).join('')}</div>
+        <ul class="edt-liste">${listeJour}</ul>
+      </div>
+      <div class="table-wrap seulement-ordi">
         <table class="timetable">
           <thead><tr><th>Horaire</th>${JOURS.map(j=>`<th>${j}</th>`).join('')}</tr></thead>
           <tbody>${rowsHtml}</tbody>
@@ -7070,6 +7135,11 @@ function renderEmploiTemps(){
   </div>`;
 }
 
+const COULEURS_MATIERES = ['#2E7D62', '#B5492F', '#C48A1E', '#3E7C8A', '#7A5C99', '#8A6A3B', '#1F5C46', '#A8506A'];
+function couleurMatiere(m){
+  let h = 0; for(const ch of String(m || '')) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return COULEURS_MATIERES[h % COULEURS_MATIERES.length];
+}
 function openSlotForm(classeId, jour, slotIndex){
   const c = DB.classes.find(x=>x.id===classeId);
   const matieres = MATIERES_BY_CYCLE[c.cycle];
