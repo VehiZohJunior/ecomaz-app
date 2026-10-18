@@ -917,8 +917,7 @@ function renderView(view){
   // de session, inactivité) : rien à afficher, l'écran de connexion est là.
   // Évite l'erreur « Cannot read properties of null » vue en service le 06/10.
   if(!DB) return;
-  const bandeauDemo = DB.meta?.estDemo ? '<div class="bandeau-demo" role="note">🎭 École de démonstration — toutes les données sont fictives</div>' : '';
-  $('#viewContainer').innerHTML = bandeauDemo + (map[view] || renderDashboard)();
+  $('#viewContainer').innerHTML = (map[view] || renderDashboard)();
 }
 
 $$('.nav-item').forEach(btn => btn.addEventListener('click', () => go(btn.dataset.view)));
