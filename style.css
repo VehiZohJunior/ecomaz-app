@@ -1669,3 +1669,10 @@ body.theme-portier .alerte-inscription{ background:rgba(232,176,75,.12); color:i
 /* Choix Monsieur / Madame : pas de barre de défilement parasite (écran d’inscription) */
 .seg-radio{ overflow-y:hidden; }
 .login-card .seg-radio input{ margin:0; height:100%; }
+/* ===== Console Enseignant : premiers pas ===== */
+.premiers-pas{ border:2px solid color-mix(in srgb, var(--primary) 35%, var(--border)); }
+.pp-grille{ display:grid; grid-template-columns:repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap:10px; margin:6px 0 10px; }
+.pp-geste{ display:flex; gap:12px; align-items:flex-start; text-align:left; padding:14px; border-radius:14px; border:1px solid var(--border); background:var(--surface, #fff); color:inherit; font:inherit; cursor:pointer; min-height:44px; }
+.pp-geste:hover, .pp-geste:focus-visible{ border-color:var(--primary); }
+.pp-num{ flex:0 0 auto; width:30px; height:30px; border-radius:50%; background:var(--primary); color:#fff; font-weight:900; display:inline-flex; align-items:center; justify-content:center; }
+.pp-txt{ display:flex; flex-direction:column; gap:4px; } .pp-txt strong{ display:inline-flex; align-items:center; gap:6px; } .pp-txt small{ color:var(--text-dim); font-size:13px; line-height:1.35; }

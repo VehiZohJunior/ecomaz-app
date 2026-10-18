@@ -1218,8 +1218,19 @@ async function showDemandeAcces(){
   const nomEcole = escapeHtml(window.ECOLE_VITRINE.nom_ecole);
   const carte = (icone, titre, corps) => `<div class="login-card"><div class="login-logo">${icone}</div><h1>${escapeHtml(nomApplication(window.ECOLE_VITRINE.nom_ecole))}</h1><div class="sub" style="font-weight:700;">${titre}</div><div class="sub">${corps}</div>
     <button type="button" class="btn secondary" style="width:100%;margin-top:14px;" onclick="logoutDemande()">Changer de compte</button></div>`;
+  clearInterval(window.__attenteValidation);
   if(dem && dem.statut === 'en_attente'){
-    $('#loginGate').innerHTML = carte('⏳', 'Demande envoyée', `Compte : <strong>${escapeHtml(user.email||'')}</strong><br>L'école doit valider votre accès. Revenez plus tard : vous entrerez automatiquement dès que ce sera fait.<br><button type="button" class="btn sm" style="margin-top:10px;" onclick="location.reload()">🔄 Vérifier maintenant</button>`);
+    $('#loginGate').innerHTML = carte('⏳', 'Demande envoyée', `Compte : <strong>${escapeHtml(user.email||'')}</strong><br>L'école doit valider votre accès. Vous pouvez laisser cette page ouverte : elle s’ouvrira toute seule dès que ce sera fait (ou revenez plus tard).<br><button type="button" class="btn sm" style="margin-top:10px;" onclick="location.reload()">🔄 Vérifier maintenant</button>`);
+    // Attente active : dès que l'école valide (profil créé) on entre ; si elle refuse, on l'affiche
+    window.__attenteValidation = setInterval(async () => {
+      if(document.visibilityState !== 'visible') return;
+      try{
+        const { data: profil } = await sb.from('profiles').select('id').eq('id', user.id).maybeSingle();
+        if(profil){ clearInterval(window.__attenteValidation); location.reload(); return; }
+        const { data: suivi } = await sb.from('demandes_acces').select('statut').eq('id', dem.id).maybeSingle();
+        if(suivi && suivi.statut !== 'en_attente'){ clearInterval(window.__attenteValidation); showDemandeAcces(); }
+      }catch(_e){ /* hors ligne : on réessaiera */ }
+    }, 20000);
     return;
   }
   if(dem && dem.statut === 'refusee'){
@@ -2579,6 +2590,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.10.18-28', nouveautes: {
+    commun: [],
+    parent: [ 'Après votre inscription : laissez la page ouverte, elle s’ouvre toute seule dès que l’école a validé.' ],
+    portier: [],
+    personnel: [ 'Console Enseignant : guide « vos 3 premiers gestes » (appel, devoirs, notes) à la première ouverture ; après l’inscription, la page s’ouvre toute seule dès la validation.' ],
+  } },
   { version: '2026.10.18-27', nouveautes: {
     commun: [],
     parent: [ 'Inscription : choisissez Papa ou Maman, l’application vous salue ensuite comme il faut.' ],
@@ -3754,7 +3771,7 @@ function renderMaJournee(){
   }).join('');
   const ids = new Set(classes.map(c => c.id));
   const dates = (DB.agenda || []).filter(ev => ev.dateFin >= aujourd && (!ev.classeIds || ev.classeIds.some(id => ids.has(id)))).slice(0, 3);
-  return `<div class="panel">
+  return `${renderPremiersPasEnseignant()}<div class="panel">
     <div class="panel-head"><div><h2>Ma journée</h2><div class="sub">${(d => d.charAt(0).toUpperCase() + d.slice(1))(new Date().toLocaleDateString('fr-FR', {weekday:'long', day:'numeric', month:'long'}))} · vos classes</div></div></div>
     ${renderFriseDuJour(classes)}
     <div class="mj-grille">${cartes || '<div class="hint">Aucune classe.</div>'}</div>
@@ -3788,6 +3805,23 @@ async function validerClassesEnseignant(id, valider){
   if(DB.aTraiter) DB.aTraiter.charge = 0;
   toast(valider ? `Classes ouvertes ✅ : ${ensFullName(t)} ne voit que ces classes` : 'Demande refusée');
   renderView('enseignants');
+}
+// Guide « vos 3 premiers gestes » : affiché à l'enseignant jusqu'à ce qu'il le ferme (une fois par appareil et par compte)
+function renderPremiersPasEnseignant(){
+  const cle = 'ecomaz_premiers_pas_' + (session.userId || '');
+  try{ if(localStorage.getItem(cle)) return ''; }catch(_e){ return ''; }
+  const gestes = [
+    ['circle-check', 'Faire l’appel', 'Chaque matin : touchez chaque élève (présent, absent, retard). Les parents des absents sont prévenus.', "go('presences-eleves')"],
+    ['notebook-pen', 'Noter un devoir', 'Écrivez le travail pour demain : les parents le voient dans leur application.', "go('devoirs')"],
+    ['file-text', 'Saisir des notes', 'Évaluations et compositions de vos classes : les moyennes et bulletins se calculent seuls.', "go('notes')"],
+  ];
+  return `<div class="panel premiers-pas">
+    <div class="panel-head"><div><h2>Bienvenue dans votre console 👋</h2><div class="sub">Vos 3 premiers gestes — vous ne voyez que vos classes.</div></div>
+      <button type="button" class="btn secondary sm" onclick="try{localStorage.setItem('${cle}','1')}catch(_e){}; renderView('dashboard')">J’ai compris</button></div>
+    <div class="pp-grille">${gestes.map(([ic, t, d, act], i) => `<button type="button" class="pp-geste" onclick="${act}">
+      <span class="pp-num">${i + 1}</span><span class="pp-txt"><strong>${icone(ic) || ''} ${t}</strong><small>${d}</small></span></button>`).join('')}</div>
+    <div class="hint" style="margin-bottom:0;">Astuce : installez l’application sur votre téléphone (menu ⋮ de Chrome → « Installer l’application ») pour l’ouvrir d’un seul geste.</div>
+  </div>`;
 }
 /* ---------- « Je m'enrôle » : l'enseignant s'inscrit lui-même dans la base de son école ---------- */
 function renderJeMEnrole(){
