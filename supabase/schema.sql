@@ -3371,3 +3371,17 @@ create policy "creation demande acces" on demandes_acces for insert
     and email is not distinct from (auth.jwt() ->> 'email')
     and not exists (select 1 from profiles p where p.id = auth.uid())
   );
+-- =====================================================================
+-- 86. Tailles maximales des textes écrits par les parents (2026-10-18)
+--     (le formulaire limite déjà la saisie ; la base le garantit aussi)
+-- =====================================================================
+alter table messages_internes drop constraint if exists messages_internes_tailles;
+alter table messages_internes add constraint messages_internes_tailles check (char_length(contenu) <= 5000 and char_length(coalesce(auteur_nom, '')) <= 150);
+alter table suggestions drop constraint if exists suggestions_tailles;
+alter table suggestions add constraint suggestions_tailles check (char_length(coalesce(contenu, '')) <= 3000 and char_length(coalesce(auteur_nom, '')) <= 150 and char_length(coalesce(auteur_role, '')) <= 40);
+alter table publication_commentaires drop constraint if exists publication_commentaires_auteur;
+alter table publication_commentaires add constraint publication_commentaires_auteur check (char_length(coalesce(auteur_nom, '')) <= 150);
+alter table objets_perdus drop constraint if exists objets_perdus_parent_nom;
+alter table objets_perdus add constraint objets_perdus_parent_nom check (char_length(coalesce(parent_nom, '')) <= 150);
+alter table absences_signalees drop constraint if exists absences_signalees_parent_nom;
+alter table absences_signalees add constraint absences_signalees_parent_nom check (char_length(coalesce(parent_nom, '')) <= 150);
