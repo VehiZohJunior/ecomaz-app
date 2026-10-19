@@ -2630,6 +2630,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.10.19-3', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Comptabilité sur téléphone : les onglets tiennent sur une seule ligne que l’on fait glisser, l’onglet ouvert reste visible — le contenu apparaît tout de suite.' ],
+  } },
   { version: '2026.10.19-2', nouveautes: {
     commun: [],
     parent: [ 'Présence de la semaine : seulement les jours de classe de l’école.', 'Boutons « Signaler une absence » et « Demander un document » toujours lisibles en entier, même sur petit téléphone.', 'À venir : la date reste en haut de chaque carte.' ],
@@ -8264,6 +8270,10 @@ function joursDeClasseEdt(){
   const res = JOURS.filter((j, i) => jours.includes(i + 1));
   return res.length ? res : JOURS;
 }
+// Barre d'onglets qui glisse (téléphone) : l'onglet actif est ramené au centre, sans faire bouger la page
+function centrerOngletActif(){
+  document.querySelectorAll('.subtabs').forEach(barre => { const a = barre.querySelector('.subtab.active'); if(a && barre.scrollWidth > barre.clientWidth) barre.scrollLeft = a.offsetLeft - (barre.clientWidth - a.offsetWidth) / 2; });
+}
 function hhmmEdt(t){ return String(t || '').slice(0, 5); }
 function classeEnHorairesLibres(classeId){ return (DB.emploiTemps || []).some(e => e.classeId === classeId && e.heureDebut); }
 function seanceValide(e, dateRef){ return (!e.valableDu || e.valableDu <= dateRef) && (!e.valableAu || e.valableAu >= dateRef); }
@@ -8893,6 +8903,7 @@ function renderComptabilite(){
   const cacheAReinitialiser = {journal:'__journalComptaCache', budget:'__budgetsComptaCache'};
   return `
   <div class="view active">
+    ${(setTimeout(centrerOngletActif, 0), '')}
     <div class="subtabs">
       ${tabsVisibles.map(t=>`<button class="subtab ${tab===t.id?'active':''}" onclick="ui.filters.comptaTab='${t.id}'; ${cacheAReinitialiser[t.id]?cacheAReinitialiser[t.id]+'=null; ':''}renderView('comptabilite')">${t.icon} ${t.label}</button>`).join('')}
     </div>

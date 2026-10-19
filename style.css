@@ -1749,3 +1749,12 @@ body.theme-portier .alerte-inscription{ background:rgba(232,176,75,.12); color:i
 .actu-carte{ align-items:flex-start; }
 .actu-date{ flex:0 0 auto; }
 .actu-corps{ min-width:0; flex:1; }
+
+/* ===== Onglets (Comptabilité, Pointage…) : une seule ligne qui glisse sur téléphone ===== */
+@media (max-width:760px){
+  .subtabs{ flex-wrap:nowrap; overflow-x:auto; scroll-snap-type:x proximity; -webkit-overflow-scrolling:touch; scrollbar-width:none;
+    margin-left:calc(-1 * var(--sp-4, 16px)); margin-right:calc(-1 * var(--sp-4, 16px)); padding:2px var(--sp-4, 16px) 6px;
+    -webkit-mask-image:linear-gradient(90deg, transparent 0, #000 14px, #000 calc(100% - 22px), transparent 100%); mask-image:linear-gradient(90deg, transparent 0, #000 14px, #000 calc(100% - 22px), transparent 100%); }
+  .subtabs::-webkit-scrollbar{ display:none; }
+  .subtab{ flex:0 0 auto; white-space:nowrap; scroll-snap-align:start; }
+}
