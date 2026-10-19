@@ -101,7 +101,9 @@ async function chargerDB(){
 const MATIERES_BY_CYCLE = {
   'Garderie':   ['Éveil','Motricité','Chant & Comptines','Activités Manuelles'],
   'Maternelle': ['Langage','Graphisme','Éveil Scientifique','Activités Numériques','Motricité','Chant & Poésie'],
-  'Primaire':   ['Français','Mathématiques',"Sciences d'Observation",'Histoire-Géographie','Éducation Civique et Morale','Anglais','EPS','Arts Plastiques'],
+  // Primaire : intitulés du programme officiel ivoirien (PNAPAS) — Sciences et Technologie, EDHC
+  // (Éducation aux Droits de l'Homme et à la Citoyenneté), AEC (Activités d'Expression et de Création)
+  'Primaire':   ['Français','Mathématiques','Sciences et Technologie','Histoire-Géographie','EDHC','AEC','EPS','Anglais'],
   'Collège':    ['Français','Mathématiques','Anglais','SVT','Physique-Chimie','Histoire-Géographie','EPS','Éducation Civique et Morale'],
   'Lycée':      ['Français','Mathématiques','Anglais','Philosophie','Physique-Chimie','SVT','Histoire-Géographie','EPS'],
   'Grande École': ['Anglais','Informatique','Méthodologie','Communication professionnelle','Spécialité','Stage / Projet tuteuré'],
@@ -2630,6 +2632,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.10.19-5', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Primaire : matières aux intitulés du programme officiel — Français, Mathématiques, Sciences et Technologie, Histoire-Géographie, EDHC, AEC, EPS, Anglais (notes, devoirs, programmes et bulletins).' ],
+  } },
   { version: '2026.10.19-4', nouveautes: {
     commun: [],
     parent: [],
