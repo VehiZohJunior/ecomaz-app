@@ -2628,6 +2628,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.10.19-1', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Enseignants : bouton « Activer son accès » sur chaque fiche sans compte — indiquez l’adresse Gmail de l’enseignant ; il entre ensuite directement avec « Continuer avec Google », relié à sa fiche et à ses classes. Message WhatsApp prêt pour le prévenir.' ],
+  } },
   { version: '2026.10.18-42', nouveautes: {
     commun: [],
     parent: [],
@@ -7402,10 +7408,10 @@ function renderEnseignants(){
       <td>${t.matieres.join(', ')}</td>
       <td>${escapeHtml(t.telephone)}</td>
       <td><span class="badge ${t.statut==='Actif'?'green':'gray'}">${t.statut}</span></td>
-      <td>${profilLie ? `<span class="badge green">Compte personnel</span>` : `<span class="badge amber">Pas encore inscrit</span>`}</td>
+      <td>${profilLie ? `<span class="badge green">Accès actif</span>` : `<button type="button" class="btn sm" onclick="ouvrirAccesPersonnel('${t.id}')">Activer son accès</button>`}</td>
       <td style="white-space:nowrap;">
         <button class="icon-btn" title="Modifier" onclick="openEnseignantForm('${t.id}')">✏️</button>
-        <button class="icon-btn" title="${profilLie ? 'Son compte' : 'Inviter'}" onclick="ouvrirAccesPersonnel('${t.id}')">🔗</button>
+        ${profilLie ? `<button class="icon-btn" title="Son compte" aria-label="Son compte" onclick="ouvrirAccesPersonnel('${t.id}')">🔗</button>` : ''}
         <button class="icon-btn danger" title="Supprimer" onclick="deleteEnseignant('${t.id}')">🗑️</button>
       </td>
     </tr>`;
@@ -7528,6 +7534,25 @@ function ouvrirAccesPersonnel(enseignantId){
   }
   const tels = telephonesWhatsapp(t.telephone);
   const texte = encodeURIComponent(messagePartageApplication('enseignant.html'));
+  if(['secretariat','direction','fondation'].includes(ui.role)){
+    openModal('Activer l’accès de ' + ensFullName(t), `
+      <form onsubmit="return activerAccesEnseignant(event,'${t.id}')">
+        <p class="hint" style="margin-top:0;">Indiquez l’adresse <strong>Gmail</strong> de ${escapeHtml(ensFullName(t))}. Après activation, il ou elle ouvre l’application EcoMaZ-ENSEIGNANTS, touche « Continuer avec Google » avec cette adresse et entre directement dans sa console, sans autre validation.</p>
+        <dl class="acces-ens"><div><dt>Classes visibles</dt><dd>${escapeHtml(classes)}</dd></div><div><dt>Matières</dt><dd>${escapeHtml(matieres)}</dd></div></dl>
+        <div class="field"><label for="accesEmail">Adresse Gmail de l’enseignant(e)</label>
+          <input type="email" id="accesEmail" required maxlength="120" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="prenom.nom@gmail.com" value="${escapeHtml(t.email || '')}"></div>
+        <div class="pin-error" id="accesErr"></div>
+        <div class="form-actions"><button type="button" class="btn secondary" onclick="closeModal()">Annuler</button><button type="submit" class="btn" id="accesBouton">Activer son accès</button></div>
+      </form>
+      <details class="acces-autre"><summary>L’enseignant(e) préfère s’inscrire lui-même ou elle-même</summary>
+        <p class="hint">Envoyez-lui le lien : il ou elle touche « Continuer avec Google » et coche ses classes ; sa demande arrive en haut de cet écran, choisissez alors « Relier à la fiche existante : ${escapeHtml(ensFullName(t))} ».</p>
+        <div class="form-actions" style="flex-wrap:wrap;justify-content:flex-start;">
+          ${tels.map(n => `<a class="btn secondary sm" href="https://wa.me/${n}?text=${texte}" target="_blank" rel="noopener">WhatsApp · ${n.replace(/^225/, '').replace(/(\d{2})(?=\d)/g, '$1 ')}</a>`).join('')}
+          <button type="button" class="btn secondary sm" onclick="copierLienApplication('enseignant.html')">Copier le lien</button>
+        </div>
+      </details>`);
+    return;
+  }
   openModal('Inviter ' + ensFullName(t), `
     <p class="hint" style="margin-top:0;">Chaque enseignant a son <strong>propre compte</strong>. ${escapeHtml(ensFullName(t))} ouvre le lien, touche « Continuer avec Google » et coche ses classes ; vous validez dans Enseignants → Inscriptions des enseignants en choisissant « Relier à la fiche existante : ${escapeHtml(ensFullName(t))} ».</p>
     <dl class="acces-ens"><div><dt>Il ou elle verra</dt><dd>${escapeHtml(classes)} — ${escapeHtml(matieres)}</dd></div></dl>
@@ -7538,6 +7563,33 @@ function ouvrirAccesPersonnel(enseignantId){
     </div>`);
 }
 
+async function activerAccesEnseignant(ev, enseignantId){
+  ev.preventDefault();
+  const t = enseignantById(enseignantId); if(!t) return false;
+  const email = $('#accesEmail').value.trim().toLowerCase(), err = $('#accesErr'), b = $('#accesBouton');
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){ err.textContent = 'Adresse e-mail invalide.'; return false; }
+  if(!/@gmail\.com$|@googlemail\.com$/.test(email) && !confirm('Cette adresse n’est pas une adresse Gmail. « Continuer avec Google » ne marchera que si c’est un compte Google. Continuer quand même ?')) return false;
+  b.disabled = true; b.textContent = 'Activation…'; err.textContent = '';
+  try{
+    const { data, error } = await sb.functions.invoke('activer-acces-enseignant', { body: { enseignantId, email } });
+    if(error) throw new Error(await messageErreurFonction(error));
+    if(!data?.ok) throw new Error(data?.error || 'Activation impossible');
+    DB.profiles = (DB.profiles || []).concat([{ id: data.profilId, ecoleId: session.ecoleId, role: 'enseignant', enseignantId, nomComplet: ensFullName(t) }]);
+    if(DB.aTraiter) DB.aTraiter.charge = 0;
+    toast(`Accès activé ✅ : ${ensFullName(t)} peut entrer avec « Continuer avec Google »`);
+    // Prévenir l'enseignant tout de suite (message prêt, gratuit)
+    const tels = telephonesWhatsapp(t.telephone);
+    const msg = `Bonjour ${[titreEnseignant(t), t.prenom, t.nom].filter(Boolean).join(' ')},\n\nVotre accès à l'application EcoMaZ-ENSEIGNANTS ${DB.meta.nomEcole} est activé.\n\n1. Ouvrez ce lien dans Chrome : ${lienApplication('enseignant.html')}\n2. Touchez « Continuer avec Google »\n3. Choisissez votre adresse ${email}\n\nVous arrivez directement dans votre console, avec vos classes.`;
+    openModal('Accès activé ✅', `
+      <p style="margin-top:0;">${escapeHtml(ensFullName(t))} peut maintenant entrer dans sa console avec <strong>${escapeHtml(email)}</strong> (bouton « Continuer avec Google »).</p>
+      <div class="form-actions" style="flex-wrap:wrap;justify-content:flex-start;">
+        ${tels.map(n => `<a class="btn" href="https://wa.me/${n}?text=${encodeURIComponent(msg)}" target="_blank" rel="noopener">Le prévenir sur WhatsApp · ${n.replace(/^225/, '').replace(/(\d{2})(?=\d)/g, '$1 ')}</a>`).join('') || `<button type="button" class="btn" onclick="navigator.clipboard && navigator.clipboard.writeText(${escapeHtml(JSON.stringify(msg))}).then(() => toast('Message copié'))">Copier le message pour le prévenir</button>`}
+        <button type="button" class="btn secondary" onclick="closeModal(); renderView('enseignants')">Fermer</button>
+      </div>`);
+    renderView('enseignants');
+  }catch(e){ err.textContent = 'Activation impossible : ' + e.message; b.disabled = false; b.textContent = 'Activer son accès'; }
+  return false;
+}
 function openEnseignantForm(id){
   const t = id ? enseignantById(id) : null;
   const allMatieres = [...new Set(Object.values(MATIERES_BY_CYCLE).flat())];

@@ -348,6 +348,16 @@ async function requete(accessToken, chemin, options = {}){
   const enrAnon = await requete(ANON_KEY, `/rest/v1/rpc/m_enroler_enseignant`, { method:'POST', body: corpsEnrole });
   verifier('Sans connexion, impossible de s’enrôler', !enrAnon.ok, `statut ${enrAnon.status}`);
 
+  section('7sexdecies. Activation de l’accès d’un enseignant (19/10/2026) — refus sans rien créer');
+  const corpsActiv = JSON.stringify({ enseignantId: '00000000-0000-4000-8000-000000000001', email: 'aucun-compte-test@exemple.invalid' });
+  const activAnon = await fetch(`${URL_BASE}/functions/v1/activer-acces-enseignant`, { method:'POST', headers:{ apikey: ANON_KEY, 'Content-Type':'application/json' }, body: corpsActiv });
+  verifier('Sans connexion, impossible d’activer un accès enseignant', !activAnon.ok, `statut ${activAnon.status}`);
+  const activEns = await fetch(`${URL_BASE}/functions/v1/activer-acces-enseignant`, { method:'POST', headers:{ Authorization:`Bearer ${tokenEnseignant}`, 'Content-Type':'application/json' }, body: corpsActiv });
+  verifier('Un enseignant ne peut pas activer d’accès', !activEns.ok, `statut ${activEns.status}`);
+  const activFaux = await fetch(`${URL_BASE}/functions/v1/activer-acces-enseignant`, { method:'POST', headers:{ Authorization:`Bearer ${tokenSecretariat}`, 'Content-Type':'application/json' }, body: corpsActiv });
+  const activFauxCorps = await activFaux.json().catch(() => ({}));
+  verifier('Fiche inconnue : activation refusée (aucun compte créé)', !activFaux.ok && /introuvable/i.test(activFauxCorps.error || ''), `reçu ${JSON.stringify(activFauxCorps).slice(0, 80)}`);
+
   section('8. Visiteur non connecté — ne lit que les affichages publics prévus');
   for(const table of ['eleves','enseignants_lecture','profiles','paiements_scolarite','messages','parents_eleves','presences_eleves','eleves_portier_lecture','objets_perdus','push_abonnements','absences_signalees','evenements_agenda','devoirs','personnes_autorisees','sante_eleves','reponses_agenda','corrections_fiches','menus_cantine','preinscriptions','demandes_documents','evaluations','coefficients_matieres','bulletins_resultats']){
     const r = await requete(ANON_KEY, `/rest/v1/${table}?select=*&limit=1`);
