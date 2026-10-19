@@ -358,6 +358,16 @@ async function requete(accessToken, chemin, options = {}){
   const activFauxCorps = await activFaux.json().catch(() => ({}));
   verifier('Fiche inconnue : activation refusée (aucun compte créé)', !activFaux.ok && /introuvable/i.test(activFauxCorps.error || ''), `reçu ${JSON.stringify(activFauxCorps).slice(0, 80)}`);
 
+  section('7septdecies. Invitation personnelle des parents (19/10/2026) — refus sans rien créer');
+  const invAnon = await requete(ANON_KEY, `/rest/v1/rpc/creer_invitation_parent`, { method:'POST', body: JSON.stringify({ p_eleve_ids:['00000000-0000-4000-8000-000000000001'], p_tel:'0700000000' }) });
+  verifier('Sans connexion, impossible de créer une invitation', !invAnon.ok, `statut ${invAnon.status}`);
+  const invEns = await requete(tokenEnseignant, `/rest/v1/rpc/creer_invitation_parent`, { method:'POST', body: JSON.stringify({ p_eleve_ids:['00000000-0000-4000-8000-000000000001'], p_tel:'0700000000' }) });
+  verifier('Un enseignant ne peut pas créer d’invitation parent', !invEns.ok, `statut ${invEns.status}`);
+  const invFaux = await requete(tokenEnseignant, `/rest/v1/rpc/utiliser_invitation_parent`, { method:'POST', body: JSON.stringify({ p_code:'code-inexistant-xyz', p_civilite:'M', p_nom:'Test Refus' }) });
+  verifier('Un faux code d’invitation est refusé', !invFaux.ok, `statut ${invFaux.status}`);
+  const invLire = await requete(tokenEnseignant, `/rest/v1/invitations_parents?select=code&limit=1`);
+  verifier('Un enseignant ne lit pas les invitations', Array.isArray(invLire.data) && invLire.data.length === 0);
+
   section('8. Visiteur non connecté — ne lit que les affichages publics prévus');
   for(const table of ['eleves','enseignants_lecture','profiles','paiements_scolarite','messages','parents_eleves','presences_eleves','eleves_portier_lecture','objets_perdus','push_abonnements','absences_signalees','evenements_agenda','devoirs','personnes_autorisees','sante_eleves','reponses_agenda','corrections_fiches','menus_cantine','preinscriptions','demandes_documents','evaluations','coefficients_matieres','bulletins_resultats']){
     const r = await requete(ANON_KEY, `/rest/v1/${table}?select=*&limit=1`);

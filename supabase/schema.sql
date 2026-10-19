@@ -4030,3 +4030,93 @@ create policy "lecture emploi_temps parent" on emploi_temps for select using (
   est_parent() and exists (
     select 1 from parents_eleves pe join eleves e on e.id = pe.eleve_id
     where pe.parent_profile_id = auth.uid() and e.classe_id = emploi_temps.classe_id and e.ecole_id = emploi_temps.ecole_id));
+
+-- =====================================================================
+-- 106. INVITATION PERSONNELLE DES PARENTS (2026-10-19)
+-- =====================================================================
+-- L'école envoie par WhatsApp, au numéro de la fiche de l'enfant, un lien
+-- personnel. Le parent se connecte avec Google et entre DIRECTEMENT,
+-- relié à ses enfants : pas de recherche, pas d'attente de validation.
+-- Garde-fous : code aléatoire long, usage unique, 30 jours, seulement les
+-- enfants de la famille (même école), refus si le compte a déjà un profil.
+create table if not exists invitations_parents (
+  id uuid primary key default gen_random_uuid(),
+  ecole_id uuid not null references ecoles(id) on delete cascade default mon_ecole_id(),
+  code text not null unique,
+  eleve_ids uuid[] not null check (cardinality(eleve_ids) between 1 and 10),
+  telephone text not null default '' check (char_length(telephone) <= 20),
+  cree_par uuid references auth.users(id) on delete set null default auth.uid(),
+  created_at timestamptz not null default now(),
+  expire_at timestamptz not null default now() + interval '30 days',
+  utilise_par uuid references auth.users(id) on delete set null,
+  utilise_at timestamptz
+);
+create index if not exists invitations_parents_ecole on invitations_parents(ecole_id, telephone);
+alter table invitations_parents enable row level security;
+drop policy if exists "lecture invitations_parents" on invitations_parents;
+create policy "lecture invitations_parents" on invitations_parents for select using (ecole_id = mon_ecole_id() and est_perso_admin());
+drop policy if exists "double verification" on invitations_parents;
+create policy "double verification" on invitations_parents as restrictive for all to authenticated
+  using (double_verification_ok()) with check (double_verification_ok());
+-- Aucune écriture directe : tout passe par les deux fonctions ci-dessous.
+
+-- Personnel : crée (ou réutilise) une invitation par famille ; renvoie le code
+create or replace function creer_invitation_parent(p_eleve_ids uuid[], p_tel text)
+returns text language plpgsql security definer set search_path = public as $$
+declare v_ecole uuid := mon_ecole_id(); v_code text; v_tel text := regexp_replace(coalesce(p_tel, ''), '\D', '', 'g');
+begin
+  if v_ecole is null or not est_perso_admin() then raise exception 'Réservé au personnel administratif'; end if;
+  if coalesce(cardinality(p_eleve_ids), 0) = 0 or cardinality(p_eleve_ids) > 10 then raise exception 'Choisissez les enfants de la famille'; end if;
+  if exists (select 1 from unnest(p_eleve_ids) x where not exists (select 1 from eleves e where e.id = x and e.ecole_id = v_ecole)) then
+    raise exception 'Élève invalide';
+  end if;
+  select code into v_code from invitations_parents
+    where ecole_id = v_ecole and telephone = v_tel and utilise_at is null and expire_at > now() + interval '7 days'
+      and eleve_ids @> p_eleve_ids and eleve_ids <@ p_eleve_ids
+    order by created_at desc limit 1;
+  if v_code is not null then return v_code; end if;
+  v_code := translate(encode(extensions.gen_random_bytes(12), 'base64'), '+/=', 'xyz');
+  insert into invitations_parents (ecole_id, code, eleve_ids, telephone) values (v_ecole, v_code, p_eleve_ids, left(v_tel, 20));
+  return v_code;
+end $$;
+revoke all on function creer_invitation_parent(uuid[], text) from public, anon;
+grant execute on function creer_invitation_parent(uuid[], text) to authenticated;
+
+-- Parent connecté avec Google (sans profil) : aperçu de l'invitation (prénoms et classes seulement)
+create or replace function apercu_invitation_parent(p_code text)
+returns table (ecole_id uuid, nom_ecole text, enfants text, valide boolean)
+language sql stable security definer set search_path = public as $$
+  select i.ecole_id, ec.nom_ecole,
+    (select string_agg(e.prenom || ' (' || coalesce(c.nom, '') || ')', ', ' order by e.prenom) from eleves e left join classes c on c.id = e.classe_id where e.id = any(i.eleve_ids)),
+    i.utilise_at is null and i.expire_at > now()
+  from invitations_parents i join ecoles ec on ec.id = i.ecole_id
+  where i.code = p_code and auth.uid() is not null
+$$;
+revoke all on function apercu_invitation_parent(text) from public, anon;
+grant execute on function apercu_invitation_parent(text) to authenticated;
+
+-- Parent : utilise l'invitation → profil parent + liens vers ses enfants, en une fois
+create or replace function utiliser_invitation_parent(p_code text, p_civilite text, p_nom text)
+returns void language plpgsql security definer set search_path = public as $$
+declare i invitations_parents%rowtype; v_nom text := trim(coalesce(p_nom, '')); e uuid;
+begin
+  if auth.uid() is null then raise exception 'Non connecté'; end if;
+  if p_civilite not in ('M', 'F') then raise exception 'Choisissez Papa ou Maman'; end if;
+  if char_length(v_nom) not between 2 and 80 then raise exception 'Indiquez votre nom'; end if;
+  select * into i from invitations_parents where code = p_code for update;
+  if not found then raise exception 'Invitation introuvable'; end if;
+  if i.utilise_at is not null then raise exception 'Cette invitation a déjà été utilisée. Demandez un nouveau lien à l''école.'; end if;
+  if i.expire_at <= now() then raise exception 'Cette invitation a expiré. Demandez un nouveau lien à l''école.'; end if;
+  if exists (select 1 from profiles where id = auth.uid()) then raise exception 'Ce compte a déjà un accès EcoMaZ'; end if;
+  insert into profiles (id, ecole_id, role, nom_complet, civilite, nom_appel)
+    values (auth.uid(), i.ecole_id, 'parent', v_nom, p_civilite, upper(split_part(v_nom, ' ', array_length(string_to_array(v_nom, ' '), 1))));
+  foreach e in array i.eleve_ids loop
+    if exists (select 1 from eleves where id = e and ecole_id = i.ecole_id) then
+      insert into parents_eleves (ecole_id, parent_profile_id, eleve_id) values (i.ecole_id, auth.uid(), e) on conflict do nothing;
+    end if;
+  end loop;
+  update invitations_parents set utilise_par = auth.uid(), utilise_at = now() where id = i.id;
+  update demandes_acces set statut = 'approuvee' where user_id = auth.uid() and ecole_id = i.ecole_id and statut = 'en_attente';
+end $$;
+revoke all on function utiliser_invitation_parent(text, text, text) from public, anon;
+grant execute on function utiliser_invitation_parent(text, text, text) to authenticated;

@@ -1188,8 +1188,17 @@ const ETAPES_INSCRIPTION = {
   parent: ['Touchez « Continuer avec Google » et choisissez votre adresse Gmail.', 'Écrivez votre nom et votre numéro WhatsApp, puis cochez votre ou vos enfants.', 'L’école valide votre demande : vous suivez alors votre enfant.'],
   portier: ['Touchez « Continuer avec Google » et choisissez votre adresse Gmail.', 'Écrivez votre nom.', 'La direction valide votre demande.'],
 };
+function codeInvitationParent(){
+  try{
+    const c = new URLSearchParams(location.search).get('invitation');
+    if(c) localStorage.setItem('ecomaz_invitation_parent', c);
+    return c || localStorage.getItem('ecomaz_invitation_parent') || '';
+  }catch(_e){ return ''; }
+}
+function oublierInvitationParent(){ try{ localStorage.removeItem('ecomaz_invitation_parent'); }catch(_e){} }
 function renderAccueilInscription(logoHtml, titreLogin, error, iosHint){
   const fixe = window.ESPACE_FIXE;
+  const invitation = fixe === 'parent' && codeInvitationParent();
   const etapes = ETAPES_INSCRIPTION[fixe] || ETAPES_INSCRIPTION.portier;
   const sansEcole = !window.ECOLE_VITRINE;
   const integre = navigateurIntegre();
@@ -1200,7 +1209,8 @@ function renderAccueilInscription(logoHtml, titreLogin, error, iosHint){
       <div class="sub" style="font-weight:700;margin-bottom:2px;">${t('espace_' + fixe + '_label')}</div>
       ${sansEcole ? `<div class="alerte-inscription">Ce lien ne contient pas le nom de l’école. Demandez à l’école de vous renvoyer le lien complet (bouton « Partager sur WhatsApp » de l’école).</div>` : ''}
       ${error ? `<div class="pin-error">${escapeHtml(error)}</div>` : ''}
-      <div class="sub" style="margin-top:6px;">Première fois ou déjà inscrit(e) : entrez avec votre compte Google (Gmail). Aucun mot de passe à retenir.</div>
+      ${invitation ? `<div class="invitation-perso">${icone('mail') || '✉️'} <span><strong>Vous avez reçu une invitation personnelle de l’école.</strong> Touchez « Continuer avec Google » : vous arriverez directement dans votre espace, déjà relié à votre enfant.</span></div>`
+        : `<div class="sub" style="margin-top:6px;">Première fois ou déjà inscrit(e) : entrez avec votre compte Google (Gmail). Aucun mot de passe à retenir.</div>`}
       ${integre ? `<div class="alerte-inscription">
           <strong>Ouvrez d’abord ce lien dans Chrome.</strong> Google refuse la connexion à l’intérieur de WhatsApp ou Facebook.
           Touchez les <strong>⋮</strong> (3 points) en haut à droite, puis « Ouvrir dans Chrome » (ou « Ouvrir dans le navigateur »).
@@ -1232,6 +1242,8 @@ async function showDemandeAcces(){
   $('#loginGate').classList.add('open');
   if(!user || !ecoleId){ showLoginGate("Impossible d'identifier l'établissement. Ouvrez le lien fourni par l'école."); return; }
   const fixe = window.ESPACE_FIXE;
+  // Invitation personnelle : entrée directe, sans demande à valider
+  if(fixe === 'parent' && codeInvitationParent() && await afficherInvitationParent(user)) return;
   const { data: demandes } = await sb.from('demandes_acces').select('*').eq('user_id', user.id).eq('ecole_id', ecoleId).eq('role_demande', fixe);
   const dem = demandes && demandes[0];
   const nomEcole = escapeHtml(window.ECOLE_VITRINE.nom_ecole);
@@ -1333,6 +1345,38 @@ async function handleDemandeAcces(ev){
   if(error){ $('#demErr').textContent = "Envoi impossible : " + error.message; return false; }
   sb.functions.invoke('notifier-personnel', { body: { type: 'demande_acces' } }).catch(() => {});
   showDemandeAcces();
+  return false;
+}
+async function afficherInvitationParent(user){
+  const code = codeInvitationParent();
+  const { data, error } = await sb.rpc('apercu_invitation_parent', { p_code: code });
+  const inv = data && data[0];
+  if(error || !inv || !inv.valide){ oublierInvitationParent(); if(inv && !inv.valide) toast('Ce lien d’invitation a déjà servi ou a expiré : faites votre demande ci-dessous.'); return false; }
+  const nomDefaut = (user.user_metadata && (user.user_metadata.full_name || user.user_metadata.name)) || '';
+  $('#loginGate').innerHTML = `<div class="login-card"><div class="login-logo">👪</div><h1>${escapeHtml(nomApplication(inv.nom_ecole))}</h1>
+    <div class="sub" style="font-weight:700;">Invitation personnelle</div>
+    <div class="invitation-perso" style="margin:10px 0;">${icone('users') || '👪'} <span>Pour <strong>${escapeHtml(inv.enfants || '')}</strong></span></div>
+    <div class="sub">Compte Google : <strong>${escapeHtml(user.email || '')}</strong></div>
+    <form class="pin-pad" onsubmit="return utiliserInvitationParent(event)">
+      <div class="field" style="text-align:left;margin-bottom:10px;"><label>Vous êtes</label><div class="segmente seg-radio" role="radiogroup" aria-label="Papa ou Maman">
+        ${[['M', 'Papa'], ['F', 'Maman']].map(([k, l]) => `<label class="seg"><input type="radio" name="invCiv" value="${k}" required>${l}</label>`).join('')}</div></div>
+      <div class="field" style="text-align:left;margin-bottom:10px;"><label for="invNom">Votre nom complet</label><input type="text" id="invNom" required minlength="2" maxlength="80" value="${escapeHtml(nomDefaut)}" autocomplete="name"></div>
+      <div class="pin-error" id="invErr"></div>
+      <button class="btn" type="submit" id="invBouton" style="width:100%;margin-top:6px;">Accéder à mon espace</button>
+      <button type="button" class="pin-back" onclick="logoutDemande()">Changer de compte Google</button>
+    </form></div>`;
+  return true;
+}
+async function utiliserInvitationParent(ev){
+  ev.preventDefault();
+  const civ = document.querySelector('input[name=invCiv]:checked')?.value, nom = $('#invNom').value.trim(), b = $('#invBouton');
+  if(!civ){ $('#invErr').textContent = 'Choisissez Papa ou Maman.'; return false; }
+  b.disabled = true; b.textContent = 'Un instant…';
+  const { error } = await sb.rpc('utiliser_invitation_parent', { p_code: codeInvitationParent(), p_civilite: civ, p_nom: nom });
+  if(error){ $('#invErr').textContent = error.message; b.disabled = false; b.textContent = 'Accéder à mon espace'; return false; }
+  oublierInvitationParent();
+  try{ localStorage.removeItem('ecomaz_profil_cache'); }catch(_e){}
+  location.href = location.pathname + (window.ECOLE_VITRINE ? '?ecole=' + encodeURIComponent(window.ECOLE_VITRINE.id) : '');
   return false;
 }
 async function logoutDemande(){ await deconnexion(); showLoginGate(); }
@@ -2687,6 +2731,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.10.19-8', nouveautes: {
+    commun: [],
+    parent: [ 'Invitation personnelle : avec le lien reçu de l’école, connectez-vous avec Google, choisissez Papa ou Maman et entrez directement dans votre espace, déjà relié à vos enfants.' ],
+    portier: [],
+    personnel: [ 'Inviter les familles : chaque message WhatsApp contient maintenant un lien personnel (30 jours, usage unique). Le parent entre directement, relié à ses enfants — plus de demande à valider.' ],
+  } },
   { version: '2026.10.19-7', nouveautes: {
     commun: [],
     parent: [ 'Aujourd’hui : les matières de la journée de votre enfant et celles du prochain jour de classe, avec un rappel « Il y a EPS : pensez à la tenue de sport ».', 'Emploi du temps de la semaine de votre enfant (bouton « Voir son emploi du temps »).' ],
@@ -4337,7 +4387,18 @@ function famillesARelancer(classeId){
 }
 function cleRelancesParents(){ return 'ecomaz_relances_parents_' + (session.ecoleId || ''); }
 function relancesParents(){ try{ return JSON.parse(localStorage.getItem(cleRelancesParents()) || '{}'); }catch(_e){ return {}; } }
-function messageInvitationFamille(f){
+function messageInvitationFamille(f, code){
+  if(code){
+    const enfants = f.enfants.map(e => `${e.prenom} (${classeName(e.classeId)})`);
+    const liste = enfants.length > 1 ? enfants.slice(0, -1).join(', ') + ' et ' + enfants[enfants.length - 1] : enfants[0];
+    return `Bonjour, parent de ${liste},\n\n`
+      + `${DB.meta.nomEcole} vous invite dans son application EcoMaZ-PARENTS D'ELEVES : absences, devoirs, emploi du temps, scolarité, annonces.\n\n`
+      + `Votre lien personnel (valable 30 jours, pour vous seul) :\n${lienApplication('parent.html')}&invitation=${encodeURIComponent(code)}\n\n`
+      + `1. Ouvrez-le dans Chrome\n2. Touchez « Continuer avec Google »\n3. Choisissez Papa ou Maman : vous arrivez directement dans votre espace, déjà relié à ${f.enfants.length > 1 ? 'vos enfants' : 'votre enfant'}.\n\nMerci !`;
+  }
+  return messageInvitationFamilleSansLien(f);
+}
+function messageInvitationFamilleSansLien(f){
   const enfants = f.enfants.map(e => `${e.prenom} (${classeName(e.classeId)})`);
   const liste = enfants.length > 1 ? enfants.slice(0, -1).join(', ') + ' et ' + enfants[enfants.length - 1] : enfants[0];
   return `Bonjour, parent de ${liste},\n\n`
@@ -4347,9 +4408,21 @@ function messageInvitationFamille(f){
     + `3. Indiquez ce numéro WhatsApp (${telLisible(f.tel)}) : ${f.enfants.length > 1 ? 'vos enfants apparaissent' : 'votre enfant apparaît'} tout seul${f.enfants.length > 1 ? 's' : ''}, cochez et envoyez.\n\n`
     + `L’école valide ensuite votre accès. Merci !`;
 }
-function ouvrirRelanceParents(classeId){
+async function ouvrirRelanceParents(classeId){
   classeId = classeId || '';
   const familles = famillesARelancer(classeId || null), envois = relancesParents();
+  // Un lien personnel par famille (réutilisé tant qu'il est valable) : le parent entrera directement
+  window.__codesInvitation = window.__codesInvitation || {};
+  const aPreparer = familles.filter(f => f.tel && !window.__codesInvitation[f.tel]);
+  if(aPreparer.length){
+    openModal('Inviter les familles sur WhatsApp', `<div class="hint">Préparation des liens personnels (${aPreparer.length})…</div>`);
+    for(let i = 0; i < aPreparer.length; i += 8){
+      await Promise.all(aPreparer.slice(i, i + 8).map(async f => {
+        const { data, error } = await sb.rpc('creer_invitation_parent', { p_eleve_ids: f.enfants.map(e => e.id), p_tel: f.tel });
+        if(!error && data) window.__codesInvitation[f.tel] = data;
+      }));
+    }
+  }
   const avecTel = familles.filter(f => f.tel), sansTel = familles.filter(f => !f.tel);
   const faites = avecTel.filter(f => envois[f.tel]).length;
   const ligne = f => {
@@ -4358,7 +4431,7 @@ function ouvrirRelanceParents(classeId){
       <span class="relance-txt"><strong>${f.enfants.map(e => escapeHtml(eleveFullName(e))).join(' · ')}</strong>
         <small>${[...new Set(f.enfants.map(e => classeName(e.classeId)))].map(escapeHtml).join(', ')}${f.parentNom ? ' · parent : ' + escapeHtml(f.parentNom) : ''}</small></span>
       <span class="relance-actions">${f.tel
-        ? `<a class="btn sm" href="https://wa.me/225${f.tel}?text=${encodeURIComponent(messageInvitationFamille(f))}" target="_blank" rel="noopener" onclick="marquerRelanceParent('${f.tel}')">WhatsApp · ${telLisible(f.tel)}</a>${envoye ? `<span class="badge-etat ok">Envoyé le ${fmtDate(envoye)}</span>` : ''}`
+        ? `<a class="btn sm" href="https://wa.me/225${f.tel}?text=${encodeURIComponent(messageInvitationFamille(f, window.__codesInvitation[f.tel]))}" target="_blank" rel="noopener" onclick="marquerRelanceParent('${f.tel}')">WhatsApp · ${telLisible(f.tel)}</a>${envoye ? `<span class="badge-etat ok">Envoyé le ${fmtDate(envoye)}</span>` : ''}`
         : `<button type="button" class="btn secondary sm" onclick="closeModal(); ui.eleveProfileId='${f.enfants[0].id}'; go('eleves')">Numéro à corriger</button>`}</span>
     </li>`;
   };
@@ -4367,7 +4440,7 @@ function ouvrirRelanceParents(classeId){
       <select class="puce-select petit" aria-label="Classe" onchange="ouvrirRelanceParents(this.value)"><option value="">Toutes les classes</option>${DB.classes.map(c => `<option value="${c.id}" ${classeId === c.id ? 'selected' : ''}>${escapeHtml(c.nom)}</option>`).join('')}</select>
       <span class="hint" style="margin:0;"><strong>${faites}</strong> / ${avecTel.length} famille(s) invitée(s) depuis ce téléphone</span>
     </div>
-    <p class="hint" style="margin-top:0;">Touchez « WhatsApp » : le message personnel est prêt (prénoms des enfants, lien, numéro à utiliser). Envoyez-le, revenez ici, passez à la famille suivante. Leurs demandes arrivent en haut de « Parents ↔ Élèves », marquées « Sûre ».</p>
+    <p class="hint" style="margin-top:0;">Touchez « WhatsApp » : le message est prêt, avec le <strong>lien personnel</strong> de la famille (valable 30 jours, utilisable une seule fois). Le parent se connecte avec Google, choisit Papa ou Maman et <strong>entre directement</strong>, déjà relié à ses enfants — rien à valider de votre côté.</p>
     ${familles.length ? `<ul class="relance-liste">${avecTel.concat(sansTel).map(ligne).join('')}</ul>` : '<div class="etat-vide etat-vide-ok"><span>Toutes les familles de cette sélection sont déjà reliées 🎉</span></div>'}
     <div class="form-actions"><button type="button" class="btn secondary" onclick="closeModal()">Fermer</button></div>`);
 }

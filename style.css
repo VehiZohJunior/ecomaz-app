@@ -1764,3 +1764,6 @@ body.theme-portier .alerte-inscription{ background:rgba(232,176,75,.12); color:i
 /* ===== Parents : cours du jour et rappel du lendemain ===== */
 .aj-rappel{ display:inline-block; margin-top:2px; font-weight:800; color:var(--amber-ink, #8A5A00); }
 .aj-lien{ padding-top:2px; } .aj-lien .lien-discret{ font-weight:700; }
+/* ===== Invitation personnelle des parents ===== */
+.invitation-perso{ display:flex; gap:10px; align-items:flex-start; text-align:left; padding:12px; border-radius:12px; background:var(--primary-soft); border:1px solid color-mix(in srgb, var(--primary) 30%, var(--border)); font-size:14px; line-height:1.4; }
+.invitation-perso svg{ flex:0 0 auto; margin-top:2px; }
