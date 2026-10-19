@@ -103,7 +103,7 @@ const MATIERES_BY_CYCLE = {
   'Maternelle': ['Langage','Graphisme','Éveil Scientifique','Activités Numériques','Motricité','Chant & Poésie'],
   // Primaire : intitulés du programme officiel ivoirien (PNAPAS) — Sciences et Technologie, EDHC
   // (Éducation aux Droits de l'Homme et à la Citoyenneté), AEC (Activités d'Expression et de Création)
-  'Primaire':   ['Français','Mathématiques','Sciences et Technologie','Histoire-Géographie','EDHC','AEC','EPS','Anglais'],
+  'Primaire':   ['Français','Mathématiques','Sciences et Technologie','Histoire-Géographie','EDHC','AEC','EPS','Anglais','Informatique'],
   'Collège':    ['Français','Mathématiques','Anglais','SVT','Physique-Chimie','Histoire-Géographie','EPS','Éducation Civique et Morale'],
   'Lycée':      ['Français','Mathématiques','Anglais','Philosophie','Physique-Chimie','SVT','Histoire-Géographie','EPS'],
   'Grande École': ['Anglais','Informatique','Méthodologie','Communication professionnelle','Spécialité','Stage / Projet tuteuré'],
@@ -2632,6 +2632,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.10.19-6', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Primaire : matière Informatique ajoutée (Anglais ou Informatique au choix). Sur le bulletin, la matière au choix qu’un élève ne suit pas n’apparaît pas et ne compte pas dans sa moyenne.' ],
+  } },
   { version: '2026.10.19-5', nouveautes: {
     commun: [],
     parent: [],
@@ -5114,6 +5120,10 @@ function renderResultatsTrimestre(classeId, trimestre){
   </div>`;
 }
 // Bulletin officiel d'un élève (une page A4)
+// Matières « au choix » (Anglais OU Informatique le vendredi) : sur le bulletin d'un élève,
+// celle qu'il ne suit pas (aucune note) n'apparaît pas — elle ne compte jamais dans la moyenne
+const MATIERES_AU_CHOIX = ['Anglais', 'Informatique'];
+function ligneBulletinUtile(matiere, moy){ return moy !== null || !MATIERES_AU_CHOIX.includes(matiere); }
 function bulletinOfficielHtml(l, r, trimestre){
   const m = DB.meta || {}, e = l.eleve;
   const app = (DB.bulletinsComments || {})[`${e.id}_${trimestre}`] || '';
@@ -5125,7 +5135,7 @@ function bulletinOfficielHtml(l, r, trimestre){
     <div class="bo-identite"><div><span>Élève</span><strong>${escapeHtml(eleveFullName(e))}</strong></div><div><span>Matricule</span><strong>${escapeHtml(e.matricule || '—')}</strong></div>
       <div><span>Classe</span><strong>${escapeHtml(classeName(e.classeId))}</strong></div><div><span>Effectif</span><strong>${r.effectif}</strong></div></div>
     <table class="bo-table"><thead><tr><th>Matière</th><th>Coef.</th><th>Moy. classe<br><small>(camps de base)</small></th><th>Compo.</th><th>Moy. /20</th><th>Moy. × coef.</th><th>Moy. de la classe</th><th>Appréciation</th></tr></thead>
-      <tbody>${l.details.map(d => `<tr><td style="text-align:left;">${escapeHtml(d.matiere)}</td><td>${d.coef}</td><td>${d.classe !== null ? d.classe.toFixed(2) : '—'}</td><td>${d.compo !== null ? d.compo.toFixed(2) : '—'}</td>
+      <tbody>${l.details.filter(d => ligneBulletinUtile(d.matiere, d.moy)).map(d => `<tr><td style="text-align:left;">${escapeHtml(d.matiere)}</td><td>${d.coef}</td><td>${d.classe !== null ? d.classe.toFixed(2) : '—'}</td><td>${d.compo !== null ? d.compo.toFixed(2) : '—'}</td>
         <td><strong>${d.moy !== null ? d.moy.toFixed(2) : '—'}</strong></td><td>${d.moy !== null ? (d.moy * d.coef).toFixed(2) : '—'}</td><td>${d.moyClasseMatiere != null ? d.moyClasseMatiere.toFixed(2) : '—'}</td><td>${d.moy !== null ? escapeHtml(mentionFromAvg(d.moy)) : ''}</td></tr>`).join('')}</tbody>
       <tfoot><tr><td style="text-align:left;"><strong>Total</strong></td><td>${totalCoef}</td><td colspan="3"></td><td><strong>${l.moyenne !== null ? (l.moyenne * totalCoef).toFixed(2) : '—'}</strong></td><td colspan="2"></td></tr></tfoot></table>
     <div class="bo-synthese">
@@ -7035,6 +7045,7 @@ function renderEleveProfile(id){
     const mm = moyenneMatiere(id, mat, trimestre);
     const moy = mm.moy, coef = coefficientDe(cycle, mat);
     if(moy!==null){ sumMoy += moy * coef; countMat += coef; }
+    if(!ligneBulletinUtile(mat, moy)) return '';
     return `<tr>
       <td>${mat}</td>
       <td>${mm.classe!==null?mm.classe.toFixed(2):'—'}</td>
