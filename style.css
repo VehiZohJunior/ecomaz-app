@@ -1761,3 +1761,6 @@ body.theme-portier .alerte-inscription{ background:rgba(232,176,75,.12); color:i
 /* ===== Notes : choix de la composition du trimestre ===== */
 .compos-choix{ flex-wrap:wrap; margin-top:10px; }
 .compos-choix .seg{ white-space:nowrap; }
+/* ===== Parents : cours du jour et rappel du lendemain ===== */
+.aj-rappel{ display:inline-block; margin-top:2px; font-weight:800; color:var(--amber-ink, #8A5A00); }
+.aj-lien{ padding-top:2px; } .aj-lien .lien-discret{ font-weight:700; }

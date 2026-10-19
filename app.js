@@ -1953,12 +1953,67 @@ function renderAujourdhuiParent(enfants){
       <div class="aj-tete"><strong>Aujourd’hui</strong><span>${escapeHtml(new Date().toLocaleDateString('fr-FR', { weekday:'long', day:'numeric', month:'long' }))}</span></div>
       <ul class="aj-liste">
         ${ligne(presence.ic, escapeHtml(e.prenom || eleveFullName(e)), presence.txt, presence.cls)}
+        ${coursDuJourParent(e, jourDeClasse, ligne)}
         ${ev ? ligne('calendar-days', 'Prochain événement', `${escapeHtml(ev.titre)} <span class="aj-delai">${escapeHtml(delaiAgenda(ev))}</span>`) : ''}
         ${prochainJour ? ligne('book-open', 'Devoirs', `${nbDevoirs} devoir${nbDevoirs > 1 ? 's' : ''} ${escapeHtml(quandDevoir(prochainJour))}`) : ''}
         ${reste !== null ? ligne('wallet', 'Scolarité', reste ? `Reste à payer : ${fmtFCFA(reste)}` : 'Soldée, merci !', reste ? 'attente' : 'ok') : ''}
       </ul>
     </div>
   </section>`;
+}
+/* ---------- Emploi du temps côté parent : la journée de l'enfant et le rappel du lendemain ---------- */
+const JOURS_NOMS = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'];
+// Séances d'une classe pour une date (horaires réels, ou grille classique)
+function seancesClasseDate(classeId, iso){
+  const jour = JOURS_NOMS[(new Date(iso + 'T12:00:00').getDay() + 6) % 7];
+  if(classeEnHorairesLibres(classeId)) return seancesEdt(classeId, jour, iso).map(e => ({ debut: hhmmEdt(e.heureDebut), fin: hhmmEdt(e.heureFin), matiere: e.matiere }));
+  const c = (DB.classes || []).find(x => x.id === classeId), per = PERIODES_BY_CYCLE[c?.cycle] || [];
+  return (DB.emploiTemps || []).filter(e => e.classeId === classeId && e.jour === jour && !e.heureDebut).sort((a, b) => a.slotIndex - b.slotIndex)
+    .map(e => ({ debut: per[e.slotIndex]?.debut || '', fin: per[e.slotIndex]?.fin || '', matiere: e.matiere })).filter(x => x.debut);
+}
+// Prochain jour de classe (jours de l'école, hors congés de l'agenda)
+function prochainJourDeClasse(apresIso){
+  const jours = DB.horairesAnnonces?.joursCours || [1, 2, 3, 4, 5];
+  const d = new Date(apresIso + 'T12:00:00');
+  for(let i = 0; i < 21; i++){
+    d.setDate(d.getDate() + 1);
+    const iso = isoLocal(d), j = ((d.getDay() + 6) % 7) + 1;
+    const conge = (DB.agenda || []).some(a => a.type === 'vacances' && (!a.classeIds || !a.classeIds.length) && a.dateDebut <= iso && a.dateFin >= iso);
+    if(jours.includes(j) && !conge) return iso;
+  }
+  return null;
+}
+// Matières de la journée en quelques mots (« Mathématiques, Lecture, EPS… »)
+function resumeMatieres(seances){
+  const noms = [...new Set(seances.map(x => String(x.matiere || '').replace(/\s*\(.*\)\s*$/, '').replace(/\s+\d+(-\d+)?$/, '').trim()).filter(m => m && !/salut aux couleurs|[ée]tudes surveill/i.test(m)))];
+  return noms.slice(0, 5).join(', ') + (noms.length > 5 ? '…' : '');
+}
+function coursDuJourParent(e, jourDeClasse, ligne){
+  if(!(DB.emploiTemps || []).some(x => x.classeId === e.classeId)) return '';
+  const auj = isoLocal(new Date());
+  const aujourdhui = jourDeClasse ? seancesClasseDate(e.classeId, auj) : [];
+  const demainIso = prochainJourDeClasse(auj), demain = demainIso ? seancesClasseDate(e.classeId, demainIso) : [];
+  const quand = demainIso ? (demainIso === isoLocal(new Date(Date.now() + 86400000)) ? 'Demain' : (d => d.charAt(0).toUpperCase() + d.slice(1))(new Date(demainIso + 'T12:00:00').toLocaleDateString('fr-FR', { weekday:'long' }))) : '';
+  const sport = demain.some(x => /\beps\b|sport/i.test(x.matiere));
+  return `${aujourdhui.length ? ligne('book-open', 'En classe aujourd’hui', escapeHtml(resumeMatieres(aujourdhui))) : ''}
+    ${demain.length ? ligne(sport ? 'party-popper' : 'calendar', `${quand} en classe`, `${escapeHtml(resumeMatieres(demain))}${sport ? '<br><span class="aj-rappel">Il y a EPS : pensez à la tenue de sport.</span>' : ''}`, sport ? 'attente' : '') : ''}
+    <li class="aj-ligne aj-lien"><button type="button" class="lien-discret" onclick="ouvrirEmploiTempsParent('${e.id}')">Voir son emploi du temps de la semaine</button></li>`;
+}
+function ouvrirEmploiTempsParent(eleveId, jour){
+  const e = (DB.eleves || []).find(x => x.id === eleveId); if(!e) return;
+  const auj = isoLocal(new Date());
+  const lundi = debutSemaine(new Date());
+  const jours = JOURS.map((j, i) => { const d = new Date(lundi); d.setDate(lundi.getDate() + i); return { j, iso: isoLocal(d) }; })
+    .filter(x => seancesClasseDate(e.classeId, x.iso).length);
+  const choisi = jours.find(x => x.j === jour) || jours.find(x => x.iso === auj) || jours[0];
+  if(!choisi){ toast('L’emploi du temps de la classe n’est pas encore disponible.'); return; }
+  const seances = seancesClasseDate(e.classeId, choisi.iso);
+  const lignes = [];
+  seances.forEach((x, i) => { const p = seances[i - 1]; if(p && p.fin < x.debut) lignes.push(`<li class="edtl-pause"><span>${p.fin} – ${x.debut}</span><strong>${libellePause(p.fin, x.debut)}</strong></li>`);
+    lignes.push(`<li class="edtl-seance" style="--mat:${couleurActivite(x.matiere)}"><span class="edtl-heure">${x.debut}<small>${x.fin}</small></span><span class="edtl-txt"><strong>${escapeHtml(x.matiere)}</strong></span></li>`); });
+  openModal(`Emploi du temps — ${e.prenom} (${classeName(e.classeId)})`, `
+    <div class="segmente edt-jours" role="tablist" aria-label="Jour" style="margin-bottom:10px;">${jours.map(x => `<button type="button" role="tab" class="seg${x.j === choisi.j ? ' actif' : ''}" aria-selected="${x.j === choisi.j}" onclick="ouvrirEmploiTempsParent('${e.id}','${x.j}')">${x.j.slice(0, 3)}${x.iso === auj ? '<span class="edt-auj" aria-label="aujourd’hui"></span>' : ''}</button>`).join('')}</div>
+    <ul class="edtl-liste">${lignes.join('')}</ul>`);
 }
 function choisirEnfantAujourdhui(id){
   ui.enfantAujourdhui = id;
@@ -2632,6 +2687,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.10.19-7', nouveautes: {
+    commun: [],
+    parent: [ 'Aujourd’hui : les matières de la journée de votre enfant et celles du prochain jour de classe, avec un rappel « Il y a EPS : pensez à la tenue de sport ».', 'Emploi du temps de la semaine de votre enfant (bouton « Voir son emploi du temps »).' ],
+    portier: [],
+    personnel: [],
+  } },
   { version: '2026.10.19-6', nouveautes: {
     commun: [],
     parent: [],

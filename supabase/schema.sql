@@ -4019,3 +4019,14 @@ alter table emploi_temps drop constraint if exists emploi_temps_validite;
 alter table emploi_temps add constraint emploi_temps_validite check (valable_du is null or valable_au is null or valable_au >= valable_du);
 alter table emploi_temps drop constraint if exists emploi_temps_matiere_taille;
 alter table emploi_temps add constraint emploi_temps_matiere_taille check (char_length(coalesce(matiere, '')) <= 120);
+
+-- =====================================================================
+-- 105. EMPLOI DU TEMPS VISIBLE PAR LES PARENTS (2026-10-19)
+-- =====================================================================
+-- Un parent lit l'emploi du temps des SEULES classes de ses enfants
+-- (journée de l'enfant, rappel « demain il y a EPS »). Lecture seule.
+drop policy if exists "lecture emploi_temps parent" on emploi_temps;
+create policy "lecture emploi_temps parent" on emploi_temps for select using (
+  est_parent() and exists (
+    select 1 from parents_eleves pe join eleves e on e.id = pe.eleve_id
+    where pe.parent_profile_id = auth.uid() and e.classe_id = emploi_temps.classe_id and e.ecole_id = emploi_temps.ecole_id));
