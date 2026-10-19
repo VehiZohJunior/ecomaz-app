@@ -1741,3 +1741,11 @@ body.theme-portier .alerte-inscription{ background:rgba(232,176,75,.12); color:i
 /* ===== Activation de l'accès d'un enseignant ===== */
 .acces-autre{ margin-top:14px; border-top:1px solid var(--border); padding-top:10px; }
 .acces-autre summary{ cursor:pointer; font-weight:700; color:var(--text-dim); font-size:14px; }
+/* ===== Application des parents : actions jamais coupées, semaine sur les jours de classe ===== */
+.actions-parent{ display:grid; grid-template-columns:repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap:10px; }
+.actions-parent .btn{ height:auto; min-height:48px; white-space:normal; line-height:1.25; text-align:center; padding-top:10px; padding-bottom:10px; }
+
+/* Agenda des parents : la date reste en haut de la carte, même quand la carte est longue */
+.actu-carte{ align-items:flex-start; }
+.actu-date{ flex:0 0 auto; }
+.actu-corps{ min-width:0; flex:1; }

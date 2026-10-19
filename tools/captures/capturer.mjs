@@ -36,7 +36,7 @@ if(role === 'parent'){
   donnees.eleves = donnees.eleves.filter(e => enfants.includes(e.id));
 }
 const LARGEURS = (process.env.UNE_TAILLE ? [[390, 844]] : [[360, 780], [390, 844], [1440, 900]]);
-const THEMES = (process.env.UNE_TAILLE ? ['light'] : ['light', 'dark']);
+const THEMES = (process.env.UNE_TAILLE || process.env.AUDIT ? ['light'] : ['light', 'dark']);
 const sortie = join(RACINE, 'captures', nom);
 mkdirSync(sortie, { recursive: true });
 
@@ -197,6 +197,27 @@ for(const theme of THEMES){
       if(extra === 'centre') await page.waitForTimeout(400);
       const mesure = await page.evaluate(() => { const t = document.querySelector('.topbar'); return t ? Math.round(t.getBoundingClientRect().height) : 0; });
       console.log(`${ecranBrut} ${largeur}px ${theme} : en-tête ${mesure}px`);
+      // AUDIT=1 : mesure ce qui déborde (page plus large que l'écran, éléments qui sortent du cadre, textes coupés)
+      if(process.env.AUDIT){
+        const rapport = await page.evaluate(() => {
+          const W = document.documentElement.clientWidth, sortis = [], coupes = [];
+          const nomEl = el => (el.tagName.toLowerCase() + (el.id ? '#' + el.id : '') + (el.classList.length ? '.' + [...el.classList].slice(0, 2).join('.') : '')) + ' « ' + (el.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 40) + ' »';
+          const defile = el => { for(let x = el.parentElement; x; x = x.parentElement){ const o = getComputedStyle(x).overflowX; if(o === 'auto' || o === 'scroll') return true; } return false; };
+          const vus = new Set();
+          document.querySelectorAll('body *').forEach(el => {
+            const cs = getComputedStyle(el); if(cs.display === 'none' || cs.visibility === 'hidden' || cs.position === 'fixed') return;
+            if(el.closest('[hidden], .modal-backdrop:not(.open), .sidebar, svg, .skip-link, select, option')) return;
+            const r = el.getBoundingClientRect(); if(!r.width || !r.height) return;
+            if((r.right > W + 1 || r.left < -1) && !defile(el) && ![...vus].some(v => v.contains(el))){ vus.add(el); sortis.push(nomEl(el) + ' +' + Math.round(Math.max(r.right - W, -r.left)) + 'px'); }
+            if(['hidden', 'clip'].includes(cs.overflowX) && cs.textOverflow !== 'ellipsis' && el.scrollWidth > el.clientWidth + 2 && !el.querySelector('img,canvas,video')) coupes.push(nomEl(el) + ' ' + (el.scrollWidth - el.clientWidth) + 'px');
+          });
+          return { page: document.documentElement.scrollWidth - W, sortis: sortis.slice(0, 8), coupes: coupes.slice(0, 8) };
+        });
+        const sep = '\n           ';
+        if(rapport.page > 1 || rapport.sortis.length || rapport.coupes.length) console.log(`AUDIT ${role} ${ecranBrut} ${largeur}px : page +${rapport.page}px\n   sortis: ${rapport.sortis.join(sep)}\n   coupés: ${rapport.coupes.join(sep)}`);
+        else console.log(`AUDIT ${role} ${ecranBrut} ${largeur}px : OK`);
+        if(process.env.AUDIT === 'seul') continue;
+      }
       await page.screenshot({ path: join(sortie, `${ecranBrut.replace('+', '-').replace(':', '-')}_${largeur}_${theme === 'light' ? 'clair' : 'sombre'}.png`), fullPage: !extra || ['profil', 'ongletbulletin', 'ongletpres'].includes(extra) });
       n++;
     }

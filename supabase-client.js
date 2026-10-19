@@ -533,7 +533,7 @@ async function chargerDBParent(){
   const vendredi = new Date(lundi); vendredi.setDate(lundi.getDate() + 4);
   const E = session.ecoleId;
   const [ecoleRow, eleves, classesRows, messages, annoncesHoraires, messagesInternes, tableauHonneur, actualitesAffichage,
-    presences, applaudis, agendaRows, correctionsRows, persRows, santeRows, menusRows, demandesDocsRows, devoirsRows] = await Promise.all([
+    presences, applaudis, agendaRows, correctionsRows, persRows, santeRows, menusRows, demandesDocsRows, devoirsRows, horairesRow] = await Promise.all([
     sb.from('ecoles').select('*').eq('id', E).single(),
     // RLS restreint déjà aux enfants liés à ce parent (voir policy
     // "lecture eleves par parent", schema.sql section 31) — pas besoin de
@@ -572,6 +572,8 @@ async function chargerDBParent(){
     sur(sb.from('demandes_documents').select('*').eq('ecole_id', E).order('created_at', { ascending:false }).limit(10), []),
     // Cahier de textes : devoirs à venir de la classe de ses enfants (RLS)
     sur(sb.from('devoirs').select('*').eq('ecole_id', E).gte('pour_le', aujourdhui).order('pour_le').limit(40), []),
+    // Jours de classe de l'école (la semaine de présence n'affiche pas les jours sans classe)
+    sur(sb.from('horaires_annonces').select('jours_cours').eq('ecole_id', E), []),
   ]);
   if(ecoleRow.error) throw ecoleRow.error;
   if(eleves.error) throw eleves.error;
@@ -629,6 +631,7 @@ async function chargerDBParent(){
     echeancesScolarite, paiementsScolarite, notes: notesParent, bulletinsComments: appreciations, agenda, reponsesAgenda, devoirs, correctionsFiches, menusCantine, demandesDocuments, bulletinsResultats, evaluations, personnesAutorisees, santeEleves,
     eleves: rowsToCamel(eleves.data),
     classes: rowsToCamel(classesRows.data),
+    horairesAnnonces: (horairesRow || [])[0] ? { joursCours: horairesRow[0].jours_cours } : null,
     presencesSemaine,
     applaudissements,
     messages: rowsToCamel(messages.data),

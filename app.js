@@ -1737,7 +1737,9 @@ function renderPresenceSemaine(e){
   if(!Array.isArray(DB.presencesSemaine)) return '';
   const lundi = debutSemaine(new Date());
   const aujourdhui = isoLocal(new Date());
+  const joursClasse = DB.horairesAnnonces?.joursCours || [1, 2, 3, 4, 5];
   const cases = JOURS_SEMAINE.map((lib, i) => {
+    if(!joursClasse.includes(i + 1)) return '';
     const d = new Date(lundi); d.setDate(lundi.getDate() + i);
     const iso = isoLocal(d);
     const p = DB.presencesSemaine.find(x => x.eleveId === e.id && x.date === iso);
@@ -1760,7 +1762,7 @@ function renderPresenceSemaine(e){
   const aucun = !DB.presencesSemaine.some(x => x.eleveId === e.id);
   return `<div class="sem-bloc">
     <div class="sem-titre">Présence de la semaine</div>
-    <div class="sem-grille">${cases}</div>
+    <div class="sem-grille" style="grid-template-columns:repeat(${joursClasse.filter(j => j <= 5).length || 5}, minmax(0, 1fr));">${cases}</div>
     ${aucun ? '<div class="sem-note">L’appel de cette semaine n’a pas encore été enregistré par l’école.</div>' : ''}
     <button type="button" class="btn secondary sm" style="margin-top:8px;" onclick="ouvrirHistoriquePresences('${e.id}')">📅 Historique depuis la rentrée</button>
   </div>`;
@@ -1985,7 +1987,7 @@ function renderParentDashboard(){
     <div class="enfants${plusieurs ? ' enfants--carrousel' : ''} em-rise" style="--i:2">
       ${mesEnfants.map(renderFicheEnfant).join('')}
     </div>
-    <div class="form-actions" style="justify-content:flex-start;margin:0 0 var(--sp-4);"><button type="button" class="btn secondary" onclick="ouvrirSignalerAbsence()">📝 Signaler une absence à l’avance</button><button type="button" class="btn secondary" onclick="ouvrirDemandeDocument()">📄 Demander un document</button></div>
+    <div class="form-actions actions-parent" style="justify-content:flex-start;margin:0 0 var(--sp-4);"><button type="button" class="btn secondary" onclick="ouvrirSignalerAbsence()">📝 Signaler une absence à l’avance</button><button type="button" class="btn secondary" onclick="ouvrirDemandeDocument()">📄 Demander un document</button></div>
     ${renderMenuParent()}
     ${renderDevoirsParent(mesEnfants)}
     ${renderAgendaParent()}
@@ -1998,7 +2000,7 @@ function renderParentDashboard(){
 function renderBienvenueParent(enfants){
   const cle = 'ecomaz_bienvenue_parent_' + (session.userId || '');
   try{ if(localStorage.getItem(cle)) return ''; }catch(_e){ return ''; }
-  const prenoms = enfants.map(e => e.prenom).join(', ');
+  const prenoms = enfants.length <= 3 ? enfants.map(e => e.prenom).join(', ') : `${enfants.slice(0, 2).map(e => e.prenom).join(', ')} et ${enfants.length - 2} autres`;
   const pushAProposer = typeof pushPossible === 'function' && pushPossible() && Notification.permission === 'default';
   const gestes = [
     ['bell', 'Recevoir les alertes', 'Absence, retard, devoir, paiement : vous êtes prévenu(e) sur ce téléphone.', pushAProposer ? "activerPush(false).then(ok => { if(ok) toast('Alertes activées sur ce téléphone'); })" : null],
@@ -2628,6 +2630,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.10.19-2', nouveautes: {
+    commun: [],
+    parent: [ 'Présence de la semaine : seulement les jours de classe de l’école.', 'Boutons « Signaler une absence » et « Demander un document » toujours lisibles en entier, même sur petit téléphone.', 'À venir : la date reste en haut de chaque carte.' ],
+    portier: [],
+    personnel: [],
+  } },
   { version: '2026.10.19-1', nouveautes: {
     commun: [],
     parent: [],
