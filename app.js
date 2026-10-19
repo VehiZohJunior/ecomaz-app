@@ -2630,6 +2630,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.10.19-4', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Notes & Bulletins : plusieurs compositions par trimestre. Les compositions de l’agenda de l’école apparaissent en boutons (ex. « 2e compo. · 10/12 ») ; chaque note est rangée sous SA composition, et la moyenne de composition du trimestre se calcule seule.' ],
+  } },
   { version: '2026.10.19-3', nouveautes: {
     commun: [],
     parent: [],
@@ -6032,7 +6038,7 @@ function chargerAgenda(){
   if(DB.agenda !== undefined) return;
   DB.agenda = null;
   sb.from('evenements_agenda').select('*').eq('ecole_id', session.ecoleId).order('date_debut')
-    .then(({ data }) => { DB.agenda = rowsToCamel(data || []); if(['dashboard', 'agenda'].includes(ui.currentView)) renderView(ui.currentView); });
+    .then(({ data }) => { DB.agenda = rowsToCamel(data || []); if(['dashboard', 'agenda', 'notes'].includes(ui.currentView)) renderView(ui.currentView); });
 }
 function renderAgenda(){
   chargerAgenda();
@@ -7165,6 +7171,20 @@ async function saveBulletinComment(eleveId, trimestre){
 /* ---------------------------------------------------------------------
    6. NOTES & BULLETINS (saisie)
    --------------------------------------------------------------------- */
+// Trimestre d'une date : d'après les « Fin du 1er / 2e trimestre » de l'agenda, sinon découpage habituel
+function trimestreDeDate(iso){
+  const fins = (DB.agenda || []).filter(e => /fin du\s*1(er)?\s*trimestre/i.test(e.titre) || /fin du\s*2e?\s*trimestre/i.test(e.titre))
+    .map(e => ({ n: /fin du\s*1/i.test(e.titre) ? 1 : 2, d: e.dateFin || e.dateDebut }));
+  const f1 = fins.find(x => x.n === 1)?.d, f2 = fins.find(x => x.n === 2)?.d;
+  if(f1 && f2) return iso <= f1 ? 'Trimestre 1' : iso <= f2 ? 'Trimestre 2' : 'Trimestre 3';
+  const m = Number(iso.slice(5, 7));
+  return m >= 9 ? 'Trimestre 1' : m <= 3 ? 'Trimestre 2' : 'Trimestre 3';
+}
+// Compositions prévues à l'agenda pour une classe et un trimestre (dans l'ordre)
+function compositionsAgenda(classeId, trimestre){
+  return (DB.agenda || []).filter(e => e.type === 'examen' && /composition/i.test(e.titre) && (!e.classeIds || !e.classeIds.length || e.classeIds.includes(classeId)) && trimestreDeDate(e.dateDebut) === trimestre)
+    .sort((a, b) => a.dateDebut.localeCompare(b.dateDebut));
+}
 function renderNotes(){
   const mesClasses = classesVisibles();
   if(mesClasses.length === 0){
@@ -7180,15 +7200,23 @@ function renderNotes(){
   if(!matieres.includes(f.matiere)) f.matiere = matieres[0];
 
   const eleves = DB.eleves.filter(e=>e.classeId===f.classeId && e.statut==='Actif').sort((a,b)=>a.nom.localeCompare(b.nom));
+  // Plusieurs compositions par trimestre (agenda de l'école) : chaque note est rangée à la date de SA composition
+  chargerAgenda();
+  const compos = compositionsAgenda(f.classeId, f.trimestre);
+  const auj = todayISO();
+  if(!compos.some(c => c.dateDebut === f.compo)) f.compo = (compos.filter(c => c.dateDebut <= auj).pop() || compos[0] || {}).dateDebut || '';
+  const compoChoisie = compos.find(c => c.dateDebut === f.compo);
 
   const rows = eleves.map(e=>{
     const notes = DB.notes.filter(n=>n.eleveId===e.id && n.matiere===f.matiere && n.trimestre===f.trimestre);
-    const compo = notes.find(n=>n.type==='Composition');
+    const notesCompo = notes.filter(n=>n.type==='Composition');
+    const compo = compoChoisie ? notesCompo.find(n => n.date === compoChoisie.dateDebut) : notesCompo[0];
     const m = moyenneMatiere(e.id, f.matiere, f.trimestre);
     return `<tr>
       <td><div class="row-name"><span class="avatar">${initials(e.prenom,e.nom)}</span>${escapeHtml(eleveFullName(e))}</div></td>
       <td>${m.classe !== null ? `<strong>${m.classe.toFixed(2)}</strong> <span class="hint">(${m.nbClasse} note${m.nbClasse > 1 ? 's' : ''})</span>` : '<span class="hint">—</span>'}</td></td>
-      <td><input type="number" min="0" max="20" step="0.5" data-eleve="${e.id}" data-type="Composition" value="${compo?compo.note:''}" style="width:70px;padding:6px 8px;border:1px solid var(--border);border-radius:var(--r-control);"></td>
+      ${compos.length > 1 ? `<td>${m.compo !== null ? `<strong>${m.compo.toFixed(2)}</strong> <span class="hint">(${notesCompo.length})</span>` : '<span class="hint">—</span>'}</td>` : ''}
+      <td><input type="number" min="0" max="20" step="0.5" data-eleve="${e.id}" data-type="Composition" data-date="${compoChoisie ? compoChoisie.dateDebut : ''}" value="${compo?compo.note:''}" style="width:70px;padding:6px 8px;border:1px solid var(--border);border-radius:var(--r-control);"></td>
     </tr>`;
   }).join('');
 
@@ -7216,9 +7244,11 @@ function renderNotes(){
         </select>
       </div>
       ${(DB.meta.bulletinsPublies || []).includes(f.trimestre) && !['direction','fondation'].includes(ui.role) ? `<div class="banniere-discrete" style="margin-bottom:10px;"><span>${icone('lock')}</span><span>Les bulletins du ${escapeHtml(f.trimestre)} sont publiés : ces notes sont verrouillées. Pour une correction, adressez-vous à la direction.</span></div>` : ''}
+      ${compos.length ? `<div class="segmente compos-choix" role="tablist" aria-label="Composition">${compos.map(c => `<button type="button" role="tab" class="seg${c.dateDebut === f.compo ? ' actif' : ''}" aria-selected="${c.dateDebut === f.compo}" onclick="ui.filters.notes.compo='${c.dateDebut}'; renderView('notes')">${escapeHtml(c.titre.replace(/\s*composition/i, ' compo.').trim())} · ${fmtDate(c.dateDebut).slice(0, 5)}${c.dateDebut > auj ? ' <span class="hint" style="margin:0;">à venir</span>' : ''}</button>`).join('')}</div>
+        <div class="hint" style="margin:6px 0 10px;">${compos.length > 1 ? `${compos.length} compositions ce trimestre (agenda de l’école) : la moyenne de composition est la moyenne de toutes. ` : ''}Moyenne de la matière = (moyenne de classe + 2 × composition) ÷ 3.</div>` : ''}
       ${eleves.length===0 ? `<div class="empty-state"><div class="em-ic">📝</div>Aucun élève actif dans cette classe.</div>` : `
       <div class="table-wrap"><table id="tableNotes">
-        <thead><tr><th>Élève</th><th>Moy. de classe /20 <span class="hint">(Camps de base)</span></th><th>Note Composition /20</th></tr></thead>
+        <thead><tr><th>Élève</th><th>Moy. de classe /20 <span class="hint">(Camps de base)</span></th>${compos.length > 1 ? '<th>Moy. des compositions /20</th>' : ''}<th>${compoChoisie ? `${escapeHtml(compoChoisie.titre)} /20 <span class="hint">(${fmtDate(compoChoisie.dateDebut)})</span>` : 'Note Composition /20'}</th></tr></thead>
         <tbody>${rows}</tbody>
       </table></div>
       <div class="form-actions"><button class="btn" onclick="saveNotesTable()">Enregistrer les notes</button></div>`}
@@ -7246,15 +7276,15 @@ async function saveNotesTable(){
   try{
     for(const inp of inputs){
       const val = inp.value;
-      const eleveId = inp.dataset.eleve, type = inp.dataset.type;
-      let n = DB.notes.find(x=>x.eleveId===eleveId && x.matiere===f.matiere && x.trimestre===f.trimestre && x.type===type);
+      const eleveId = inp.dataset.eleve, type = inp.dataset.type, dateCompo = inp.dataset.date || '';
+      let n = DB.notes.find(x=>x.eleveId===eleveId && x.matiere===f.matiere && x.trimestre===f.trimestre && x.type===type && (!dateCompo || x.date === dateCompo));
       if(val===''){
         if(n){ await dbDelete('notes', n.id); DB.notes = DB.notes.filter(x=>x.id!==n.id); }
         continue;
       }
       const note = Math.max(0, Math.min(20, parseFloat(val)));
       if(n){ await dbUpdate('notes', n.id, {note}); n.note = note; }
-      else{ DB.notes.push(await dbInsert('notes', {eleveId, matiere:f.matiere, note, noteSur:20, trimestre:f.trimestre, type, date: todayISO()})); }
+      else{ DB.notes.push(await dbInsert('notes', {eleveId, matiere:f.matiere, note, noteSur:20, trimestre:f.trimestre, type, date: dateCompo || todayISO()})); }
     }
     toast('Notes enregistrées');
   }catch(e){ alert('Erreur : ' + e.message); }

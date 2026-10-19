@@ -1758,3 +1758,6 @@ body.theme-portier .alerte-inscription{ background:rgba(232,176,75,.12); color:i
   .subtabs::-webkit-scrollbar{ display:none; }
   .subtab{ flex:0 0 auto; white-space:nowrap; scroll-snap-align:start; }
 }
+/* ===== Notes : choix de la composition du trimestre ===== */
+.compos-choix{ flex-wrap:wrap; margin-top:10px; }
+.compos-choix .seg{ white-space:nowrap; }
