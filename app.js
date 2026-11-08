@@ -2731,6 +2731,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.11.8-2', nouveautes: {
+    commun: [ 'Applications installées : le nom de l’école apparaît de nouveau sous l’icône (EcoMaZ-ENSEIGNANTS SUCCESS KIDS…).' ],
+    parent: [],
+    portier: [],
+    personnel: [ 'Tableau d’affichage : lisible aussi sur téléphone (une colonne).' ],
+  } },
   { version: '2026.11.8-1', nouveautes: {
     commun: [],
     parent: [],

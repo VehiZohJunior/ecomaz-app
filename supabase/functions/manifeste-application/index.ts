@@ -33,8 +33,10 @@ Deno.serve(async (req) => {
   if (UUID.test(ecoleId)) {
     try {
       const sb = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!);
-      const { data } = await sb.from('ecoles_vitrine').select('nom_ecole').eq('id', ecoleId).maybeSingle();
-      nomEcole = data?.nom_ecole || '';
+      // La vue ecoles_vitrine n'est plus lisible sans connexion (section 47) : on passe par
+      // la fonction publique ecole_vitrine, qui ne renvoie que le nom et le logo de l'école
+      const { data } = await sb.rpc('ecole_vitrine', { p_ecole: ecoleId });
+      nomEcole = (Array.isArray(data) ? data[0]?.nom_ecole : data?.nom_ecole) || '';
     } catch (_e) { /* nom générique */ }
   }
 
