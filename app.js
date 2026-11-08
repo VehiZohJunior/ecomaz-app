@@ -2731,6 +2731,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.11.8-3', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Tableau de bord (fondation, direction) : nouveau module Trésorerie — entrées, sorties et solde du mois (par source), recouvrement de la scolarité (retards, pas encore échu, prochaine échéance), modes de paiement, six derniers mois, derniers mouvements avec leur auteur, et alertes (sorties > entrées, paiements modifiés ou supprimés, part d’espèces, aucun encaissement récent).' ],
+  } },
   { version: '2026.11.8-2', nouveautes: {
     commun: [ 'Applications installées : le nom de l’école apparaît de nouveau sous l’icône (EcoMaZ-ENSEIGNANTS SUCCESS KIDS…).' ],
     parent: [],
@@ -3703,6 +3709,133 @@ function renderBanniereNotifications(){
     <button type="button" class="bd-fermer" aria-label="Fermer" onclick="try{ localStorage.setItem('ecomaz_banniere_push_fermee','1'); }catch(_e){} this.closest('.banniere-discrete').remove()">${icone('x') || '×'}</button>
   </div>`;
 }
+/* =====================================================================
+   TRÉSORERIE (fondation, direction) — traçabilité de l'argent qui entre et qui sort
+   ===================================================================== */
+const SOURCES_ENTREES = [
+  ['Scolarité', () => (DB.paiementsScolarite || []).map(p => ({ m: Number(p.montant || 0), d: p.date, mode: p.modePaiement }))],
+  ['Activités', () => (DB.paiementsCotisations || []).map(p => ({ m: Number(p.montant || 0), d: p.date, mode: p.modePaiement }))],
+  ['Boutique', () => (DB.ventesGadgets || []).map(p => ({ m: Number(p.montantTotal || 0), d: p.date, mode: p.modePaiement }))],
+];
+const SOURCES_SORTIES = [
+  ['Dépenses', () => (DB.depenses || []).map(p => ({ m: Number(p.montant || 0), d: p.date, mode: p.modePaiement }))],
+  ['Salaires', () => (DB.paiementsSalaires || []).map(p => ({ m: Number(p.montant || 0), d: p.datePaiement || p.date, mode: p.modePaiement }))],
+];
+function moisDecale(mois, n){ const [a, m] = mois.split('-').map(Number); const d = new Date(a, m - 1 + n, 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; }
+function fluxDuMois(sources, mois){
+  const parSource = sources.map(([lib, f]) => [lib, f().filter(x => String(x.d || '').startsWith(mois)).reduce((t, x) => t + x.m, 0)]);
+  return { total: parSource.reduce((t, x) => t + x[1], 0), parSource };
+}
+function modesDuMois(mois){
+  const r = {};
+  SOURCES_ENTREES.forEach(([, f]) => f().filter(x => String(x.d || '').startsWith(mois)).forEach(x => { const k = x.mode || 'Non précisé'; r[k] = (r[k] || 0) + x.m; }));
+  return Object.entries(r).sort((a, b) => b[1] - a[1]);
+}
+function etatRecouvrement(){
+  const auj = todayISO(); let du = 0, paye = 0, echu = 0, enRetard = 0;
+  const prochaines = {};
+  (DB.eleves || []).filter(e => e.statut === 'Actif').forEach(e => {
+    const g = scolariteEleveParEcheance(e.id); du += g.total; paye += Math.min(g.totalPaye, g.total);
+    const r = retardsEleve(e); const ret = r.reduce((t, x) => t + x.reste, 0); if(ret){ echu += ret; enRetard++; }
+    echeancesDeClasse(e.classeId).filter(x => x.dateEcheance && x.dateEcheance >= auj).forEach(x => {
+      const d = g.detail.find(y => y.label === x.label); const reste = d ? Math.max(0, d.montant - d.paye) : Number(x.montant || 0);
+      if(reste) (prochaines[x.dateEcheance] = prochaines[x.dateEcheance] || { total: 0, n: 0, label: x.label }), prochaines[x.dateEcheance].total += reste, prochaines[x.dateEcheance].n++;
+    });
+  });
+  const dateProch = Object.keys(prochaines).sort()[0];
+  return { du, paye, reste: Math.max(0, du - paye), echu, enRetard, taux: du ? Math.round(100 * paye / du) : 0, prochaine: dateProch ? { date: dateProch, ...prochaines[dateProch] } : null };
+}
+function chargerJournalTresorerie(){
+  if(DB.journalTresorerie !== undefined) return;
+  DB.journalTresorerie = null;
+  const debutMois = thisMonthISO() + '-01';
+  Promise.all([
+    sb.from('journal_compta').select('table_cible, action, donnees_avant, donnees_apres, auteur_nom, auteur_role, created_at').eq('ecole_id', session.ecoleId).order('created_at', { ascending: false }).limit(6),
+    sb.from('journal_compta').select('id', { count: 'exact', head: true }).eq('ecole_id', session.ecoleId).in('action', ['modification', 'suppression']).gte('created_at', debutMois),
+  ]).then(([l, c]) => { DB.journalTresorerie = { lignes: l.data || [], corrections: c.count || 0 }; if(ui.currentView === 'dashboard') renderView('dashboard'); })
+    .catch(() => { DB.journalTresorerie = { lignes: [], corrections: 0 }; });
+}
+function renderTresorerie(){
+  const mois = thisMonthISO(), avant = moisDecale(mois, -1);
+  const ent = fluxDuMois(SOURCES_ENTREES, mois), sor = fluxDuMois(SOURCES_SORTIES, mois), entAvant = fluxDuMois(SOURCES_ENTREES, avant);
+  const solde = ent.total - sor.total, rec = etatRecouvrement(), modes = modesDuMois(mois);
+  const nomMois = d => new Date(d + '-15T12:00:00').toLocaleDateString('fr-FR', { month: 'long' });
+  const variation = entAvant.total ? Math.round(100 * (ent.total - entAvant.total) / entAvant.total) : null;
+  // 6 derniers mois : entrées et sorties
+  const six = [-5, -4, -3, -2, -1, 0].map(n => { const m = moisDecale(mois, n); return { m, e: fluxDuMois(SOURCES_ENTREES, m).total, s: fluxDuMois(SOURCES_SORTIES, m).total }; });
+  const max = Math.max(1, ...six.map(x => Math.max(x.e, x.s)));
+  const barres = six.map((x, i) => {
+    const he = Math.round(78 * x.e / max), hs = Math.round(78 * x.s / max), X = 8 + i * 52;
+    return `<g><title>${nomMois(x.m)} : entrées ${fmtFCFA(x.e)} · sorties ${fmtFCFA(x.s)}</title>
+      <rect x="${X}" y="${90 - he}" width="18" height="${Math.max(he, x.e ? 2 : 0)}" rx="3" class="tr-b-ent"/>
+      <rect x="${X + 21}" y="${90 - hs}" width="18" height="${Math.max(hs, x.s ? 2 : 0)}" rx="3" class="tr-b-sor"/>
+      <text x="${X + 20}" y="104" text-anchor="middle" class="tr-b-lib">${new Date(x.m + '-15T12:00:00').toLocaleDateString('fr-FR', { month: 'short' }).replace('.', '')}</text></g>`;
+  }).join('');
+  // Traçabilité : derniers mouvements et corrections du mois (journal d'audit tenu par la base)
+  chargerJournalTresorerie();
+  const J = DB.journalTresorerie;
+  const LIBS = { paiements_scolarite: 'Scolarité', paiements_cotisations: 'Activité', ventes_gadgets: 'Boutique', paiements_salaires: 'Salaire', depenses: 'Dépense' };
+  const mvt = l => {
+    const d = l.donnees_apres || l.donnees_avant || {}, montant = Number(d.montant ?? d.montant_total ?? 0);
+    const sortie = ['paiements_salaires', 'depenses'].includes(l.table_cible);
+    const e = l.table_cible === 'paiements_salaires' ? '' : 'e';   // Dépense, Scolarité, Activité, Boutique : féminin
+    const act = l.action === 'creation' ? '' : l.action === 'modification' ? `<span class="tr-tag avert">modifié${e}</span>` : `<span class="tr-tag alerte">supprimé${e}</span>`;
+    return `<li class="tr-mvt"><span class="tr-sens ${sortie ? 'sor' : 'ent'}" aria-hidden="true">${sortie ? '−' : '+'}</span>
+      <span class="tr-mvt-txt"><strong>${escapeHtml(LIBS[l.table_cible] || l.table_cible)} ${act}</strong><small>par ${escapeHtml(l.auteur_nom || 'compte inconnu')}${l.auteur_role ? ' (' + escapeHtml(l.auteur_role) + ')' : ''} · ${new Date(l.created_at).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</small></span>
+      <span class="tr-mvt-m ${sortie ? 'sor' : 'ent'}">${montant ? (sortie ? '−' : '+') + fmtFCFA(montant) : ''}</span></li>`;
+  };
+  // Alertes intelligentes
+  const alertes = [];
+  if(sor.total > ent.total && sor.total > 0) alertes.push(['alerte', `Ce mois, les sorties (${fmtFCFA(sor.total)}) dépassent les entrées (${fmtFCFA(ent.total)}).`]);
+  if(J && J.corrections) alertes.push(['avert', `${J.corrections} mouvement${J.corrections > 1 ? 's' : ''} d’argent modifié${J.corrections > 1 ? 's' : ''} ou supprimé${J.corrections > 1 ? 's' : ''} ce mois — à contrôler dans le journal d’audit.`]);
+  const tousEnc = SOURCES_ENTREES.flatMap(([, f]) => f()).map(x => x.d).filter(Boolean).sort();
+  const dernier = tousEnc[tousEnc.length - 1];
+  const joursSans = dernier ? Math.round((Date.parse(todayISO()) - Date.parse(dernier)) / 86400000) : null;
+  if(!dernier) alertes.push(['avert', 'Aucun encaissement n’est encore enregistré : saisissez les versements reçus pour suivre l’argent.']);
+  else if(joursSans >= 14) alertes.push(['avert', `Aucun encaissement enregistré depuis ${joursSans} jours (dernier le ${fmtDate(dernier)}).`]);
+  const especes = modes.find(([k]) => /esp[eè]ce/i.test(k));
+  if(especes && ent.total && especes[1] / ent.total >= 0.5) alertes.push(['info', `${Math.round(100 * especes[1] / ent.total)} % des entrées du mois sont en espèces (${fmtFCFA(especes[1])}) : pensez au dépôt en banque et au rapprochement de caisse.`]);
+  const ouvrir = (onglet) => `ui.filters.comptaTab='${onglet}'; go('comptabilite')`;
+  return `<section class="panel tresorerie" aria-labelledby="titreTreso">
+    <div class="panel-head"><div><h2 id="titreTreso">${icone('wallet')} Trésorerie</h2><div class="sub">${nomMois(mois).replace(/^./, c => c.toUpperCase())} — l’argent qui entre, qui sort, et qui l’a enregistré</div></div>
+      <button type="button" class="btn secondary sm" onclick="${ouvrir('apercu')}">Comptabilité</button></div>
+    <div class="tr-flux">
+      <div class="tr-carte ent"><small>Entrées du mois</small><strong>${fmtFCFA(ent.total)}</strong>
+        <span class="tr-var">${variation === null ? (entAvant.total ? '' : 'mois précédent : 0') : `${variation >= 0 ? '▲' : '▼'} ${Math.abs(variation)} % vs ${nomMois(avant)}`}</span>
+        <ul class="tr-detail">${ent.parSource.filter(x => x[1]).map(([l, m]) => `<li><span>${l}</span><b>${fmtFCFA(m)}</b></li>`).join('') || '<li><span>Aucune entrée ce mois</span></li>'}</ul></div>
+      <div class="tr-carte sor"><small>Sorties du mois</small><strong>${fmtFCFA(sor.total)}</strong>
+        <ul class="tr-detail">${sor.parSource.filter(x => x[1]).map(([l, m]) => `<li><span>${l}</span><b>${fmtFCFA(m)}</b></li>`).join('') || '<li><span>Aucune sortie ce mois</span></li>'}</ul></div>
+      <div class="tr-carte solde ${solde < 0 ? 'neg' : ''}"><small>Solde du mois</small><strong>${solde < 0 ? '−' : ''}${fmtFCFA(Math.abs(solde))}</strong><span class="tr-var">entrées − sorties</span></div>
+    </div>
+    ${alertes.length ? `<ul class="tr-alertes">${alertes.map(([t, m]) => `<li class="tr-al ${t}">${escapeHtml(m)}</li>`).join('')}</ul>` : ''}
+    <div class="tr-grille">
+      <div class="tr-bloc">
+        <h3>Recouvrement de la scolarité</h3>
+        <div class="tr-taux"><strong>${rec.taux} %</strong><span>${fmtFCFA(rec.paye)} encaissés sur ${fmtFCFA(rec.du)}</span></div>
+        <div class="tr-jauge" role="progressbar" aria-valuenow="${rec.taux}" aria-valuemin="0" aria-valuemax="100"><div style="width:${rec.taux}%"></div></div>
+        <ul class="tr-detail">
+          ${!(DB.paiementsScolarite || []).length ? '<li class="tr-provisoire"><span>Chiffres provisoires : aucun versement n’est encore saisi.</span></li>' : ''}
+          <li><span>En retard (échéances dépassées)</span><b class="${rec.echu ? 'neg' : ''}">${fmtFCFA(rec.echu)}${rec.enRetard ? ` · ${rec.enRetard} élève${rec.enRetard > 1 ? 's' : ''}` : ''}</b></li>
+          <li><span>Pas encore échu</span><b>${fmtFCFA(Math.max(0, rec.reste - rec.echu))}</b></li>
+          ${rec.prochaine ? `<li><span>Prochaine échéance : ${fmtDate(rec.prochaine.date)} (${escapeHtml(rec.prochaine.label)})</span><b>${fmtFCFA(rec.prochaine.total)} attendus</b></li>` : ''}
+        </ul>
+        ${rec.echu ? `<button type="button" class="btn sm" onclick="ui.filters.comptaTab='scolarite'; go('comptabilite'); setTimeout(() => ouvrirRelanceImpayes(), 200)">Relancer les retards</button>` : ''}
+      </div>
+      <div class="tr-bloc">
+        <h3>Comment l’argent est entré ce mois</h3>
+        ${modes.length ? `<ul class="tr-modes">${modes.map(([k, m]) => `<li><span>${escapeHtml(k)}</span><span class="tr-mode-barre"><i style="width:${Math.round(100 * m / ent.total)}%"></i></span><b>${Math.round(100 * m / ent.total)} %</b></li>`).join('')}</ul>` : '<div class="hint" style="margin:0;">Aucune entrée ce mois.</div>'}
+        <h3 style="margin-top:14px;">Six derniers mois</h3>
+        <svg class="tr-graph" viewBox="0 0 320 110" role="img" aria-label="Entrées et sorties des six derniers mois">${barres}</svg>
+        <div class="tr-legende"><span><i class="ent"></i>Entrées</span><span><i class="sor"></i>Sorties</span></div>
+      </div>
+    </div>
+    <div class="tr-bloc tr-trace">
+      <div class="tr-trace-tete"><h3>Derniers mouvements enregistrés</h3><button type="button" class="lien-discret" onclick="${ouvrir('journal')}">Journal d’audit complet</button></div>
+      ${J === null ? '<div class="hint">Chargement…</div>' : J && J.lignes.length ? `<ul class="tr-mvts">${J.lignes.map(mvt).join('')}</ul>` : '<div class="hint" style="margin:0;">Aucun mouvement enregistré pour l’instant.</div>'}
+      <div class="hint" style="margin:6px 0 0;">Chaque création, modification ou suppression est notée automatiquement par la base, avec l’auteur et l’heure : personne ne peut l’effacer.</div>
+    </div>
+  </section>`;
+}
 function montantKpi(n){ return `${Math.round(n || 0).toLocaleString('fr-FR')}<span class="kpi-unite">${DEVISE}</span>`; }
 function renderDashboard(){
   const today = todayISO();
@@ -3770,12 +3903,7 @@ function renderDashboard(){
 
   const finance = ['direction','fondation'].includes(ui.role);
   const ensPresents = presEnsToday.filter(p => p.statut !== 'Absent').length;
-  let encaisseMois = 0, resteTotal = 0;
-  if(finance){
-    const mois = today.slice(0, 7);
-    encaisseMois = (DB.paiementsScolarite || []).filter(p => String(p.date || '').startsWith(mois)).reduce((t, p) => t + Number(p.montant || 0), 0);
-    try{ resteTotal = DB.eleves.filter(e => e.statut === 'Actif').reduce((t, e) => t + (scolariteEleveParEcheance(e.id).reste || 0), 0); }catch(_e){ resteTotal = 0; }
-  }
+
   const prenom = (session.nomComplet || '').trim().split(/\s+/)[0] || '';
   const dateLongue = new Date(today + 'T12:00:00').toLocaleDateString('fr-FR', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
   return `
@@ -3788,11 +3916,10 @@ function renderDashboard(){
     <div class="cards cards-2x2">
       ${kpi(0, icone('graduation-cap'), 'var(--primary-dim)', totalEleves, 'Élèves inscrits')}
       ${kpi(1, icone('presentation'), 'var(--purple-bg)', presEnsToday.length ? `${ensPresents}/${totalEns}` : totalEns, presEnsToday.length ? 'Enseignants présents aujourd’hui' : 'Enseignants (pointage non fait)')}
-      ${finance ? kpi(2, icone('banknote'), 'var(--green-bg)', montantKpi(encaisseMois), 'Encaissé ce mois')
-        : kpi(2, icone('circle-check'), 'var(--green-bg)', tauxEleves===null ? null : tauxEleves+'%', 'Présence élèves aujourd’hui', ['Appel non effectué', lien('presences-eleves', 'Faire l’appel')])}
-      ${finance ? kpi(3, icone('wallet'), 'var(--accent-soft)', montantKpi(resteTotal), 'Reste à encaisser')
-        : kpi(3, icone('clock'), 'var(--blue-bg)', tauxEns===null ? null : tauxEns+'%', 'Présence enseignants aujourd’hui', ['Aucun pointage aujourd’hui', lien('presences-enseignants', 'Voir le journal')])}
+      ${kpi(2, icone('circle-check'), 'var(--green-bg)', tauxEleves===null ? null : tauxEleves+'%', 'Présence élèves aujourd’hui', ['Appel non effectué', lien('presences-eleves', 'Faire l’appel')])}
+      ${kpi(3, icone('clock'), 'var(--blue-bg)', tauxEns===null ? null : tauxEns+'%', 'Présence enseignants aujourd’hui', ['Aucun pointage aujourd’hui', lien('presences-enseignants', 'Voir le journal')])}
     </div>
+    ${finance ? renderTresorerie() : ''}
     ${animer ? `${(setTimeout(animerCompteursKpi, 0), '')}` : ''}
     ${renderMiseEnRoute()}
     ${renderMaJournee()}
