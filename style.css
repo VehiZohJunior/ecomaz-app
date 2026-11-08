@@ -1836,3 +1836,26 @@ body.theme-portier .alerte-inscription{ background:rgba(232,176,75,.12); color:i
 .recu-fne strong{ min-width:0; text-align:left; }
 .recu-fne-num{ font-size:14px; overflow-wrap:anywhere; font-variant-numeric:tabular-nums; }
 .recu-fne small{ overflow-wrap:anywhere; color:var(--text-dim); }
+/* ===== Rapport d'activité d'un enseignant ===== */
+.rapport-periodes{ flex-wrap:wrap; }
+.ra-entete{ display:flex; justify-content:space-between; align-items:flex-start; gap:10px; flex-wrap:wrap; margin-bottom:12px; }
+.ra-entete h2{ margin:0 0 4px; }
+.ra-synthese{ display:grid; grid-template-columns:repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap:10px; margin-bottom:12px; }
+.ra-forts, .ra-surveiller{ padding:12px 14px; border-radius:14px; border-left:4px solid; font-size:14px; }
+.ra-forts{ background:color-mix(in srgb, var(--green, #2E7D62) 9%, transparent); border-color:var(--green, #2E7D62); }
+.ra-surveiller{ background:var(--amber-bg, #FFF4DC); border-color:var(--amber, #C98A12); color:var(--text); }
+.ra-forts ul, .ra-surveiller ul{ margin:6px 0 0; padding-left:18px; display:flex; flex-direction:column; gap:2px; }
+.ra-grille{ display:grid; grid-template-columns:repeat(auto-fill, minmax(min(100%, 160px), 1fr)); gap:10px; margin-bottom:12px; }
+.ra-tuile{ padding:12px; border-radius:14px; border:1px solid var(--border); background:var(--surface-2); display:flex; flex-direction:column; gap:2px; min-width:0; }
+.ra-tuile strong{ font-size:24px; font-weight:900; font-variant-numeric:tabular-nums; }
+.ra-tuile small{ font-weight:700; color:var(--text-dim); } .ra-tuile em{ font-style:normal; font-size:12px; color:var(--text-dim); }
+.ra-tuile.ok strong{ color:var(--green, #2E7D62); } .ra-tuile.moyen strong{ color:var(--amber-ink, #8A5A00); } .ra-tuile.ko strong{ color:var(--danger, #B5492F); }
+.ra-ic{ color:var(--primary); }
+.ra-bloc{ padding:12px 14px; border-radius:14px; border:1px solid var(--border); margin-bottom:12px; }
+.ra-bloc h3{ margin:0 0 8px; font-size:15px; }
+.ra-manques{ display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
+.ra-chrono{ list-style:none; margin:0; padding:0; }
+.ra-chrono li{ display:flex; align-items:center; gap:10px; padding:7px 0; border-top:1px solid var(--border); } .ra-chrono li:first-child{ border-top:0; }
+.ra-chrono-ic{ color:var(--primary); flex:0 0 auto; } .ra-chrono-txt{ flex:1; min-width:0; font-size:14px; }
+.ra-chrono time{ font-size:12px; color:var(--text-dim); white-space:nowrap; font-variant-numeric:tabular-nums; }
+@media print{ .ra-impression .ra-tuile{ break-inside:avoid; } .ra-impression .no-print{ display:none !important; } }

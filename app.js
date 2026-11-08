@@ -197,6 +197,7 @@ const VIEW_TITLES = {
   'cahier-appel': 'Cahier d’appel',
   'camps-de-base': 'Camps de base — devoirs et exercices',
   renforcement: 'Cours de renforcement',
+  'rapport-activite': 'Rapport d’activité',
 };
 
 /* --- Comptabilité --- */
@@ -913,6 +914,7 @@ function renderView(view){
     devoirs: renderDevoirs,
     cantine: renderCantine,
     'cahier-appel': renderCahierAppel,
+    'rapport-activite': renderRapportActivite,
     'camps-de-base': renderCampsDeBase,
     renforcement: renderRenforcement,
   };
@@ -2732,6 +2734,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.11.8-5', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Nouveau : « Rapport d’activité » (menu Pédagogie). L’enseignant voit le sien ; le secrétariat, la direction et la fondation choisissent l’enseignant (aussi depuis la liste des enseignants, bouton 📈). Par période : régularité de l’appel et appels non faits, pointage et retards, devoirs, évaluations, notes et appréciations, programmes, messages aux parents, publications, chronologie, points forts / à surveiller, impression.', 'L’auteur de chaque appel, note et appréciation est désormais enregistré automatiquement.' ],
+  } },
   { version: '2026.11.8-4', nouveautes: {
     commun: [],
     parent: [],
@@ -7753,6 +7761,7 @@ function renderEnseignants(){
       <td><span class="badge ${t.statut==='Actif'?'green':'gray'}">${t.statut}</span></td>
       <td>${profilLie ? `<span class="badge green">Accès actif</span>` : `<button type="button" class="btn sm" onclick="ouvrirAccesPersonnel('${t.id}')">Activer son accès</button>`}</td>
       <td style="white-space:nowrap;">
+        <button class="icon-btn" title="Rapport d’activité" aria-label="Rapport d’activité" onclick="ui.filters.rapportEns='${t.id}'; go('rapport-activite')">📈</button>
         <button class="icon-btn" title="Modifier" onclick="openEnseignantForm('${t.id}')">✏️</button>
         ${profilLie ? `<button class="icon-btn" title="Son compte" aria-label="Son compte" onclick="ouvrirAccesPersonnel('${t.id}')">🔗</button>` : ''}
         <button class="icon-btn danger" title="Supprimer" onclick="deleteEnseignant('${t.id}')">🗑️</button>
@@ -9347,6 +9356,112 @@ function exporterFneCsv(mois){
     .concat(encaissementsFne(mois).map(x => { const c = certificationDe(x.id); return [x.date, x.objet, x.payeur, Math.round(x.montant), x.mode, c ? c.numero : 'À CERTIFIER', c && c.lien ? c.lien : '', x.id.slice(0, 8).toUpperCase()]; }));
   const blob = new Blob(['\ufeff' + lignes.map(l => l.map(q).join(';')).join('\r\n')], { type: 'text/csv;charset=utf-8' });
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `FNE_${mois}.csv`; a.click(); URL.revokeObjectURL(a.href);
+}
+/* =====================================================================
+   RAPPORT D'ACTIVITÉ D'UN ENSEIGNANT (enseignant : le sien ; secrétariat,
+   direction, fondation : chaque enseignant) — calculé par la base (section 108)
+   ===================================================================== */
+const DEBUT_SUIVI_AUTEUR = '2026-11-08';   // auteur des appels et des notes enregistré depuis cette date
+function periodeRapport(code){
+  const auj = todayISO(), d = new Date(auj + 'T12:00:00');
+  const lundi = (() => { const x = new Date(d); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); return isoLocal(x); })();
+  const debutMois = auj.slice(0, 8) + '01';
+  const evts = DB.agenda || [];
+  const rentree = (evts.find(e => /rentr[ée]e scolaire/i.test(e.titre)) || {}).dateDebut || (Number(auj.slice(5, 7)) >= 9 ? auj.slice(0, 4) : String(Number(auj.slice(0, 4)) - 1)) + '-09-01';
+  const fins = evts.filter(e => /fin du\s*\d/i.test(e.titre)).map(e => e.dateDebut).sort();
+  const finPrec = fins.filter(f => f < auj).pop();
+  const debutTrim = finPrec ? decalerJours(finPrec, 1) : rentree;
+  const P = {
+    semaine: { lib: 'Cette semaine', debut: lundi, fin: auj },
+    mois: { lib: 'Ce mois', debut: debutMois, fin: auj },
+    'mois-prec': { lib: 'Mois dernier', debut: moisDecale(auj.slice(0, 7), -1) + '-01', fin: decalerJours(debutMois, -1) },
+    trimestre: { lib: 'Ce trimestre', debut: debutTrim, fin: auj },
+    annee: { lib: 'Depuis la rentrée', debut: rentree, fin: auj },
+  };
+  return { codes: P, choisi: P[code] || P.mois };
+}
+function renderRapportActivite(){
+  const admin = ['secretariat','direction','fondation'].includes(ui.role);
+  chargerAgenda();
+  const ensActifs = (DB.enseignants || []).filter(t => t.statut === 'Actif').sort((a, b) => (a.nom || '').localeCompare(b.nom || ''));
+  const ensId = admin ? (ensActifs.find(t => t.id === ui.filters.rapportEns) ? ui.filters.rapportEns : ensActifs[0]?.id) : session.enseignantId;
+  if(!ensId) return `<div class="view active"><div class="panel"><div class="etat-vide"><span>${admin ? 'Aucun enseignant enregistré.' : 'Votre compte n’est pas encore relié à une fiche enseignant : inscrivez-vous depuis votre tableau de bord (« Je m’enrôle »).'}</span></div></div></div>`;
+  ui.filters.rapportEns = ensId;
+  const code = ui.filters.rapportPeriode || 'mois';
+  const { codes, choisi } = periodeRapport(code);
+  const cle = `${ensId}|${choisi.debut}|${choisi.fin}`;
+  ui.rapportCache = ui.rapportCache || {};
+  if(ui.rapportCache[cle] === undefined){
+    ui.rapportCache[cle] = null;
+    sb.rpc('rapport_activite_enseignant', { p_enseignant: ensId, p_debut: choisi.debut, p_fin: choisi.fin }).then(({ data, error }) => {
+      ui.rapportCache[cle] = error ? { erreur: error.message } : data;
+      if(ui.currentView === 'rapport-activite') renderView('rapport-activite');
+    });
+  }
+  const d = ui.rapportCache[cle];
+  return `<div class="view active">
+    <div class="panel rapport-tete no-print">
+      ${admin ? `<div class="field" style="margin:0 0 10px;"><label for="rapEns">Enseignant</label>
+        <select id="rapEns" onchange="ui.filters.rapportEns=this.value; renderView('rapport-activite')">${ensActifs.map(t => `<option value="${t.id}" ${t.id === ensId ? 'selected' : ''}>${escapeHtml(ensFullName(t))}${(t.classesAssignees || []).length ? ' — ' + (t.classesAssignees || []).map(classeName).join(', ') : ''}</option>`).join('')}</select></div>` : ''}
+      <div class="segmente rapport-periodes" role="tablist" aria-label="Période">${Object.entries(codes).map(([k, v]) => `<button type="button" role="tab" class="seg${k === code ? ' actif' : ''}" aria-selected="${k === code}" onclick="ui.filters.rapportPeriode='${k}'; renderView('rapport-activite')">${v.lib}</button>`).join('')}</div>
+    </div>
+    ${d === null ? '<div class="panel"><div class="hint">Calcul du rapport…</div></div>' : d.erreur ? `<div class="panel"><div class="etat-vide"><span>Rapport indisponible : ${escapeHtml(d.erreur)}</span></div></div>` : rapportActiviteHtml(d, choisi, admin)}
+  </div>`;
+}
+function rapportActiviteHtml(d, periode, admin){
+  const e = d.enseignant || {}, a = d.appels || {}, pt = d.pointage || {}, pr = d.programmes || {};
+  const titre = e.sexe === 'F' ? 'Maîtresse' : e.sexe === 'M' ? 'M.' : '';
+  const regularite = a.attendus ? Math.round(100 * a.faits / a.attendus) : null;
+  const n = v => Number(v || 0);
+  // Synthèse : points forts et points à surveiller, en clair
+  const forts = [], surveiller = [];
+  if(regularite !== null){ if(regularite >= 90) forts.push(`appel fait ${regularite} % des jours de classe`); else if(a.attendus >= 3) surveiller.push(`appel fait seulement ${regularite} % des jours de classe (${a.manquants} manquant${a.manquants > 1 ? 's' : ''})`); }
+  if(n(pt.jours_pointes)){ if(!n(pt.retards) && !n(pt.absences)) forts.push('aucun retard ni absence au pointage'); else { if(n(pt.retards)) surveiller.push(`${pt.retards} retard${pt.retards > 1 ? 's' : ''} (${pt.minutes_retard} min au total)`); if(n(pt.absences)) surveiller.push(`${pt.absences} absence${pt.absences > 1 ? 's' : ''}`); } }
+  if(n(d.devoirs)) forts.push(`${d.devoirs} devoir${d.devoirs > 1 ? 's' : ''} noté${d.devoirs > 1 ? 's' : ''} au cahier de textes`); else if(n(d.periode?.jours_classe) >= 8) surveiller.push('aucun devoir noté au cahier de textes');
+  if(n(d.notes) || n(d.evaluations)) forts.push(`${n(d.evaluations)} évaluation${n(d.evaluations) > 1 ? 's' : ''} et ${n(d.notes)} note${n(d.notes) > 1 ? 's' : ''} saisie${n(d.notes) > 1 ? 's' : ''}`);
+  if(n(d.messages)) forts.push(`${d.messages} message${d.messages > 1 ? 's' : ''} aux parents`);
+  const tuile = (ic, val, lib, cls, det) => `<div class="ra-tuile ${cls || ''}"><span class="ra-ic" aria-hidden="true">${icone(ic) || ''}</span><strong>${val}</strong><small>${lib}</small>${det ? `<em>${det}</em>` : ''}</div>`;
+  const ICONES = { appel: 'circle-check', devoir: 'notebook-pen', evaluation: 'file-text', notes: 'pencil', publication: 'camera', message: 'mail', pointage: 'clock' };
+  return `<section class="panel rapport-activite">
+    <div class="ra-entete">
+      <div><h2>${escapeHtml([titre, e.prenom, e.nom].filter(Boolean).join(' '))}</h2>
+        <div class="sub">${escapeHtml(e.matricule || '')}${(e.classes || []).length ? ' · ' + e.classes.map(escapeHtml).join(', ') : ''}${(e.matieres || []).length ? ' · ' + e.matieres.map(escapeHtml).join(', ') : ''}</div>
+        <div class="sub">Rapport d’activité — ${escapeHtml(periode.lib.toLowerCase())} (du ${fmtDate(periode.debut)} au ${fmtDate(d.periode?.fin || periode.fin)}) · ${n(d.periode?.jours_classe)} jour${n(d.periode?.jours_classe) > 1 ? 's' : ''} de classe</div></div>
+      <button type="button" class="btn secondary sm no-print" onclick="imprimerRapportActivite()">${icone('printer')} Imprimer</button>
+    </div>
+    ${admin && !e.a_un_compte ? `<div class="alerte-inscription" style="margin:0 0 12px;">Cet enseignant n’a pas encore son accès à l’application : ses appels, devoirs et notes ne peuvent pas encore lui être attribués. <button type="button" class="lien-discret" onclick="ouvrirAccesPersonnel('${ui.filters.rapportEns}')">Activer son accès</button></div>` : ''}
+    ${forts.length || surveiller.length ? `<div class="ra-synthese">
+      ${forts.length ? `<div class="ra-forts"><strong>Points forts</strong><ul>${forts.map(x => `<li>${escapeHtml(x)}</li>`).join('')}</ul></div>` : ''}
+      ${surveiller.length ? `<div class="ra-surveiller"><strong>À surveiller</strong><ul>${surveiller.map(x => `<li>${escapeHtml(x)}</li>`).join('')}</ul></div>` : ''}</div>` : ''}
+    <div class="ra-grille">
+      ${tuile('circle-check', regularite === null ? '—' : regularite + ' %', 'Régularité de l’appel', regularite === null ? '' : regularite >= 90 ? 'ok' : regularite >= 70 ? 'moyen' : 'ko', `${n(a.faits)} / ${n(a.attendus)} appels${n(a.par_lui) ? ` · ${a.par_lui} par lui-même` : ''}${n(a.par_autre) ? ` · ${a.par_autre} par un autre compte` : ''}${n(a.sans_auteur) ? ` · ${a.sans_auteur} sans auteur connu` : ''}`)}
+      ${tuile('clock', n(pt.jours_pointes) ? `${n(pt.presents)} / ${n(pt.jours_pointes)}` : '—', 'Pointage (jours présents)', n(pt.retards) || n(pt.absences) ? 'moyen' : n(pt.jours_pointes) ? 'ok' : '', n(pt.jours_pointes) ? `${n(pt.retards)} retard(s) · ${n(pt.minutes_retard)} min · ${n(pt.absences)} absence(s)` : 'aucun pointage sur la période')}
+      ${tuile('notebook-pen', n(d.devoirs), 'Devoirs notés', '', 'cahier de textes')}
+      ${tuile('file-text', n(d.evaluations), 'Évaluations créées', '', 'camps de base')}
+      ${tuile('pencil', n(d.notes), 'Notes saisies', '', `${n(d.appreciations)} appréciation(s)`)}
+      ${tuile('book-open', n(pr.nb) ? n(pr.progression) + ' %' : '—', 'Avancement des programmes', '', n(pr.nb) ? `${pr.nb} programme(s) suivi(s)` : 'aucun programme renseigné')}
+      ${tuile('mail', n(d.messages), 'Messages aux parents', '', '')}
+      ${tuile('camera', n(d.publications), 'Publications', '', 'vie de l’école')}
+    </div>
+    ${(a.manques || []).length ? `<div class="ra-bloc"><h3>Appels non faits</h3><div class="ra-manques">${a.manques.map(m => `<span class="badge-etat attente">${fmtDate(m.date)} · ${escapeHtml(m.classe || '')}</span>`).join('')}${n(a.manquants) > a.manques.length ? `<span class="hint" style="margin:0;">et ${a.manquants - a.manques.length} autre(s)</span>` : ''}</div></div>` : ''}
+    <div class="ra-bloc"><h3>Chronologie des activités</h3>
+      ${(d.chronologie || []).length ? `<ul class="ra-chrono">${d.chronologie.map(c => `<li><span class="ra-chrono-ic" aria-hidden="true">${icone(ICONES[c.type] || 'circle-dot') || ''}</span><span class="ra-chrono-txt">${escapeHtml(c.texte)}</span><time>${c.quand ? new Date(c.quand).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''}</time></li>`).join('')}</ul>`
+        : '<div class="hint" style="margin:0;">Aucune activité enregistrée par ce compte sur la période.</div>'}
+    </div>
+    ${periode.debut < DEBUT_SUIVI_AUTEUR ? `<p class="hint" style="margin-bottom:0;">L’auteur de chaque appel et de chaque note est enregistré depuis le ${fmtDate(DEBUT_SUIVI_AUTEUR)} : avant cette date, les appels faits comptent pour la classe mais ne peuvent pas être attribués à une personne.</p>` : ''}
+  </section>`;
+}
+function imprimerRapportActivite(){
+  const z = document.querySelector('.rapport-activite'); if(!z) return;
+  const m = DB.meta || {};
+  openModal('Rapport d’activité', `
+    <div class="form-actions no-print" style="margin-top:0;justify-content:flex-end;"><button type="button" class="btn" onclick="window.print()">${icone('printer')} Imprimer / PDF</button></div>
+    <section class="ra-impression">
+      <div class="recu-head">${m.logo ? `<img src="${escapeHtml(m.logo)}" alt="">` : `<div class="recu-logo-ph">🎓</div>`}
+        <div><strong>${escapeHtml(m.nomEcole || '')}</strong><div class="hint">${escapeHtml(m.adresse || '')}</div></div>
+        <div style="margin-left:auto;text-align:right;"><strong>RAPPORT D’ACTIVITÉ</strong><div class="hint">Imprimé le ${fmtDate(todayISO())}</div></div></div>
+      ${z.outerHTML.replace(/class="panel rapport-activite"/, 'class="rapport-activite"')}
+    </section>`);
 }
 /* --- 12.1 Aperçu financier --- */
 function renderComptaApercu(){

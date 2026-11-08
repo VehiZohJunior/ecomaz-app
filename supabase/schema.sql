@@ -4154,3 +4154,109 @@ create policy "double verification" on certifications_fne as restrictive for all
 drop trigger if exists journaliser_compta on certifications_fne;
 create trigger journaliser_compta after insert or update or delete on certifications_fne
   for each row execute function journaliser_compta();
+
+
+-- =====================================================================
+-- 108. RAPPORT D'ACTIVITÉ DES ENSEIGNANTS (2026-11-08)
+-- =====================================================================
+-- 1) Qui a fait l'appel, saisi la note, écrit l'appréciation : l'auteur est
+--    noté automatiquement (dernier enregistrement) — suivi à partir du 08/11/2026.
+alter table presences_eleves add column if not exists saisi_par uuid references auth.users(id) on delete set null;
+alter table presences_eleves add column if not exists saisi_le timestamptz;
+alter table notes add column if not exists saisi_par uuid references auth.users(id) on delete set null;
+alter table notes add column if not exists saisi_le timestamptz;
+alter table bulletins_commentaires add column if not exists saisi_par uuid references auth.users(id) on delete set null;
+alter table bulletins_commentaires add column if not exists saisi_le timestamptz;
+create index if not exists presences_eleves_auteur on presences_eleves(ecole_id, saisi_par, date);
+create index if not exists notes_auteur on notes(ecole_id, saisi_par);
+
+create or replace function marquer_auteur() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if auth.uid() is not null then new.saisi_par := auth.uid(); new.saisi_le := now(); end if;
+  return new;
+end $$;
+do $$ declare t text; begin
+  foreach t in array array['presences_eleves', 'notes', 'bulletins_commentaires'] loop
+    execute format('drop trigger if exists marquer_auteur on public.%I', t);
+    execute format('create trigger marquer_auteur before insert or update on public.%I for each row execute function marquer_auteur()', t);
+  end loop;
+end $$;
+
+-- 2) Le rapport : personnel administratif pour tout enseignant de l'école ;
+--    un enseignant pour lui-même seulement. Chiffres et faits, jamais le
+--    contenu des messages.
+create or replace function rapport_activite_enseignant(p_enseignant uuid, p_debut date, p_fin date)
+returns jsonb language plpgsql stable security definer set search_path = public as $$
+declare
+  t enseignants%rowtype; v_ecole uuid := mon_ecole_id(); comptes uuid[]; v_fin date := least(p_fin, current_date);
+  jours int[]; r jsonb;
+begin
+  select * into t from enseignants where id = p_enseignant;
+  if not found or t.ecole_id is distinct from v_ecole then raise exception 'Enseignant introuvable'; end if;
+  if not (coalesce(est_perso_admin(), false) or coalesce(mon_enseignant_id() = p_enseignant, false)) then raise exception 'Accès refusé'; end if;
+  if p_debut is null or p_fin is null or p_fin < p_debut or p_fin - p_debut > 400 then raise exception 'Période invalide'; end if;
+  comptes := array(select id from profiles where enseignant_id = p_enseignant);
+  select coalesce(h.jours_cours, '{1,2,3,4,5}') into jours from horaires_annonces h where h.ecole_id = v_ecole;
+  jours := coalesce(jours, '{1,2,3,4,5}');
+
+  with jours_classe as (
+    select d::date as jour from generate_series(p_debut, v_fin, interval '1 day') d
+    where extract(isodow from d)::int = any(jours)
+      and not exists (select 1 from evenements_agenda a where a.ecole_id = v_ecole and a.type = 'vacances'
+                      and (a.classe_ids is null or cardinality(a.classe_ids) = 0) and d::date between a.date_debut and a.date_fin)
+  ), attendus as (
+    select j.jour, c as classe_id from jours_classe j cross join unnest(coalesce(t.classes_assignees, '{}')) c
+  ), appels as (
+    select a.jour, a.classe_id,
+      bool_or(p.saisi_par = any(comptes)) as par_lui,
+      bool_or(p.saisi_par is not null and not (p.saisi_par = any(comptes))) as par_autre,
+      count(p.id) > 0 as fait
+    from attendus a left join presences_eleves p on p.ecole_id = v_ecole and p.date = a.jour and p.classe_id = a.classe_id
+    group by 1, 2
+  )
+  select jsonb_build_object(
+    'enseignant', jsonb_build_object('nom', t.nom, 'prenom', t.prenom, 'sexe', t.sexe, 'matricule', t.matricule,
+        'classes', (select coalesce(jsonb_agg(c.nom order by c.nom), '[]') from classes c where c.id = any(coalesce(t.classes_assignees, '{}'))),
+        'matieres', to_jsonb(coalesce(t.matieres, '{}')), 'a_un_compte', cardinality(comptes) > 0),
+    'periode', jsonb_build_object('debut', p_debut, 'fin', v_fin, 'jours_classe', (select count(*) from jours_classe)),
+    'pointage', (select jsonb_build_object('presents', count(*) filter (where statut = 'Présent'), 'retards', count(*) filter (where statut = 'Retard'),
+        'minutes_retard', coalesce(sum(minutes_retard) filter (where statut = 'Retard'), 0), 'absences', count(*) filter (where statut = 'Absent'), 'jours_pointes', count(*))
+        from presences_enseignants where ecole_id = v_ecole and enseignant_id = p_enseignant and date between p_debut and v_fin),
+    'appels', (select jsonb_build_object('attendus', count(*), 'faits', count(*) filter (where fait), 'par_lui', count(*) filter (where par_lui),
+        'par_autre', count(*) filter (where fait and not coalesce(par_lui, false) and coalesce(par_autre, false)),
+        'sans_auteur', count(*) filter (where fait and not coalesce(par_lui, false) and not coalesce(par_autre, false)), 'manquants', count(*) filter (where not fait),
+        'manques', coalesce((select jsonb_agg(jsonb_build_object('date', x.jour, 'classe', (select nom from classes where id = x.classe_id)) order by x.jour desc)
+                   from (select * from appels where not fait order by jour desc limit 12) x), '[]')) from appels),
+    'devoirs', (select count(*) from devoirs where ecole_id = v_ecole and auteur_id = any(comptes) and created_at::date between p_debut and v_fin),
+    'evaluations', (select count(*) from evaluations where ecole_id = v_ecole and created_by = any(comptes) and created_at::date between p_debut and v_fin),
+    'notes', (select count(*) from notes where ecole_id = v_ecole and saisi_par = any(comptes) and saisi_le::date between p_debut and v_fin),
+    'appreciations', (select count(*) from bulletins_commentaires where ecole_id = v_ecole and saisi_par = any(comptes) and saisi_le::date between p_debut and v_fin),
+    'messages', (select count(*) from messages_internes where ecole_id = v_ecole and auteur_id = any(comptes) and created_at::date between p_debut and v_fin),
+    'publications', (select count(*) from publications where ecole_id = v_ecole and auteur_id = any(comptes) and created_at::date between p_debut and v_fin),
+    'programmes', (select jsonb_build_object('nb', count(*), 'progression', round(coalesce(avg(progression), 0)))
+        from programmes where ecole_id = v_ecole and enseignant_id = p_enseignant),
+    'chronologie', (select coalesce(jsonb_agg(jsonb_build_object('quand', s.quand, 'type', s.type, 'texte', s.texte) order by s.quand desc), '[]') from (
+        select q.* from (
+          select max(p.saisi_le) quand, 'appel' type, 'Appel — ' || coalesce(c.nom, '') || ' (' || to_char(p.date, 'DD/MM') || ')' texte
+            from presences_eleves p left join classes c on c.id = p.classe_id
+            where p.ecole_id = v_ecole and p.saisi_par = any(comptes) and p.date between p_debut and v_fin group by p.date, c.nom
+          union all select d.created_at, 'devoir', 'Devoir noté — ' || coalesce(c.nom, '') || ' · ' || coalesce(d.matiere, '')
+            from devoirs d left join classes c on c.id = d.classe_id where d.ecole_id = v_ecole and d.auteur_id = any(comptes) and d.created_at::date between p_debut and v_fin
+          union all select e.created_at, 'evaluation', 'Évaluation créée — ' || coalesce(c.nom, '') || ' · ' || e.matiere || ' (' || e.type || ')'
+            from evaluations e left join classes c on c.id = e.classe_id where e.ecole_id = v_ecole and e.created_by = any(comptes) and e.created_at::date between p_debut and v_fin
+          union all select max(n.saisi_le), 'notes', count(*) || ' note(s) saisie(s) — ' || n.matiere
+            from notes n where n.ecole_id = v_ecole and n.saisi_par = any(comptes) and n.saisi_le::date between p_debut and v_fin group by n.saisi_le::date, n.matiere
+          union all select u.created_at, 'publication', 'Publication « ' || left(u.titre, 60) || ' »'
+            from publications u where u.ecole_id = v_ecole and u.auteur_id = any(comptes) and u.created_at::date between p_debut and v_fin
+          union all select max(m.created_at), 'message', count(*) || ' message(s) aux parents'
+            from messages_internes m where m.ecole_id = v_ecole and m.auteur_id = any(comptes) and m.created_at::date between p_debut and v_fin group by m.created_at::date
+          union all select pe.date::timestamptz, 'pointage', 'Pointage : ' || pe.statut || coalesce(' à ' || left(pe.heure_arrivee::text, 5), '')
+              || case when pe.statut = 'Retard' then ' (' || coalesce(pe.minutes_retard, 0) || ' min)' else '' end
+            from presences_enseignants pe where pe.ecole_id = v_ecole and pe.enseignant_id = p_enseignant and pe.date between p_debut and v_fin
+        ) q order by q.quand desc nulls last limit 30) s)
+  ) into r;
+  return r;
+end $$;
+revoke all on function rapport_activite_enseignant(uuid, date, date) from public, anon;
+grant execute on function rapport_activite_enseignant(uuid, date, date) to authenticated;

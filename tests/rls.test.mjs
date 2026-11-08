@@ -376,6 +376,19 @@ async function requete(accessToken, chemin, options = {}){
   const fneAnon = await requete(ANON_KEY, `/rest/v1/certifications_fne?select=id&limit=1`);
   verifier('Sans connexion, rien à lire dans certifications_fne', !fneAnon.ok || (Array.isArray(fneAnon.data) && fneAnon.data.length === 0));
 
+  section('7novodecies. Rapport d’activité des enseignants (08/11/2026) — un enseignant ne voit pas celui d’un collègue');
+  const sonId = (await requete(tokenEnseignant, `/rest/v1/rpc/mon_enseignant_id`, { method:'POST', body:'{}' })).data;
+  const unEns = ((await requete(tokenSecretariat, `/rest/v1/enseignants_lecture?select=id&limit=5`)).data || []).find(x => x.id !== sonId);
+  if(unEns){
+    const corpsRap = JSON.stringify({ p_enseignant: unEns.id, p_debut: '2026-10-01', p_fin: '2026-10-31' });
+    const rapSec = await requete(tokenSecretariat, `/rest/v1/rpc/rapport_activite_enseignant`, { method:'POST', body: corpsRap });
+    verifier('Le secrétariat obtient le rapport d’un enseignant', rapSec.ok && rapSec.data && rapSec.data.appels, `statut ${rapSec.status}`);
+    const rapEns = await requete(tokenEnseignant, `/rest/v1/rpc/rapport_activite_enseignant`, { method:'POST', body: corpsRap });
+    verifier("Un compte enseignant ne lit pas le rapport d’un collègue", !rapEns.ok, `statut ${rapEns.status}`);
+    const rapAnon = await requete(ANON_KEY, `/rest/v1/rpc/rapport_activite_enseignant`, { method:'POST', body: corpsRap });
+    verifier('Sans connexion, aucun rapport d’activité', !rapAnon.ok, `statut ${rapAnon.status}`);
+  }
+
   section('8. Visiteur non connecté — ne lit que les affichages publics prévus');
   for(const table of ['eleves','enseignants_lecture','profiles','paiements_scolarite','messages','parents_eleves','presences_eleves','eleves_portier_lecture','objets_perdus','push_abonnements','absences_signalees','evenements_agenda','devoirs','personnes_autorisees','sante_eleves','reponses_agenda','corrections_fiches','menus_cantine','preinscriptions','demandes_documents','evaluations','coefficients_matieres','bulletins_resultats']){
     const r = await requete(ANON_KEY, `/rest/v1/${table}?select=*&limit=1`);
