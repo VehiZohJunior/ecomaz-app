@@ -2731,6 +2731,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.11.8-1', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Paramètres → Scolarité : alerte quand les dates des tranches sont incohérentes (ex. frais d’inscription dus après tous les versements), car une date mal saisie fausse les relances et les retards.' ],
+  } },
   { version: '2026.10.19-8', nouveautes: {
     commun: [],
     parent: [ 'Invitation personnelle : avec le lien reçu de l’école, connectez-vous avec Google, choisissez Papa ou Maman et entrez directement dans votre espace, déjà relié à vos enfants.' ],
@@ -11757,6 +11763,18 @@ function grilleSource(classeId){
   if(toutes.some(e => !e.classeId)) return 'commune';
   return 'simple';
 }
+// Contrôle intelligent : une tranche datée APRÈS une tranche suivante, ou des frais d'inscription
+// échus après les versements, trahit presque toujours une erreur de saisie (mois ou année)
+function anomaliesEcheances(liste){
+  const datees = liste.filter(e => e.dateEcheance), pb = [];
+  datees.forEach((e, i) => { const suite = datees.slice(i + 1).find(x => x.dateEcheance < e.dateEcheance); if(suite) pb.push(`« ${e.label} » (${fmtDate(e.dateEcheance)}) tombe après « ${suite.label} » (${fmtDate(suite.dateEcheance)})`); });
+  const insc = datees.find(e => /inscription/i.test(e.label)), autres = datees.filter(e => e !== insc);
+  if(insc && autres.length && autres.every(x => x.dateEcheance < insc.dateEcheance) && !pb.some(t => t.includes(insc.label))) pb.push(`les frais d’inscription (${fmtDate(insc.dateEcheance)}) sont dus après tous les versements`);
+  return pb;
+}
+function classesEcheancesIncoherentes(){
+  return DB.classes.filter(c => grilleSource(c.id) === 'propre' && anomaliesEcheances(echeancesDeClasse(c.id)).length);
+}
 function renderEcheancesScolarite(){
   const portee = ui.filters.grillePortee || '';            // '' = grille commune, sinon id de classe
   const liste = (DB.echeancesScolarite||[]).filter(e => (e.classeId || '') === portee)
@@ -11787,7 +11805,9 @@ function renderEcheancesScolarite(){
         <option value="" ${!portee?'selected':''}>Grille commune</option>
         ${DB.classes.map(c => `<option value="${c.id}" ${portee===c.id?'selected':''}>${escapeHtml(c.nom)}${grilleSource(c.id)==='propre' ? ' ✓' : ''}</option>`).join('')}
       </select></div>
+    ${(() => { const inc = classesEcheancesIncoherentes(); return inc.length ? `<div class="alerte-inscription" style="margin:0 0 12px;"><strong>⚠️ Dates à vérifier dans ${inc.length} classe${inc.length > 1 ? 's' : ''}</strong> (${inc.map(c => escapeHtml(c.nom)).join(', ')}) : ${escapeHtml(anomaliesEcheances(echeancesDeClasse(inc[0].id))[0])}. Une date mal saisie fausse les relances et les retards de paiement.</div>` : ''; })()}
     <h4 style="margin:6px 0;">${escapeHtml(nomPortee)} — total ${fmtFCFA(total)}</h4>
+    ${anomaliesEcheances(liste).length ? `<div class="hint" style="color:var(--warning);margin:0 0 8px;">⚠️ ${anomaliesEcheances(liste).map(escapeHtml).join(' · ')}</div>` : ''}
     ${liste.length===0 ? `<div class="hint" style="margin-bottom:14px;">${portee ? 'Cette classe n’a pas encore de grille propre : elle utilise la grille commune (ou son montant annuel).' : 'Aucune tranche dans la grille commune.'}</div>` : `
     <div class="table-wrap" style="margin-bottom:14px;"><table>
       <thead><tr><th>Tranche</th><th>Montant</th><th>Date limite</th><th>Actions</th></tr></thead>
