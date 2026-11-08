@@ -4120,3 +4120,37 @@ begin
 end $$;
 revoke all on function utiliser_invitation_parent(text, text, text) from public, anon;
 grant execute on function utiliser_invitation_parent(text, text, text) to authenticated;
+
+-- =====================================================================
+-- 107. MODULE FNE — MODE ASSISTÉ (2026-11-08)
+-- =====================================================================
+-- Facture Normalisée Électronique (DGI). Tant que l'école n'a pas de clé
+-- API délivrée par la DGI, la facture est créée sur la plateforme web FNE
+-- de la DGI ; l'école note ici le numéro obtenu (et le lien de
+-- vérification) : le reçu EcoMaZ l'affiche avec un QR code. Une ligne par
+-- encaissement ; numéro unique par école ; chaque saisie est tracée dans
+-- journal_compta (même déclencheur que les paiements).
+create table if not exists certifications_fne (
+  id uuid primary key default gen_random_uuid(),
+  ecole_id uuid not null references ecoles(id) on delete cascade default mon_ecole_id(),
+  table_cible text not null check (table_cible in ('paiements_scolarite', 'paiements_cotisations', 'ventes_gadgets')),
+  enregistrement_id uuid not null,
+  numero text not null check (char_length(trim(numero)) between 3 and 60),
+  lien text check (lien is null or (char_length(lien) <= 300 and lien ~ '^https://')),
+  certifie_le timestamptz not null default now(),
+  certifie_par uuid references auth.users(id) on delete set null default auth.uid(),
+  unique (table_cible, enregistrement_id),
+  unique (ecole_id, numero)
+);
+create index if not exists certifications_fne_ecole on certifications_fne(ecole_id);
+alter table certifications_fne enable row level security;
+drop policy if exists "gestion certifications_fne" on certifications_fne;
+create policy "gestion certifications_fne" on certifications_fne for all
+  using (ecole_id = mon_ecole_id() and est_perso_admin())
+  with check (ecole_id = mon_ecole_id() and est_perso_admin());
+drop policy if exists "double verification" on certifications_fne;
+create policy "double verification" on certifications_fne as restrictive for all to authenticated
+  using (double_verification_ok()) with check (double_verification_ok());
+drop trigger if exists journaliser_compta on certifications_fne;
+create trigger journaliser_compta after insert or update or delete on certifications_fne
+  for each row execute function journaliser_compta();

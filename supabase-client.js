@@ -389,7 +389,7 @@ async function loadAllFromSupabase(){
     gadgets, ventesGadgets, personnelAutre, paiementsSalaires, depenses, messages,
     alertesPointage, echeancesScolarite, profiles, fneConfigRow, tvaCategories, paiementEnLigneRow,
     parentsEleves, tableauHonneur, actualitesAffichage, horairesAnnoncesRow, annoncesHoraires,
-    notificationsPortier, messagesInternes, suggestions, pointagesGps, coefficientsMatieres, bulletinsResultats
+    notificationsPortier, messagesInternes, suggestions, pointagesGps, coefficientsMatieres, bulletinsResultats, certificationsFne
   ] = await Promise.all([
     sb.from('ecoles').select('*').eq('id', session.ecoleId).single(),
     dbSelectAll('classes'),
@@ -453,6 +453,8 @@ async function loadAllFromSupabase(){
     // Bulletin officiel : coefficients et résultats figés (schema.sql section 79)
     dbSelectAll('coefficients_matieres').catch(()=>[]),
     dbSelectAll('bulletins_resultats').catch(()=>[]),
+    // FNE en mode assisté : numéros obtenus sur la plateforme de la DGI (schema.sql section 107)
+    dbSelectAll('certifications_fne').catch(()=>[]),
   ]);
 
   if(ecoleRow.error) throw ecoleRow.error;
@@ -499,7 +501,7 @@ async function loadAllFromSupabase(){
     echeancesScolarite: echeancesScolarite.slice().sort((a,b)=> (a.ordre-b.ordre) || (a.dateEcheance||'').localeCompare(b.dateEcheance||'')),
     profiles, parentsEleves, tableauHonneur, actualitesAffichage,
     horairesAnnonces: horairesAnnoncesRow, annoncesHoraires, notificationsPortier,
-    messagesInternes, suggestions, pointagesGps, coefficientsMatieres, bulletinsResultats,
+    messagesInternes, suggestions, pointagesGps, coefficientsMatieres, bulletinsResultats, certificationsFne,
     fneConfig: fneConfigRow || {regime:'recus', prestataire:'', cleConfiguree:false},
   };
 }

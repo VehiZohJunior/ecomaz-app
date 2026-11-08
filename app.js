@@ -222,6 +222,7 @@ const COMPTA_TABS = [
   {id:'ventes', label:'Boutique scolaire', icon:'🛍️'},
   {id:'salaires', label:'Salaires', icon:'💵'},
   {id:'depenses', label:'Charges & Dépenses', icon:'🏠'},
+  {id:'fne', label:'FNE', icon:'🧾'},
   {id:'journal', label:"Journal d'audit", icon:'📜'},
   {id:'annees', label:'Comparaison annuelle', icon:'📅'},
   {id:'budget', label:'Budget prévisionnel', icon:'🎯'},
@@ -2731,6 +2732,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.11.8-4', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Comptabilité → FNE : suivi de la Facture Normalisée Électronique en mode assisté — « Copier les infos » pour la plateforme FNE de la DGI, « Noter le n° FNE », reçus avec le numéro FNE et le QR de vérification, encaissements certifiés / à certifier par mois, export CSV pour le comptable.' ],
+  } },
   { version: '2026.11.8-3', nouveautes: {
     commun: [],
     parent: [],
@@ -3774,7 +3781,7 @@ function renderTresorerie(){
   // Traçabilité : derniers mouvements et corrections du mois (journal d'audit tenu par la base)
   chargerJournalTresorerie();
   const J = DB.journalTresorerie;
-  const LIBS = { paiements_scolarite: 'Scolarité', paiements_cotisations: 'Activité', ventes_gadgets: 'Boutique', paiements_salaires: 'Salaire', depenses: 'Dépense' };
+  const LIBS = { paiements_scolarite: 'Scolarité', paiements_cotisations: 'Activité', ventes_gadgets: 'Boutique', paiements_salaires: 'Salaire', depenses: 'Dépense', certifications_fne: 'Numéro FNE' };
   const mvt = l => {
     const d = l.donnees_apres || l.donnees_avant || {}, montant = Number(d.montant ?? d.montant_total ?? 0);
     const sortie = ['paiements_salaires', 'depenses'].includes(l.table_cible);
@@ -9142,7 +9149,14 @@ let recuSeq = 0;
 function genRecuNumero(type, refId){
   return `REC-${type==='entree'?'E':'S'}-${(refId||uid()).toUpperCase()}`;
 }
+function certificationDe(refId){ return (DB.certificationsFne || []).find(c => c.enregistrementId === refId) || null; }
 function statutFneRecu(r){
+  const cert = r.refId ? certificationDe(r.refId) : null;
+  if(cert){
+    let qr = '';
+    if(cert.lien){ try{ const q = qrcode(0, 'M'); q.addData(cert.lien); q.make(); qr = q.createSvgTag({ cellSize: 2, margin: 0, scalable: true }); }catch(_e){} }
+    return `<div class="recu-row recu-fne"><span>FNE</span><strong><span class="recu-fne-num">N° ${escapeHtml(cert.numero)}</span>${cert.lien ? `<small>Vérification : ${escapeHtml(cert.lien)}</small>` : '<small>Facture Normalisée Électronique (DGI)</small>'}</strong>${qr ? `<span class="recu-fne-qr" aria-hidden="true">${qr}</span>` : ''}</div>`;
+  }
   // La FNE ne concerne (pour l'instant, confirmé 2026-09-24) que les reçus
   // de scolarité — pas les salaires/dépenses. Voir schema.sql section 27 :
   // aucune certification réelle n'est câblée tant qu'un prestataire n'a
@@ -9212,7 +9226,7 @@ function renderComptabilite(){
   const renderers = {
     apercu: renderComptaApercu, scolarite: renderComptaScolarite, activites: renderComptaActivites,
     ventes: renderComptaVentes, salaires: renderComptaSalaires, depenses: renderComptaDepenses,
-    journal: renderComptaJournal, annees: renderComptaAnnees, budget: renderComptaBudget,
+    journal: renderComptaJournal, annees: renderComptaAnnees, budget: renderComptaBudget, fne: renderComptaFne,
     syscohada: renderComptaSyscohada, rapprochement: renderComptaRapprochement,
   };
   // Les salaires, les dépenses, le journal d'audit, la comparaison annuelle,
@@ -9233,6 +9247,107 @@ function renderComptabilite(){
   </div>`;
 }
 
+/* --- FNE (Facture Normalisée Électronique) — mode assisté ---
+   La facture est créée sur la plateforme FNE de la DGI ; on note ici son numéro.
+   Le jour où l'école a sa clé API DGI, la certification pourra devenir automatique. */
+const LIEN_PLATEFORME_FNE = 'https://www.fne.dgi.gouv.ci/';
+function encaissementsFne(mois){
+  const ligne = (table, x, montant, objet, payeur) => ({ table, id: x.id, date: x.date, montant: Number(montant || 0), mode: x.modePaiement || '', objet, payeur });
+  const el = id => eleveById(id);
+  return [
+    ...(DB.paiementsScolarite || []).map(x => { const e = el(x.eleveId); return ligne('paiements_scolarite', x, x.montant, `Scolarité — ${x.tranche || ''}`, e ? `${e.parentNom || 'Parent de ' + eleveFullName(e)} (élève : ${eleveFullName(e)}, ${classeName(e.classeId)})` : 'Élève'); }),
+    ...(DB.paiementsCotisations || []).map(x => { const e = el(x.eleveId), a = (DB.activites || []).find(y => y.id === x.activiteId); return ligne('paiements_cotisations', x, x.montant, `Activité — ${a ? a.nom : ''}`, e ? `${e.parentNom || 'Parent de ' + eleveFullName(e)} (élève : ${eleveFullName(e)})` : 'Élève'); }),
+    ...(DB.ventesGadgets || []).map(x => { const e = x.eleveId ? el(x.eleveId) : null, g = (DB.gadgets || []).find(y => y.id === x.gadgetId); return ligne('ventes_gadgets', x, x.montantTotal, `Boutique — ${g ? g.nom : 'article'}${x.quantite > 1 ? ' × ' + x.quantite : ''}`, e ? `${e.parentNom || 'Parent de ' + eleveFullName(e)} (élève : ${eleveFullName(e)})` : 'Client'); }),
+  ].filter(x => String(x.date || '').startsWith(mois)).sort((a, b) => b.date.localeCompare(a.date));
+}
+function renderComptaFne(){
+  const mois = ui.filters.fneMois || thisMonthISO(); ui.filters.fneMois = mois;
+  const statut = ui.filters.fneStatut || 'a-certifier';
+  const toutes = encaissementsFne(mois);
+  const certifiees = toutes.filter(x => certificationDe(x.id)), aFaire = toutes.filter(x => !certificationDe(x.id));
+  const liste = statut === 'certifiees' ? certifiees : statut === 'toutes' ? toutes : aFaire;
+  const m = DB.meta || {}, total = l => l.reduce((t, x) => t + x.montant, 0);
+  const moisLib = d => new Date(d + '-15T12:00:00').toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+  const ligne = x => { const c = certificationDe(x.id); return `<li class="fne-ligne${c ? ' faite' : ''}">
+      <span class="fne-txt"><strong>${escapeHtml(x.objet)}</strong><small>${fmtDate(x.date)} · ${escapeHtml(x.payeur)}${x.mode ? ' · ' + escapeHtml(x.mode) : ''}</small>
+        ${c ? `<small class="fne-num">FNE n° ${escapeHtml(c.numero)} · noté le ${fmtDate(String(c.certifieLe).slice(0, 10))}</small>` : ''}</span>
+      <span class="fne-montant">${fmtFCFA(x.montant)}</span>
+      <span class="fne-act">${c ? `<button type="button" class="btn secondary sm" onclick="ouvrirSaisieFne('${x.table}','${x.id}')">Modifier</button>`
+        : `<button type="button" class="btn secondary sm" onclick="copierInfosFne('${x.table}','${x.id}')">Copier les infos</button><button type="button" class="btn sm" onclick="ouvrirSaisieFne('${x.table}','${x.id}')">Noter le n° FNE</button>`}</span>
+    </li>`; };
+  return `<div class="panel">
+    <div class="panel-head"><div><h2>🧾 FNE — Facture Normalisée Électronique</h2><div class="sub">Mode assisté : la facture est créée sur la plateforme de la DGI, EcoMaZ garde son numéro et l’imprime sur le reçu.</div></div>
+      <a class="btn secondary sm" href="${LIEN_PLATEFORME_FNE}" target="_blank" rel="noopener">Ouvrir la plateforme FNE (DGI)</a></div>
+    <ol class="fne-etapes">
+      <li>Touchez <strong>« Copier les infos »</strong> sur un encaissement.</li>
+      <li>Sur la plateforme FNE de la DGI, créez la facture et <strong>collez</strong> les informations.</li>
+      <li>Revenez ici, touchez <strong>« Noter le n° FNE »</strong> : le numéro (et le QR de vérification) apparaît sur le reçu EcoMaZ.</li>
+    </ol>
+    <div class="fne-filtres">
+      <span class="fne-mois"><button type="button" class="btn secondary sm" aria-label="Mois précédent" onclick="ui.filters.fneMois='${moisDecale(mois, -1)}'; renderView('comptabilite')">‹</button>
+        <strong>${moisLib(mois)}</strong>
+        ${mois < thisMonthISO() ? `<button type="button" class="btn secondary sm" aria-label="Mois suivant" onclick="ui.filters.fneMois='${moisDecale(mois, 1)}'; renderView('comptabilite')">›</button>` : ''}</span>
+      <div class="segmente" role="tablist">${[['a-certifier', `À certifier (${aFaire.length})`], ['certifiees', `Certifiées (${certifiees.length})`], ['toutes', `Tout (${toutes.length})`]].map(([k, l]) => `<button type="button" class="seg${statut === k ? ' actif' : ''}" onclick="ui.filters.fneStatut='${k}'; renderView('comptabilite')">${l}</button>`).join('')}</div>
+    </div>
+    <div class="fne-resume">
+      <div><small>Encaissé</small><strong>${fmtFCFA(total(toutes))}</strong></div>
+      <div class="ok"><small>Certifié FNE</small><strong>${fmtFCFA(total(certifiees))}</strong></div>
+      <div class="${aFaire.length ? 'ko' : 'ok'}"><small>Reste à certifier</small><strong>${fmtFCFA(total(aFaire))}</strong></div>
+    </div>
+    ${liste.length ? `<ul class="fne-liste">${liste.map(ligne).join('')}</ul>` : `<div class="etat-vide${statut === 'a-certifier' && toutes.length ? ' etat-vide-ok' : ''}"><span>${statut === 'a-certifier' && toutes.length ? 'Tous les encaissements de ce mois ont leur numéro FNE 🎉' : 'Aucun encaissement pour ce mois.'}</span></div>`}
+    <div class="form-actions" style="justify-content:flex-start;"><button type="button" class="btn secondary sm" onclick="exporterFneCsv('${mois}')">⬇️ Export du mois pour le comptable (CSV)</button></div>
+    <p class="hint" style="margin-bottom:0;">Certification automatique (sans recopier) : possible dès que l’école obtient sa <strong>clé API FNE</strong> auprès de la DGI. ${escapeHtml(m.nomEcole || 'L’école')} doit confirmer avec son comptable quels reçus sont concernés.</p>
+  </div>`;
+}
+function infosFne(table, id){ return encaissementsFne(String((({ paiements_scolarite: DB.paiementsScolarite, paiements_cotisations: DB.paiementsCotisations, ventes_gadgets: DB.ventesGadgets })[table] || []).find(x => x.id === id)?.date || '').slice(0, 7)).find(x => x.table === table && x.id === id); }
+function copierInfosFne(table, id){
+  const x = infosFne(table, id); if(!x) return;
+  const m = DB.meta || {};
+  const texte = `Vendeur : ${m.nomEcole || ''}${m.adresse ? ' — ' + m.adresse : ''}\nClient : ${x.payeur}\nDésignation : ${x.objet}\nQuantité : 1\nMontant : ${Math.round(x.montant)} FCFA\nDate : ${fmtDate(x.date)}\nMode de paiement : ${x.mode || '—'}\nRéférence EcoMaZ : ${x.id.slice(0, 8).toUpperCase()}`;
+  (navigator.clipboard ? navigator.clipboard.writeText(texte) : Promise.reject()).then(() => toast('Informations copiées : collez-les sur la plateforme FNE'), () => window.prompt('Copiez ces informations :', texte));
+}
+function ouvrirSaisieFne(table, id){
+  const x = infosFne(table, id); if(!x) return;
+  const c = certificationDe(id);
+  openModal('Numéro FNE de l’encaissement', `
+    <div class="section-note">${escapeHtml(x.objet)} · ${fmtFCFA(x.montant)} · ${fmtDate(x.date)}<br><small>${escapeHtml(x.payeur)}</small></div>
+    <form onsubmit="return enregistrerSaisieFne(event,'${table}','${id}')">
+      <div class="field"><label for="fneNumero">Numéro de la facture FNE (donné par la plateforme de la DGI)</label><input id="fneNumero" required minlength="3" maxlength="60" value="${escapeHtml(c ? c.numero : '')}" autocomplete="off"></div>
+      <div class="field"><label for="fneLien">Lien de vérification (facultatif, commence par https://)</label><input id="fneLien" type="url" maxlength="300" placeholder="https://…" value="${escapeHtml(c && c.lien ? c.lien : '')}"></div>
+      <div class="pin-error" id="fneErr"></div>
+      <div class="form-actions">
+        ${c ? `<button type="button" class="btn secondary danger-texte" onclick="retirerSaisieFne('${c.id}')">Retirer</button>` : ''}
+        <button type="button" class="btn secondary" onclick="closeModal()">Annuler</button><button type="submit" class="btn">Enregistrer</button>
+      </div>
+    </form>`);
+}
+async function enregistrerSaisieFne(ev, table, id){
+  ev.preventDefault();
+  const numero = $('#fneNumero').value.trim(), lien = $('#fneLien').value.trim() || null;
+  if(lien && !/^https:\/\//.test(lien)){ $('#fneErr').textContent = 'Le lien doit commencer par https://'; return false; }
+  const c = certificationDe(id);
+  const { data, error } = c
+    ? await sb.from('certifications_fne').update({ numero, lien }).eq('id', c.id).select().single()
+    : await sb.from('certifications_fne').insert({ ecole_id: session.ecoleId, table_cible: table, enregistrement_id: id, numero, lien }).select().single();
+  if(error){ $('#fneErr').textContent = /unique|duplicate/i.test(error.message) ? 'Ce numéro FNE est déjà noté sur un autre encaissement.' : 'Erreur : ' + error.message; return false; }
+  DB.certificationsFne = (DB.certificationsFne || []).filter(x => x.id !== data.id).concat(rowToCamel(data));
+  closeModal(); toast('Numéro FNE enregistré ✅'); renderView('comptabilite');
+  return false;
+}
+async function retirerSaisieFne(certId){
+  if(!confirm('Retirer ce numéro FNE de l’encaissement ?')) return;
+  const { error } = await exigerEffet(sb.from('certifications_fne').delete().eq('id', certId));
+  if(error){ alert('Erreur : ' + error.message); return; }
+  DB.certificationsFne = (DB.certificationsFne || []).filter(x => x.id !== certId);
+  closeModal(); toast('Numéro FNE retiré'); renderView('comptabilite');
+}
+function exporterFneCsv(mois){
+  const q = v => { const t = String(v ?? ''); return /[",;\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t; };
+  const lignes = [['Date', 'Désignation', 'Client', 'Montant (FCFA)', 'Mode', 'Numéro FNE', 'Lien de vérification', 'Référence EcoMaZ']]
+    .concat(encaissementsFne(mois).map(x => { const c = certificationDe(x.id); return [x.date, x.objet, x.payeur, Math.round(x.montant), x.mode, c ? c.numero : 'À CERTIFIER', c && c.lien ? c.lien : '', x.id.slice(0, 8).toUpperCase()]; }));
+  const blob = new Blob(['\ufeff' + lignes.map(l => l.map(q).join(';')).join('\r\n')], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `FNE_${mois}.csv`; a.click(); URL.revokeObjectURL(a.href);
+}
 /* --- 12.1 Aperçu financier --- */
 function renderComptaApercu(){
   const periode = ui.filters.comptaPeriode || 'all';

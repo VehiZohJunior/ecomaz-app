@@ -368,6 +368,14 @@ async function requete(accessToken, chemin, options = {}){
   const invLire = await requete(tokenEnseignant, `/rest/v1/invitations_parents?select=code&limit=1`);
   verifier('Un enseignant ne lit pas les invitations', Array.isArray(invLire.data) && invLire.data.length === 0);
 
+  section('7octodecies. Module FNE (08/11/2026) — lecture et écriture réservées au personnel administratif');
+  const fneEns = await requete(tokenEnseignant, `/rest/v1/certifications_fne?select=id&limit=1`);
+  verifier('Un enseignant ne lit pas les numéros FNE', Array.isArray(fneEns.data) && fneEns.data.length === 0);
+  const fneEnsEcrit = await requete(tokenEnseignant, `/rest/v1/certifications_fne`, { method:'POST', body: JSON.stringify({ table_cible:'paiements_scolarite', enregistrement_id:'00000000-0000-4000-8000-000000000001', numero:'TEST-REFUS' }) });
+  verifier('Un enseignant ne peut pas noter de numéro FNE', !fneEnsEcrit.ok, `statut ${fneEnsEcrit.status}`);
+  const fneAnon = await requete(ANON_KEY, `/rest/v1/certifications_fne?select=id&limit=1`);
+  verifier('Sans connexion, rien à lire dans certifications_fne', !fneAnon.ok || (Array.isArray(fneAnon.data) && fneAnon.data.length === 0));
+
   section('8. Visiteur non connecté — ne lit que les affichages publics prévus');
   for(const table of ['eleves','enseignants_lecture','profiles','paiements_scolarite','messages','parents_eleves','presences_eleves','eleves_portier_lecture','objets_perdus','push_abonnements','absences_signalees','evenements_agenda','devoirs','personnes_autorisees','sante_eleves','reponses_agenda','corrections_fiches','menus_cantine','preinscriptions','demandes_documents','evaluations','coefficients_matieres','bulletins_resultats']){
     const r = await requete(ANON_KEY, `/rest/v1/${table}?select=*&limit=1`);
