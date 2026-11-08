@@ -57,6 +57,9 @@ async function relancesScolarite(admin: any, aujourdhui: string, minuteActuelle:
     ]);
     const toutes = (ech || []) as { id: string; label: string; montant: number; date_echeance: string; classe_id: string | null }[];
     if (!toutes.length) continue;
+    // Sécurité : tant qu'aucun versement n'est saisi pour l'école, tout le monde paraîtrait
+    // « en retard » à tort (cas du 02 et 05/11/2026 : 152 relances erronées) → aucune relance.
+    if (!(paiements || []).length) continue;
     const paye: Record<string, number> = {};
     for (const p of (paiements || []) as { eleve_id: string; tranche: string; montant: number }[]) {
       paye[`${p.eleve_id}|${p.tranche}`] = (paye[`${p.eleve_id}|${p.tranche}`] || 0) + Number(p.montant || 0);
