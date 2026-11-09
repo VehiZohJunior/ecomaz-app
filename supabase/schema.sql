@@ -4260,3 +4260,23 @@ begin
 end $$;
 revoke all on function rapport_activite_enseignant(uuid, date, date) from public, anon;
 grant execute on function rapport_activite_enseignant(uuid, date, date) to authenticated;
+
+-- =====================================================================
+-- 109. ÉTAT DES COMPTES ENSEIGNANTS POUR LA DIRECTION (2026-11-09)
+-- =====================================================================
+-- Le personnel administratif voit, pour chaque enseignant de SON école,
+-- trois informations minimales : a un compte, s'est déjà connecté au moins
+-- une fois, a activé les alertes sur au moins un téléphone. Ni heure de
+-- connexion, ni appareil, ni adresse d'abonnement : rien d'autre.
+create or replace function etat_comptes_enseignants()
+returns table (enseignant_id uuid, a_compte boolean, deja_connecte boolean, alertes_actives boolean)
+language sql stable security definer set search_path = public as $$
+  select e.id,
+    exists (select 1 from profiles p where p.enseignant_id = e.id),
+    exists (select 1 from profiles p join auth.users u on u.id = p.id where p.enseignant_id = e.id and u.last_sign_in_at is not null),
+    exists (select 1 from profiles p join push_abonnements a on a.user_id = p.id where p.enseignant_id = e.id)
+  from enseignants e
+  where e.ecole_id = mon_ecole_id() and coalesce(est_perso_admin(), false);
+$$;
+revoke all on function etat_comptes_enseignants() from public, anon;
+grant execute on function etat_comptes_enseignants() to authenticated;

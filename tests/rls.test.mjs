@@ -394,6 +394,15 @@ async function requete(accessToken, chemin, options = {}){
     verifier('Sans connexion, aucun rapport d’activité', !rapAnon.ok, `statut ${rapAnon.status}`);
   }
 
+  section('7vicies. État des comptes enseignants (09/11/2026) — réservé au personnel administratif');
+  const etatSec = await requete(tokenSecretariat, `/rest/v1/rpc/etat_comptes_enseignants`, { method:'POST', body:'{}' });
+  verifier('Le secrétariat voit l’état des comptes (trois oui/non seulement)', etatSec.ok && Array.isArray(etatSec.data) && etatSec.data.length > 0
+    && etatSec.data.every(r => Object.keys(r).sort().join(',') === 'a_compte,alertes_actives,deja_connecte,enseignant_id'), `statut ${etatSec.status}`);
+  const etatEns = await requete(tokenEnseignant, `/rest/v1/rpc/etat_comptes_enseignants`, { method:'POST', body:'{}' });
+  verifier('Un enseignant ne voit l’état d’aucun compte', etatEns.ok && Array.isArray(etatEns.data) && etatEns.data.length === 0, `statut ${etatEns.status}`);
+  const etatAnon = await requete(ANON_KEY, `/rest/v1/rpc/etat_comptes_enseignants`, { method:'POST', body:'{}' });
+  verifier('Sans connexion, aucun état de compte', !etatAnon.ok || (Array.isArray(etatAnon.data) && etatAnon.data.length === 0), `statut ${etatAnon.status}`);
+
   section('8. Visiteur non connecté — ne lit que les affichages publics prévus');
   for(const table of ['eleves','enseignants_lecture','profiles','paiements_scolarite','messages','parents_eleves','presences_eleves','eleves_portier_lecture','objets_perdus','push_abonnements','absences_signalees','evenements_agenda','devoirs','personnes_autorisees','sante_eleves','reponses_agenda','corrections_fiches','menus_cantine','preinscriptions','demandes_documents','evaluations','coefficients_matieres','bulletins_resultats']){
     const r = await requete(ANON_KEY, `/rest/v1/${table}?select=*&limit=1`);
