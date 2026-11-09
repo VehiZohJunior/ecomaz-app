@@ -2075,3 +2075,7 @@ body.theme-portier .texte-toggle:not(.texte-toggle-menu){display:none !important
 /* Bulletin : assiduité du trimestre (2026-11-09) */
 .bo-assiduite{ margin:8px 0; padding:6px 10px; border:1px solid #ccc; border-radius:6px; font-size:12px; }
 .bo-assiduite-base{ color:#666; font-size:11px; }
+
+/* Portier : classes sur 2 colonnes au téléphone (moins de défilement quand un parent attend) — 2026-11-09 */
+@media (max-width:900px){ body.theme-portier .grid-3:has(> .gate-classe){ grid-template-columns:repeat(2, minmax(0, 1fr)); gap:10px; } }
+body.theme-portier .gate-classe strong{ overflow-wrap:anywhere; }

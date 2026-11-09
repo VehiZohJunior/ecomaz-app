@@ -2764,6 +2764,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.11.9-19', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [ 'Les classes s’affichent sur deux colonnes : moins de défilement pour trouver un élève quand un parent attend.' ],
+    personnel: [],
+  } },
   { version: '2026.11.9-18', nouveautes: {
     commun: [],
     parent: [],
