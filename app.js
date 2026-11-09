@@ -2766,6 +2766,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.11.9-22', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Enseignants : nouveau « Mode d’emploi (1 page) » à imprimer et remettre à chaque enseignant (gestes du jour, de la semaine, du mois et du trimestre, astuces, QR code de l’application).' ],
+  } },
   { version: '2026.11.9-21', nouveautes: {
     commun: [],
     parent: [],
@@ -8605,6 +8611,7 @@ function renderInvitationEnseignants(){
         <button type="button" class="btn sm" onclick="window.open('https://wa.me/?text=' + encodeURIComponent(messagePartageApplication('enseignant.html')), '_blank', 'noopener')">Partager sur WhatsApp</button>
         <button type="button" class="btn secondary sm" onclick="copierLienApplication('enseignant.html')">Copier le lien</button>
         <button type="button" class="btn secondary sm" onclick="imprimerAffiche('enseignant.html')">Affiche A4</button>
+        <button type="button" class="btn secondary sm" onclick="imprimerGuideEnseignant()">Mode d’emploi (1 page)</button>
       </div>
     </div>
   </div>`;
@@ -12449,6 +12456,45 @@ function imprimerAffiche(page){
       <div class="affiche-pied">Gratuit · sans publicité · EcoMaZ</div>
     </div>
     <div class="form-actions no-print"><button type="button" class="btn secondary" onclick="closeModal()">Fermer</button><button type="button" class="btn" onclick="window.print()">🖨️ Imprimer l’affiche</button></div>`);
+}
+/* ---------- Mode d'emploi enseignant : une page A4 à remettre à chacun (démonstration en salle des maîtres) ---------- */
+function imprimerGuideEnseignant(){
+  const m = DB.meta || {};
+  const lien = lienApplication('enseignant.html');
+  let qr = ''; try{ const q = qrcode(0, 'M'); q.addData(lien); q.make(); qr = q.createSvgTag({ cellSize: 4, margin: 1, scalable: true }); }catch(_e){}
+  const rappel = String(DB.horairesAnnonces?.rappelAppel || '').slice(0, 5);
+  const heure = /^\d{2}:\d{2}$/.test(rappel) ? rappel.replace(/^0/, '').replace(':', ' h ').replace(' h 00', ' h') : '';
+  const bloc = (num, titre, items) => `<section class="ge-bloc"><h3><span class="ge-num">${num}</span>${titre}</h3><ul>${items.map(i => `<li>${i}</li>`).join('')}</ul></section>`;
+  openModal('Mode d’emploi enseignant', `
+    <div class="form-actions no-print" style="margin-top:0;justify-content:flex-end;"><button type="button" class="btn" onclick="window.print()">${icone('printer')} Imprimer / PDF</button></div>
+    <section class="guide-ens">
+      <header class="ge-tete">${m.logo ? `<img src="${escapeHtml(m.logo)}" alt="">` : ''}
+        <div><div class="ge-ecole">${escapeHtml(m.nomEcole || '')}</div><h2>EcoMaZ — mode d’emploi de l’enseignant</h2>
+          <div class="ge-sous">Tout se fait depuis l’accueil « Mes tâches » : le plus important est toujours en haut.</div></div>
+        <div class="ge-qr">${qr}<small>Scannez pour ouvrir votre application</small></div></header>
+      <div class="ge-grille">
+        ${bloc(1, 'Chaque jour de classe', [
+          `<strong>Faire l’appel</strong>${heure ? ` avant ${heure}` : ''} : touchez « Absent » ou « Retard », les autres restent « Présent », puis « Valider l’appel ». Les parents des absents sont prévenus tout seuls.`,
+          '<strong>Noter les devoirs</strong> (Cahier de textes) : touchez la matière, le jour, une phrase toute prête, puis « Enregistrer ». Les parents les lisent dans leur application.',
+          '<strong>À savoir</strong> : absences prévenues par les parents, allergies, renforcement, parents arrivés au portail.'])}
+        ${bloc(2, 'Chaque semaine', [
+          '<strong>Rattraper un appel oublié</strong> : il apparaît dans « Cette semaine », un bouton suffit.',
+          '<strong>Camps de base</strong> : « + Ajouter des notes », choisissez le type (devoir, exercice, interrogation), tapez la note de chaque élève. Elles font la moyenne de classe du bulletin.'])}
+        ${bloc(3, 'Chaque mois', [
+          '<strong>Mon programme</strong> : touchez « Mettre à jour l’avancement » et choisissez le pourcentage déjà fait.',
+          '<strong>Mon rapport d’activité</strong> : votre régularité, vos devoirs et vos notes du mois.'])}
+        ${bloc(4, 'Chaque trimestre', [
+          '<strong>Compositions</strong> (Compositions et bulletins) : une note sur 20 par élève, « Entrée » passe au suivant.',
+          '<strong>Appréciations du bulletin</strong> (titulaire) : touchez la phrase proposée ★ selon la moyenne, complétez si besoin, enregistrez.'])}
+      </div>
+      <section class="ge-astuces"><h3>Astuces</h3><ul>
+        <li><strong>Alertes</strong> : sur l’accueil, touchez « Activer les alertes » une fois${heure ? ` : vous recevrez le rappel de l’appel à ${heure}` : ''}, même application fermée.</li>
+        <li><strong>Texte trop petit ?</strong> Touchez « Aa » en haut de l’écran : Normale, Grande, Très grande.</li>
+        <li><strong>Pas de réseau ?</strong> Faites l’appel quand même : il est gardé dans le téléphone et part tout seul au retour du réseau.</li>
+        <li><strong>Installer l’application</strong> : dans Chrome, menu ⋮ → « Installer l’application » (iPhone : Partager → « Sur l’écran d’accueil »).</li>
+      </ul></section>
+      <footer class="ge-pied">Une question ? Adressez-vous à la direction.</footer>
+    </section>`);
 }
 function renderLiensApplications(){
   const bloc = (titre, page, desc) => `

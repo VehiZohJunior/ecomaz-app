@@ -27,6 +27,7 @@ const DOCS = [
   ['liste', "ouvrirListeClasse(DB.classes[0].id, 'emargement')"],
   ['emploi-du-temps', "imprimerEmploiTemps(DB.classes[0].id)"],
   ['liste-enseignants', "ouvrirListeEnseignants()"],
+  ['guide-enseignant', "imprimerGuideEnseignant()"],
 ];
 const b = await chromium.launch({ channel: 'msedge', headless: true });
 for(const [doc, geste] of DOCS){
