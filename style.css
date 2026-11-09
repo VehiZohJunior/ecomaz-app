@@ -2011,3 +2011,35 @@ label.dv-puce:focus-within{outline:2px solid var(--focus,var(--primary));outline
 .prog-actions{display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end}
 .prog-pied{flex-wrap:wrap;gap:8px}
 .prog-puces label.dv-puce{min-width:62px;justify-content:center}
+
+/* ===== Coupons d'invitation papier (2026-11-09) ===== */
+.relance-papier{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;padding:10px 12px;margin:0 0 10px;border:1px dashed var(--border-strong,var(--border));border-radius:12px;background:var(--surface-2)}
+.relance-papier-txt{display:flex;flex-direction:column;gap:3px;flex:1 1 240px;min-width:0}
+.relance-papier-txt strong{display:inline-flex;align-items:center;gap:6px}
+.relance-papier-txt small{color:var(--text-dim)}
+.ip-feuille{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px;background:#fff;color:#111;padding:6px;margin-bottom:10px}
+.ip-coupon{border:1.5px dashed #888;border-radius:6px;padding:10px 12px;display:flex;flex-direction:column;gap:8px;break-inside:avoid;page-break-inside:avoid;background:#fff;color:#111}
+.ip-tete{display:flex;align-items:center;gap:8px;border-bottom:1px solid #ddd;padding-bottom:6px}
+.ip-tete img{width:30px;height:30px;object-fit:contain}
+.ip-tete span{display:flex;flex-direction:column;line-height:1.2}
+.ip-tete small{font-size:10px;color:#555}
+.ip-corps{display:flex;gap:10px;align-items:flex-start}
+.ip-qr{flex:0 0 108px;width:108px}
+.ip-qr svg{width:100%;height:auto;display:block}
+.ip-txt{flex:1;min-width:0;font-size:12px;line-height:1.35}
+.ip-pour{font-size:13px;margin-bottom:4px;overflow-wrap:anywhere}
+.ip-txt ol{margin:0;padding-left:18px}
+.ip-plus{margin-top:4px;color:#555;font-size:11px}
+.ip-pied{font-size:10px;color:#555;border-top:1px solid #eee;padding-top:5px}
+@media print{
+  .ip-feuille{grid-template-columns:1fr 1fr;gap:3mm;padding:0;margin:0;break-after:page;page-break-after:always}
+  .ip-feuille:last-child{break-after:auto;page-break-after:auto}
+  .ip-feuille + .ip-feuille{break-before:page;page-break-before:always}
+  .modal:has(.ip-feuille), .modal-body:has(.ip-feuille){display:block !important;overflow:visible !important;max-height:none !important;height:auto !important}
+  .ip-coupon{height:60mm;overflow:hidden;padding:3mm 4mm;gap:2mm}
+  .ip-qr{flex-basis:27mm;width:27mm}
+  .ip-txt{font-size:10.5px}
+  .ip-pour{font-size:12px}
+  .ip-plus{display:none}
+  .ip-pied{font-size:9px}
+}

@@ -4,6 +4,8 @@
 // Usage : node tools/captures/impression.mjs <nom>
 // =====================================================================
 import { chromium } from 'playwright-core';
+import { execFileSync } from 'node:child_process';
+const CACHE_CDN = new Map();
 import { readFileSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -19,6 +21,7 @@ const DOCS = [
   ['recu', "(() => { const p = DB.paiementsScolarite[0], e = eleveById(p.eleveId); openRecu({type:'entree', refId:p.id, montant:p.montant, date:p.date, modePaiement:p.modePaiement, objet:'Scolarité — ' + p.tranche, personne: eleveFullName(e), sousInfo: classeName(e.classeId) + ' · Matricule ' + e.matricule}); })()"],
   ['certificat', "ouvrirCertificatScolarite(DB.eleves[0].id)"],
   ['coupons', "ouvrirCouponsInvitation(false)"],
+  ['coupons-perso', "(async () => { window.__codesInvitation = {}; famillesARelancer(null).forEach((f, i) => { if(f.tel) window.__codesInvitation[f.tel] = 'CODEESSAI' + i + 'abcdef'; }); await imprimerInvitationsPapier(''); })()"],
   ['badges', "ouvrirBadgesQR()"],
   ['affiche', "imprimerAffiche('parent.html')"],
   ['liste', "ouvrirListeClasse(DB.classes[0].id, 'emargement')"],
@@ -28,6 +31,8 @@ const DOCS = [
 const b = await chromium.launch({ channel: 'msedge', headless: true });
 for(const [doc, geste] of DOCS){
   const p = await b.newPage();
+  // Bibliothèques du CDN via curl (Edge sans interface reste parfois bloqué sur cdn.jsdelivr.net depuis ce PC)
+  await p.route('https://cdn.jsdelivr.net/**', async route => { try{ const u = route.request().url(); if(!CACHE_CDN.has(u)) CACHE_CDN.set(u, execFileSync('curl', ['-sL', '-4', '-m', '30', u])); await route.fulfill({ status: 200, body: CACHE_CDN.get(u), headers: { 'content-type': 'application/javascript; charset=utf-8' } }); }catch(_e){ await route.continue(); } });
   const erreurs = []; p.on('pageerror', e => erreurs.push(e.message));
   await p.goto('http://localhost:5190/', { waitUntil: 'networkidle' }); await p.waitForTimeout(400);
   await p.addScriptTag({ content: installer });

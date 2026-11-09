@@ -186,6 +186,7 @@ for(const theme of THEMES){
         emarg: () => { ouvrirListeClasse(DB.classes[0].id, 'emargement'); },
         cartes: () => { ouvrirCartesScolaires(DB.classes[0].id); },
         relance: () => { ouvrirRelanceEnseignants(); },
+        coupons: async () => { window.__codesInvitation = {}; famillesARelancer(null).forEach((f, i) => { if(f.tel) window.__codesInvitation[f.tel] = 'CODEESSAI' + i + 'abcdef'; }); await imprimerInvitationsPapier(''); },
         avancement: () => { const c = classesVisibles()[0]; DB.programmes = [{ id:'prog-essai', enseignantId: session.enseignantId, classeId: c.id, matiere:'Langage', trimestre: trimestreCourant(), progression: 40, dateMaj:'2026-09-20', contenu:'' }]; renderView('programmes'); ouvrirAvancement('prog-essai'); },
         nouvprog: () => { openProgrammeForm(); },
         nouveval: () => { ouvrirNouvelleEvaluation(); const r = document.querySelectorAll('input[name=noteSur]'); if(r[0]){ r[0].checked = true; choisirPuceRadio(r[0]); } },

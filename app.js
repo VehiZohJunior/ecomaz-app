@@ -2734,6 +2734,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.11.9-11', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Inviter les familles : nouveaux coupons papier à glisser dans le cahier de liaison (8 par feuille A4, un par famille, frères et sœurs regroupés). Chaque coupon porte le QR code personnel de la famille : le parent scanne, se connecte avec Google et entre directement, déjà relié à son enfant — rien à valider.' ],
+  } },
   { version: '2026.11.9-10', nouveautes: {
     commun: [],
     parent: [],
@@ -4889,8 +4895,8 @@ function renderLiensParents(){
       ${sansParent.length ? `<div class="relance-par-cta"><div><strong>Inviter chaque famille sur WhatsApp</strong><span>${famillesARelancer().length} famille(s) à inviter : un message personnel par numéro, frères et sœurs regroupés. Le parent est reconnu tout seul grâce à son numéro.</span></div>
         <button type="button" class="btn" onclick="ouvrirRelanceParents()">${icone('send') || '📲'} Inviter les familles</button></div>` : ''}
       <div class="pe-invit">
-        <button class="btn${sansParent.length ? ' secondary' : ''}" onclick="ouvrirCouponsInvitation(true)">🖨️ Coupons (élèves non reliés)</button>
-        <button class="btn secondary" onclick="ouvrirCouponsInvitation(false)">Coupons pour tous</button>
+        <button class="btn${sansParent.length ? ' secondary' : ''}" onclick="imprimerInvitationsPapier('')">🖨️ Coupons personnels (familles non reliées)</button>
+        <button class="btn secondary" onclick="ouvrirCouponsInvitation(false)" title="Lien général de l’application, sans code personnel (réunion de rentrée…)">Coupons généraux (lien de l’école)</button>
         <button class="btn secondary" onclick="imprimerAffiche('parent.html')">🖨️ Affiche A4</button>
       </div>
       <div class="groupe-wa">
@@ -4981,17 +4987,7 @@ async function ouvrirRelanceParents(classeId){
   classeId = classeId || '';
   const familles = famillesARelancer(classeId || null), envois = relancesParents();
   // Un lien personnel par famille (réutilisé tant qu'il est valable) : le parent entrera directement
-  window.__codesInvitation = window.__codesInvitation || {};
-  const aPreparer = familles.filter(f => f.tel && !window.__codesInvitation[f.tel]);
-  if(aPreparer.length){
-    openModal('Inviter les familles sur WhatsApp', `<div class="hint">Préparation des liens personnels (${aPreparer.length})…</div>`);
-    for(let i = 0; i < aPreparer.length; i += 8){
-      await Promise.all(aPreparer.slice(i, i + 8).map(async f => {
-        const { data, error } = await sb.rpc('creer_invitation_parent', { p_eleve_ids: f.enfants.map(e => e.id), p_tel: f.tel });
-        if(!error && data) window.__codesInvitation[f.tel] = data;
-      }));
-    }
-  }
+  await preparerCodesInvitation(familles, 'Inviter les familles sur WhatsApp');
   const avecTel = familles.filter(f => f.tel), sansTel = familles.filter(f => !f.tel);
   const faites = avecTel.filter(f => envois[f.tel]).length;
   const ligne = f => {
@@ -5009,9 +5005,55 @@ async function ouvrirRelanceParents(classeId){
       <select class="puce-select petit" aria-label="Classe" onchange="ouvrirRelanceParents(this.value)"><option value="">Toutes les classes</option>${DB.classes.map(c => `<option value="${c.id}" ${classeId === c.id ? 'selected' : ''}>${escapeHtml(c.nom)}</option>`).join('')}</select>
       <span class="hint" style="margin:0;"><strong>${faites}</strong> / ${avecTel.length} famille(s) invitée(s) depuis ce téléphone</span>
     </div>
+    <div class="relance-papier"><span class="relance-papier-txt"><strong>${icone('printer')} Familles sans WhatsApp, ou pour aller plus vite : coupons papier</strong>
+      <small>Une feuille A4 = 8 coupons à découper et glisser dans le cahier de liaison. Chaque famille scanne SON code et entre directement, déjà reliée à ${familles.length > 1 ? 'ses enfants' : 'son enfant'}.</small></span>
+      <button type="button" class="btn secondary sm" onclick="imprimerInvitationsPapier('${classeId}')" ${familles.length ? '' : 'disabled'}>Imprimer ${familles.length} coupon(s)</button></div>
     <p class="hint" style="margin-top:0;">Touchez « WhatsApp » : le message est prêt, avec le <strong>lien personnel</strong> de la famille (valable 30 jours, utilisable une seule fois). Le parent se connecte avec Google, choisit Papa ou Maman et <strong>entre directement</strong>, déjà relié à ses enfants — rien à valider de votre côté.</p>
     ${familles.length ? `<ul class="relance-liste">${avecTel.concat(sansTel).map(ligne).join('')}</ul>` : '<div class="etat-vide etat-vide-ok"><span>Toutes les familles de cette sélection sont déjà reliées 🎉</span></div>'}
     <div class="form-actions"><button type="button" class="btn secondary" onclick="closeModal()">Fermer</button></div>`);
+}
+// Un lien personnel par famille (réutilisé tant qu'il est valable) : le parent entre directement, déjà relié
+async function preparerCodesInvitation(familles, titre){
+  window.__codesInvitation = window.__codesInvitation || {};
+  const aPreparer = familles.filter(f => f.tel && !window.__codesInvitation[f.tel]);
+  if(!aPreparer.length) return;
+  openModal(titre, `<div class="hint">Préparation des liens personnels (${aPreparer.length})…</div>`);
+  for(let i = 0; i < aPreparer.length; i += 8){
+    await Promise.all(aPreparer.slice(i, i + 8).map(async f => {
+      const { data, error } = await sb.rpc('creer_invitation_parent', { p_eleve_ids: f.enfants.map(e => e.id), p_tel: f.tel });
+      if(!error && data) window.__codesInvitation[f.tel] = data;
+    }));
+  }
+}
+/* ---------- Coupons d'invitation papier (cahier de liaison) : 8 par feuille A4 ---------- */
+async function imprimerInvitationsPapier(classeId){
+  const familles = famillesARelancer(classeId || null);
+  if(!familles.length){ toast('Toutes les familles de cette sélection sont déjà reliées.'); return; }
+  await preparerCodesInvitation(familles, 'Coupons d’invitation');
+  const m = DB.meta || {};
+  const coupon = f => {
+    const code = f.tel && window.__codesInvitation[f.tel];
+    const lien = code ? `${lienApplication('parent.html')}&invitation=${encodeURIComponent(code)}` : lienApplication('parent.html');
+    let qr = ''; try{ const q = qrcode(0, 'M'); q.addData(lien); q.make(); qr = q.createSvgTag({ cellSize: 3, margin: 0, scalable: true }); }catch(_e){}
+    const prenoms = f.enfants.map(e => `<strong>${escapeHtml(e.prenom)}</strong> (${escapeHtml(classeName(e.classeId))})`);
+    return `<article class="ip-coupon">
+      <header class="ip-tete">${m.logo ? `<img src="${escapeHtml(m.logo)}" alt="">` : ''}<span><strong>${escapeHtml(m.nomEcole || '')}</strong><small>Application EcoMaZ-PARENTS D’ÉLÈVES</small></span></header>
+      <div class="ip-corps">
+        <div class="ip-qr" aria-hidden="true">${qr}</div>
+        <div class="ip-txt">
+          <div class="ip-pour">Parents de ${prenoms.join(', ')}</div>
+          <ol><li>Scannez ce code avec l’appareil photo du téléphone.</li><li>Touchez « Continuer avec Google ».</li><li>${code ? `Choisissez Papa ou Maman : ${f.enfants.length > 1 ? 'vos enfants apparaissent' : 'votre enfant apparaît'} tout seul.` : 'Cochez le nom de votre enfant : l’école valide votre accès.'}</li></ol>
+          <div class="ip-plus">Absences, devoirs, emploi du temps, bulletins, annonces de l’école.</div>
+        </div>
+      </div>
+      <footer class="ip-pied">${code ? 'Code personnel à utiliser rapidement — ne le partagez pas : il donne accès aux informations de votre enfant.' : 'Lien de l’application de l’école.'}</footer>
+    </article>`;
+  };
+  openModal('Coupons d’invitation des parents', `
+    <div class="form-actions no-print" style="margin-top:0;justify-content:space-between;align-items:center;flex-wrap:wrap;">
+      <span class="hint" style="margin:0;">${familles.length} coupon(s) · ${Math.ceil(familles.length / 8)} feuille(s) A4 · découpez le long des pointillés</span>
+      <button type="button" class="btn" onclick="window.print()">${icone('printer')} Imprimer / PDF</button></div>
+    ${Array.from({ length: Math.ceil(familles.length / 8) }, (_, k) => `<section class="ip-feuille">${familles.slice(k * 8, k * 8 + 8).map(coupon).join('')}</section>`).join('')}`);
 }
 function marquerRelanceParent(tel){
   const envois = relancesParents(); envois[tel] = todayISO();
