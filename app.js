@@ -2736,6 +2736,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.11.9-15', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Appel sans réseau : les absences ne sont plus perdues. L’appel et les notifications aux parents des absents sont gardés dans le téléphone et partent tout seuls au retour du réseau (sauf si l’élève a été remis présent entre-temps). Le message affiché le dit clairement.' ],
+  } },
   { version: '2026.11.9-14', nouveautes: {
     commun: [ 'Lisibilité : textes trop pâles corrigés (bouton « Déconnexion » des parents, phrase « personne d’autre que vous » sur la carte de l’enfant, liens discrets et numéros d’étapes en mode sombre).' ],
     parent: [],
@@ -3469,6 +3475,7 @@ function majBanniereHorsLigne(){
 function onFileAttenteChange(n){
   compteurFileAttente = n;
   majBanniereHorsLigne();
+  if(n === 0) setTimeout(renvoyerNotifsAbsence, 1500);
   if(n === 0 && DB?.meta?.horsLigne === true){
     // La file d'attente vient d'être vidée : on recharge les données
     // fraîches depuis le serveur pour sortir proprement du mode hors ligne.
@@ -8356,7 +8363,14 @@ async function savePresencesEleves(){
     }
     for(const m of modifs){ await dbUpdate('presences_eleves', m.rec.id, { statut: m.statut, motif: m.motif }); m.rec.statut = m.statut; m.rec.motif = m.motif; }
     // 3) Prévenir les parents des nouveaux absents
-    for(const a of aPrevenir){ await envoyerNotificationAbsenceEleve(a.eleveId, f.date, a.motif); nbNotifs += 3; }
+    let gardees = 0;
+    for(const a of aPrevenir){ if(await envoyerNotificationAbsenceEleve(a.eleveId, f.date, a.motif)) nbNotifs += 3; else if(notifsAbsenceEnAttente().some(n => n.eleveId === a.eleveId && n.date === f.date)) gardees++; }
+    if(navigator.onLine === false || gardees){
+      toast(navigator.onLine === false
+        ? (gardees ? `Pas de réseau : appel gardé dans le téléphone. Il partira, et les parents de ${gardees} absent(s) seront prévenus, dès le retour du réseau.` : 'Pas de réseau : appel gardé dans le téléphone. Il partira dès le retour du réseau.')
+        : `Appel enregistré. Réseau instable : les parents de ${gardees} absent(s) seront prévenus dès que possible.`);
+      appelEnCours = false; renderView('presences-eleves'); return;
+    }
     toast(nbNotifs ? (['secretariat','direction','fondation'].includes(ui.role)
       ? 'Présence enregistrée · prévenez les parents des absents par WhatsApp (plus bas)'
       : 'Présence enregistrée · absences signalées au parent dans son application et à la direction') : 'Présence enregistrée');
@@ -8374,15 +8388,51 @@ async function savePresencesEleves(){
 // fonction Edge "notifier-absence-eleve" — voir schema.sql section 22.
 // Avant ce correctif, le numéro transitait par DB.eleves (visible dans la
 // mémoire du navigateur de tout compte pouvant faire l'appel).
+// Retourne true si le parent a été prévenu ; sans réseau, la notification est gardée
+// dans le téléphone et renvoyée au retour de la connexion (jamais perdue).
 async function envoyerNotificationAbsenceEleve(eleveId, date, motif){
+  if(navigator.onLine === false){ garderNotifAbsence(eleveId, date, motif); return false; }
   try{
     const { data, error } = await sb.functions.invoke('notifier-absence-eleve', { body: { eleveId, date, motif } });
-    if(error) throw new Error(await messageErreurFonction(error));
+    if(error) throw error;
     if(!data?.ok) throw new Error(data?.error || "Échec de la notification");
+    return true;
   }catch(e){
-    console.warn('Échec notification absence élève :', e.message);
+    if(erreurReseau(e) || /fetch|network|réseau/i.test(String(e?.message || e))) garderNotifAbsence(eleveId, date, motif);
+    else console.warn('Échec notification absence élève :', e?.message || e);
+    return false;
   }
 }
+const CLE_NOTIFS_ABSENCE = 'ecomaz_notifs_absence_attente';
+function notifsAbsenceEnAttente(){ try{ return JSON.parse(localStorage.getItem(CLE_NOTIFS_ABSENCE) || '[]'); }catch(_e){ return []; } }
+function garderNotifAbsence(eleveId, date, motif){
+  const l = notifsAbsenceEnAttente().filter(n => !(n.eleveId === eleveId && n.date === date));
+  l.push({ eleveId, date, motif: motif || '', ecoleId: session.ecoleId });
+  try{ localStorage.setItem(CLE_NOTIFS_ABSENCE, JSON.stringify(l.slice(-200))); }catch(_e){}
+}
+let renvoiNotifsEnCours = false;
+async function renvoyerNotifsAbsence(){
+  if(renvoiNotifsEnCours || navigator.onLine === false || !session.userId || compteurFileAttente > 0) return; // l'appel d'abord, puis les parents
+  const l = notifsAbsenceEnAttente().filter(n => n.ecoleId === session.ecoleId); if(!l.length) return;
+  renvoiNotifsEnCours = true;
+  let envoyees = 0;
+  try{
+    for(const n of l){
+      // Absence corrigée entre-temps (élève finalement présent) : on ne prévient pas
+      const rec = (DB.presencesEleves || []).find(p => p.eleveId === n.eleveId && p.date === n.date);
+      const reste = notifsAbsenceEnAttente().filter(x => !(x.eleveId === n.eleveId && x.date === n.date));
+      if(rec && rec.statut !== 'Absent'){ try{ localStorage.setItem(CLE_NOTIFS_ABSENCE, JSON.stringify(reste)); }catch(_e){} continue; }
+      try{
+        const { data, error } = await sb.functions.invoke('notifier-absence-eleve', { body: { eleveId: n.eleveId, date: n.date, motif: n.motif } });
+        if(error && (erreurReseau(error) || /fetch|network/i.test(String(error.message || '')))) break;
+        if(!error && data?.ok) envoyees++;
+      }catch(e){ if(erreurReseau(e)) break; }
+      try{ localStorage.setItem(CLE_NOTIFS_ABSENCE, JSON.stringify(reste)); }catch(_e){}
+    }
+  }finally{ renvoiNotifsEnCours = false; }
+  if(envoyees) toast(`Réseau revenu : ${envoyees} parent(s) d’élève(s) absent(s) prévenu(s)`);
+}
+window.addEventListener('online', () => setTimeout(renvoyerNotifsAbsence, 4000));
 
 /* ---------------------------------------------------------------------
    8. ENSEIGNANTS
