@@ -273,6 +273,9 @@ if(typeof window !== 'undefined'){
    tard), pour que tout le code appelant existant continue de fonctionner
    sans changement.
    --------------------------------------------------------------------- */
+// Date du jour (heure locale) et horodatage « il y a n jours » pour limiter les historiques chargés
+function aujourdhuiLocal(){ const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+function depuisJours(n){ return new Date(Date.now() - n * 86400000).toISOString(); }
 async function dbSelectAll(table, orderBy){
   let q = sb.from(table).select('*').eq('ecole_id', session.ecoleId);
   if(orderBy) q = q.order(orderBy);
@@ -441,10 +444,12 @@ async function loadAllFromSupabase(){
     dbSelectAll('tableau_honneur_public').catch(()=>[]),
     dbSelectAll('actualites_affichage_public', 'created_at').catch(()=>[]),
     dbSelectUne('horaires_annonces').catch(()=>null),
-    dbSelectAll('annonces_horaires_envoyees').catch(()=>[]),
+    // Seules les annonces du jour servent (annonce du moment, cloche) : pas tout l'historique
+    sb.from('annonces_horaires_envoyees').select('*').eq('ecole_id', session.ecoleId).eq('date', aujourdhuiLocal()).then(r => rowsToCamel(r.data || []), () => []),
     // Notifications "portier" (parent arrivé) — RLS restreint déjà un
     // compte enseignant à celles de SES classes (schema.sql section 36).
-    dbSelectAll('notifications_portier', 'created_at').catch(()=>[]),
+    // Arrivées des parents au portail : les 7 derniers jours suffisent (cloche, « Parents arrivés »)
+    sb.from('notifications_portier').select('*').eq('ecole_id', session.ecoleId).gte('created_at', depuisJours(7)).order('created_at').then(r => rowsToCamel(r.data || []), () => []),
     // Bulles Messages / Suggestions (schema.sql section 38).
     dbSelectAll('messages_internes', 'created_at').catch(()=>[]),
     dbSelectAll('suggestions', 'created_at').catch(()=>[]),
@@ -547,7 +552,7 @@ async function chargerDBParent(){
     sb.from('messages').select('*').eq('ecole_id', E).order('date', {ascending:false}).order('heure', {ascending:false}),
     // Annonces horaires (RLS restreint déjà au cycle de son/ses enfant(s) —
     // voir policy "lecture annonces_horaires parent", schema.sql section 35).
-    sb.from('annonces_horaires_envoyees').select('*').eq('ecole_id', E).order('created_at', {ascending:false}),
+    sb.from('annonces_horaires_envoyees').select('*').eq('ecole_id', E).eq('date', aujourdhuiLocal()).order('created_at', {ascending:false}),
     // Messages écrits par le personnel (RLS — schema.sql section 38).
     sb.from('messages_internes').select('*').eq('ecole_id', E).order('created_at', {ascending:false}),
     // Tableaux d'honneur / actualités : mêmes vues publiques que l'écran

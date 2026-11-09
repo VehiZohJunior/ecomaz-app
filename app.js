@@ -2734,6 +2734,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.11.9-8', nouveautes: {
+    commun: [ 'Moins de données mobiles : l’application ne vérifie plus les nouveautés quand elle est en arrière-plan (téléphone en poche), et ne télécharge plus l’historique complet des annonces et des arrivées au portail (seulement ce qui s’affiche : aujourd’hui, 7 derniers jours).' ],
+    parent: [],
+    portier: [],
+    personnel: [],
+  } },
   { version: '2026.11.9-7', nouveautes: {
     commun: [],
     parent: [],
@@ -3644,12 +3650,20 @@ function stopIdleWatcher(){
    en classe) et reste plus simple à garder fiable.
    --------------------------------------------------------------------- */
 let bullesPollTimer = null;
+let sondageEnCours = false;
 function startPollingBulles(){
   stopPollingBulles();
-  bullesPollTimer = setInterval(async () => {
+  bullesPollTimer = setInterval(sonderBulles, 20000);
+}
+// Application en arrière-plan (téléphone en poche, autre application) : aucun sondage, pas de données mobiles
+// consommées pour rien ; au retour à l'écran, une vérification immédiate.
+document.addEventListener('visibilitychange', () => { if(!document.hidden && bullesPollTimer) sonderBulles(); });
+async function sonderBulles(){
+  if(document.hidden || sondageEnCours) return;
+  sondageEnCours = true;
     try{
       if(['enseignant','secretariat','direction','fondation'].includes(ui.role)){
-        const { data, error } = await sb.from('notifications_portier').select('*').order('created_at', {ascending:false});
+        const { data, error } = await sb.from('notifications_portier').select('*').gte('created_at', depuisJours(7)).order('created_at', {ascending:false}).limit(200);
         if(error) throw error;
         const nouvelles = rowsToCamel(data);
         const avaitDejaNonVues = (DB.notificationsPortier||[]).some(n=>!n.vue);
@@ -3672,7 +3686,7 @@ function startPollingBulles(){
       }
       rafraichirBulles();
     }catch(_e){ /* échec silencieux : on retentera au prochain sondage */ }
-  }, 20000);
+  sondageEnCours = false;
 }
 function stopPollingBulles(){
   clearInterval(bullesPollTimer);
