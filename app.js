@@ -2734,6 +2734,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.11.9-9', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Accueil enseignant : première tâche du jour « Recevoir le rappel de l’appel sur ce téléphone » tant que les alertes ne sont pas activées (aide pas à pas pour iPhone ou si les alertes sont bloquées). Le rappel de l’appel ouvre maintenant directement l’application des enseignants.' ],
+  } },
   { version: '2026.11.9-8', nouveautes: {
     commun: [ 'Moins de données mobiles : l’application ne vérifie plus les nouveautés quand elle est en arrière-plan (téléphone en poche), et ne télécharge plus l’historique complet des annonces et des arrivées au portail (seulement ce qui s’affiche : aujourd’hui, 7 derniers jours).' ],
     parent: [],
@@ -3987,6 +3993,9 @@ function renderAccueilEnseignant(){
 
   /* ---------- 1. AUJOURD'HUI ---------- */
   const jour = [];
+  // Le rappel « Pensez à l'appel » n'arrive que si les alertes sont activées sur CE téléphone
+  const tacheAlertes = tacheAlertesTelephone();
+  if(tacheAlertes) jour.push(tacheAlertes);
   if(coursAuj){
     classes.forEach(c => {
       const pres = DB.presencesEleves.filter(p => p.classeId === c.id && p.date === auj);
@@ -4131,9 +4140,18 @@ function renderAccueilEnseignant(){
     <section class="panel acc-outils-panel" aria-labelledby="titreOutils"><div class="panel-head"><div><h2 id="titreOutils">Mes outils</h2><div class="sub">Touchez un bouton pour ouvrir la page.</div></div></div>
       <div class="acc-outils">${outils.map(([v, ic, t, d]) => `<button type="button" class="acc-outil" onclick="go('${v}')"><span class="acc-outil-ic" aria-hidden="true">${ic}</span><strong>${t}</strong><small>${d}</small></button>`).join('')}</div>
     </section>
-    ${renderBanniereNotifications()}
     ${annexe}
   </div>`;
+}
+function tacheAlertesTelephone(){
+  const rappel = String(DB.horairesAnnonces?.rappelAppel || '').slice(0, 5);
+  const quand = /^\d{2}:\d{2}$/.test(rappel) ? ` (${rappel.replace(/^0/, '').replace(':', ' h ').replace(' h 00', ' h')})` : '';
+  const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  if(ios && !window.navigator.standalone) return { etat:'afaire', titre:`Recevoir le rappel de l’appel${quand} sur ce téléphone`, detail:'Sur iPhone : touchez « Partager » (carré avec une flèche) puis « Sur l’écran d’accueil ». Ouvrez ensuite EcoMaZ depuis cette icône et activez les alertes.' };
+  if(!pushPossible()) return null;
+  if(Notification.permission === 'default') return { etat:'afaire', titre:`Recevoir le rappel de l’appel${quand} sur ce téléphone`, detail:'Un seul toucher : vous serez prévenu même application fermée (appel oublié, parent au portail).', bouton:'Activer les alertes', action:"autoriserAlertesTelephone().then(() => renderView('dashboard'))" };
+  if(Notification.permission === 'denied') return { etat:'info', titre:'Les alertes sont bloquées sur ce téléphone', detail:'Pour recevoir le rappel de l’appel : dans Chrome, touchez ⋮ → Paramètres → Paramètres des sites → Notifications, puis autorisez ce site.' };
+  return null;
 }
 
 /* =====================================================================

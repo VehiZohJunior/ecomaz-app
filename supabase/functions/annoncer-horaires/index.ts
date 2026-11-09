@@ -412,7 +412,7 @@ Deno.serve(async (req) => {
                 for (const p of profs as { id: string; enseignant_id: string }[]) {
                   const sesClasses = ((fiches || []).find((f: { id: string }) => f.id === p.enseignant_id)?.classes_assignees || []) as string[];
                   const lesSiennes = manquantes.filter((c: { id: string }) => sesClasses.includes(c.id)).map((c: { nom: string }) => c.nom);
-                  if (lesSiennes.length) await envoyerPush(supabaseAdmin, [p.id], { title: '📋 Pensez à l’appel', url: './index.html', tag: 'rappel-appel', body: `L'appel n'est pas encore enregistré pour ${lesSiennes.join(', ')}.` });
+                  if (lesSiennes.length) await envoyerPush(supabaseAdmin, [p.id], { title: '📋 Pensez à l’appel', url: './enseignant.html', tag: 'rappel-appel', body: `L'appel n'est pas encore enregistré pour ${lesSiennes.join(', ')}. Touchez ici pour le faire.` });
                 }
               }
             }
