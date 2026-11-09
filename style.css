@@ -1971,3 +1971,18 @@ body.theme-portier .alerte-inscription{ background:rgba(232,176,75,.12); color:i
 .dv-puce:hover,.dv-puce:focus-visible{border-color:var(--primary)}
 .dv-puce.actif{background:var(--primary);border-color:var(--primary);color:var(--on-primary,#fff);font-weight:700}
 .dv-phrases .dv-puce{min-height:40px;font-size:var(--fs-xs,.85rem);background:var(--surface-2)}
+
+/* ===== Camps de base simplifié (2026-11-09) ===== */
+.camps-aide > summary{cursor:pointer;list-style:none}
+.camps-aide > summary::-webkit-details-marker{display:none}
+.camps-aide p{margin:8px 0 0}
+.camps-choix{display:flex;flex-direction:column;gap:6px}
+.camps-ligne{display:flex;flex-direction:column;gap:4px}
+.camps-lib{font-size:var(--fs-xs,.8rem);font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:.03em}
+.camps-nouvelle{min-height:44px}
+.camps-compteur{margin:6px 0 10px;padding:8px 12px;border-radius:10px;background:var(--surface-2);font-size:var(--fs-xs,.85rem);color:var(--text-dim)}
+.camps-compteur span{font-weight:800;color:var(--text);font-size:1rem}
+.camps-note{width:100px;min-height:44px;font-size:1.05rem;text-align:center}
+label.dv-puce{display:inline-flex;align-items:center;gap:6px}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+label.dv-puce:focus-within{outline:2px solid var(--focus,var(--primary));outline-offset:2px}

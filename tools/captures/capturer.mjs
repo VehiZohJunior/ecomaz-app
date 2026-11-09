@@ -186,6 +186,8 @@ for(const theme of THEMES){
         emarg: () => { ouvrirListeClasse(DB.classes[0].id, 'emargement'); },
         cartes: () => { ouvrirCartesScolaires(DB.classes[0].id); },
         relance: () => { ouvrirRelanceEnseignants(); },
+        nouveval: () => { ouvrirNouvelleEvaluation(); const r = document.querySelectorAll('input[name=noteSur]'); if(r[0]){ r[0].checked = true; choisirPuceRadio(r[0]); } },
+        saisieeval: () => { const f = ui.filters.camps; DB.evaluations = [{ id:'ev-essai', classeId:f.classeId, matiere:f.matiere, trimestre:f.trimestre, type:'Devoir', titre:'Les fractions', date:todayISO(), noteSur:20 }]; ui.filters.campsEval = 'ev-essai'; renderView('camps-de-base'); const i = document.querySelectorAll('[name^=n_]'); if(i[0]){ i[0].value = 14; i[0].form.dispatchEvent(new Event('input', { bubbles:true })); } },
         relpar: () => { ouvrirRelanceParents(); const a = document.querySelector('.relance-ligne a'); if(a){ a.removeAttribute('href'); a.click(); } },
         meredt: async () => { eval(etapesMiseEnRoute().find(e => e.bouton === 'Remplir rapidement').action); await new Promise(r => setTimeout(r, 500)); },
         merpaie: async () => { eval(etapesMiseEnRoute().find(e => e.bouton === 'Saisir les versements reçus').action); await new Promise(r => setTimeout(r, 500)); },

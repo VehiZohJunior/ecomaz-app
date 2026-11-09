@@ -2734,6 +2734,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.11.9-5', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Camps de base plus simple : classe, matière et trimestre se choisissent d’un toucher ; « + Ajouter des notes » demande le type et le barème d’un toucher, puis on tape les notes avec un compteur (« 12 notes sur 25 élèves ») et « Entrée » pour passer à l’élève suivant.', 'Correction : le trimestre en cours suit maintenant l’agenda de l’école (fin du 1er trimestre le 4 décembre…) dans Camps de base et Compositions et bulletins, comme sur l’accueil. Avant, il était déduit du mois et « Notes et bulletins » s’ouvrait toujours sur le 1er trimestre.' ],
+  } },
   { version: '2026.11.9-4', nouveautes: {
     commun: [],
     parent: [],
@@ -3902,7 +3908,7 @@ function allerEvaluation(id){
   const ev = (DB.evaluations || []).find(e => e.id === id); if(!ev) return go('camps-de-base');
   ui.filters.camps = { classeId: ev.classeId, matiere: ev.matiere, trimestre: ev.trimestre }; ui.filters.campsEval = id; go('camps-de-base');
 }
-function allerNotesClasse(classeId, trim){ ui.filters.notes = Object.assign({}, ui.filters.notes || {}, { classeId, trimestre: trim, matiere:'' }); go('notes'); }
+function allerNotesClasse(classeId, trim){ ui.filters.notes = Object.assign({}, ui.filters.notes || {}, { classeId, trimestre: trim, matiere:'', auto: false }); go('notes'); }
 
 // Une tâche : etat = 'fait' | 'afaire' | 'prevoir' (à préparer, pas encore urgent) | 'info'
 function htmlTache(t){
@@ -5562,7 +5568,9 @@ function moyenneMatiere(eleveId, matiere, trimestre){
 function renderCampsDeBase(){
   const mesClasses = classesVisibles();
   if(!mesClasses.length) return `<div class="view active"><div class="panel"><div class="empty-state"><div class="em-ic">🏕️</div>Aucune classe : activez un niveau dans Paramètres, ou faites valider vos classes par la direction.</div></div></div>`;
-  const f = ui.filters.camps || { classeId: mesClasses[0].id, matiere: '', trimestre: trimestreCourant() };
+  chargerAgenda();
+  const f = ui.filters.camps || { classeId: mesClasses[0].id, matiere: '', trimestre: trimestreCourant(), auto: true };
+  if(f.auto) f.trimestre = trimestreCourant();
   if(!mesClasses.some(c => c.id === f.classeId)) f.classeId = mesClasses[0].id;
   const matieres = MATIERES_BY_CYCLE[classeCycle(f.classeId)] || [];
   if(!matieres.includes(f.matiere)) f.matiere = matieres[0] || '';
@@ -5579,17 +5587,18 @@ function renderCampsDeBase(){
   const ouverte = evals.find(e => e.id === ui.filters.campsEval);
   const sel = (nom, opts, val) => `<select onchange="ui.filters.camps.${nom}=this.value; ui.filters.campsEval=null; renderView('camps-de-base')">${opts.map(o => `<option value="${escapeHtml(o[0])}" ${o[0] === val ? 'selected' : ''}>${escapeHtml(o[1])}</option>`).join('')}</select>`;
   return `<div class="view active">
-    <div class="section-note">🏕️ <strong>Camps de base</strong> : notez ici tous les devoirs, exercices de classe, exercices de maison et interrogations, autant que vous voulez. Leur moyenne forme la <strong>moyenne de classe</strong> du bulletin ; avec la composition (menu Notes & Bulletins) : moyenne de la matière = (classe + 2 × composition) ÷ 3.</div>
+    <details class="section-note camps-aide"><summary>🎯 <strong>Camps de base</strong> : notez ici les devoirs, exercices et interrogations. Ils font la <strong>moyenne de classe</strong> du bulletin. <span class="lien-discret">Comment est calculée la moyenne ?</span></summary>
+      <p>Moyenne de classe = moyenne de toutes les notes de Camps de base (ramenées sur 20). Moyenne de la matière = (moyenne de classe + 2 × composition) ÷ 3. Les compositions se saisissent dans « Compositions et bulletins ».</p></details>
     <div class="panel">
-      <div class="filters">
-        ${sel('classeId', mesClasses.map(c => [c.id, c.nom]), f.classeId)}
-        ${sel('matiere', matieres.map(m => [m, m]), f.matiere)}
-        ${sel('trimestre', TRIMESTRES.map(t => [t, t]), f.trimestre)}
-      </div>
+      ${ouverte ? '' : `<div class="camps-choix">
+        ${mesClasses.length > 1 ? `<div class="camps-ligne"><span class="camps-lib">Classe</span><div class="dv-puces">${mesClasses.map(c => `<button type="button" class="dv-puce${c.id === f.classeId ? ' actif' : ''}" data-val="${escapeHtml(c.id)}" onclick="campsChoisir('classeId', this.dataset.val)">${escapeHtml(c.nom)}</button>`).join('')}</div></div>` : ''}
+        <div class="camps-ligne"><span class="camps-lib">Matière</span><div class="dv-puces">${matieres.map(m => `<button type="button" class="dv-puce${m === f.matiere ? ' actif' : ''}" data-val="${escapeHtml(m)}" onclick="campsChoisir('matiere', this.dataset.val)">${escapeHtml(m)}</button>`).join('')}</div></div>
+        <div class="camps-ligne"><span class="camps-lib">Trimestre</span><div class="dv-puces">${TRIMESTRES.map(t => `<button type="button" class="dv-puce${t === f.trimestre ? ' actif' : ''}" data-val="${t}" onclick="campsChoisir('trimestre', this.dataset.val)">${libelleTrimestre(t)}${t === trimestreCourant() ? ' (en cours)' : ''}</button>`).join('')}</div></div>
+      </div>`}
       ${DB.evaluations === null ? '<div class="hint">Chargement…</div>' : ouverte ? renderSaisieEvaluation(ouverte, eleves, noteDe) : `
-      <div class="panel-head" style="margin-top:8px;"><div><h2>Évaluations — ${escapeHtml(f.matiere)}</h2><div class="sub">${evals.length} évaluation(s) · ${eleves.length} élève(s)</div></div>
-        <button class="btn" onclick="ouvrirNouvelleEvaluation()">+ Nouvelle évaluation</button></div>
-      ${!evals.length ? '<div class="empty-state"><div class="em-ic">🏕️</div>Aucune évaluation pour cette matière et ce trimestre. Cliquez sur « + Nouvelle évaluation ».</div>' : `
+      <div class="panel-head" style="margin-top:8px;"><div><h2>${escapeHtml(f.matiere)} — ${escapeHtml(classeName(f.classeId))}</h2><div class="sub">${evals.length} évaluation(s) · ${eleves.length} élève(s) · ${libelleTrimestre(f.trimestre)}</div></div>
+        <button class="btn camps-nouvelle" onclick="ouvrirNouvelleEvaluation()">+ Ajouter des notes</button></div>
+      ${!evals.length ? '<div class="empty-state"><div class="em-ic">🎯</div>Aucune note pour cette matière et ce trimestre.<br>Touchez « + Ajouter des notes » : choisissez le type (devoir, exercice…), puis tapez la note de chaque élève.</div>' : `
       <div class="table-wrap"><table class="camps-table">
         <thead><tr><th>Élève</th>${evals.map(ev => `<th class="camps-col" title="${escapeHtml(ev.titre || ev.type)}"><button class="lien-btn" onclick="ui.filters.campsEval='${ev.id}'; renderView('camps-de-base')">${ICONES_EVAL[ev.type] || ''} ${fmtDate(ev.date).slice(0, 5)}<br><span class="hint">/${Number(ev.noteSur)}</span></button></th>`).join('')}<th>Moy. classe /20</th></tr></thead>
         <tbody>${eleves.map(el => { const m = moyenneMatiere(el.id, f.matiere, f.trimestre); return `<tr>
@@ -5598,22 +5607,29 @@ function renderCampsDeBase(){
           <td><strong class="${m.classe !== null ? moyenneClass(m.classe) : ''}">${m.classe !== null ? m.classe.toFixed(2) : '—'}</strong></td></tr>`; }).join('')}</tbody>
         <tfoot><tr><td><strong>Moyenne de la classe</strong></td>${evals.map(ev => { const ns = eleves.map(el => noteDe(ev, el)).filter(n => n && n.note != null); return `<td class="camps-col">${ns.length ? (ns.reduce((s, n) => s + Number(n.note), 0) / ns.length).toFixed(1) : '—'}</td>`; }).join('')}<td></td></tr></tfoot>
       </table></div>
-      <div class="hint" style="margin-top:8px;">Touchez la date d’une évaluation pour saisir ou corriger ses notes.</div>`}`}
+      <div class="hint" style="margin-top:8px;">Pour corriger une note : touchez la date de l’évaluation, en haut de sa colonne.</div>`}`}
     </div>
   </div>`;
 }
+function campsChoisir(champ, valeur){
+  const f = ui.filters.camps; if(!f) return;
+  f[champ] = valeur; if(champ === 'trimestre') f.auto = false;
+  ui.filters.campsEval = null; renderView('camps-de-base');
+}
 function trimestreCourant(){
+  if((DB.agenda || []).some(e => /fin du\s*1/i.test(e.titre || ''))) return trimestreDeDate(todayISO());
   const m = new Date().getMonth() + 1; // septembre-décembre : T1 ; janvier-mars : T2 ; avril-juillet : T3
   return m >= 8 ? 'Trimestre 1' : m <= 3 ? 'Trimestre 2' : 'Trimestre 3';
 }
 function renderSaisieEvaluation(ev, eleves, noteDe){
   return `<div class="panel-head" style="margin-top:8px;"><div><h2>${ICONES_EVAL[ev.type] || ''} ${escapeHtml(ev.type)}${ev.titre ? ' — ' + escapeHtml(ev.titre) : ''}</h2><div class="sub">${fmtDate(ev.date)} · noté sur ${Number(ev.noteSur)} · ${escapeHtml(ev.matiere)} · ${escapeHtml(ev.trimestre)}</div></div>
       <button class="btn secondary sm" onclick="ui.filters.campsEval=null; renderView('camps-de-base')">← Retour au tableau</button></div>
-    <form onsubmit="return enregistrerNotesEvaluation(event, '${ev.id}')">
+    <form onsubmit="return enregistrerNotesEvaluation(event, '${ev.id}')" oninput="majCompteurNotes(this)">
+      <div class="camps-compteur" aria-live="polite"><span id="campsCompteur">${eleves.filter(el => { const n = noteDe(ev, el); return n && n.note != null; }).length}</span> note(s) sur ${eleves.length} élève(s) · Tapez une note puis « Entrée » (ou ↵) pour passer à l’élève suivant.</div>
       <div class="table-wrap"><table>
         <thead><tr><th>Élève</th><th>Note / ${Number(ev.noteSur)}</th></tr></thead>
         <tbody>${eleves.map((el, i) => { const n = noteDe(ev, el); return `<tr><td>${escapeHtml(eleveFullName(el))}</td>
-          <td><input type="number" inputmode="decimal" name="n_${el.id}" min="0" max="${Number(ev.noteSur)}" step="0.25" value="${n && n.note != null ? Number(n.note) : ''}" style="width:90px;" onkeydown="if(event.key==='Enter'){ event.preventDefault(); const s=document.querySelectorAll('[name^=n_]')[${i + 1}]; if(s) s.focus(); }" aria-label="Note de ${escapeHtml(eleveFullName(el))}"></td></tr>`; }).join('')}</tbody>
+          <td><input type="number" inputmode="decimal" name="n_${el.id}" min="0" max="${Number(ev.noteSur)}" step="0.25" value="${n && n.note != null ? Number(n.note) : ''}" class="camps-note" enterkeyhint="next" onkeydown="if(event.key==='Enter'){ event.preventDefault(); const s=document.querySelectorAll('[name^=n_]')[${i + 1}]; if(s) s.focus(); }" aria-label="Note de ${escapeHtml(eleveFullName(el))}"></td></tr>`; }).join('')}</tbody>
       </table></div>
       <div class="hint">Laissez vide pour un élève absent ou non noté (il ne compte pas dans sa moyenne).</div>
       <div class="form-actions">
@@ -5623,17 +5639,24 @@ function renderSaisieEvaluation(ev, eleves, noteDe){
 }
 function ouvrirNouvelleEvaluation(){
   const f = ui.filters.camps;
-  openModal('🏕️ Nouvelle évaluation', `
+  openModal('🎯 Ajouter des notes', `
     <form onsubmit="return creerEvaluation(event)">
       <p class="hint" style="margin-top:0;">${escapeHtml(classeName(f.classeId))} · ${escapeHtml(f.matiere)} · ${escapeHtml(f.trimestre)}</p>
       <div class="form-grid">
-        <div class="field"><label>Type</label><select name="type">${TYPES_BASE.map(t => `<option value="${t}">${ICONES_EVAL[t]} ${t}</option>`).join('')}</select></div>
+        <div class="field span2"><label>Quel type de note ?</label><div class="dv-puces" role="radiogroup">${TYPES_BASE.map((t, i) => `<label class="dv-puce${i === 0 ? ' actif' : ''}"><input type="radio" name="type" value="${t}" ${i === 0 ? 'checked' : ''} class="sr-only" onchange="choisirPuceRadio(this)">${ICONES_EVAL[t]} ${t}</label>`).join('')}</div></div>
+        <div class="field span2"><label>Noté sur</label><div class="dv-puces" role="radiogroup">${[5, 10, 20, 40, 50, 100].map(v => `<label class="dv-puce${v === 20 ? ' actif' : ''}"><input type="radio" name="noteSur" value="${v}" ${v === 20 ? 'checked' : ''} class="sr-only" onchange="choisirPuceRadio(this)">${v}</label>`).join('')}</div></div>
         <div class="field"><label>Date</label><input type="date" name="date" required value="${todayISO()}" max="${todayISO()}"></div>
-        <div class="field"><label>Noté sur</label><select name="noteSur">${[20, 10, 5, 40, 50, 100].map(v => `<option value="${v}">${v}</option>`).join('')}</select></div>
         <div class="field"><label>Titre (facultatif)</label><input name="titre" maxlength="120" placeholder="Ex : Les fractions"></div>
       </div>
-      <div class="form-actions"><button type="button" class="btn secondary" onclick="closeModal()">Annuler</button><button class="btn" type="submit">Créer et saisir les notes</button></div>
+      <div class="form-actions"><button type="button" class="btn secondary" onclick="closeModal()">Annuler</button><button class="btn" type="submit">Continuer : taper les notes</button></div>
     </form>`);
+}
+function majCompteurNotes(form){
+  const c = document.getElementById('campsCompteur'); if(!c) return;
+  c.textContent = [...form.querySelectorAll('[name^=n_]')].filter(i => i.value.trim() !== '').length;
+}
+function choisirPuceRadio(input){
+  input.closest('.dv-puces').querySelectorAll('.dv-puce').forEach(l => l.classList.toggle('actif', l.contains(input) && input.checked));
 }
 async function creerEvaluation(ev){
   ev.preventDefault();
@@ -6726,7 +6749,7 @@ function chargerAgenda(){
   if(DB.agenda !== undefined) return;
   DB.agenda = null;
   sb.from('evenements_agenda').select('*').eq('ecole_id', session.ecoleId).order('date_debut')
-    .then(({ data }) => { DB.agenda = rowsToCamel(data || []); if(['dashboard', 'agenda', 'notes'].includes(ui.currentView)) renderView(ui.currentView); });
+    .then(({ data }) => { DB.agenda = rowsToCamel(data || []); if(['dashboard', 'agenda', 'notes', 'camps-de-base'].includes(ui.currentView)) renderView(ui.currentView); });
 }
 function renderAgenda(){
   chargerAgenda();
@@ -7879,7 +7902,8 @@ function renderNotes(){
   if(mesClasses.length === 0){
     return `<div class="view active"><div class="panel"><div class="empty-state"><div class="em-ic">📝</div>Aucune classe configurée pour le moment. Activez au moins un niveau scolaire dans Paramètres pour commencer à saisir des notes.</div></div></div>`;
   }
-  const f = ui.filters.notes || {classeId: mesClasses[0].id, matiere:'', trimestre:'Trimestre 1'};
+  const f = ui.filters.notes || {classeId: mesClasses[0].id, matiere:'', trimestre: trimestreCourant(), auto: true};
+  if(f.auto) f.trimestre = trimestreCourant(); // suit l'agenda dès qu'il est chargé, tant que l'utilisateur n'a pas choisi
   if(!mesClasses.some(c=>c.id===f.classeId)) f.classeId = mesClasses[0].id;
   if(!f.matiere) f.matiere = MATIERES_BY_CYCLE[classeCycle(f.classeId)][0];
   ui.filters.notes = f;
@@ -7928,7 +7952,7 @@ function renderNotes(){
         <select onchange="ui.filters.notes.matiere=this.value; renderView('notes')">
           ${matieres.map(m=>`<option ${f.matiere===m?'selected':''}>${m}</option>`).join('')}
         </select>
-        <select onchange="ui.filters.notes.trimestre=this.value; renderView('notes')">
+        <select onchange="ui.filters.notes.trimestre=this.value; ui.filters.notes.auto=false; renderView('notes')">
           ${TRIMESTRES.map(t=>`<option ${f.trimestre===t?'selected':''}>${t}</option>`).join('')}
         </select>
       </div>
