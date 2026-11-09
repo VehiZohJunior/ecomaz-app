@@ -1888,10 +1888,11 @@ function renderBulletinEnfant(e){
   const app = (DB.bulletinsComments || {})[`${e.id}_${t}`];
   return `<details class="enfant-bulletin"><summary>📒 Bulletin — ${escapeHtml(t)}${b.moyenne !== null ? ` · moyenne ${b.moyenne.toFixed(2)}/20` : ''}</summary>
     ${publies.length > 1 ? `<div class="filters" style="margin:8px 0;"><select onchange="ui.filters.bulletinParent = Object.assign(ui.filters.bulletinParent || {}, { '${e.id}': this.value }); $('#viewContainer').innerHTML = renderParentDashboard();">${publies.map(x => `<option ${x===t?'selected':''}>${escapeHtml(x)}</option>`).join('')}</select></div>` : ''}
-    <table class="eb-table"><thead><tr><th>Matière</th><th>Classe</th><th>Compo.</th><th>Moy.</th></tr></thead>
+    <table class="eb-table sans-cartes"><thead><tr><th>Matière</th><th>Classe</th><th>Compo.</th><th>Moy.</th></tr></thead>
       <tbody>${b.lignes.filter(l => l.moy !== null).map(l => `<tr><td>${escapeHtml(l.mat)}</td><td>${l.devoir ?? '—'}</td><td>${l.compo ?? '—'}</td><td><strong>${l.moy.toFixed(1)}</strong></td></tr>`).join('')}</tbody></table>
     ${b.moyenne !== null ? `<div class="eb-moyenne">Moyenne générale : <strong>${b.moyenne.toFixed(2)} / 20</strong> — ${escapeHtml(mentionFromAvg(b.moyenne))}</div>` : ''}
     ${fige ? `<div class="eb-moyenne">Rang : <strong>${rangTexte(fige.rang, fige.exAequo)} sur ${fige.effectif}</strong> · Moyenne de la classe : ${Number(fige.moyenneClasse).toFixed(2)}</div>` : ''}
+    ${assiduiteParentHtml(e, t)}
     ${app ? `<div class="eb-appreciation"><strong>Appréciation :</strong> ${escapeHtml(app)}</div>` : ''}
     <button type="button" class="btn secondary sm" style="margin-top:8px;" onclick="ouvrirBulletinImprimable('${e.id}', ${escapeHtml(JSON.stringify(t))})">🖨️ Imprimer / enregistrer en PDF</button>
   </details>`;
@@ -1911,9 +1912,10 @@ function ouvrirBulletinImprimable(eleveId, trimestre){
       <div class="recu-row"><span>Élève</span><strong>${escapeHtml(eleveFullName(e))}</strong></div>
       <div class="recu-row"><span>Classe</span><strong>${escapeHtml(classeName(e.classeId))}</strong></div>
       <div class="recu-row"><span>Année scolaire</span><strong>${escapeHtml(m.anneeScolaire || '')}</strong></div>
-      <table class="eb-table" style="margin-top:12px;"><thead><tr><th>Matière</th><th>Classe</th><th>Compo.</th><th>Moy.</th></tr></thead>
+      <table class="eb-table sans-cartes" style="margin-top:12px;"><thead><tr><th>Matière</th><th>Classe</th><th>Compo.</th><th>Moy.</th></tr></thead>
         <tbody>${b.lignes.filter(l => l.moy !== null).map(l => `<tr><td>${escapeHtml(l.mat)}</td><td>${l.devoir ?? '—'}</td><td>${l.compo ?? '—'}</td><td><strong>${l.moy.toFixed(1)}</strong></td></tr>`).join('')}</tbody></table>
       ${b.moyenne !== null ? `<div class="eb-moyenne" style="margin-top:10px;">Moyenne générale : <strong>${b.moyenne.toFixed(2)} / 20</strong> — ${escapeHtml(mentionFromAvg(b.moyenne))}</div>` : ''}
+      ${(DB.assiduiteParent || {})[e.id] ? assiduiteHtml(DB.assiduiteParent[e.id], trimestre) : ''}
       ${app ? `<div class="eb-appreciation"><strong>Appréciation :</strong> ${escapeHtml(app)}</div>` : ''}
       <p class="hint" style="margin-top:14px;">Document consulté dans l’application des parents le ${fmtDate(todayISO())}. Le bulletin officiel signé est remis par l’établissement.</p>
     </div>
@@ -1948,7 +1950,7 @@ function renderNotesContinuesEnfant(e){
   const matieres = [...new Set(notes.map(n => n.matiere))];
   return `<details class="enfant-bulletin"><summary>📝 Notes du ${escapeHtml(t)} (${notes.length})</summary>
     <div class="nc-moyennes">${matieres.map(mat => { const m = moyenneMatiere(e.id, mat, t); return m.classe !== null ? `<span class="badge ${m.classe >= 10 ? 'green' : 'red'}">${escapeHtml(mat)} : ${m.classe.toFixed(1)}/20</span>` : ''; }).join(' ')}</div>
-    <table class="eb-table"><thead><tr><th>Date</th><th>Matière</th><th>Évaluation</th><th>Note</th></tr></thead>
+    <table class="eb-table sans-cartes"><thead><tr><th>Date</th><th>Matière</th><th>Évaluation</th><th>Note</th></tr></thead>
       <tbody>${notes.slice(0, 15).map(n => { const v = ev(n.evaluationId); return `<tr><td>${n.date ? fmtDate(n.date).slice(0, 5) : ''}</td><td>${escapeHtml(n.matiere)}</td>
         <td>${ICONES_EVAL[n.type] || ''} ${escapeHtml(v.titre || n.type || '')}</td><td><strong>${Number(n.note)}</strong>/${Number(n.noteSur) || 20}</td></tr>`; }).join('')}</tbody></table>
     <div class="hint">Moyenne en cours des devoirs et exercices (la composition s’ajoute au bulletin).</div>
@@ -2764,6 +2766,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.11.9-20', nouveautes: {
+    commun: [],
+    parent: [ 'Bulletin de votre enfant : la ligne « Assiduité du trimestre » (absences justifiées ou non, retards) apparaît aussi dans l’application et dans le bulletin à imprimer.' ],
+    portier: [],
+    personnel: [],
+  } },
   { version: '2026.11.9-19', nouveautes: {
     commun: [],
     parent: [],
@@ -5979,8 +5987,24 @@ function ligneBulletinUtile(matiere, moy){ return moy !== null || !MATIERES_AU_C
 // Seulement quand tout l'appel de l'année est chargé (personnel) — jamais un chiffre partiel.
 function assiduiteBulletinHtml(e, trimestre){
   if(!Array.isArray(DB.presencesEleves) || ui.role === 'parent') return '';
+  return assiduiteHtml(DB.presencesEleves.filter(p => p.eleveId === e.id), trimestre);
+}
+// Parent : l'appel de l'année de SON enfant est lu seulement à l'ouverture du bulletin (RLS : ses enfants uniquement)
+function assiduiteParentHtml(e, trimestre){
+  DB.assiduiteParent = DB.assiduiteParent || {};
+  const deja = DB.assiduiteParent[e.id];
+  if(deja === undefined){
+    DB.assiduiteParent[e.id] = null;
+    const debut = (/^(\d{4})/.exec(DB.meta?.anneeScolaire || '') || [])[1];
+    sb.from('presences_eleves').select('eleve_id,date,statut,motif').eq('eleve_id', e.id).gte('date', (debut || '2000') + '-08-01')
+      .then(({ data, error }) => { DB.assiduiteParent[e.id] = error ? [] : rowsToCamel(data || []);
+        document.querySelectorAll(`[data-assiduite="${e.id}"]`).forEach(z => { z.innerHTML = assiduiteHtml(DB.assiduiteParent[e.id], z.dataset.trimestre); }); });
+  }
+  return `<div data-assiduite="${e.id}" data-trimestre="${escapeHtml(trimestre)}">${deja ? assiduiteHtml(deja, trimestre) : ''}</div>`;
+}
+function assiduiteHtml(presencesEleve, trimestre){
   const debut = (/^(\d{4})/.exec(DB.meta?.anneeScolaire || '') || [])[1];
-  const pres = DB.presencesEleves.filter(p => p.eleveId === e.id && (!debut || p.date >= debut + '-08-01') && trimestreDeDate(p.date) === trimestre);
+  const pres = presencesEleve.filter(p => (!debut || p.date >= debut + '-08-01') && trimestreDeDate(p.date) === trimestre);
   if(!pres.length) return `<div class="bo-assiduite"><strong>Assiduité du trimestre :</strong> appel non enregistré dans EcoMaZ pour cette période.</div>`;
   const abs = pres.filter(p => p.statut === 'Absent'), ret = pres.filter(p => p.statut === 'Retard').length;
   const justif = abs.filter(p => String(p.motif || '').trim() && !/non justifi/i.test(p.motif) && !/présent selon le parent/i.test(p.motif)).length;
@@ -7573,7 +7597,7 @@ function renderSmartFillApercu(resultat){
   const badge = c => c === 'élevé' ? '<span class="badge green">sûr</span>' : c === 'moyen' ? '<span class="badge amber">à vérifier</span>' : '<span class="badge">non trouvé</span>';
   const trouves = schema.filter(c => resultat[c.name] && resultat[c.name].valeur);
   return `<div class="hint" style="margin-bottom:10px;">${trouves.length ? `${trouves.length} information(s) trouvée(s) sur ${schema.length}. Vérifiez puis appliquez : la fiche n’est pas encore enregistrée.` : 'Aucune information n’a pu être lue. Essayez une photo plus nette, bien éclairée, ou un autre moyen.'}</div>
-    <table class="eb-table"><tbody>${schema.map(c => { const r = resultat[c.name] || {}; return `<tr><td>${escapeHtml(c.label)}</td><td><strong>${r.valeur ? escapeHtml(r.valeur) : '—'}</strong></td><td>${badge(r.valeur ? r.confiance : 'faible')}</td></tr>`; }).join('')}</tbody></table>
+    <table class="eb-table sans-cartes"><tbody>${schema.map(c => { const r = resultat[c.name] || {}; return `<tr><td>${escapeHtml(c.label)}</td><td><strong>${r.valeur ? escapeHtml(r.valeur) : '—'}</strong></td><td>${badge(r.valeur ? r.confiance : 'faible')}</td></tr>`; }).join('')}</tbody></table>
     <div class="form-actions">
       <button type="button" class="btn secondary" onclick="$('#smartFillBody').innerHTML = renderSmartFillModal()">Recommencer</button>
       ${trouves.length ? `<button type="button" class="btn" onclick="appliquerSmartFill()">✓ Appliquer à la fiche</button>` : ''}

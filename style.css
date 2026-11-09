@@ -2079,3 +2079,11 @@ body.theme-portier .texte-toggle:not(.texte-toggle-menu){display:none !important
 /* Portier : classes sur 2 colonnes au téléphone (moins de défilement quand un parent attend) — 2026-11-09 */
 @media (max-width:900px){ body.theme-portier .grid-3:has(> .gate-classe){ grid-template-columns:repeat(2, minmax(0, 1fr)); gap:10px; } }
 body.theme-portier .gate-classe strong{ overflow-wrap:anywhere; }
+
+/* Bulletin dans la carte verte de l'enfant (console parent) : tableau lisible, jamais blanc sur blanc — 2026-11-09 */
+.enfant-carte .table-wrap{ background:transparent; border-color:rgba(255,255,255,.25); }
+.enfant-carte .eb-table, .enfant-carte .eb-table td{ color:#fff; background:transparent; }
+.enfant-carte .eb-table th{ color:rgba(255,255,255,.78); background:transparent; }
+.enfant-carte .eb-table th, .enfant-carte .eb-table td{ border-bottom-color:rgba(255,255,255,.22); }
+.enfant-carte .bo-assiduite{ border-color:rgba(255,255,255,.35); }
+.enfant-carte .bo-assiduite-base{ color:rgba(255,255,255,.78); }
