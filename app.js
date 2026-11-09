@@ -2736,6 +2736,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.11.9-14', nouveautes: {
+    commun: [ 'Lisibilité : textes trop pâles corrigés (bouton « Déconnexion » des parents, phrase « personne d’autre que vous » sur la carte de l’enfant, liens discrets et numéros d’étapes en mode sombre).' ],
+    parent: [],
+    portier: [],
+    personnel: [],
+  } },
   { version: '2026.11.9-13', nouveautes: {
     commun: [ 'Nouveau bouton « Aa » en haut de l’écran : taille du texte Normale, Grande ou Très grande, mémorisée sur ce téléphone (plus confortable pour lire).' ],
     parent: [],

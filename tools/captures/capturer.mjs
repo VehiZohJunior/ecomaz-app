@@ -38,7 +38,7 @@ if(role === 'parent'){
   donnees.eleves = donnees.eleves.filter(e => enfants.includes(e.id));
 }
 const LARGEURS = (process.env.UNE_TAILLE ? [[390, 844]] : [[360, 780], [390, 844], [1440, 900]]);
-const THEMES = (process.env.UNE_TAILLE || process.env.AUDIT ? ['light'] : ['light', 'dark']);
+const THEMES = (process.env.CONTRASTE ? ['light', 'dark'] : process.env.UNE_TAILLE || process.env.AUDIT ? ['light'] : ['light', 'dark']);
 const sortie = join(RACINE, 'captures', nom);
 mkdirSync(sortie, { recursive: true });
 
@@ -213,6 +213,45 @@ for(const theme of THEMES){
       if(extra === 'centre') await page.waitForTimeout(400);
       const mesure = await page.evaluate(() => { const t = document.querySelector('.topbar'); return t ? Math.round(t.getBoundingClientRect().height) : 0; });
       console.log(`${ecranBrut} ${largeur}px ${theme} : en-tête ${mesure}px`);
+      // CONTRASTE=1 : textes trop pâles par rapport à leur fond (WCAG : 4,5 pour le texte courant, 3 pour le gros texte)
+      if(process.env.CONTRASTE){
+        const pb = await page.evaluate(() => {
+          const rgba = c => { const m = String(c).match(/rgba?\(([^)]+)\)/); if(!m) return null; const v = m[1].split(/[ ,\/]+/).filter(Boolean).map(Number); return [v[0], v[1], v[2], v.length > 3 ? v[3] : 1]; };
+          const lum = ([r, g, b]) => { const f = x => { x /= 255; return x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4); }; return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b); };
+          const fondDe = el => { // superpose les fonds jusqu'à un fond opaque ; null si image ou dégradé (non mesurable)
+            let couches = [];
+            for(let x = el; x; x = x.parentElement){
+              const cs = getComputedStyle(x);
+              if(cs.backgroundImage && cs.backgroundImage !== 'none') return null;
+              const c = rgba(cs.backgroundColor); if(c && c[3] > 0){ couches.push(c); if(c[3] >= 1) break; }
+            }
+            let res = [255, 255, 255];
+            for(let i = couches.length - 1; i >= 0; i--){ const [r, g, b, a] = couches[i]; res = [r * a + res[0] * (1 - a), g * a + res[1] * (1 - a), b * a + res[2] * (1 - a)]; }
+            return res;
+          };
+          const vus = new Set(), pbs = [];
+          document.querySelectorAll('body *').forEach(el => {
+            if(!['#text'].some(() => [...el.childNodes].some(n => n.nodeType === 3 && n.textContent.trim()))) return;
+            if(el.closest('svg, [hidden], .modal-backdrop:not(.open), .sr-only, select, option, [disabled], [aria-hidden="true"]')) return;
+            const cs = getComputedStyle(el); if(cs.display === 'none' || cs.visibility === 'hidden') return;
+            const r = el.getBoundingClientRect(); if(!r.width || !r.height || r.bottom < 0) return;
+            for(let x = el; x; x = x.parentElement){ if(Number(getComputedStyle(x).opacity) < 0.95) return; }
+            const c = rgba(cs.color), f = fondDe(el); if(!c || !f) return;
+            const coul = [c[0] * c[3] + f[0] * (1 - c[3]), c[1] * c[3] + f[1] * (1 - c[3]), c[2] * c[3] + f[2] * (1 - c[3])];
+            const L1 = lum(coul), L2 = lum(f), ratio = (Math.max(L1, L2) + 0.05) / (Math.min(L1, L2) + 0.05);
+            const gros = parseFloat(cs.fontSize) >= 24 || (parseFloat(cs.fontSize) >= 18.6 && Number(cs.fontWeight) >= 700);
+            const seuil = gros ? 3 : 4.5;
+            if(ratio < seuil){
+              const nom = el.tagName.toLowerCase() + (el.classList.length ? '.' + [...el.classList].slice(0, 2).join('.') : '') + ' « ' + el.textContent.trim().replace(/\s+/g, ' ').slice(0, 30) + ' »';
+              const cle = el.tagName + [...el.classList].join('.') + cs.color + f.join(',');
+              if(!vus.has(cle)){ vus.add(cle); pbs.push({ nom, ratio: Math.round(ratio * 100) / 100 }); }
+            }
+          });
+          return pbs.sort((x, y) => x.ratio - y.ratio).slice(0, 12);
+        });
+        console.log(`CONTRASTE ${role} ${ecranBrut} ${theme} : ${pb.length ? pb.length + ' problème(s)' : 'OK'}` + pb.map(x => `\n   ${x.ratio} : ${x.nom}`).join(''));
+        if(!process.env.AUDIT){ continue; }
+      }
       // AUDIT=1 : mesure ce qui déborde (page plus large que l'écran, éléments qui sortent du cadre, textes coupés)
       if(process.env.AUDIT){
         const rapport = await page.evaluate(() => {

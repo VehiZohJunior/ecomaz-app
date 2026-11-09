@@ -92,7 +92,7 @@
     color-scheme: dark;
     --surface-2:#1c2a24; --border-strong:#3a4f44; --text-faint:#7f9487;
     /* textes et liens primaires éclaircis pour rester lisibles sur fond sombre */
-    --primary:#4c9b73; --primary-hover:#6cb88f; --primary-ink:#9fdcba;
+    --primary:#4c9b73; --primary-hover:#6cb88f; --primary-ink:#9fdcba; --lien:#9fdcba; --pastille:#2f7a55;
     --on-primary:#07140d;
     --accent:#ee9f7e; --accent-ink:#f2b39a;
     --success:#6fd49a; --success-soft:#14301f;
@@ -109,7 +109,7 @@
     color-scheme: dark;
     --surface-2:#1c2a24; --border-strong:#3a4f44; --text-faint:#7f9487;
     /* textes et liens primaires éclaircis pour rester lisibles sur fond sombre */
-    --primary:#4c9b73; --primary-hover:#6cb88f; --primary-ink:#9fdcba;
+    --primary:#4c9b73; --primary-hover:#6cb88f; --primary-ink:#9fdcba; --lien:#9fdcba; --pastille:#2f7a55;
     --on-primary:#07140d;
     --accent:#ee9f7e; --accent-ink:#f2b39a;
     --success:#6fd49a; --success-soft:#14301f;
