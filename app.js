@@ -2734,6 +2734,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.11.9-2', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Nouveau sur le tableau de bord (secrétariat, direction, fondation) : « Suivi des enseignants ». Pour chacun : appel du jour, appels oubliés de la semaine, cahier de textes du prochain jour de classe, évaluations du trimestre, avancement du programme, compte activé ou non. Les enseignants à relancer apparaissent en premier, avec un message WhatsApp prêt à envoyer (gratuit) et l’accès à leur rapport d’activité.' ],
+  } },
   { version: '2026.11.9-1', nouveautes: {
     commun: [],
     parent: [],
@@ -4086,6 +4092,101 @@ function renderAccueilEnseignant(){
   </div>`;
 }
 
+/* =====================================================================
+   SUIVI DES ENSEIGNANTS (secrétariat, direction, fondation) — 2026-11-09
+   Les mêmes tâches que l'accueil enseignant, vues par la direction :
+   appel du jour, appels oubliés de la semaine, cahier de textes du
+   prochain jour de classe, évaluations du trimestre, programme.
+   Relance gratuite par WhatsApp, message prêt à envoyer.
+   ===================================================================== */
+function etatEnseignant(t, auj){
+  const classes = (t.classesAssignees || []).map(id => DB.classes.find(c => c.id === id)).filter(Boolean)
+    .filter(c => DB.eleves.some(e => e.classeId === c.id && e.statut === 'Actif'));
+  const fait = (id, d) => DB.presencesEleves.some(p => p.classeId === id && p.date === d);
+  const coursAuj = estJourDeCours(auj), h = new Date().getHours();
+  const sansAppelAuj = coursAuj ? classes.filter(c => !fait(c.id, auj)) : [];
+  const passes = listeJours(lundiDe(auj), auj).filter(d => d < auj && estJourDeCours(d));
+  const manques = []; passes.forEach(d => classes.forEach(c => { if(!fait(c.id, d)) manques.push({ d, c }); }));
+  const prochain = prochainJourDeClasse(auj);
+  const sansDevoir = DB.devoirs && prochain ? classes.filter(c => !DB.devoirs.some(d => d.classeId === c.id && d.pourLe === prochain)) : null;
+  const trim = trimestreDeDate(auj), ids = new Set(classes.map(c => c.id));
+  const evals = DB.evaluations ? DB.evaluations.filter(e => ids.has(e.classeId) && e.trimestre === trim && (!(t.matieres || []).length || t.matieres.includes(e.matiere))).length : null;
+  const prog = (DB.programmes || []).filter(p => p.enseignantId === t.id && (!p.trimestre || p.trimestre === trim));
+  const progMoy = prog.length ? Math.round(prog.reduce((s, p) => s + (Number(p.progression) || 0), 0) / prog.length) : null;
+  const compte = (DB.profiles || []).some(p => p.role === 'enseignant' && p.enseignantId === t.id);
+  // En retard : appel du jour non fait après 9 h, ou appels oubliés cette semaine
+  const retardAuj = h >= 9 ? sansAppelAuj.length : 0;
+  return { t, classes, coursAuj, sansAppelAuj, retardAuj, manques, prochain, sansDevoir, evals, progMoy, compte, score: retardAuj * 2 + manques.length + (compte ? 0 : 1) };
+}
+function telEnseignant(t){ const d = String(t.telephone || '').replace(/\D/g, '').replace(/^225/, ''); return d.length === 10 ? d : ''; }
+function messageRelanceEnseignant(x){
+  const t = x.t, titre = t.sexe === 'F' ? 'Madame' : t.sexe === 'M' ? 'Monsieur' : '';
+  const qui = { secretariat:'le secrétariat', direction:'la direction', fondation:'la fondation' }[ui.role] || 'l’école';
+  const points = [];
+  if(!x.compte) points.push('votre compte EcoMaZ n’est pas encore activé : installez l’application enseignant et connectez-vous');
+  if(x.sansAppelAuj.length) points.push(`l’appel n’est pas encore fait aujourd’hui en ${x.sansAppelAuj.map(c => c.nom).join(', ')}`);
+  if(x.manques.length) points.push(`${x.manques.length} appel(s) de la semaine à rattraper (${x.manques.slice(0, 3).map(m => `${m.c.nom} du ${fmtDate(m.d)}`).join(', ')}${x.manques.length > 3 ? '…' : ''})`);
+  return `Bonjour ${[titre, t.nom].filter(Boolean).join(' ')}, ici ${qui} de ${DB.meta?.nomEcole || 'l’école'}.\n`
+    + (points.length ? `Petit rappel :\n${points.map(p => '- ' + p).join('\n')}\n` : '')
+    + 'Tout se fait depuis l’accueil « Mes tâches » de votre application EcoMaZ. Merci et bonne journée !';
+}
+function renderSuiviEnseignants(){
+  if(!['secretariat','direction','fondation'].includes(ui.role)) return '';
+  const auj = todayISO();
+  chargerAgenda();
+  const reafficher = () => { if(ui.currentView === 'dashboard') renderView('dashboard'); };
+  if(DB.devoirs === undefined){ DB.devoirs = null; sb.from('devoirs').select('*').eq('ecole_id', session.ecoleId).gte('pour_le', auj).order('pour_le')
+    .then(({ data }) => { DB.devoirs = rowsToCamel(data || []); reafficher(); }); }
+  if(DB.evaluations === undefined){ DB.evaluations = null; sb.from('evaluations').select('*').eq('ecole_id', session.ecoleId).order('date')
+    .then(({ data }) => { DB.evaluations = rowsToCamel(data || []); reafficher(); }); }
+  const liste = (DB.enseignants || []).filter(t => t.statut === 'Actif' && (t.classesAssignees || []).length)
+    .map(t => etatEnseignant(t, auj)).filter(x => x.classes.length)
+    .sort((a, b) => b.score - a.score || (a.t.nom || '').localeCompare(b.t.nom || ''));
+  if(!liste.length) return '';
+  window.__suiviEns = liste;
+  const coursAuj = estJourDeCours(auj);
+  const classesTot = new Set(liste.flatMap(x => x.classes.map(c => c.id)));
+  const classesFaites = [...classesTot].filter(id => DB.presencesEleves.some(p => p.classeId === id && p.date === auj)).length;
+  const aRelancer = liste.filter(x => x.score > 0).length;
+  const puce = (ok, txt, attente) => `<span class="se-puce ${ok === null ? 'neutre' : ok ? 'ok' : attente ? 'attente' : 'ko'}">${txt}</span>`;
+  const quand = x => x.prochain ? (x.prochain === isoDansJours(1) ? 'demain' : new Date(x.prochain + 'T12:00:00').toLocaleDateString('fr-FR', { weekday:'long' })) : '';
+  const carte = (x, i) => {
+    const t = x.t, tel = telEnseignant(t);
+    const nbC = x.classes.length;
+    return `<li class="se-carte${x.score ? ' a-relancer' : ''}">
+      <div class="se-tete"><span class="avatar" aria-hidden="true">${escapeHtml(initials(t.prenom, t.nom))}</span>
+        <span class="se-nom"><strong>${escapeHtml(ensFullName(t))}</strong><small>${x.classes.map(c => escapeHtml(c.nom)).join(', ')}${(t.matieres || []).length ? ' · ' + escapeHtml(t.matieres.join(', ')) : ''}</small></span>
+        ${x.score ? '<span class="badge-etat attente">À relancer</span>' : '<span class="badge-etat ok">À jour</span>'}</div>
+      <div class="se-puces">
+        ${!x.compte ? puce(false, 'Compte non activé') : ''}
+        ${x.coursAuj ? puce(!x.sansAppelAuj.length, `Appel du jour : ${nbC - x.sansAppelAuj.length}/${nbC}`, !x.retardAuj) : puce(null, 'Pas de classe aujourd’hui')}
+        ${puce(!x.manques.length, x.manques.length ? `${x.manques.length} appel(s) oublié(s) cette semaine` : 'Semaine : appels complets')}
+        ${x.sansDevoir ? puce(!x.sansDevoir.length, `Cahier de textes pour ${quand(x)} : ${nbC - x.sansDevoir.length}/${nbC}`, true) : ''}
+        ${x.evals !== null ? puce(x.evals > 0 ? true : null, `${x.evals} évaluation(s) ce trimestre`) : ''}
+        ${puce(x.progMoy === null ? null : true, x.progMoy === null ? 'Programme non saisi' : `Programme : ${x.progMoy} %`)}
+      </div>
+      <div class="se-actions">
+        <button type="button" class="btn secondary sm" onclick="ui.filters.rapportEns='${t.id}'; go('rapport-activite')">${icone('trending-up')} Rapport</button>
+        ${x.score ? (tel ? `<a class="btn sm" href="https://wa.me/225${tel}?text=${encodeURIComponent(messageRelanceEnseignant(x))}" target="_blank" rel="noopener">${icone('send')} Relancer sur WhatsApp</a>`
+          : `<button type="button" class="btn sm" onclick="copierRelanceEnseignant(${i})">${icone('clipboard')} Copier le message</button><span class="hint se-sans-tel">Numéro absent de la fiche</span>`) : ''}
+      </div>
+    </li>`;
+  };
+  return `<section class="panel se-panel" aria-labelledby="titreSuiviEns">
+    <div class="panel-head"><div><h2 id="titreSuiviEns">${icone('users')} Suivi des enseignants</h2>
+      <div class="sub">${coursAuj ? `Appel du jour : ${classesFaites}/${classesTot.size} classe(s)` : 'Pas de classe aujourd’hui'} · ${aRelancer ? `${aRelancer} enseignant(s) à relancer` : 'tout le monde est à jour'}</div></div></div>
+    <ul class="se-liste">${liste.slice(0, 4).map(carte).join('')}</ul>
+    ${liste.length > 4 ? `<details class="se-plus"><summary>Voir les ${liste.length - 4} autres enseignants</summary><ul class="se-liste">${liste.slice(4).map((x, i) => carte(x, i + 4)).join('')}</ul></details>` : ''}
+    <div class="hint" style="margin-bottom:0;">Ces indicateurs sont ceux que chaque enseignant voit sur son accueil « Mes tâches ». Un appel du jour n’est compté en retard qu’après 9 h.</div>
+  </section>`;
+}
+function copierRelanceEnseignant(i){
+  const x = (window.__suiviEns || [])[i]; if(!x) return;
+  const txt = messageRelanceEnseignant(x);
+  (navigator.clipboard ? navigator.clipboard.writeText(txt) : Promise.reject()).then(() => toast('Message copié : collez-le dans WhatsApp ou un SMS.'))
+    .catch(() => openModal('Message de relance', `<textarea rows="8" style="width:100%;">${escapeHtml(txt)}</textarea>`));
+}
+
 function renderDashboard(){
   if(ui.role === 'enseignant') return renderAccueilEnseignant();
   const today = todayISO();
@@ -4162,6 +4263,7 @@ function renderDashboard(){
       ${['direction','fondation'].includes(ui.role) ? `<button type="button" class="btn secondary sm" onclick="ouvrirRapportMois()">${icone('file-text')} Rapport du mois</button>` : ''}</div>
     ${ui.role === 'enseignant' && !session.enseignantId ? renderJeMEnrole() : ''}
     ${renderAFaireAujourdhui()}
+    ${renderSuiviEnseignants()}
     ${renderProchainesDatesEcole()}
     <div class="cards cards-2x2">
       ${kpi(0, icone('graduation-cap'), 'var(--primary-dim)', totalEleves, 'Élèves inscrits')}

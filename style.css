@@ -1921,3 +1921,28 @@ body.theme-portier .alerte-inscription{ background:rgba(232,176,75,.12); color:i
   .acc-outils{grid-template-columns:1fr 1fr}
   .taches-compte{display:none}
 }
+
+/* ===== Suivi des enseignants (tableau de bord du personnel, 2026-11-09) ===== */
+.se-liste{list-style:none;margin:0 0 10px;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:10px}
+.se-carte{border:1px solid var(--border);border-radius:12px;padding:12px;background:var(--surface);display:flex;flex-direction:column;gap:10px;min-width:0}
+.se-carte.a-relancer{border-left:5px solid var(--warning)}
+.se-tete{display:flex;align-items:center;gap:10px;min-width:0}
+.se-tete .avatar{flex:0 0 auto}
+.se-nom{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.se-nom strong,.se-nom small{overflow-wrap:anywhere}
+.se-nom small{color:var(--text-dim);font-size:var(--fs-xs,.8rem)}
+.se-tete .badge-etat{flex:0 0 auto}
+.se-puces{display:flex;flex-wrap:wrap;gap:6px}
+.se-puce{font-size:var(--fs-xs,.8rem);padding:4px 9px;border-radius:99px;border:1px solid var(--border);line-height:1.3;max-width:100%;overflow-wrap:anywhere}
+.se-puce.ok{background:color-mix(in srgb,var(--success) 13%,var(--surface));border-color:color-mix(in srgb,var(--success) 35%,var(--border))}
+.se-puce.ko{background:color-mix(in srgb,var(--danger) 12%,var(--surface));border-color:color-mix(in srgb,var(--danger) 35%,var(--border));font-weight:600}
+.se-puce.attente{background:color-mix(in srgb,var(--warning) 15%,var(--surface));border-color:color-mix(in srgb,var(--warning) 35%,var(--border))}
+.se-puce.neutre{color:var(--text-dim)}
+.se-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.se-actions .btn{min-height:40px;display:inline-flex;align-items:center;gap:6px}
+.se-sans-tel{margin:0}
+@media (max-width:560px){ .se-liste{grid-template-columns:1fr} .se-actions .btn{flex:1 1 auto;justify-content:center} }
+.se-plus > summary{cursor:pointer;font-weight:700;min-height:44px;display:flex;align-items:center;color:var(--primary)}
+.se-plus[open] > summary{margin-bottom:8px}
+.db-bonjour > div{ min-width:0; max-width:100%; flex:1 1 220px; }
+.db-bonjour h2{ overflow-wrap:anywhere; }

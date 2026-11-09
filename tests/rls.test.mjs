@@ -185,7 +185,9 @@ async function requete(accessToken, chemin, options = {}){
   const aboAnon = await requete(ANON_KEY, `/rest/v1/rpc/enregistrer_abonnement_push`, { method:'POST', body: JSON.stringify({ p_endpoint:'https://exemple.test/x', p_p256dh:'x', p_auth:'x', p_appareil:'' }) });
   verifier('Un visiteur non connecté ne peut pas abonner un téléphone', !aboAnon.ok, `statut ${aboAnon.status}`);
   const pushEns = await fetch(`${URL_BASE}/functions/v1/notifier-parents`, { method:'POST', headers:{ Authorization:`Bearer ${tokenEnseignant}`, 'Content-Type':'application/json' }, body: JSON.stringify({ eleveIds:['00000000-0000-4000-8000-000000000001'], texte:'x' }) });
-  verifier('Un enseignant ne peut pas envoyer de notification push aux parents', pushEns.status === 400);
+  // Compte enseignant sans fiche → refus (400) ; compte relié à une fiche → seulement les parents de SES classes (ici aucun élève fictif ne peut être atteint)
+  let corpsPush = null; try{ corpsPush = await pushEns.json(); }catch(_e){}
+  verifier('Un enseignant ne peut pas prévenir des parents hors de ses classes', pushEns.status === 400 || (pushEns.ok && corpsPush && corpsPush.parents === 0 && corpsPush.envoyes === 0), `statut ${pushEns.status}`);
 
   section('7quater. Absences signalées par les parents, arrivée d un parent (portier)');
   const absSec = await requete(tokenSecretariat, `/rest/v1/absences_signalees?select=id&limit=1`);
