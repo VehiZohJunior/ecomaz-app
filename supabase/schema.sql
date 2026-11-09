@@ -4280,3 +4280,32 @@ language sql stable security definer set search_path = public as $$
 $$;
 revoke all on function etat_comptes_enseignants() from public, anon;
 grant execute on function etat_comptes_enseignants() to authenticated;
+
+-- =====================================================================
+-- 110. MOTIF DU PARENT REPORTÉ SUR L'ABSENCE ENREGISTRÉE (2026-11-09)
+-- =====================================================================
+-- Quand un parent justifie une absence (absences_signalees), le motif est
+-- copié sur les absences déjà enregistrées à l'appel pour ces dates, si
+-- elles n'ont pas encore de motif. L'auteur de l'appel (saisi_par) reste
+-- l'enseignant : le déclencheur marquer_auteur ignore cette mise à jour.
+create or replace function marquer_auteur() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if coalesce(current_setting('ecomaz.sans_auteur', true), '') = '1' then return new; end if;
+  if auth.uid() is not null then new.saisi_par := auth.uid(); new.saisi_le := now(); end if;
+  return new;
+end $$;
+
+create or replace function reporter_motif_parent() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  perform set_config('ecomaz.sans_auteur', '1', true);
+  update presences_eleves p set motif = left(new.motif || case when new.commentaire <> '' then ' — ' || new.commentaire else '' end, 200)
+    where p.ecole_id = new.ecole_id and p.eleve_id = new.eleve_id and p.date between new.date_debut and new.date_fin
+      and p.statut = 'Absent' and coalesce(p.motif, '') = '';
+  perform set_config('ecomaz.sans_auteur', '', true);
+  return new;
+end $$;
+drop trigger if exists reporter_motif_parent on absences_signalees;
+create trigger reporter_motif_parent after insert on absences_signalees
+  for each row execute function reporter_motif_parent();

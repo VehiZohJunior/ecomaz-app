@@ -2071,3 +2071,7 @@ body.theme-portier .texte-toggle:not(.texte-toggle-menu){display:none !important
 .abs-justif-tete span{color:var(--text-dim);font-size:var(--fs-xs)}
 .abs-justif-pied{font-size:var(--fs-xs);color:var(--text-dim);display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px}
 .abs-justif-pied .lien-discret{margin:0}
+
+/* Bulletin : assiduité du trimestre (2026-11-09) */
+.bo-assiduite{ margin:8px 0; padding:6px 10px; border:1px solid #ccc; border-radius:6px; font-size:12px; }
+.bo-assiduite-base{ color:#666; font-size:11px; }

@@ -2764,6 +2764,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.11.9-18', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Bulletin officiel : nouvelle ligne « Assiduité du trimestre » (absences justifiées / non justifiées, retards, d’après l’appel).', 'Le motif donné par un parent (« Absence à justifier ») est reporté automatiquement sur l’absence enregistrée à l’appel ; l’auteur de l’appel reste l’enseignant.' ],
+  } },
   { version: '2026.11.9-17', nouveautes: {
     commun: [],
     parent: [ 'Votre enfant a été noté absent ? Une carte « Absence à justifier » apparaît sur l’accueil : touchez le motif (maladie, rendez-vous…), l’école et l’enseignant sont prévenus. Vous pouvez aussi signaler une erreur d’appel.' ],
@@ -5963,6 +5969,17 @@ function renderResultatsTrimestre(classeId, trimestre){
 // celle qu'il ne suit pas (aucune note) n'apparaît pas — elle ne compte jamais dans la moyenne
 const MATIERES_AU_CHOIX = ['Anglais', 'Informatique'];
 function ligneBulletinUtile(matiere, moy){ return moy !== null || !MATIERES_AU_CHOIX.includes(matiere); }
+// Assiduité du trimestre sur le bulletin : absences (justifiées ou non) et retards, d'après l'appel.
+// Seulement quand tout l'appel de l'année est chargé (personnel) — jamais un chiffre partiel.
+function assiduiteBulletinHtml(e, trimestre){
+  if(!Array.isArray(DB.presencesEleves) || ui.role === 'parent') return '';
+  const debut = (/^(\d{4})/.exec(DB.meta?.anneeScolaire || '') || [])[1];
+  const pres = DB.presencesEleves.filter(p => p.eleveId === e.id && (!debut || p.date >= debut + '-08-01') && trimestreDeDate(p.date) === trimestre);
+  if(!pres.length) return `<div class="bo-assiduite"><strong>Assiduité du trimestre :</strong> appel non enregistré dans EcoMaZ pour cette période.</div>`;
+  const abs = pres.filter(p => p.statut === 'Absent'), ret = pres.filter(p => p.statut === 'Retard').length;
+  const justif = abs.filter(p => String(p.motif || '').trim() && !/non justifi/i.test(p.motif) && !/présent selon le parent/i.test(p.motif)).length;
+  return `<div class="bo-assiduite"><strong>Assiduité du trimestre :</strong> ${abs.length ? `${abs.length} absence${abs.length > 1 ? 's' : ''} (${justif} justifiée${justif > 1 ? 's' : ''}, ${abs.length - justif} non justifiée${abs.length - justif > 1 ? 's' : ''})` : 'aucune absence'} · ${ret ? `${ret} retard${ret > 1 ? 's' : ''}` : 'aucun retard'} <span class="bo-assiduite-base">(${pres.length} jour${pres.length > 1 ? 's' : ''} d’appel)</span></div>`;
+}
 function bulletinOfficielHtml(l, r, trimestre){
   const m = DB.meta || {}, e = l.eleve;
   const app = (DB.bulletinsComments || {})[`${e.id}_${trimestre}`] || '';
@@ -5983,6 +6000,7 @@ function bulletinOfficielHtml(l, r, trimestre){
       <div><span>Mention</span><strong>${l.moyenne !== null ? escapeHtml(mentionFromAvg(l.moyenne)) : '—'}</strong></div>
       <div><span>Moyenne de la classe</span><strong>${r.moyenneClasse !== null ? r.moyenneClasse.toFixed(2) : '—'}</strong></div>
       <div><span>Plus forte / plus faible</span><strong>${r.plusForte !== null ? r.plusForte.toFixed(2) + ' / ' + r.plusFaible.toFixed(2) : '—'}</strong></div></div>
+    ${assiduiteBulletinHtml(e, trimestre)}
     <div class="eb-appreciation" style="min-height:40px;"><strong>Appréciation du titulaire :</strong> ${escapeHtml(app)}</div>
     <div class="signatures"><div class="sign-box"><div class="sign-role">Le/La titulaire</div><div class="sign-line">&nbsp;</div></div>
       <div class="sign-box"><div class="sign-role">Le Directeur / La Directrice</div><div class="sign-line">${escapeHtml(m.directeurNom || '')}</div></div>
