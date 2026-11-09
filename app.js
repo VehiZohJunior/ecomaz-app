@@ -2734,6 +2734,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.11.9-12', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Mise en route : l’étape « Appel » compte maintenant classe par classe (une seule classe ne suffit plus à la mettre au vert) et nomme les classes sans appel ; nouvelle étape « Rappel de l’appel sur le téléphone des enseignants ».' ],
+  } },
   { version: '2026.11.9-11', nouveautes: {
     commun: [],
     parent: [],
@@ -4561,6 +4567,12 @@ function etapesMiseEnRoute(){
   const ensActifs = (DB.enseignants || []).filter(t => t.statut === 'Actif').length;
   const semaine = decalerJours(todayISO(), -7);
   const appelsRecents = (DB.presencesEleves || []).filter(p => p.date >= semaine).length;
+  // Classe par classe : une seule classe qui fait l'appel ne suffit pas à mettre l'étape au vert
+  const classesAvecEleves = (DB.classes || []).filter(c => actifs.some(e => e.classeId === c.id));
+  const classesSansAppel = classesAvecEleves.filter(c => !(DB.presencesEleves || []).some(p => p.classeId === c.id && p.date >= semaine));
+  if(DB.etatComptes === undefined && ['secretariat','direction','fondation'].includes(ui.role)){ DB.etatComptes = null; sb.rpc('etat_comptes_enseignants')
+    .then(({ data }) => { DB.etatComptes = rowsToCamel(data || []); if(ui.currentView === 'dashboard') renderView('dashboard'); }, () => { DB.etatComptes = []; }); }
+  const ensAvecCompte = (DB.etatComptes || []).filter(x => x.aCompte), ensAlertes = ensAvecCompte.filter(x => x.alertesActives);
   const m = DB.meta || {};
   const comptesEnseignants = (DB.profiles || []).filter(pr => pr.role === 'enseignant' && pr.enseignantId).length;
   const classesAvecEdt = (DB.classes || []).filter(c => (DB.emploiTemps || []).some(e => e.classeId === c.id));
@@ -4570,7 +4582,11 @@ function etapesMiseEnRoute(){
     { ok: actifs.length > 0, titre: 'Élèves inscrits', detail: `${actifs.length} élève(s) actif(s)`, vue: 'eleves', bouton: 'Élèves' },
     { ok: ensActifs > 0, titre: 'Enseignants saisis', detail: ensActifs ? `${ensActifs} enseignant(s)` : 'Aucun enseignant : pas de pointage, ni d’appel par les enseignants', vue: 'enseignants', bouton: 'Ajouter les enseignants' },
     { ok: actifs.length > 0 && relies / actifs.length >= 0.8, titre: 'Parents reliés à leur enfant', detail: `${relies} / ${actifs.length} — sans lien, le parent ne reçoit ni annonces ni alertes`, vue: 'liens-parents', bouton: 'Inviter les familles', action: "go('liens-parents'); setTimeout(() => ouvrirRelanceParents(), 200)" },
-    { ok: appelsRecents > 0, titre: 'Appel fait cette semaine', detail: appelsRecents ? `${appelsRecents} présence(s) enregistrée(s) en 7 jours` : 'Aucun appel depuis 7 jours : les parents ne sont pas prévenus des absences', vue: 'presences-eleves', bouton: 'Faire l’appel' },
+    { ok: classesAvecEleves.length > 0 && !classesSansAppel.length, titre: 'Appel fait dans chaque classe cette semaine', detail: !appelsRecents ? 'Aucun appel depuis 7 jours : les parents ne sont pas prévenus des absences'
+        : classesSansAppel.length ? `${classesAvecEleves.length - classesSansAppel.length} / ${classesAvecEleves.length} classe(s) — sans appel : ${classesSansAppel.slice(0, 5).map(c => c.nom).join(', ')}${classesSansAppel.length > 5 ? '…' : ''}` : `${classesAvecEleves.length} / ${classesAvecEleves.length} classe(s)`,
+      vue: 'dashboard', bouton: 'Voir le suivi des enseignants', action: "document.getElementById('titreSuiviEns')?.scrollIntoView({ behavior:'smooth', block:'start' })" },
+    ...(DB.etatComptes && ensAvecCompte.length ? [{ ok: ensAlertes.length >= ensAvecCompte.length, titre: 'Rappel de l’appel sur le téléphone des enseignants', detail: `${ensAlertes.length} / ${ensAvecCompte.length} enseignant(s) ont activé les alertes — sans elles, le rappel de l’appel n’arrive pas`,
+      vue: 'dashboard', bouton: 'Voir qui relancer', action: "document.getElementById('titreSuiviEns')?.scrollIntoView({ behavior:'smooth', block:'start' })" }] : []),
     { ok: (DB.paiementsScolarite || []).length > 0, titre: 'Paiements de scolarité enregistrés', detail: (DB.paiementsScolarite || []).length ? `${DB.paiementsScolarite.length} paiement(s)` : 'Aucun paiement saisi : reprenez le cahier de caisse classe par classe (« Versements déjà reçus »)', vue: 'comptabilite', bouton: 'Saisir les versements reçus',
       action: (DB.echeancesScolarite || []).length && (DB.classes || []).length ? `ui.filters.comptaTab='scolarite'; ui.filters.comptaClasse='${(DB.classes[0] || {}).id}'; go('comptabilite'); setTimeout(() => ouvrirRepriseVersements('${(DB.classes[0] || {}).id}'), 200)` : null },
     { ok: (DB.classes || []).length > 0 && !classeSansEdt, titre: 'Emploi du temps de chaque classe', detail: `${classesAvecEdt.length} / ${(DB.classes || []).length} classe(s) remplie(s)${classeSansEdt ? ' — sans lui, la « Ma journée » des enseignants reste vide' : ''}`, vue: 'emploi-temps', bouton: 'Remplir rapidement',
