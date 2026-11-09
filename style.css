@@ -1859,3 +1859,65 @@ body.theme-portier .alerte-inscription{ background:rgba(232,176,75,.12); color:i
 .ra-chrono-ic{ color:var(--primary); flex:0 0 auto; } .ra-chrono-txt{ flex:1; min-width:0; font-size:14px; }
 .ra-chrono time{ font-size:12px; color:var(--text-dim); white-space:nowrap; font-variant-numeric:tabular-nums; }
 @media print{ .ra-impression .ra-tuile{ break-inside:avoid; } .ra-impression .no-print{ display:none !important; } }
+
+/* ===== Accueil enseignant « Mes tâches » (2026-11-09) ===== */
+.acc-ens .acc-resume{display:flex;gap:14px;align-items:flex-start;padding:16px 18px;margin:0 0 var(--sp-4);border-radius:var(--radius-lg,16px);background:var(--primary-dim);border:1px solid var(--border)}
+.acc-ens .acc-resume > svg{width:30px;height:30px;flex:0 0 30px;color:var(--primary)}
+.acc-ens .acc-resume > div{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
+.acc-ens .acc-resume strong{font-size:var(--fs-lg,1.15rem);line-height:1.3}
+.acc-ens .acc-resume span{color:var(--text-dim);font-size:var(--fs-sm,.95rem)}
+.acc-ens .acc-resume.fini{background:color-mix(in srgb,var(--success) 14%,var(--surface))}
+.acc-ens .acc-resume.fini > svg{color:var(--success)}
+.acc-ens .acc-resume.repos{background:var(--surface-2,var(--surface))}
+.acc-ens .acc-barre{height:10px;border-radius:99px;background:var(--border);overflow:hidden;margin-top:6px}
+.acc-ens .acc-barre > div{height:100%;background:var(--primary);border-radius:99px;transition:width .4s}
+.acc-ens .acc-resume.fini .acc-barre > div{background:var(--success)}
+.taches-bloc{padding-top:14px}
+.taches-tete{display:flex;align-items:center;gap:12px;margin-bottom:10px}
+.taches-num{flex:0 0 36px;width:36px;height:36px;border-radius:50%;display:grid;place-items:center;font-weight:800;font-size:1.05rem;background:var(--primary);color:#fff}
+.taches-2 .taches-num{background:var(--accent)}
+.taches-3 .taches-num{background:var(--info)}
+.taches-4 .taches-num{background:var(--text-dim);color:var(--surface)}
+.taches-titres{flex:1;min-width:0}
+.taches-titres h2{margin:0;font-size:var(--fs-lg,1.15rem)}
+.taches-titres .sub{margin:2px 0 0}
+.taches-compte{flex:0 0 auto;font-size:var(--fs-xs,.8rem);font-weight:700;padding:4px 10px;border-radius:99px;white-space:nowrap;display:inline-flex;align-items:center;gap:4px}
+.taches-compte.afaire{background:color-mix(in srgb,var(--warning) 16%,var(--surface));color:var(--text)}
+.taches-compte.ok{background:color-mix(in srgb,var(--success) 14%,var(--surface));color:var(--text)}
+.taches-compte svg{width:14px;height:14px}
+.taches-liste{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.tache{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center;padding:12px 14px;border-radius:12px;border:1px solid var(--border);background:var(--surface)}
+.tache-afaire{border-left:5px solid var(--warning);background:color-mix(in srgb,var(--warning) 9%,var(--surface))}
+.tache-fait{border-left:5px solid var(--success);opacity:.92}
+.tache-prevoir{border-left:5px solid var(--info)}
+.tache-info{border-left:5px solid var(--border)}
+.tache-etat{display:flex;flex-direction:column;align-items:center;gap:2px;width:62px}
+.tache-ic svg{width:24px;height:24px}
+.tache-afaire .tache-ic{color:var(--warning)}
+.tache-fait .tache-ic{color:var(--success)}
+.tache-prevoir .tache-ic{color:var(--info)}
+.tache-info .tache-ic{color:var(--text-dim)}
+.tache-lib{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.02em;color:var(--text-dim);text-align:center;line-height:1.1}
+.tache-txt{min-width:0;display:flex;flex-direction:column;gap:3px}
+.tache-txt strong{font-size:var(--fs-sm,1rem);line-height:1.35;overflow-wrap:anywhere}
+.tache-txt small{color:var(--text-dim);font-size:var(--fs-xs,.85rem);line-height:1.4;overflow-wrap:anywhere}
+.tache-btn{min-height:44px;white-space:nowrap}
+.taches-pied{margin-top:8px;font-size:var(--fs-xs,.8rem);color:var(--text-dim)}
+.acc-outils{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.acc-outil{display:flex;flex-direction:column;align-items:flex-start;gap:4px;padding:14px;min-height:96px;border-radius:12px;border:1px solid var(--border);background:var(--surface);color:var(--text);text-align:left;cursor:pointer;font:inherit}
+.acc-outil:hover,.acc-outil:focus-visible{border-color:var(--primary);background:var(--primary-dim)}
+.acc-outil-ic{font-size:1.5rem;line-height:1;color:var(--primary)}
+.acc-outil-ic svg{width:26px;height:26px}
+.acc-outil strong{font-size:var(--fs-sm,1rem)}
+.acc-outil small{color:var(--text-dim);font-size:var(--fs-xs,.8rem);line-height:1.3}
+.acc-annexe > summary{cursor:pointer;font-weight:700;padding:4px 0;display:flex;align-items:center;gap:8px;min-height:44px}
+.acc-annexe[open] > summary{margin-bottom:10px}
+.acc-annexe .panel{box-shadow:none;border:0;padding:0;margin:0 0 12px}
+.acc-attente p{margin:6px 0 0;color:var(--text-dim)}
+@media (max-width:560px){
+  .tache{grid-template-columns:auto 1fr;padding:12px}
+  .tache-btn{grid-column:1 / -1;width:100%}
+  .tache-etat{width:52px}
+  .acc-outils{grid-template-columns:1fr 1fr}
+  .taches-compte{display:none}
+}

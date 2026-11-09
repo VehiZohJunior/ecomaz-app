@@ -233,7 +233,7 @@ const COMPTA_TABS = [
 
 /* --- Rôles / Interfaces --- */
 const ROLES = {
-  enseignant:  {label:'Enseignant(e)', icon:'👩‍🏫', desc:'Notes, présences, emploi du temps', nav:['dashboard','cahier-appel','camps-de-base','notes','presences-eleves','devoirs','emploi-temps','programmes','vie-ecole','agenda']},
+  enseignant:  {label:'Enseignant(e)', icon:'👩‍🏫', desc:'Notes, présences, emploi du temps', nav:['dashboard','cahier-appel','camps-de-base','notes','presences-eleves','devoirs','emploi-temps','programmes','rapport-activite','vie-ecole','agenda']},
   secretariat: {label:'Secrétariat', icon:'🗂️', desc:'Gestion administrative & scolarité', nav:['dashboard','eleves','liens-parents','renforcement','vie-ecole','agenda','devoirs','cantine','cahier-appel','camps-de-base','notes','presences-eleves','emploi-temps','programmes','pointage-scan','enseignants','presences-enseignants','comptabilite','messagerie']},
   direction:   {label:'Direction', icon:'🎩', desc:'Accès complet', nav:'all'},
   fondation:   {label:'Fondation', icon:'🏛️', desc:'Accès complet', nav:'all'},
@@ -782,7 +782,7 @@ function classesVisibles(){
 
 /* ---------- Tableau de bord par rôle et salutations personnalisées ---------- */
 const LIBELLES_ROLES = { direction:'Direction', fondation:'Fondation', secretariat:'Secrétariat', enseignant:'Enseignant', parent:'Parent', portier:'Portier', developpeur:'Développeur' };
-function titreTableauDeBord(role){ return 'Tableau de bord ' + (LIBELLES_ROLES[role || ui.role] || ''); }
+function titreTableauDeBord(role){ return (role || ui.role) === 'enseignant' ? 'Accueil — mes tâches' : 'Tableau de bord ' + (LIBELLES_ROLES[role || ui.role] || ''); }
 // Civilité : fiche enseignant (sexe) pour un enseignant, sinon le choix de la personne
 const TITRES_APPEL = {
   direction: { M:'Monsieur le Directeur', F:'Madame la Directrice' },
@@ -2734,6 +2734,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.11.9-1', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Console enseignant simplifiée : l’accueil « Mes tâches » montre, dans l’ordre, ce qu’il faut faire aujourd’hui (appel, cahier de textes), puis cette semaine (appels à rattraper, notes à saisir), ce mois-ci (régularité, programme) et ce trimestre (compositions, appréciations du bulletin). Chaque tâche a un bouton qui ouvre directement la bonne page.', 'Menu enseignant rangé de la même façon : Chaque jour, Chaque semaine, Chaque mois et trimestre, L’école.', 'Correction : le « Rapport d’activité » s’ouvre maintenant bien depuis la console enseignant.' ],
+  } },
   { version: '2026.11.8-5', nouveautes: {
     commun: [],
     parent: [],
@@ -3852,7 +3858,236 @@ function renderTresorerie(){
   </section>`;
 }
 function montantKpi(n){ return `${Math.round(n || 0).toLocaleString('fr-FR')}<span class="kpi-unite">${DEVISE}</span>`; }
+/* =====================================================================
+   ACCUEIL ENSEIGNANT — « Mes tâches », par ordre de priorité
+   1. Aujourd'hui  2. Cette semaine  3. Ce mois-ci  4. Ce trimestre.
+   Chaque tâche : un état clair (fait / à faire / à préparer), une phrase
+   simple, un seul bouton. Tout est calculé sur les vraies données de
+   l'enseignant (ses classes, ses matières, l'agenda de l'école).
+   ===================================================================== */
+function enVacances(iso){ return (DB.agenda || []).some(a => a.type === 'vacances' && (!a.classeIds || !a.classeIds.length) && a.dateDebut <= iso && a.dateFin >= iso); }
+function estJourDeCours(iso){ return estJourDeClasse(iso) && !enVacances(iso); }
+function listeJours(debut, fin){ const r = [], d = new Date(debut + 'T12:00:00'); while(isoLocal(d) <= fin){ r.push(isoLocal(d)); d.setDate(d.getDate() + 1); } return r; }
+function dateLongueFr(iso){ return new Date(iso + 'T12:00:00').toLocaleDateString('fr-FR', { weekday:'long', day:'numeric', month:'long' }); }
+function ecartJours(iso){ return Math.round((new Date(iso + 'T12:00:00') - new Date(todayISO() + 'T12:00:00')) / 86400000); }
+function dansNJours(iso){ const n = ecartJours(iso); return n === 0 ? 'aujourd’hui' : n === 1 ? 'demain' : n > 1 ? `dans ${n} jours` : `il y a ${-n} jour${n < -1 ? 's' : ''}`; }
+function matieresDeEnseignant(fiche, classeId){ return (fiche && (fiche.matieres || []).length) ? fiche.matieres : (MATIERES_BY_CYCLE[classeCycle(classeId)] || []); }
+function finDuTrimestre(trim){
+  const n = trim === 'Trimestre 1' ? 1 : trim === 'Trimestre 2' ? 2 : 3;
+  const re = n === 1 ? /fin du\s*1(er)?\s*trimestre/i : n === 2 ? /fin du\s*2e?\s*trimestre/i : /fin (du\s*3e?\s*trimestre|de l.ann[ée]e)/i;
+  const ev = (DB.agenda || []).find(e => re.test(e.titre || ''));
+  return ev ? (ev.dateFin || ev.dateDebut) : '';
+}
+function libelleTrimestre(trim){ return { 'Trimestre 1':'1er trimestre', 'Trimestre 2':'2e trimestre', 'Trimestre 3':'3e trimestre' }[trim] || trim; }
+function allerAppel(classeId, date){ ui.filters.presEleves = { classeId, date }; go('presences-eleves'); }
+function allerEvaluation(id){
+  const ev = (DB.evaluations || []).find(e => e.id === id); if(!ev) return go('camps-de-base');
+  ui.filters.camps = { classeId: ev.classeId, matiere: ev.matiere, trimestre: ev.trimestre }; ui.filters.campsEval = id; go('camps-de-base');
+}
+function allerNotesClasse(classeId, trim){ ui.filters.notes = Object.assign({}, ui.filters.notes || {}, { classeId, trimestre: trim, matiere:'' }); go('notes'); }
+
+// Une tâche : etat = 'fait' | 'afaire' | 'prevoir' (à préparer, pas encore urgent) | 'info'
+function htmlTache(t){
+  const ic = { fait:'circle-check', afaire:'circle-dot', prevoir:'hourglass', info:'lightbulb' }[t.etat];
+  const lib = { fait:'Fait', afaire:'À faire', prevoir:'À préparer', info:'À savoir' }[t.etat];
+  return `<li class="tache tache-${t.etat}">
+    <span class="tache-etat"><span class="tache-ic" aria-hidden="true">${icone(ic)}</span><span class="tache-lib">${lib}</span></span>
+    <span class="tache-txt"><strong>${t.titre}</strong>${t.detail ? `<small>${t.detail}</small>` : ''}</span>
+    ${t.bouton ? `<button type="button" class="btn${t.etat === 'afaire' ? '' : ' secondary'} tache-btn" onclick="${t.action}">${t.bouton}</button>` : ''}
+  </li>`;
+}
+function htmlBlocTaches(num, titre, sousTitre, taches, vide){
+  const reste = taches.filter(t => t.etat === 'afaire').length, faits = taches.filter(t => t.etat === 'fait').length;
+  const compte = reste ? `<span class="taches-compte afaire">${reste} à faire</span>` : (taches.length ? `<span class="taches-compte ok">${icone('check')} À jour</span>` : '');
+  const tri = { afaire:0, prevoir:1, info:2, fait:3 };
+  return `<section class="panel taches-bloc taches-${num}" aria-labelledby="taches-t${num}">
+    <div class="taches-tete"><span class="taches-num" aria-hidden="true">${num}</span>
+      <div class="taches-titres"><h2 id="taches-t${num}">${titre}</h2><div class="sub">${sousTitre}</div></div>${compte}</div>
+    ${taches.length ? `<ul class="taches-liste">${taches.slice().sort((a, b) => tri[a.etat] - tri[b.etat]).map(htmlTache).join('')}</ul>` : `<div class="etat-vide etat-vide-ok"><span class="etat-vide-ic" aria-hidden="true">${icone('circle-check')}</span><span>${vide}</span></div>`}
+    ${faits && reste ? `<div class="taches-pied">${faits} tâche${faits > 1 ? 's' : ''} déjà faite${faits > 1 ? 's' : ''}</div>` : ''}
+  </section>`;
+}
+function renderAccueilEnseignant(){
+  const auj = todayISO();
+  const fiche = session.enseignantId ? enseignantById(session.enseignantId) : null;
+  const dateLongue = (d => d.charAt(0).toUpperCase() + d.slice(1))(new Date(auj + 'T12:00:00').toLocaleDateString('fr-FR', { weekday:'long', day:'numeric', month:'long', year:'numeric' }));
+  const entete = `<div class="db-bonjour"><div><h2>${escapeHtml(salutation())}</h2><div class="db-date">${dateLongue}</div>${renderQuestionAppel()}</div></div>`;
+  const annexe = `<details class="panel acc-annexe"><summary>${icone('users')} Mon inscription et la liste des enseignants</summary>${renderJeMEnrole()}${renderListeCollegues()}</details>`;
+  if(!fiche) return `<div class="view active">${entete}${renderJeMEnrole()}${renderListeCollegues()}</div>`;
+  if(!(fiche.classesAssignees || []).length) return `<div class="view active">${entete}
+    <div class="panel acc-attente"><h2>${icone('hourglass')} Vos classes sont en attente de validation</h2>
+      <p>Dès que la direction aura validé vos classes, cette page vous montrera chaque jour ce que vous avez à faire, dans l’ordre.</p></div>
+    ${renderJeMEnrole()}${renderListeCollegues()}</div>`;
+
+  // Données nécessaires (chargées une fois, puis la page se réaffiche)
+  chargerAgenda(); chargerSecuriteEleves();
+  const reafficher = () => { if(ui.currentView === 'dashboard') renderView('dashboard'); };
+  if(DB.absencesSignalees === undefined){ DB.absencesSignalees = null; chargerAbsencesSignalees().then(reafficher).catch(() => { DB.absencesSignalees = []; }); }
+  if(DB.devoirs === undefined){ DB.devoirs = null; sb.from('devoirs').select('*').eq('ecole_id', session.ecoleId).gte('pour_le', auj).order('pour_le')
+    .then(({ data }) => { DB.devoirs = rowsToCamel(data || []); reafficher(); }); }
+  if(DB.evaluations === undefined){ DB.evaluations = null; sb.from('evaluations').select('*').eq('ecole_id', session.ecoleId).order('date')
+    .then(({ data }) => { DB.evaluations = rowsToCamel(data || []); reafficher(); }); }
+
+  const classes = classesVisibles().filter(c => DB.eleves.some(e => e.classeId === c.id && e.statut === 'Actif'));
+  const effectif = id => DB.eleves.filter(e => e.classeId === id && e.statut === 'Actif');
+  const appelFait = (id, d) => DB.presencesEleves.some(p => p.classeId === id && p.date === d);
+  const coursAuj = estJourDeCours(auj);
+  const prochain = prochainJourDeClasse(auj);
+  const quandProchain = prochain ? (prochain === isoDansJours(1) ? 'demain' : dateLongueFr(prochain)) : '';
+
+  /* ---------- 1. AUJOURD'HUI ---------- */
+  const jour = [];
+  if(coursAuj){
+    classes.forEach(c => {
+      const pres = DB.presencesEleves.filter(p => p.classeId === c.id && p.date === auj);
+      if(pres.length){
+        const nb = st => pres.filter(p => p.statut === st).length;
+        jour.push({ etat:'fait', titre:`Appel fait — ${escapeHtml(c.nom)}`, detail:`${nb('Présent')} présent(s) · ${nb('Absent')} absent(s) · ${nb('Retard')} en retard`, bouton:'Voir', action:`allerAppel('${c.id}','${auj}')` });
+      } else {
+        jour.push({ etat:'afaire', titre:`Faire l’appel — ${escapeHtml(c.nom)}`, detail:`${effectif(c.id).length} élèves. Touchez « Présent », « Absent » ou « Retard » pour chacun : les parents des absents sont prévenus.`, bouton:'Faire l’appel', action:`allerAppel('${c.id}','${auj}')` });
+      }
+    });
+  }
+  if(prochain && DB.devoirs){
+    classes.forEach(c => {
+      const dv = DB.devoirs.filter(d => d.classeId === c.id && d.pourLe === prochain);
+      jour.push(dv.length
+        ? { etat:'fait', titre:`Cahier de textes rempli pour ${quandProchain} — ${escapeHtml(c.nom)}`, detail: dv.map(d => escapeHtml(d.matiere || 'travail')).join(', '), bouton:'Voir', action:`ui.filters.devoirsClasse='${c.id}'; go('devoirs')` }
+        : { etat:'afaire', titre:`Noter les devoirs pour ${quandProchain} — ${escapeHtml(c.nom)}`, detail:'Écrivez le travail à faire à la maison : les parents le lisent dans leur application.', bouton:'Noter un devoir', action:`ui.filters.devoirsClasse='${c.id}'; go('devoirs')` });
+    });
+  }
+  // À savoir aujourd'hui (pas des tâches : des informations utiles pour la classe)
+  const moiPointe = (DB.presencesEnseignants || []).find(p => p.enseignantId === fiche.id && p.date === auj);
+  if(coursAuj) jour.push(moiPointe
+    ? { etat:'info', titre:`Votre arrivée est enregistrée${moiPointe.heureArrivee ? ' à ' + escapeHtml(String(moiPointe.heureArrivee).slice(0, 5)) : ''}`, detail: moiPointe.statut === 'Retard' ? `Noté en retard${moiPointe.minutesRetard ? ` (${moiPointe.minutesRetard} min)` : ''}.` : '' }
+    : { etat:'info', titre:'Votre arrivée n’est pas encore enregistrée', detail:'Faites scanner votre badge à l’accueil (ou utilisez le pointage GPS si l’école l’a mis en place).' });
+  const jourIso = ((new Date().getDay() + 6) % 7) + 1;
+  const renfAuj = coursAuj && (DB.horairesAnnonces?.joursRenforcement || [1, 2, 3, 4, 5]).includes(jourIso);
+  if(coursAuj) classes.forEach(c => {
+    const eleves = effectif(c.id);
+    const signales = eleves.map(e => ({ e, a: absenceSignalee(e.id, auj) })).filter(x => x.a);
+    if(signales.length) jour.push({ etat:'info', titre:`Absence(s) prévenue(s) par les parents — ${escapeHtml(c.nom)}`, detail: signales.map(x => `${escapeHtml(eleveFullName(x.e))} (${escapeHtml(x.a.motif || 'motif non précisé')})`).join(', ') });
+    const al = eleves.map(e => ({ e, s: santeDe(e.id) })).filter(x => x.s && x.s.allergies);
+    if(al.length) jour.push({ etat:'info', titre:`Allergies à surveiller — ${escapeHtml(c.nom)}`, detail: al.map(x => `${escapeHtml(eleveFullName(x.e))} (${escapeHtml(x.s.allergies)})`).join(', ') });
+    const renf = renfAuj ? eleves.filter(e => e.renforcement) : [];
+    if(renf.length) jour.push({ etat:'info', titre:`Cours de renforcement ce soir — ${escapeHtml(c.nom)}`, detail: renf.map(e => escapeHtml(eleveFullName(e))).join(', ') });
+    const arrivees = (DB.notificationsPortier || []).filter(n => n.classeId === c.id && String(n.createdAt || '').slice(0, 10) === auj);
+    if(arrivees.length) jour.push({ etat:'info', titre:`Parents arrivés au portail — ${escapeHtml(c.nom)}`, detail: arrivees.map(n => `${escapeHtml(n.eleveNom)} (${new Date(n.createdAt).toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit' })})`).join(', ') });
+  });
+
+  /* ---------- 2. CETTE SEMAINE ---------- */
+  const lundi = lundiDe(auj), semaine = [];
+  const passesSemaine = listeJours(lundi, auj).filter(d => d < auj && estJourDeCours(d));
+  const manques = [];
+  passesSemaine.forEach(d => classes.forEach(c => { if(!appelFait(c.id, d)) manques.push({ d, c }); }));
+  manques.slice(0, 5).forEach(({ d, c }) => semaine.push({ etat:'afaire', titre:`Rattraper l’appel du ${dateLongueFr(d)} — ${escapeHtml(c.nom)}`, detail:'Cet appel n’a pas été enregistré.', bouton:'Rattraper', action:`allerAppel('${c.id}','${d}')` }));
+  if(manques.length > 5) semaine.push({ etat:'afaire', titre:`${manques.length - 5} autre(s) appel(s) à rattraper cette semaine`, bouton:'Ouvrir le cahier d’appel', action:"go('cahier-appel')" });
+  if(passesSemaine.length && !manques.length) semaine.push({ etat:'fait', titre:'Tous les appels de la semaine sont faits', detail:'Merci : les parents sont informés chaque jour.' });
+  const trim = trimestreDeDate(auj), ids = new Set(classes.map(c => c.id));
+  if(DB.evaluations){
+    const mesEvals = DB.evaluations.filter(e => ids.has(e.classeId) && e.trimestre === trim && e.date <= auj
+      && (!(fiche.matieres || []).length || fiche.matieres.includes(e.matiere)));
+    mesEvals.forEach(ev => {
+      const eff = effectif(ev.classeId).length;
+      const saisies = new Set((DB.notes || []).filter(n => n.evaluationId === ev.id && n.note != null).map(n => n.eleveId)).size;
+      if(eff && saisies < eff) semaine.push({ etat:'afaire', titre:`Saisir les notes — ${escapeHtml(ev.type)}${ev.titre ? ' « ' + escapeHtml(ev.titre) + ' »' : ''} (${escapeHtml(classeName(ev.classeId))})`,
+        detail:`${escapeHtml(ev.matiere)} · du ${fmtDate(ev.date)} · ${saisies} note(s) sur ${eff} élèves`, bouton:'Saisir les notes', action:`allerEvaluation('${ev.id}')` });
+    });
+    const cetteSemaine = mesEvals.filter(e => e.date >= lundi).length;
+    semaine.push(cetteSemaine
+      ? { etat:'fait', titre:`${cetteSemaine} exercice(s) ou devoir(s) noté(s) enregistré(s) cette semaine`, detail:'Ils comptent dans la moyenne de classe du bulletin (Camps de base).', bouton:'Voir', action:"go('camps-de-base')" }
+      : { etat:'afaire', titre:'Enregistrer les exercices et devoirs notés de la semaine', detail:'Devoirs, exercices de classe ou de maison, interrogations : ils font la moyenne de classe du bulletin (Camps de base).', bouton:'Ajouter une note', action:"go('camps-de-base')" });
+  }
+
+  /* ---------- 3. CE MOIS-CI ---------- */
+  const mois = [], debutMois = auj.slice(0, 8) + '01';
+  // Jours passés du mois (aujourd'hui compte seulement une fois l'appel fait : la journée n'est pas finie)
+  const joursMois = listeJours(debutMois, auj).filter(d => estJourDeCours(d) && (d < auj || classes.every(c => appelFait(c.id, d))));
+  if(joursMois.length && classes.length){
+    const attendus = joursMois.length * classes.length;
+    const faits = joursMois.reduce((s, d) => s + classes.filter(c => appelFait(c.id, d)).length, 0);
+    mois.push({ etat: faits >= attendus ? 'fait' : 'afaire',
+      titre:`Appel fait ${faits} fois sur ${attendus} ce mois-ci`, detail: faits >= attendus ? 'Régularité parfaite.' : 'Chaque jour de classe compte : la direction suit cette régularité.', bouton:'Mon rapport', action:"go('rapport-activite')" });
+  }
+  const mesProg = (DB.programmes || []).filter(p => p.enseignantId === fiche.id && (!p.trimestre || p.trimestre === trim));
+  if(!mesProg.length) mois.push({ etat:'afaire', titre:`Enregistrer mon programme du ${libelleTrimestre(trim)}`, detail:'Une ligne par matière et par classe, puis le pourcentage déjà fait.', bouton:'Ajouter mon programme', action:"go('programmes')" });
+  else {
+    const vieux = mesProg.filter(p => !p.dateMaj || ecartJours(p.dateMaj) < -30);
+    const moy = Math.round(mesProg.reduce((s, p) => s + (Number(p.progression) || 0), 0) / mesProg.length);
+    mois.push(vieux.length
+      ? { etat:'afaire', titre:'Mettre à jour l’avancement de mon programme', detail:`${vieux.length} matière(s) non mise(s) à jour depuis plus d’un mois · avancement moyen ${moy} %`, bouton:'Mettre à jour', action:"go('programmes')" }
+      : { etat:'fait', titre:`Programme à jour — avancement moyen ${moy} %`, detail:`${mesProg.length} matière(s) suivie(s).`, bouton:'Voir', action:"go('programmes')" });
+  }
+
+  /* ---------- 4. CE TRIMESTRE ---------- */
+  const trimestre = [], finTrim = finDuTrimestre(trim);
+  classes.forEach(c => {
+    const compos = compositionsAgenda(c.id, trim);
+    const passees = compos.filter(e => e.dateDebut <= auj), avenir = compos.filter(e => e.dateDebut > auj);
+    if(avenir.length){
+      const ev = avenir[0], n = ecartJours(ev.dateDebut);
+      trimestre.push({ etat: n <= 14 ? 'afaire' : 'prevoir', titre:`Préparer : ${escapeHtml(ev.titre)} — ${escapeHtml(c.nom)}`, detail:`Le ${dateLongueFr(ev.dateDebut)} (${dansNJours(ev.dateDebut)}). Révisions et sujets à prévoir.`, bouton:'Voir l’agenda', action:"go('agenda')" });
+    }
+    if(passees.length){
+      const eleves = effectif(c.id), mats = matieresDeEnseignant(fiche, c.id);
+      const attendues = eleves.length * mats.length * passees.length;
+      const saisies = (DB.notes || []).filter(nn => nn.type === 'Composition' && nn.trimestre === trim && nn.note != null && mats.includes(nn.matiere) && eleves.some(e => e.id === nn.eleveId)).length;
+      if(attendues) trimestre.push(saisies >= attendues
+        ? { etat:'fait', titre:`Notes de composition saisies — ${escapeHtml(c.nom)}`, detail:`${saisies} note(s).`, bouton:'Voir', action:`allerNotesClasse('${c.id}','${trim}')` }
+        : { etat:'afaire', titre:`Saisir les notes de composition — ${escapeHtml(c.nom)}`, detail:`${saisies} note(s) saisie(s) sur ${attendues} attendue(s)${finTrim ? ` · avant le ${fmtDate(finTrim)}` : ''}.`, bouton:'Saisir les notes', action:`allerNotesClasse('${c.id}','${trim}')` });
+    }
+    if(!compos.length) trimestre.push({ etat:'info', titre:`Dates de composition pas encore fixées — ${escapeHtml(c.nom)}`, detail:'Elles apparaîtront ici dès que la direction les aura mises à l’agenda.' });
+    // Appréciations du bulletin : titulaire de la classe (ou enseignant de toutes les matières)
+    const titulaire = c.titulaireId ? c.titulaireId === fiche.id : !(fiche.matieres || []).length;
+    if(titulaire){
+      const eleves = effectif(c.id);
+      const ecrites = eleves.filter(e => String((DB.bulletinsComments || {})[`${e.id}_${trim}`] || '').trim()).length;
+      const proche = finTrim && ecartJours(finTrim) <= 21;
+      trimestre.push(ecrites >= eleves.length
+        ? { etat:'fait', titre:`Appréciations du bulletin écrites — ${escapeHtml(c.nom)}`, detail:`${ecrites} élève(s).` }
+        : { etat: proche ? 'afaire' : 'prevoir', titre:`Écrire les appréciations du bulletin — ${escapeHtml(c.nom)}`, detail:`${ecrites} sur ${eleves.length} écrite(s)${finTrim ? ` · à terminer avant le ${fmtDate(finTrim)} (${dansNJours(finTrim)})` : ''}.`, bouton:'Écrire', action:`allerNotesClasse('${c.id}','${trim}')` });
+    }
+  });
+
+  const resteJour = jour.filter(t => t.etat === 'afaire').length, faitJour = jour.filter(t => t.etat === 'fait').length, totalJour = resteJour + faitJour;
+  const pct = totalJour ? Math.round(100 * faitJour / totalJour) : 100;
+  const bandeau = !coursAuj
+    ? `<div class="acc-resume repos">${icone('sun')}<div><strong>Pas de classe aujourd’hui.</strong><span>${prochain ? `Prochain jour de classe : ${dateLongueFr(prochain)}.` : ''} Vous pouvez préparer la suite ci-dessous.</span></div></div>`
+    : `<div class="acc-resume${resteJour ? '' : ' fini'}">${icone(resteJour ? 'target' : 'party-popper')}<div><strong>${resteJour ? `Il vous reste ${resteJour} tâche${resteJour > 1 ? 's' : ''} aujourd’hui` : 'Bravo, tout est fait pour aujourd’hui'}</strong>
+        <span>Commencez par le haut de la liste : le plus important est en premier.</span>
+        <div class="acc-barre" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}" aria-label="Tâches du jour faites"><div style="width:${pct}%"></div></div></div></div>`;
+  const chargement = DB.evaluations === null || DB.devoirs === null ? '<div class="hint">Chargement de vos tâches…</div>' : '';
+  const outils = [
+    ['presences-eleves', '✅', 'Faire l’appel', 'Présents, absents, retards'],
+    ['devoirs', '📘', 'Cahier de textes', 'Devoirs pour les parents'],
+    ['camps-de-base', '🎯', 'Camps de base', 'Exercices et devoirs notés'],
+    ['notes', '📝', 'Notes et bulletins', 'Compositions, appréciations'],
+    ['emploi-temps', '🗓️', 'Emploi du temps', 'Mes cours de la semaine'],
+    ['programmes', '📚', 'Mon programme', 'Avancement par matière'],
+    ['cahier-appel', '📋', 'Cahier d’appel', 'Tous les appels du mois'],
+    ['rapport-activite', '📈', 'Mon rapport', 'Mon activité, par période'],
+    ['agenda', '📅', 'Agenda de l’école', 'Compositions, congés, fêtes'],
+    ['vie-ecole', '📷', 'Vie de l’école', 'Photos et nouvelles'],
+  ].filter(o => hasAccess(o[0]));
+  return `<div class="view active acc-ens">
+    ${entete}
+    ${bandeau}
+    ${chargement}
+    ${coursAuj ? `<div class="panel acc-cours"><div class="panel-head"><div><h2>${icone('calendar-days')} Mes cours aujourd’hui</h2></div></div>${renderFriseDuJour(classes)}</div>` : ''}
+    ${htmlBlocTaches(1, 'Aujourd’hui', coursAuj ? 'À faire chaque jour de classe' : 'Pas de classe aujourd’hui : préparez le prochain jour', jour, 'Rien à faire aujourd’hui.')}
+    ${htmlBlocTaches(2, 'Cette semaine', `Semaine du ${dateLongueFr(lundi)}`, semaine, 'Rien en retard cette semaine.')}
+    ${htmlBlocTaches(3, 'Ce mois-ci', (d => d.charAt(0).toUpperCase() + d.slice(1))(new Date(auj + 'T12:00:00').toLocaleDateString('fr-FR', { month:'long', year:'numeric' })), mois, 'Rien à faire ce mois-ci.')}
+    ${htmlBlocTaches(4, 'Ce trimestre', `${libelleTrimestre(trim)}${finTrim ? ` · se termine le ${dateLongueFr(finTrim)}` : ''}`, trimestre, 'Rien à préparer pour le moment.')}
+    <section class="panel acc-outils-panel" aria-labelledby="titreOutils"><div class="panel-head"><div><h2 id="titreOutils">Mes outils</h2><div class="sub">Touchez un bouton pour ouvrir la page.</div></div></div>
+      <div class="acc-outils">${outils.map(([v, ic, t, d]) => `<button type="button" class="acc-outil" onclick="go('${v}')"><span class="acc-outil-ic" aria-hidden="true">${ic}</span><strong>${t}</strong><small>${d}</small></button>`).join('')}</div>
+    </section>
+    ${renderBanniereNotifications()}
+    ${annexe}
+  </div>`;
+}
+
 function renderDashboard(){
+  if(ui.role === 'enseignant') return renderAccueilEnseignant();
   const today = todayISO();
   const totalEleves = DB.eleves.filter(e=>e.statut==='Actif').length;
   const totalEns = DB.enseignants.filter(e=>e.statut==='Actif').length;

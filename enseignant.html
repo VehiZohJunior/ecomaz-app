@@ -53,19 +53,35 @@
     </div>
 
     <nav class="nav" id="nav">
-      <button class="nav-item active" data-view="dashboard" data-roles="enseignant secretariat direction fondation"><span class="ic">📊</span><span data-i18n="nav_dashboard">Tableau de bord</span></button>
+      <button class="nav-item active" data-view="dashboard" data-roles="secretariat direction fondation"><span class="ic">📊</span><span data-i18n="nav_dashboard">Tableau de bord</span></button>
+
+      <button class="nav-item" data-view="dashboard" data-roles="enseignant"><span class="ic">🏠</span><span>Accueil — mes tâches</span></button>
+      <div class="nav-group" data-roles="enseignant">Chaque jour</div>
+      <button class="nav-item" data-view="presences-eleves" data-roles="enseignant"><span class="ic">✅</span><span>Faire l’appel</span></button>
+      <button class="nav-item" data-view="devoirs" data-roles="enseignant"><span class="ic">📘</span><span>Cahier de textes (devoirs)</span></button>
+      <button class="nav-item" data-view="emploi-temps" data-roles="enseignant"><span class="ic">🗓️</span><span>Mon emploi du temps</span></button>
+      <div class="nav-group" data-roles="enseignant">Chaque semaine</div>
+      <button class="nav-item" data-view="camps-de-base" data-roles="enseignant"><span class="ic">🎯</span><span>Camps de base (exercices notés)</span></button>
+      <button class="nav-item" data-view="cahier-appel" data-roles="enseignant"><span class="ic">📋</span><span>Cahier d’appel (historique)</span></button>
+      <div class="nav-group" data-roles="enseignant">Chaque mois et trimestre</div>
+      <button class="nav-item" data-view="programmes" data-roles="enseignant"><span class="ic">📚</span><span>Mon programme (avancement)</span></button>
+      <button class="nav-item" data-view="notes" data-roles="enseignant"><span class="ic">📝</span><span>Compositions et bulletins</span></button>
+      <button class="nav-item" data-view="rapport-activite" data-roles="enseignant"><span class="ic">📈</span><span>Mon rapport d’activité</span></button>
+      <div class="nav-group" data-roles="enseignant">L’école</div>
+      <button class="nav-item" data-view="agenda" data-roles="enseignant"><span class="ic">📅</span><span>Agenda de l’école</span></button>
+      <button class="nav-item" data-view="vie-ecole" data-roles="enseignant"><span class="ic">📷</span><span>Vie de l’école</span></button>
 
       <div class="nav-group" data-roles="secretariat direction fondation" data-i18n="nav_group_eleves">Élèves</div>
       <button class="nav-item" data-view="eleves" data-roles="secretariat direction fondation"><span class="ic">🧒</span><span data-i18n="nav_eleves">Élèves &amp; Inscriptions</span></button>
       <button class="nav-item" data-view="liens-parents" data-roles="secretariat direction fondation"><span class="ic">👪</span><span>Parents ↔ Élèves</span></button>
       <button class="nav-item" data-view="renforcement" data-roles="secretariat direction fondation"><span class="ic">📘</span><span>Cours de renforcement</span></button>
 
-      <div class="nav-group" data-roles="enseignant secretariat direction fondation" data-i18n="nav_group_pedagogie">Pédagogie</div>
-      <button class="nav-item" data-view="notes" data-roles="enseignant secretariat direction fondation"><span class="ic">📝</span><span data-i18n="nav_notes">Notes &amp; Bulletins</span></button>
-      <button class="nav-item" data-view="presences-eleves" data-roles="enseignant secretariat direction fondation"><span class="ic">✅</span><span data-i18n="nav_presences_eleves">Pointage élèves (Appel)</span></button>
-      <button class="nav-item" data-view="emploi-temps" data-roles="enseignant secretariat direction fondation"><span class="ic">🗓️</span><span data-i18n="nav_emploi_temps">Emploi du temps</span></button>
-      <button class="nav-item" data-view="programmes" data-roles="enseignant secretariat direction fondation"><span class="ic">📚</span><span data-i18n="nav_programmes">Programmes pédagogiques</span></button>
-      <button class="nav-item" data-view="rapport-activite" data-roles="enseignant secretariat direction fondation"><span class="ic">📈</span><span>Rapport d’activité</span></button>
+      <div class="nav-group" data-roles="secretariat direction fondation" data-i18n="nav_group_pedagogie">Pédagogie</div>
+      <button class="nav-item" data-view="notes" data-roles="secretariat direction fondation"><span class="ic">📝</span><span data-i18n="nav_notes">Notes &amp; Bulletins</span></button>
+      <button class="nav-item" data-view="presences-eleves" data-roles="secretariat direction fondation"><span class="ic">✅</span><span data-i18n="nav_presences_eleves">Pointage élèves (Appel)</span></button>
+      <button class="nav-item" data-view="emploi-temps" data-roles="secretariat direction fondation"><span class="ic">🗓️</span><span data-i18n="nav_emploi_temps">Emploi du temps</span></button>
+      <button class="nav-item" data-view="programmes" data-roles="secretariat direction fondation"><span class="ic">📚</span><span data-i18n="nav_programmes">Programmes pédagogiques</span></button>
+      <button class="nav-item" data-view="rapport-activite" data-roles="secretariat direction fondation"><span class="ic">📈</span><span>Rapport d’activité</span></button>
 
       <div class="nav-group" data-roles="secretariat direction fondation" data-i18n="nav_group_pointage_ens">Pointage &amp; Enseignants</div>
       <button class="nav-item" data-view="pointage-scan" data-roles="secretariat direction fondation"><span class="ic">📷</span><span data-i18n="nav_scan">Scanner un badge</span></button>
@@ -77,11 +93,11 @@
 
       <div class="nav-group" data-roles="secretariat direction fondation" data-i18n="nav_group_communication">Communication</div>
       <button class="nav-item" data-view="messagerie" data-roles="secretariat direction fondation"><span class="ic">📨</span><span data-i18n="nav_messagerie">Messagerie</span></button>
-      <button class="nav-item" data-view="vie-ecole" data-roles="enseignant secretariat direction fondation"><span class="ic">📷</span><span>Vie de l’école</span></button>
-      <button class="nav-item" data-view="agenda" data-roles="enseignant secretariat direction fondation"><span class="ic">📅</span><span>Agenda de l’école</span></button>
-      <button class="nav-item" data-view="cahier-appel" data-roles="enseignant secretariat direction fondation"><span class="ic">📒</span><span>Cahier d’appel</span></button>
-      <button class="nav-item" data-view="camps-de-base" data-roles="enseignant secretariat direction fondation"><span class="ic">🏕️</span><span>Camps de base</span></button>
-      <button class="nav-item" data-view="devoirs" data-roles="enseignant secretariat direction fondation"><span class="ic">📒</span><span>Cahier de textes</span></button>
+      <button class="nav-item" data-view="vie-ecole" data-roles="secretariat direction fondation"><span class="ic">📷</span><span>Vie de l’école</span></button>
+      <button class="nav-item" data-view="agenda" data-roles="secretariat direction fondation"><span class="ic">📅</span><span>Agenda de l’école</span></button>
+      <button class="nav-item" data-view="cahier-appel" data-roles="secretariat direction fondation"><span class="ic">📒</span><span>Cahier d’appel</span></button>
+      <button class="nav-item" data-view="camps-de-base" data-roles="secretariat direction fondation"><span class="ic">🏕️</span><span>Camps de base</span></button>
+      <button class="nav-item" data-view="devoirs" data-roles="secretariat direction fondation"><span class="ic">📒</span><span>Cahier de textes</span></button>
       <button class="nav-item" data-view="cantine" data-roles="secretariat direction fondation"><span class="ic">🍽️</span><span>Menu de la cantine</span></button>
       <button class="nav-item" data-view="tableau-affichage" data-roles="direction fondation"><span class="ic">🏆</span><span data-i18n="nav_tableau_affichage">Tableau d'affichage</span></button>
 
