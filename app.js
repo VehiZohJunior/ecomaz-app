@@ -2734,6 +2734,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.11.9-6', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Compositions et bulletins : classe, matière et trimestre d’un toucher, une ligne courte par élève (moyenne de Camps de base à côté), compteur de saisie. Un enseignant spécialiste ne voit que ses matières.', 'Nouveau : « Appréciations du bulletin » pour toute la classe sur la même page, avec la moyenne et le rang de chaque élève et des phrases toutes prêtes (la phrase adaptée à la moyenne est marquée ★). Avant, elles ne s’écrivaient que depuis la fiche de l’élève, inaccessible aux enseignants.', 'Correction : l’enregistrement des notes de composition n’envoie plus que les notes modifiées (plus rapide ; plus d’échec après publication ; l’auteur d’une note reste celui qui l’a vraiment saisie).' ],
+  } },
   { version: '2026.11.9-5', nouveautes: {
     commun: [],
     parent: [],
@@ -4069,7 +4075,7 @@ function renderAccueilEnseignant(){
       const proche = finTrim && ecartJours(finTrim) <= 21;
       trimestre.push(ecrites >= eleves.length
         ? { etat:'fait', titre:`Appréciations du bulletin écrites — ${escapeHtml(c.nom)}`, detail:`${ecrites} élève(s).` }
-        : { etat: proche ? 'afaire' : 'prevoir', titre:`Écrire les appréciations du bulletin — ${escapeHtml(c.nom)}`, detail:`${ecrites} sur ${eleves.length} écrite(s)${finTrim ? ` · à terminer avant le ${fmtDate(finTrim)} (${dansNJours(finTrim)})` : ''}.`, bouton:'Écrire', action:`allerNotesClasse('${c.id}','${trim}')` });
+        : { etat: proche ? 'afaire' : 'prevoir', titre:`Écrire les appréciations du bulletin — ${escapeHtml(c.nom)}`, detail:`${ecrites} sur ${eleves.length} écrite(s)${finTrim ? ` · à terminer avant le ${fmtDate(finTrim)} (${dansNJours(finTrim)})` : ''}.`, bouton:'Écrire', action:`allerAppreciations('${c.id}','${trim}')` });
     }
   });
 
@@ -7909,7 +7915,10 @@ function renderNotes(){
   ui.filters.notes = f;
 
   const cycle = classeCycle(f.classeId);
-  const matieres = MATIERES_BY_CYCLE[cycle];
+  const ficheEns = ui.role === 'enseignant' && session.enseignantId ? enseignantById(session.enseignantId) : null;
+  const toutes = MATIERES_BY_CYCLE[cycle] || [];
+  const siennes = toutes.filter(m => (ficheEns?.matieres || []).includes(m));
+  const matieres = siennes.length ? siennes : toutes; // un enseignant spécialiste ne voit que ses matières
   if(!matieres.includes(f.matiere)) f.matiere = matieres[0];
 
   const eleves = DB.eleves.filter(e=>e.classeId===f.classeId && e.statut==='Actif').sort((a,b)=>a.nom.localeCompare(b.nom));
@@ -7920,22 +7929,23 @@ function renderNotes(){
   if(!compos.some(c => c.dateDebut === f.compo)) f.compo = (compos.filter(c => c.dateDebut <= auj).pop() || compos[0] || {}).dateDebut || '';
   const compoChoisie = compos.find(c => c.dateDebut === f.compo);
 
-  const rows = eleves.map(e=>{
+  const rows = eleves.map((e, i)=>{
     const notes = DB.notes.filter(n=>n.eleveId===e.id && n.matiere===f.matiere && n.trimestre===f.trimestre);
     const notesCompo = notes.filter(n=>n.type==='Composition');
     const compo = compoChoisie ? notesCompo.find(n => n.date === compoChoisie.dateDebut) : notesCompo[0];
     const m = moyenneMatiere(e.id, f.matiere, f.trimestre);
-    return `<tr>
-      <td><div class="row-name"><span class="avatar">${initials(e.prenom,e.nom)}</span>${escapeHtml(eleveFullName(e))}</div></td>
-      <td>${m.classe !== null ? `<strong>${m.classe.toFixed(2)}</strong> <span class="hint">(${m.nbClasse} note${m.nbClasse > 1 ? 's' : ''})</span>` : '<span class="hint">—</span>'}</td></td>
-      ${compos.length > 1 ? `<td>${m.compo !== null ? `<strong>${m.compo.toFixed(2)}</strong> <span class="hint">(${notesCompo.length})</span>` : '<span class="hint">—</span>'}</td>` : ''}
-      <td><input type="number" min="0" max="20" step="0.5" data-eleve="${e.id}" data-type="Composition" data-date="${compoChoisie ? compoChoisie.dateDebut : ''}" value="${compo?compo.note:''}" style="width:70px;padding:6px 8px;border:1px solid var(--border);border-radius:var(--r-control);"></td>
-    </tr>`;
+    return `<li class="nt-ligne">
+      <span class="nt-eleve"><span class="avatar" aria-hidden="true">${initials(e.prenom,e.nom)}</span><span class="nt-nom"><strong>${escapeHtml(eleveFullName(e))}</strong>
+        <small>Camps de base : ${m.classe !== null ? `<b>${m.classe.toFixed(2)}</b> (${m.nbClasse} note${m.nbClasse > 1 ? 's' : ''})` : 'aucune note'}${compos.length > 1 && m.compo !== null ? ` · compositions : <b>${m.compo.toFixed(2)}</b>` : ''}</small></span></span>
+      <input type="text" inputmode="decimal" class="nt-note" data-eleve="${e.id}" data-type="Composition" data-date="${compoChoisie ? compoChoisie.dateDebut : ''}" data-avant="${compo ? compo.note : ''}" value="${compo ? compo.note : ''}" placeholder="—" enterkeyhint="next" aria-label="Note de composition de ${escapeHtml(eleveFullName(e))} sur 20"
+        onkeydown="if(event.key==='Enter'){ event.preventDefault(); const s=document.querySelectorAll('#tableNotes .nt-note')[${i + 1}]; if(s) s.focus(); else document.getElementById('btnNotesCompo')?.focus(); }" oninput="majCompteurCompo()">
+    </li>`;
   }).join('');
 
   return `
   <div class="view active">
-    <div class="section-note">💡 Ici : la note de <strong>composition</strong> de chaque élève. Les devoirs, exercices de classe et de maison se saisissent dans <a href="#" onclick="go('camps-de-base'); return false;">🏕️ Camps de base</a> : leur moyenne s’affiche ci-dessous et entre dans le bulletin (classe + 2 × composition) ÷ 3. Consultez le bulletin complet d'un élève depuis sa fiche profil (menu Élèves).</div>
+    <details class="section-note camps-aide"><summary>💡 Ici : les notes de <strong>composition</strong> et les <strong>appréciations du bulletin</strong>. <span class="lien-discret">En savoir plus</span></summary>
+      <p>Les devoirs, exercices et interrogations se saisissent dans <a href="#" onclick="go('camps-de-base'); return false;">Camps de base</a> : leur moyenne s’affiche à côté de chaque élève. Moyenne de la matière = (moyenne de classe + 2 × composition) ÷ 3.</p></details>
     ${['direction','fondation'].includes(ui.role) ? `<div class="panel">
       <div class="panel-head"><div><h2>📒 Bulletins visibles par les parents</h2><div class="sub">Publiez un trimestre quand toutes les notes sont saisies : chaque parent verra le bulletin de SES enfants dans son application</div></div></div>
       <div style="display:flex;flex-wrap:wrap;gap:14px;">${TRIMESTRES.map(t => `<label style="display:flex;align-items:center;gap:8px;font-weight:700;"><input type="checkbox" ${(DB.meta.bulletinsPublies || []).includes(t) ? 'checked' : ''} onchange="publierBulletins('${t}', this.checked)"> ${t} publié</label>`).join('')}</div>
@@ -7944,28 +7954,21 @@ function renderNotes(){
     </div>` : ''}
 
     <div class="panel">
-      <div class="panel-head"><div><h2>Saisie des notes</h2><div class="sub">${eleves.length} élève(s)</div></div></div>
-      <div class="filters">
-        <select onchange="ui.filters.notes.classeId=this.value; ui.filters.notes.matiere=''; renderView('notes')">
-          ${mesClasses.map(c=>`<option value="${c.id}" ${f.classeId===c.id?'selected':''}>${c.nom}</option>`).join('')}
-        </select>
-        <select onchange="ui.filters.notes.matiere=this.value; renderView('notes')">
-          ${matieres.map(m=>`<option ${f.matiere===m?'selected':''}>${m}</option>`).join('')}
-        </select>
-        <select onchange="ui.filters.notes.trimestre=this.value; ui.filters.notes.auto=false; renderView('notes')">
-          ${TRIMESTRES.map(t=>`<option ${f.trimestre===t?'selected':''}>${t}</option>`).join('')}
-        </select>
+      <div class="panel-head"><div><h2>Notes de composition — ${escapeHtml(f.matiere)}</h2><div class="sub">${escapeHtml(classeName(f.classeId))} · ${eleves.length} élève(s) · ${libelleTrimestre(f.trimestre)}</div></div></div>
+      <div class="camps-choix">
+        ${mesClasses.length > 1 ? `<div class="camps-ligne"><span class="camps-lib">Classe</span><div class="dv-puces">${mesClasses.map(c => `<button type="button" class="dv-puce${c.id === f.classeId ? ' actif' : ''}" data-val="${escapeHtml(c.id)}" onclick="notesChoisir('classeId', this.dataset.val)">${escapeHtml(c.nom)}</button>`).join('')}</div></div>` : ''}
+        ${matieres.length > 1 ? `<div class="camps-ligne"><span class="camps-lib">Matière</span><div class="dv-puces">${matieres.map(m => `<button type="button" class="dv-puce${m === f.matiere ? ' actif' : ''}" data-val="${escapeHtml(m)}" onclick="notesChoisir('matiere', this.dataset.val)">${escapeHtml(m)}</button>`).join('')}</div></div>` : ''}
+        <div class="camps-ligne"><span class="camps-lib">Trimestre</span><div class="dv-puces">${TRIMESTRES.map(t => `<button type="button" class="dv-puce${t === f.trimestre ? ' actif' : ''}" data-val="${t}" onclick="notesChoisir('trimestre', this.dataset.val)">${libelleTrimestre(t)}${t === trimestreCourant() ? ' (en cours)' : ''}</button>`).join('')}</div></div>
       </div>
       ${(DB.meta.bulletinsPublies || []).includes(f.trimestre) && !['direction','fondation'].includes(ui.role) ? `<div class="banniere-discrete" style="margin-bottom:10px;"><span>${icone('lock')}</span><span>Les bulletins du ${escapeHtml(f.trimestre)} sont publiés : ces notes sont verrouillées. Pour une correction, adressez-vous à la direction.</span></div>` : ''}
-      ${compos.length ? `<div class="segmente compos-choix" role="tablist" aria-label="Composition">${compos.map(c => `<button type="button" role="tab" class="seg${c.dateDebut === f.compo ? ' actif' : ''}" aria-selected="${c.dateDebut === f.compo}" onclick="ui.filters.notes.compo='${c.dateDebut}'; renderView('notes')">${escapeHtml(c.titre.replace(/\s*composition/i, ' compo.').trim())} · ${fmtDate(c.dateDebut).slice(0, 5)}${c.dateDebut > auj ? ' <span class="hint" style="margin:0;">à venir</span>' : ''}</button>`).join('')}</div>
+      ${compos.length ? `<div class="segmente compos-choix" role="tablist" aria-label="Composition">${compos.map(c => `<button type="button" role="tab" class="seg${c.dateDebut === f.compo ? ' actif' : ''}" aria-selected="${c.dateDebut === f.compo}" onclick="ui.filters.notes.compo='${c.dateDebut}'; renderView('notes')">${escapeHtml(c.titre.replace(/composition/i, 'compo.').trim())} · ${fmtDate(c.dateDebut).slice(0, 5)}${c.dateDebut > auj ? ' <span class="hint" style="margin:0;">à venir</span>' : ''}</button>`).join('')}</div>
         <div class="hint" style="margin:6px 0 10px;">${compos.length > 1 ? `${compos.length} compositions ce trimestre (agenda de l’école) : la moyenne de composition est la moyenne de toutes. ` : ''}Moyenne de la matière = (moyenne de classe + 2 × composition) ÷ 3.</div>` : ''}
       ${eleves.length===0 ? `<div class="empty-state"><div class="em-ic">📝</div>Aucun élève actif dans cette classe.</div>` : `
-      <div class="table-wrap"><table id="tableNotes">
-        <thead><tr><th>Élève</th><th>Moy. de classe /20 <span class="hint">(Camps de base)</span></th>${compos.length > 1 ? '<th>Moy. des compositions /20</th>' : ''}<th>${compoChoisie ? `${escapeHtml(compoChoisie.titre)} /20 <span class="hint">(${fmtDate(compoChoisie.dateDebut)})</span>` : 'Note Composition /20'}</th></tr></thead>
-        <tbody>${rows}</tbody>
-      </table></div>
-      <div class="form-actions"><button class="btn" onclick="saveNotesTable()">Enregistrer les notes</button></div>`}
+      <div class="camps-compteur" aria-live="polite"><span id="compteurCompo">${eleves.filter(e => DB.notes.some(n => n.eleveId === e.id && n.matiere === f.matiere && n.trimestre === f.trimestre && n.type === 'Composition' && (!compoChoisie || n.date === compoChoisie.dateDebut) && n.note != null)).length}</span> note(s) sur ${eleves.length} élève(s) — ${compoChoisie ? `${escapeHtml(compoChoisie.titre)} du ${fmtDate(compoChoisie.dateDebut)}` : 'composition'}, sur 20. « Entrée » passe à l’élève suivant ; laissez vide si l’élève était absent.</div>
+      <ul class="nt-liste" id="tableNotes">${rows}</ul>
+      <div class="form-actions"><button class="btn" id="btnNotesCompo" onclick="saveNotesTable()">Enregistrer les notes</button></div>`}
     </div>
+    ${renderAppreciations(f.classeId, f.trimestre)}
     ${renderResultatsTrimestre(f.classeId, f.trimestre)}
   </div>`;
 }
@@ -7983,24 +7986,108 @@ async function ouvrirHistoriqueNotes(){
          <strong>${escapeHtml(e ? eleveFullName(e) : 'Élève')} · ${escapeHtml(j.matiere || '')} · ${escapeHtml(j.trimestre || '')}</strong>
          <small>${libs[j.action] || j.action} : ${j.note_avant ?? '—'} → ${j.note_apres ?? '—'} · par ${escapeHtml(j.auteur_nom || '?')} (${escapeHtml(j.auteur_role || '')}) · ${new Date(j.created_at).toLocaleString('fr-FR', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' })}</small></span></li>`; }).join('')}</ul>`;
 }
+let notesEnCours = false;
 async function saveNotesTable(){
   const f = ui.filters.notes;
-  const inputs = $$('#tableNotes input');
+  if(notesEnCours) return;
+  const btn = document.getElementById('btnNotesCompo');
+  const nouveaux = [], modifs = [], suppr = [];
+  for(const inp of $$('#tableNotes .nt-note')){
+    const brut = inp.value.trim().replace(',', '.');
+    const eleveId = inp.dataset.eleve, type = inp.dataset.type, dateCompo = inp.dataset.date || '';
+    const n = DB.notes.find(x=>x.eleveId===eleveId && x.matiere===f.matiere && x.trimestre===f.trimestre && x.type===type && (!dateCompo || x.date === dateCompo));
+    if(brut === ''){ if(n) suppr.push(n); continue; }
+    const note = Number(brut);
+    if(!(note >= 0 && note <= 20)){ inp.focus(); alert(`Note impossible (${inp.value}) : elle doit être entre 0 et 20.`); return; }
+    if(!n) nouveaux.push({ eleveId, matiere:f.matiere, note, noteSur:20, trimestre:f.trimestre, type, date: dateCompo || todayISO() });
+    else if(Number(n.note) !== note) modifs.push({ n, note }); // une note inchangée n'est jamais renvoyée (ni verrou, ni faux auteur)
+  }
+  if(!nouveaux.length && !modifs.length && !suppr.length){ toast('Aucun changement'); return; }
+  if(suppr.length && !confirm(`${suppr.length} note(s) effacée(s) : elles seront supprimées. Continuer ?`)) return;
+  notesEnCours = true; if(btn){ btn.disabled = true; btn.textContent = 'Enregistrement…'; }
   try{
-    for(const inp of inputs){
-      const val = inp.value;
-      const eleveId = inp.dataset.eleve, type = inp.dataset.type, dateCompo = inp.dataset.date || '';
-      let n = DB.notes.find(x=>x.eleveId===eleveId && x.matiere===f.matiere && x.trimestre===f.trimestre && x.type===type && (!dateCompo || x.date === dateCompo));
-      if(val===''){
-        if(n){ await dbDelete('notes', n.id); DB.notes = DB.notes.filter(x=>x.id!==n.id); }
-        continue;
-      }
-      const note = Math.max(0, Math.min(20, parseFloat(val)));
-      if(n){ await dbUpdate('notes', n.id, {note}); n.note = note; }
-      else{ DB.notes.push(await dbInsert('notes', {eleveId, matiere:f.matiere, note, noteSur:20, trimestre:f.trimestre, type, date: dateCompo || todayISO()})); }
+    if(nouveaux.length){
+      try{ DB.notes.push(...await dbInsertMany('notes', nouveaux)); }
+      catch(_e){ for(const x of nouveaux) DB.notes.push(await dbInsert('notes', x)); }
     }
-    toast('Notes enregistrées');
-  }catch(e){ alert('Erreur : ' + e.message); }
+    for(const m of modifs){ await dbUpdate('notes', m.n.id, { note: m.note }); m.n.note = m.note; }
+    for(const n of suppr){ await dbDelete('notes', n.id); DB.notes = DB.notes.filter(x => x.id !== n.id); }
+    toast(`${nouveaux.length + modifs.length + suppr.length} note(s) enregistrée(s)`);
+    notesEnCours = false; renderView('notes');
+  }catch(e){
+    notesEnCours = false; if(btn){ btn.disabled = false; btn.textContent = 'Enregistrer les notes'; }
+    alert('Erreur : ' + e.message);
+  }
+}
+function majCompteurCompo(){
+  const c = document.getElementById('compteurCompo'); if(!c) return;
+  c.textContent = $$('#tableNotes .nt-note').filter(i => i.value.trim() !== '').length;
+}
+function notesChoisir(champ, valeur){
+  const f = ui.filters.notes; if(!f) return;
+  f[champ] = valeur; if(champ === 'trimestre') f.auto = false; if(champ === 'classeId') f.matiere = '';
+  renderView('notes');
+}
+function allerAppreciations(classeId, trim){
+  allerNotesClasse(classeId, trim);
+  setTimeout(() => document.getElementById('appreciations')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 250);
+}
+/* ---------- Appréciations du bulletin, classe entière (titulaire, direction) ---------- */
+const PHRASES_APPRECIATION = [
+  [16, 'Excellent travail. Félicitations !'],
+  [14, 'Très bon travail. Continuez ainsi.'],
+  [12, 'Bon travail. Peut encore progresser.'],
+  [10, 'Assez bien. Des efforts à poursuivre.'],
+  [8, 'Résultats insuffisants. Doit travailler davantage.'],
+  [0, 'Travail très insuffisant. Doit redoubler d’efforts.'],
+];
+function phraseSuggeree(moy){ return moy == null ? '' : (PHRASES_APPRECIATION.find(([s]) => moy >= s) || PHRASES_APPRECIATION[PHRASES_APPRECIATION.length - 1])[1]; }
+function renderAppreciations(classeId, trimestre){
+  const admin = ['secretariat','direction','fondation'].includes(ui.role);
+  const fiche = ui.role === 'enseignant' && session.enseignantId ? enseignantById(session.enseignantId) : null;
+  const c = DB.classes.find(x => x.id === classeId); if(!c) return '';
+  // Le titulaire (ou l'enseignant de toutes les matières) écrit les appréciations ; un spécialiste ne les voit pas ici
+  if(!admin && !(c.titulaireId ? c.titulaireId === session.enseignantId : !(fiche?.matieres || []).length)) return '';
+  const eleves = DB.eleves.filter(e => e.classeId === classeId && e.statut === 'Actif').sort((a, b) => a.nom.localeCompare(b.nom));
+  if(!eleves.length) return '';
+  const r = resultatsClasse(classeId, trimestre);
+  const ligneDe = id => (r.lignes || []).find(l => l.eleve.id === id);
+  const verrou = (DB.meta.bulletinsPublies || []).includes(trimestre) && !['direction','fondation'].includes(ui.role);
+  const ecrites = eleves.filter(e => String((DB.bulletinsComments || {})[`${e.id}_${trimestre}`] || '').trim()).length;
+  return `<section class="panel" id="appreciations" aria-labelledby="titreAppr">
+    <div class="panel-head"><div><h2 id="titreAppr">✏️ Appréciations du bulletin — ${escapeHtml(c.nom)}</h2>
+      <div class="sub">${ecrites} sur ${eleves.length} écrite(s) · ${libelleTrimestre(trimestre)}. Touchez une phrase pour la mettre, puis complétez si vous voulez.</div></div></div>
+    ${verrou ? `<div class="banniere-discrete" style="margin-bottom:10px;"><span>${icone('lock')}</span><span>Bulletins publiés : les appréciations sont verrouillées. Pour une correction, adressez-vous à la direction.</span></div>` : `
+    <div class="form-actions" style="justify-content:flex-start;margin-top:0;"><button type="button" class="btn secondary sm" onclick="remplirAppreciationsVides()">Mettre la phrase suggérée dans les cases vides</button></div>`}
+    <ul class="ap-liste">${eleves.map(e => {
+      const l = ligneDe(e.id), moy = l && l.moyenne != null ? l.moyenne : null, txt = (DB.bulletinsComments || {})[`${e.id}_${trimestre}`] || '';
+      const sug = phraseSuggeree(moy);
+      return `<li class="ap-ligne">
+        <div class="ap-tete"><strong>${escapeHtml(eleveFullName(e))}</strong><span class="hint" style="margin:0;">${moy != null ? `Moyenne ${moy.toFixed(2)} · ${rangTexte(l.rang, l.exAequo)}` : 'Pas encore de moyenne'}</span></div>
+        <textarea class="ap-texte" rows="2" maxlength="300" data-eleve="${e.id}" data-avant="${escapeHtml(txt)}" data-sug="${escapeHtml(sug)}" ${verrou ? 'disabled' : ''} placeholder="${sug ? 'Suggestion : ' + escapeHtml(sug) : 'Appréciation…'}" aria-label="Appréciation de ${escapeHtml(eleveFullName(e))}">${escapeHtml(txt)}</textarea>
+        ${verrou ? '' : (() => { const puce = (p, suggeree) => `<button type="button" class="dv-puce${suggeree ? ' suggeree' : ''}" data-val="${escapeHtml(p)}" onclick="this.closest('.ap-ligne').querySelector('textarea').value=this.dataset.val">${suggeree ? '★ ' : ''}${escapeHtml(p)}</button>`;
+          return `<div class="dv-puces ap-phrases">${sug ? puce(sug, true) : ''}<details class="ap-autres"><summary>Autres phrases</summary><div class="dv-puces">${PHRASES_APPRECIATION.filter(([, p]) => p !== sug).map(([, p]) => puce(p, false)).join('')}</div></details></div>`; })()}
+      </li>`; }).join('')}</ul>
+    ${verrou ? '' : `<div class="form-actions"><button type="button" class="btn" id="btnAppr" onclick="enregistrerAppreciations('${classeId}','${trimestre}')">Enregistrer les appréciations</button></div>`}
+  </section>`;
+}
+function remplirAppreciationsVides(){
+  let n = 0;
+  $$('.ap-texte').forEach(t => { if(!t.value.trim() && t.dataset.sug){ t.value = t.dataset.sug; n++; } });
+  toast(n ? `${n} case(s) remplie(s) : relisez, complétez, puis enregistrez.` : 'Aucune case vide à remplir (ou pas encore de moyenne).');
+}
+async function enregistrerAppreciations(classeId, trimestre){
+  const lignes = $$('.ap-texte').filter(t => t.value.trim() !== (t.dataset.avant || '').trim())
+    .map(t => ({ eleve_id: t.dataset.eleve, trimestre, commentaire: t.value.trim(), ecole_id: session.ecoleId }));
+  if(!lignes.length){ toast('Aucun changement'); return; }
+  const btn = document.getElementById('btnAppr'); if(btn){ btn.disabled = true; btn.textContent = 'Enregistrement…'; }
+  try{
+    const { error } = await sb.from('bulletins_commentaires').upsert(lignes, { onConflict: 'eleve_id,trimestre' });
+    if(error) throw erreurLisible(error);
+    lignes.forEach(l => { DB.bulletinsComments[`${l.eleve_id}_${trimestre}`] = l.commentaire; });
+    toast(`${lignes.length} appréciation(s) enregistrée(s)`); renderView('notes');
+    setTimeout(() => document.getElementById('appreciations')?.scrollIntoView({ block: 'start' }), 100);
+  }catch(e){ if(btn){ btn.disabled = false; btn.textContent = 'Enregistrer les appréciations'; } alert('Erreur : ' + e.message); }
 }
 
 /* ---------------------------------------------------------------------
