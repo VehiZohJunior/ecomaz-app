@@ -2087,3 +2087,8 @@ body.theme-portier .gate-classe strong{ overflow-wrap:anywhere; }
 .enfant-carte .eb-table th, .enfant-carte .eb-table td{ border-bottom-color:rgba(255,255,255,.22); }
 .enfant-carte .bo-assiduite{ border-color:rgba(255,255,255,.35); }
 .enfant-carte .bo-assiduite-base{ color:rgba(255,255,255,.78); }
+
+/* Rapport du mois : régularité de l'appel (2026-11-09) */
+.rm-regularite{ margin-top:10px; }
+.rm-regularite table{ width:100%; }
+@media print{ .rm-regularite{ break-inside:avoid; } }

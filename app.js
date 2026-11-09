@@ -2766,6 +2766,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.11.9-21', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Rapport du mois (direction) : nouveau tableau « Régularité de l’appel par classe » (jours avec appel / jours de classe du mois), en vert si complet, en rouge sous la moitié.' ],
+  } },
   { version: '2026.11.9-20', nouveautes: {
     commun: [],
     parent: [ 'Bulletin de votre enfant : la ligne « Assiduité du trimestre » (absences justifiées ou non, retards) apparaît aussi dans l’application et dans le bulletin à imprimer.' ],
@@ -9870,6 +9876,10 @@ function ouvrirRapportMois(mois){
   const parEleve = {}; abs.forEach(p => { parEleve[p.eleveId] = (parEleve[p.eleveId] || 0) + 1; });
   const plusAbsents = Object.entries(parEleve).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([id, n]) => ({ e: eleveById(id), n })).filter(x => x.e);
   const classesSansAppel = DB.classes.filter(c => actifs.some(e => e.classeId === c.id) && !pres.some(p => p.classeId === c.id));
+  // Régularité de l'appel, classe par classe : jours avec appel / jours de classe du mois (jusqu'à aujourd'hui)
+  const finMois = (([a, mm]) => isoLocal(new Date(a, mm, 0)))(mois.split('-').map(Number));
+  const joursClasse = listeJours(mois + '-01', finMois < todayISO() ? finMois : todayISO()).filter(estJourDeCours);
+  const regularite = DB.classes.filter(c => actifs.some(e => e.classeId === c.id)).map(c => ({ c, n: new Set(pres.filter(p => p.classeId === c.id).map(p => p.date)).size }));
   // Enseignants
   const pe = (DB.presencesEnseignants || []).filter(p => dans(p.date));
   const peRetards = pe.filter(p => p.statut === 'Retard'), peAbs = pe.filter(p => p.statut === 'Absent');
@@ -9896,6 +9906,8 @@ function ouvrirRapportMois(mois){
           ${plusAbsents.length ? `<div class="hint" style="margin-top:6px;"><strong>Les plus absents :</strong> ${plusAbsents.map(x => `${escapeHtml(eleveFullName(x.e))} (${x.n})`).join(', ')}</div>` : ''}</div>
         <div class="rm-bloc"><h4>Enseignants</h4><table>${ligne('Pointages enregistrés', pe.length)}${ligne('Ponctualité', pct(ponct), ponct !== null && ponct < 90 ? 'ko' : '')}${ligne('Retards', peRetards.length)}${ligne('Absences', peAbs.length)}</table></div>
       </div>
+      ${joursClasse.length ? `<div class="rm-bloc rm-regularite"><h4>Régularité de l’appel par classe (${joursClasse.length} jour${joursClasse.length > 1 ? 's' : ''} de classe${mois === thisMonthISO() ? ' à ce jour' : ''})</h4>
+        <table>${regularite.map(({ c, n }) => ligne(escapeHtml(c.nom), `${n} / ${joursClasse.length}`, n >= joursClasse.length ? 'ok' : n < joursClasse.length * 0.5 ? 'ko' : '')).join('')}</table></div>` : ''}
       <div class="hint" style="margin-top:10px;">Rapport établi le ${fmtDate(todayISO())} à partir des données enregistrées dans EcoMaZ.</div>
       <div class="signatures"><div class="sign-box"><div class="sign-role">La Direction</div><div class="sign-line">${escapeHtml(m.directeurNom || '')}</div></div><div class="sign-box"><div class="sign-role">La Fondation</div><div class="sign-line">${escapeHtml(m.fondateurNom || '')}</div></div></div>
     </section>`);
