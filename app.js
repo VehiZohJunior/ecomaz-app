@@ -2736,6 +2736,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.11.9-16', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Cahier de textes sans réseau : le devoir est gardé dans le téléphone et publié tout seul au retour de la connexion (avant : message d’erreur, devoir à retaper).' ],
+  } },
   { version: '2026.11.9-15', nouveautes: {
     commun: [],
     parent: [],
@@ -6712,10 +6718,15 @@ async function ajouterDevoir(ev){
   if(ligne.pour_le < todayISO()) return alert('Choisissez une date à partir d’aujourd’hui.'), false;
   const bouton = ev.target.querySelector('button[type="submit"]'); if(bouton) bouton.disabled = true;
   try{
-    const { data, error } = await sb.from('devoirs').insert(ligne).select().single();
-    if(error) throw error;
-    const d = rowToCamel(data);
+    // dbInsert : sans réseau, le devoir est gardé dans le téléphone et publié au retour de la connexion
+    const horsLigne = navigator.onLine === false;
+    const d = await dbInsert('devoirs', { classeId: ligne.classe_id, matiere: ligne.matiere, travail: ligne.travail, pourLe: ligne.pour_le });
     DB.devoirs = (DB.devoirs || []).concat(d).sort((a, b) => a.pourLe.localeCompare(b.pourLe));
+    if(horsLigne || navigator.onLine === false){
+      ui.filters.devoirsClasse = d.classeId;
+      toast('Pas de réseau : devoir gardé dans le téléphone. Il sera publié aux parents dès le retour du réseau.'); renderView('devoirs');
+      return false;
+    }
     if(fd.get('prevenir') === 'on'){
       const eleves = DB.eleves.filter(e => e.statut === 'Actif' && e.classeId === d.classeId).map(e => e.id);
       notifierParentsPush(eleves, `📒 Devoir ${quandDevoir(d.pourLe)} (${classeName(d.classeId)})${d.matiere ? ' — ' + d.matiere : ''} : ${d.travail}`);
