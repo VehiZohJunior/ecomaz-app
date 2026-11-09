@@ -2734,6 +2734,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.11.9-4', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Cahier de textes plus simple : la matière et le jour se choisissent d’un toucher (seulement les vrais jours de classe : pas le mercredi, ni les congés), et des phrases toutes prêtes (« Apprendre la leçon », « Faire les exercices »…) s’ajoutent au travail à faire.', 'Correction : « Voir aussi les passés » montre bien les devoirs des 2 dernières semaines, même après être passé par l’accueil.' ],
+  } },
   { version: '2026.11.9-3', nouveautes: {
     commun: [],
     parent: [],
@@ -3935,7 +3941,7 @@ function renderAccueilEnseignant(){
   chargerAgenda(); chargerSecuriteEleves();
   const reafficher = () => { if(ui.currentView === 'dashboard') renderView('dashboard'); };
   if(DB.absencesSignalees === undefined){ DB.absencesSignalees = null; chargerAbsencesSignalees().then(reafficher).catch(() => { DB.absencesSignalees = []; }); }
-  if(DB.devoirs === undefined){ DB.devoirs = null; sb.from('devoirs').select('*').eq('ecole_id', session.ecoleId).gte('pour_le', auj).order('pour_le')
+  if(DB.devoirs === undefined){ DB.devoirs = null; sb.from('devoirs').select('*').eq('ecole_id', session.ecoleId).gte('pour_le', isoDansJours(-14)).order('pour_le')
     .then(({ data }) => { DB.devoirs = rowsToCamel(data || []); reafficher(); }); }
   if(DB.evaluations === undefined){ DB.evaluations = null; sb.from('evaluations').select('*').eq('ecole_id', session.ecoleId).order('date')
     .then(({ data }) => { DB.evaluations = rowsToCamel(data || []); reafficher(); }); }
@@ -4141,7 +4147,7 @@ function renderSuiviEnseignants(){
   const auj = todayISO();
   chargerAgenda();
   const reafficher = () => { if(ui.currentView === 'dashboard') renderView('dashboard'); };
-  if(DB.devoirs === undefined){ DB.devoirs = null; sb.from('devoirs').select('*').eq('ecole_id', session.ecoleId).gte('pour_le', auj).order('pour_le')
+  if(DB.devoirs === undefined){ DB.devoirs = null; sb.from('devoirs').select('*').eq('ecole_id', session.ecoleId).gte('pour_le', isoDansJours(-14)).order('pour_le')
     .then(({ data }) => { DB.devoirs = rowsToCamel(data || []); reafficher(); }); }
   if(DB.evaluations === undefined){ DB.evaluations = null; sb.from('evaluations').select('*').eq('ecole_id', session.ecoleId).order('date')
     .then(({ data }) => { DB.evaluations = rowsToCamel(data || []); reafficher(); }); }
@@ -4515,7 +4521,7 @@ function renderMaJournee(){
   // Données chargées une fois (absences signalées, agenda), puis le tableau de bord se réaffiche
   if(DB.absencesSignalees === undefined){ DB.absencesSignalees = null; chargerAbsencesSignalees().then(() => { if(ui.currentView === 'dashboard') renderView('dashboard'); }).catch(() => { DB.absencesSignalees = []; }); }
   chargerAgenda();
-  if(DB.devoirs === undefined){ DB.devoirs = null; sb.from('devoirs').select('*').eq('ecole_id', session.ecoleId).gte('pour_le', todayISO()).order('pour_le')
+  if(DB.devoirs === undefined){ DB.devoirs = null; sb.from('devoirs').select('*').eq('ecole_id', session.ecoleId).gte('pour_le', isoDansJours(-14)).order('pour_le')
     .then(({ data }) => { DB.devoirs = rowsToCamel(data || []); if(ui.currentView === 'dashboard') renderView('dashboard'); }); }
   chargerSecuriteEleves();
   const prochain = prochainJourClasse();
@@ -6466,8 +6472,7 @@ function quandDevoir(iso){
 function renderDevoirs(){
   if(DB.devoirs === undefined){
     DB.devoirs = null;
-    const depuis = new Date(); depuis.setDate(depuis.getDate() - 14);
-    sb.from('devoirs').select('*').eq('ecole_id', session.ecoleId).gte('pour_le', depuis.toISOString().slice(0, 10)).order('pour_le')
+    sb.from('devoirs').select('*').eq('ecole_id', session.ecoleId).gte('pour_le', isoDansJours(-14)).order('pour_le')
       .then(({ data }) => { DB.devoirs = rowsToCamel(data || []); if(ui.currentView === 'devoirs') renderView('devoirs'); });
   }
   const classes = classesVisibles();
@@ -6477,16 +6482,26 @@ function renderDevoirs(){
   const tous = ui.filters.devoirsPasses;
   const liste = (DB.devoirs || []).filter(d => idsClasses.includes(d.classeId) && (!choix || d.classeId === choix) && (tous || d.pourLe >= todayISO()));
   const t = session.enseignantId ? enseignantById(session.enseignantId) : null;
-  const matieres = [...new Set([...(t?.matieres || []), ...classes.flatMap(c => MATIERES_BY_CYCLE[c.cycle] || [])])];
+  const matieres = (t?.matieres || []).length ? t.matieres : [...new Set(classes.flatMap(c => MATIERES_BY_CYCLE[c.cycle] || []))];
+  // Les 3 prochains jours de classe (mercredi, week-end et congés exclus)
+  const joursDevoir = []; let j = todayISO();
+  for(let i = 0; i < 3; i++){ j = prochainJourDeClasse(j); if(!j) break; joursDevoir.push(j); }
+  if(!joursDevoir.length) joursDevoir.push(prochainJourClasse());
   return `<div class="view active">
     <div class="panel">
       <div class="panel-head"><div><h2>📒 Noter un devoir</h2><div class="sub">Les parents de la classe le voient aussitôt dans leur application, avec une notification s’ils le souhaitent.</div></div></div>
       <form onsubmit="return ajouterDevoir(event)">
         <div class="form-grid">
           <div class="field"><label>Classe</label><select name="classeId" required>${classes.map(c => `<option value="${c.id}"${c.id === choix ? ' selected' : ''}>${escapeHtml(c.nom)}</option>`).join('')}</select></div>
-          <div class="field"><label>Matière</label><input name="matiere" maxlength="80" list="listeMatieresDevoirs" placeholder="Ex : Mathématiques"><datalist id="listeMatieresDevoirs">${matieres.map(m => `<option value="${escapeHtml(m)}">`).join('')}</datalist></div>
-          <div class="field"><label>Pour le</label><input type="date" name="pourLe" required value="${prochainJourClasse()}"></div>
-          <div class="field span2"><label>Travail à faire</label><textarea name="travail" required minlength="2" maxlength="1000" rows="3" placeholder="Ex : Apprendre la leçon 4, faire les exercices 2 et 3 page 18"></textarea></div>
+          <div class="field span2"><label>Matière <span class="hint" style="margin:0;font-weight:400;">— touchez-en une (ou écrivez)</span></label>
+            <div class="dv-puces" role="group" aria-label="Matière">${matieres.map(m => `<button type="button" class="dv-puce" onclick="choisirPuceDevoir(this,'matiere')">${escapeHtml(m)}</button>`).join('')}</div>
+            <input name="matiere" maxlength="80" placeholder="Ou écrivez la matière ici" oninput="majPucesDevoir('matiere', this.value)"></div>
+          <div class="field span2"><label>Pour quel jour ?</label>
+            <div class="dv-puces" role="group" aria-label="Pour quel jour">${joursDevoir.map((j, i) => `<button type="button" class="dv-puce${i === 0 ? ' actif' : ''}" data-val="${j}" onclick="choisirPuceDevoir(this,'pourLe')">${escapeHtml(libelleJourDevoir(j))}</button>`).join('')}</div>
+            <input type="date" name="pourLe" required min="${todayISO()}" value="${joursDevoir[0]}" aria-label="Autre date" oninput="majPucesDevoir('pourLe', this.value)"></div>
+          <div class="field span2"><label>Travail à faire</label>
+            <div class="dv-puces dv-phrases" role="group" aria-label="Phrases toutes prêtes">${['Apprendre la leçon', 'Faire les exercices', 'Réviser', 'Lire le texte', 'Recopier', 'Apporter'].map(p => `<button type="button" class="dv-puce" onclick="ajouterPhraseDevoir('${p}')">+ ${p}</button>`).join('')}</div>
+            <textarea name="travail" required minlength="2" maxlength="1000" rows="3" placeholder="Ex : Apprendre la leçon 4, faire les exercices 2 et 3 page 18"></textarea></div>
         </div>
         <label style="display:flex;align-items:center;gap:8px;margin-top:8px;"><input type="checkbox" name="prevenir" checked> Prévenir les parents de la classe par une notification</label>
         <div class="form-actions"><button class="btn" type="submit">Enregistrer le devoir</button></div>
@@ -6507,6 +6522,26 @@ function renderDevoirs(){
         </tr>`).join('')}</tbody></table></div>`}
     </div>
   </div>`;
+}
+function libelleJourDevoir(iso){
+  const d = new Date(iso + 'T12:00:00'), l = d.toLocaleDateString('fr-FR', { weekday:'long', day:'numeric' });
+  return (iso === isoDansJours(1) ? 'Demain, ' : '') + l;
+}
+function choisirPuceDevoir(btn, champ){
+  const form = btn.closest('form'), input = form && form.elements[champ]; if(!input) return;
+  input.value = btn.dataset.val || btn.textContent.trim();
+  majPucesDevoir(champ, input.value, form);
+}
+function majPucesDevoir(champ, valeur, form){
+  form = form || document.querySelector(`[name="${champ}"]`)?.closest('form'); if(!form) return;
+  const input = form.elements[champ];
+  input.parentElement.querySelectorAll('.dv-puce').forEach(b => { const v = b.dataset.val || b.textContent.trim(); b.classList.toggle('actif', v === valeur); b.setAttribute('aria-pressed', v === valeur); });
+}
+function ajouterPhraseDevoir(p){
+  const ta = document.querySelector('textarea[name="travail"]'); if(!ta) return;
+  const v = ta.value.trim();
+  ta.value = v ? (/[.;,:]$/.test(v) ? v + ' ' : v + ', ') + p.charAt(0).toLowerCase() + p.slice(1) + ' ' : p + ' ';
+  ta.focus(); try{ ta.setSelectionRange(ta.value.length, ta.value.length); }catch(_e){}
 }
 async function ajouterDevoir(ev){
   ev.preventDefault();

@@ -217,8 +217,11 @@ async function requete(accessToken, chemin, options = {}){
   verifier('Moins de 3 lettres : aucune réponse', rechCourt.ok && Array.isArray(rechCourt.data) && rechCourt.data.length === 0);
   const rechChamps = await requete(tokenSecretariat, `/rest/v1/rpc/rechercher_eleves_demande`, { method:'POST', body: JSON.stringify({ p_ecole: ecoleSec, p_texte:'aaa' }) });
   verifier('La recherche ne renvoie que prénom, nom et classe', rechChamps.ok && (rechChamps.data||[]).every(r => Object.keys(r).sort().join(',') === 'classe,id,nom,prenom'));
-  const elevesEns = await requete(tokenEnseignant, `/rest/v1/eleves?select=id&limit=1`);
-  verifier('Un compte enseignant sans classe ne voit aucun élève', Array.isArray(elevesEns.data) && elevesEns.data.length === 0, `reçu ${JSON.stringify(elevesEns.data)?.slice(0,60)}`);
+  // Un enseignant ne voit QUE les élèves de ses classes (aucun si aucune classe ne lui est attribuée)
+  const elevesEns = await requete(tokenEnseignant, `/rest/v1/eleves?select=id,classe_id&limit=2000`);
+  const sesClasses = (await requete(tokenEnseignant, `/rest/v1/rpc/mes_classes`, { method:'POST', body:'{}' })).data || [];
+  const horsClasses = (elevesEns.data || []).filter(e => !sesClasses.includes(e.classe_id));
+  verifier('Un compte enseignant ne voit que les élèves de ses classes', Array.isArray(elevesEns.data) && horsClasses.length === 0, `${horsClasses.length} élève(s) hors de ses classes`);
 
   section('7octies. Bulletins — rien de visible sans publication par l école');
   const notesAnon = await requete(ANON_KEY, `/rest/v1/notes?select=id&limit=1`);

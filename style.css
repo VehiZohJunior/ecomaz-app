@@ -1964,3 +1964,10 @@ body.theme-portier .alerte-inscription{ background:rgba(232,176,75,.12); color:i
 .appel-lien-cahier{margin:4px 0 var(--sp-4)}
 .appel-lien-cahier .lien-discret{display:inline-flex;align-items:center;gap:6px;min-height:44px}
 #btnValiderAppel[disabled]{opacity:.7;cursor:progress}
+
+/* ===== Cahier de textes : choix d'un toucher (2026-11-09) ===== */
+.dv-puces{display:flex;flex-wrap:wrap;gap:8px;margin:2px 0 8px}
+.dv-puce{min-height:44px;padding:0 14px;border-radius:99px;border:1px solid var(--border-strong,var(--border));background:var(--surface);color:var(--text);font:inherit;font-size:var(--fs-sm,.95rem);cursor:pointer;max-width:100%;overflow-wrap:anywhere;text-align:left}
+.dv-puce:hover,.dv-puce:focus-visible{border-color:var(--primary)}
+.dv-puce.actif{background:var(--primary);border-color:var(--primary);color:var(--on-primary,#fff);font-weight:700}
+.dv-phrases .dv-puce{min-height:40px;font-size:var(--fs-xs,.85rem);background:var(--surface-2)}

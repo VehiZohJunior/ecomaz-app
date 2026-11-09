@@ -12,6 +12,8 @@
 // Résultat : captures/<nom>/<écran>_<largeur>_<thème>.png
 // =====================================================================
 import { chromium } from 'playwright-core';
+import { execFileSync } from 'node:child_process';
+const CACHE_CDN = new Map();
 import { readFileSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -80,6 +82,12 @@ for(const theme of THEMES){
   for(const [largeur, hauteur] of LARGEURS){
     const contexte = await navigateur.newContext({ viewport: { width: largeur, height: hauteur }, colorScheme: theme, deviceScaleFactor: 1, locale: 'fr-FR' });
     await contexte.addInitScript(t => { try{ localStorage.setItem('ecomaz_theme', t); }catch(_e){} }, theme);
+    // Bibliothèques du CDN récupérées par Node puis servies à la page (Edge sans interface
+    // reste parfois bloqué sur cdn.jsdelivr.net ; les vrais téléphones ne sont pas concernés).
+    await contexte.route('https://cdn.jsdelivr.net/**', async route => {
+      try{ const u = route.request().url(); if(!CACHE_CDN.has(u)) CACHE_CDN.set(u, execFileSync('curl', ['-sL', '-4', '-m', '30', u])); await route.fulfill({ status: 200, body: CACHE_CDN.get(u), headers: { 'content-type': 'application/javascript; charset=utf-8', 'access-control-allow-origin': '*' } }); }
+      catch(_e){ await route.continue(); }
+    });
     const page = await contexte.newPage();
     // Option « lundi » : l'horloge de la page affiche lundi 19/10/2026 10:15 (jour de classe)
     if(option.split(',').includes('lundi')) await page.clock.setFixedTime(new Date('2026-10-19T10:15:00'));
