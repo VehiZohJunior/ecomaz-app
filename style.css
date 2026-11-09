@@ -2006,3 +2006,8 @@ label.dv-puce:focus-within{outline:2px solid var(--focus,var(--primary));outline
 .ap-autres > summary::-webkit-details-marker{display:none}
 .ap-autres[open]{flex-basis:100%}
 .ap-autres[open] > summary{margin-bottom:6px}
+
+/* ===== Mon programme (2026-11-09) ===== */
+.prog-actions{display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end}
+.prog-pied{flex-wrap:wrap;gap:8px}
+.prog-puces label.dv-puce{min-width:62px;justify-content:center}
