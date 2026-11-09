@@ -2043,3 +2043,16 @@ label.dv-puce:focus-within{outline:2px solid var(--focus,var(--primary));outline
   .ip-plus{display:none}
   .ip-pied{font-size:9px}
 }
+
+/* ===== Bouton « Aa » : taille du texte (2026-11-09) ===== */
+.texte-toggle{background:var(--surface-2);border:1px solid var(--border);width:40px;height:40px;border-radius:50%;cursor:pointer;color:var(--text);font-weight:800;font-size:16px;line-height:1;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;font-family:inherit}
+.texte-toggle small{font-size:12px;font-weight:800}
+.texte-toggle.actif{border-color:var(--primary);color:var(--primary)}
+.texte-toggle:focus-visible{outline:2px solid var(--focus,var(--primary));outline-offset:2px}
+body.theme-parent .topbar .texte-toggle{width:44px;height:44px;border-radius:14px;background:var(--em-surface);border:1px solid var(--em-border)}
+body.theme-portier .texte-toggle:not(.texte-toggle-menu){display:none !important}
+.texte-toggle-menu{width:auto;height:auto;border-radius:var(--r-control);justify-content:flex-start;gap:6px;font-weight:600;font-size:var(--fs-sm)}
+@media print{ .texte-toggle{ display:none !important; } }
+/* Console parent sur téléphone : le choix se fait dans « Profil » (la barre du haut garde le nom de l'école lisible) */
+@media (max-width:480px){ body.theme-parent .topbar .texte-toggle{ display:none !important; } }
+.profil-texte{ margin-top:6px; flex-wrap:wrap; } .profil-texte .seg{ min-height:44px; padding:0 14px; }

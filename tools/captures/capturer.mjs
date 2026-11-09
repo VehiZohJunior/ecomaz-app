@@ -89,6 +89,8 @@ for(const theme of THEMES){
       catch(_e){ await route.continue(); }
     });
     const page = await contexte.newPage();
+    // TEXTE=grand / tres-grand : vérifie l'affichage avec la taille de texte choisie par l'utilisateur
+    if(process.env.TEXTE) await page.addInitScript(t => { try{ localStorage.setItem('ecomaz_texte', t); }catch(_e){} }, process.env.TEXTE);
     // Option « lundi » : l'horloge de la page affiche lundi 19/10/2026 10:15 (jour de classe)
     if(option.split(',').includes('lundi')) await page.clock.setFixedTime(new Date('2026-10-19T10:15:00'));
     page.on('download', async d => { const f = join(sortie, d.suggestedFilename()); await d.saveAs(f); console.log('TÉLÉCHARGÉ : ' + f); });
@@ -186,6 +188,7 @@ for(const theme of THEMES){
         emarg: () => { ouvrirListeClasse(DB.classes[0].id, 'emargement'); },
         cartes: () => { ouvrirCartesScolaires(DB.classes[0].id); },
         relance: () => { ouvrirRelanceEnseignants(); },
+        profilparent: () => { ouvrirProfilParent(); },
         coupons: async () => { window.__codesInvitation = {}; famillesARelancer(null).forEach((f, i) => { if(f.tel) window.__codesInvitation[f.tel] = 'CODEESSAI' + i + 'abcdef'; }); await imprimerInvitationsPapier(''); },
         avancement: () => { const c = classesVisibles()[0]; DB.programmes = [{ id:'prog-essai', enseignantId: session.enseignantId, classeId: c.id, matiere:'Langage', trimestre: trimestreCourant(), progression: 40, dateMaj:'2026-09-20', contenu:'' }]; renderView('programmes'); ouvrirAvancement('prog-essai'); },
         nouvprog: () => { openProgrammeForm(); },

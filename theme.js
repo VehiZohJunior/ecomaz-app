@@ -20,6 +20,47 @@
     if(sauve === 'dark' || sauve === 'light') root.setAttribute('data-theme', sauve);
   }catch(_e){}
 
+  /* ---- Taille du texte (Normale / Grande / Très grande), mémorisée sur ce téléphone ---- */
+  const KEY_TEXTE = 'ecomaz_texte';
+  const TAILLES = ['normal', 'grand', 'tres-grand'];
+  const NOMS_TAILLE = { normal:'Normale', grand:'Grande', 'tres-grand':'Très grande' };
+  function tailleTexte(){ const t = root.getAttribute('data-texte'); return TAILLES.includes(t) ? t : 'normal'; }
+  try{
+    const t = localStorage.getItem(KEY_TEXTE);
+    if(t === 'grand' || t === 'tres-grand') root.setAttribute('data-texte', t);
+  }catch(_e){}
+  function majBoutonsTexte(){
+    const t = tailleTexte(), suivante = TAILLES[(TAILLES.indexOf(t) + 1) % TAILLES.length];
+    document.querySelectorAll('.texte-toggle').forEach(b => {
+      b.innerHTML = b.classList.contains('texte-toggle-menu') ? `<span aria-hidden="true">Aa</span> Taille du texte : ${NOMS_TAILLE[t]}` : `<span aria-hidden="true">A<small>a</small></span>`;
+      b.setAttribute('aria-label', `Taille du texte : ${NOMS_TAILLE[t]}. Toucher pour passer à « ${NOMS_TAILLE[suivante]} »`);
+      b.title = b.getAttribute('aria-label');
+      b.classList.toggle('actif', t !== 'normal');
+    });
+  }
+  function changerTailleTexte(){
+    const suivante = TAILLES[(TAILLES.indexOf(tailleTexte()) + 1) % TAILLES.length];
+    if(suivante === 'normal') root.removeAttribute('data-texte'); else root.setAttribute('data-texte', suivante);
+    try{ localStorage.setItem(KEY_TEXTE, suivante); }catch(_e){}
+    majBoutonsTexte();
+    if(typeof window.toast === 'function') window.toast(`Taille du texte : ${NOMS_TAILLE[suivante]}`);
+  }
+  // Choix direct (fiche « Mon profil » des parents)
+  window.choisirTailleTexte = function(t){
+    if(!TAILLES.includes(t)) return;
+    if(t === 'normal') root.removeAttribute('data-texte'); else root.setAttribute('data-texte', t);
+    try{ localStorage.setItem(KEY_TEXTE, t); }catch(_e){}
+    majBoutonsTexte();
+  };
+  window.tailleTexteActuelle = tailleTexte;
+  function creerBoutonTexte(classes){
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'texte-toggle ' + (classes || '');
+    b.addEventListener('click', changerTailleTexte);
+    return b;
+  }
+
   function majBoutons(){
     const sombre = themeEffectif() === 'dark';
     // Seulement les vrais boutons de thème : le bouton Recherche partage leur style
@@ -234,13 +275,14 @@
   function demarrer(){
     // Bouton dans la barre du haut (application) et sur l'écran de connexion
     const barre = document.querySelector('.topbar-right');
-    if(barre) barre.insertBefore(creerBouton(), barre.firstChild);
+    if(barre){ barre.insertBefore(creerBouton(), barre.firstChild); barre.insertBefore(creerBoutonTexte(), barre.firstChild); }
     // Refonte : la bascule du personnel se trouve aussi dans le menu (DESIGN.md §7)
     const pied = document.querySelector('.sidebar-footer');
-    if(pied){ const deco = document.getElementById('btnSwitchRole'); pied.insertBefore(creerBouton('btn-reset theme-toggle-menu'), deco || null); }
+    if(pied){ const deco = document.getElementById('btnSwitchRole'); pied.insertBefore(creerBouton('btn-reset theme-toggle-menu'), deco || null); pied.insertBefore(creerBoutonTexte('btn-reset texte-toggle-menu'), deco || null); }
     // bouton de l'écran de connexion : seulement dans les applications (pas sur les pages simples)
     if(document.getElementById('loginGate')) document.body.appendChild(creerBouton('theme-toggle-gate'));
     majBoutons();
+    majBoutonsTexte();
 
     const toast = document.getElementById('toast');
     if(toast){ toast.setAttribute('role', 'status'); toast.setAttribute('aria-live', 'polite'); }

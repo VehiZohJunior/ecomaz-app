@@ -125,6 +125,9 @@
 @media (max-width:900px){
   :root{ --fs-sm:15px; }
 }
+/* Taille du texte choisie par l'utilisateur (bouton « Aa ») : plus confortable pour lire */
+html[data-texte="grand"]{ --fs-xs:14px; --fs-sm:17px; --fs-md:18px; --fs-lg:22px; }
+html[data-texte="tres-grand"]{ --fs-xs:15.5px; --fs-sm:19px; --fs-md:20px; --fs-lg:24px; }
 @media (prefers-reduced-motion: reduce){
   :root{ --dur-fast:0ms; --dur:0ms; --dur-slow:0ms; }
 }

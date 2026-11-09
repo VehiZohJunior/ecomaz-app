@@ -2302,6 +2302,8 @@ function ouvrirProfilParent(){
       <div class="profil-nom">${escapeHtml(session.nomComplet || '')}</div>
       <div class="hint">${escapeHtml(nomApplication())}</div>
       ${enfants ? `<div class="profil-sous">Enfant(s) relié(s)</div><ul class="profil-enfants">${enfants}</ul>` : ''}
+      ${window.choisirTailleTexte ? `<div class="profil-sous">Taille du texte</div>
+      <div class="segmente profil-texte" role="group" aria-label="Taille du texte">${[['normal', 'Normale'], ['grand', 'Grande'], ['tres-grand', 'Très grande']].map(([v, l]) => `<button type="button" class="seg${(window.tailleTexteActuelle ? window.tailleTexteActuelle() : 'normal') === v ? ' actif' : ''}" onclick="choisirTailleTexte('${v}'); this.parentElement.querySelectorAll('.seg').forEach(b => b.classList.toggle('actif', b === this))">${l}</button>`).join('')}</div>` : ''}
     </div>
     <div class="form-actions">
       <button type="button" class="btn secondary" onclick="closeModal(); navParent('accueil')">Fermer</button>
@@ -2734,6 +2736,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.11.9-13', nouveautes: {
+    commun: [ 'Nouveau bouton « Aa » en haut de l’écran : taille du texte Normale, Grande ou Très grande, mémorisée sur ce téléphone (plus confortable pour lire).' ],
+    parent: [],
+    portier: [],
+    personnel: [],
+  } },
   { version: '2026.11.9-12', nouveautes: {
     commun: [],
     parent: [],
