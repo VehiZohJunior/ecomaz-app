@@ -2062,3 +2062,12 @@ body.theme-portier .texte-toggle:not(.texte-toggle-menu){display:none !important
 /* Console parent sur téléphone : le choix se fait dans « Profil » (la barre du haut garde le nom de l'école lisible) */
 @media (max-width:480px){ body.theme-parent .topbar .texte-toggle{ display:none !important; } }
 .profil-texte{ margin-top:6px; flex-wrap:wrap; } .profil-texte .seg{ min-height:44px; padding:0 14px; }
+
+/* ===== Parent : absence à justifier (2026-11-09) ===== */
+.abs-justif{border-left:5px solid var(--warning);background:color-mix(in srgb,var(--warning) 8%,var(--surface))}
+.abs-justif-tete{display:flex;gap:10px;align-items:flex-start;margin-bottom:10px}
+.abs-justif-tete > svg{width:26px;height:26px;flex:0 0 26px;color:var(--warning)}
+.abs-justif-tete div{display:flex;flex-direction:column;gap:3px;min-width:0}
+.abs-justif-tete span{color:var(--text-dim);font-size:var(--fs-xs)}
+.abs-justif-pied{font-size:var(--fs-xs);color:var(--text-dim);display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px}
+.abs-justif-pied .lien-discret{margin:0}

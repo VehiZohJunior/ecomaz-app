@@ -1852,14 +1852,16 @@ async function ouvrirHistoriquePresences(eleveId){
 function renderAlerteAbsence(enfants){
   if(!Array.isArray(DB.presencesSemaine)) return '';
   const auj = isoLocal(new Date());
-  const absents = enfants.filter(e => DB.presencesSemaine.some(x => x.eleveId === e.id && x.date === auj && x.statut === 'Absent'));
+  // Absence pas encore justifiée : la carte « Absence à justifier » (motif en un toucher) la remplace
+  const absents = enfants.filter(e => DB.presencesSemaine.some(x => x.eleveId === e.id && x.date === auj && x.statut === 'Absent')
+    && !(Array.isArray(DB.absencesSignalees) && !absenceSignalee(e.id, auj)));
   if(!absents.length) return '';
-  return absents.map(e => `<div class="alerte-absence" role="alert">
-    <span class="alerte-ic" aria-hidden="true">${window.EmIcones ? EmIcones.svg('triangle-alert') : '⚠️'}</span>
+  return absents.map(e => { const sig = Array.isArray(DB.absencesSignalees) ? absenceSignalee(e.id, auj) : null; return `<div class="alerte-absence" role="alert">
+    <span class="alerte-ic" aria-hidden="true">${window.EmIcones ? EmIcones.svg(sig ? 'circle-check' : 'triangle-alert') : '⚠️'}</span>
     <div><strong>${escapeHtml(e.prenom || eleveFullName(e))} est noté(e) absent(e) aujourd’hui.</strong>
-      <div class="alerte-sous">Les détails sont dans vos notifications.</div></div>
+      <div class="alerte-sous">${sig ? `Motif transmis à l’école : ${escapeHtml(sig.motif)}.` : 'Les détails sont dans vos notifications.'}</div></div>
     <button type="button" class="btn sm" onclick="event.stopPropagation(); toggleBulle('notif')">Voir</button>
-  </div>`).join('');
+  </div>`; }).join('');
 }
 // Bulletin d'un élève pour un trimestre (même calcul que la fiche élève du personnel)
 function calculBulletin(eleveId, trimestre){
@@ -1978,6 +1980,32 @@ function renderFicheEnfant(e){
 }
 // Carte « Aujourd'hui » : présence du jour, prochain événement, devoirs, reste à payer.
 // Plusieurs enfants : sélecteur par avatars (affichage seulement, données déjà chargées).
+/* ---------- Parent : absence notée par l'école → justifier en un toucher (aujourd'hui ou hier) ---------- */
+function renderAbsencesAJustifier(enfants){
+  if(!(DB.presencesSemaine || []).length) return '';
+  if(DB.absencesSignalees === undefined){ DB.absencesSignalees = null; chargerAbsencesSignalees().then(() => { if(ui.role === 'parent' && document.querySelector('.abs-justif-zone')) $('#viewContainer').innerHTML = renderParentDashboard(); }).catch(() => { DB.absencesSignalees = []; }); return ''; }
+  if(DB.absencesSignalees === null) return '';
+  const hier = isoDansJours(-1), auj = todayISO();
+  const aJustifier = (DB.presencesSemaine || []).filter(p => p.statut === 'Absent' && p.date >= hier && p.date <= auj && !absenceSignalee(p.eleveId, p.date))
+    .map(p => ({ p, e: enfants.find(e => e.id === p.eleveId) })).filter(x => x.e);
+  if(!aJustifier.length) return '';
+  return aJustifier.map(({ p, e }) => `<section class="panel abs-justif em-rise" aria-label="Absence à justifier">
+    <div class="abs-justif-tete">${icone('triangle-alert')}<div><strong>${escapeHtml(e.prenom)} a été noté${e.sexe === 'F' ? 'e' : ''} absent${e.sexe === 'F' ? 'e' : ''} ${p.date === auj ? 'aujourd’hui' : 'hier'}</strong>
+      <span>Si vous connaissez la raison, touchez-la : l’école et l’enseignant sont prévenus.</span></div></div>
+    <div class="dv-puces">${MOTIFS_SIGNALEMENT.map(m => `<button type="button" class="dv-puce" onclick="justifierAbsence('${e.id}','${p.date}', this.textContent)">${escapeHtml(m)}</button>`).join('')}</div>
+    <div class="abs-justif-pied">Votre enfant était bien présent ? <button type="button" class="lien-discret" onclick="justifierAbsence('${e.id}','${p.date}','Présent selon le parent','Le parent indique que l’enfant était présent : vérifier l’appel.')">Signaler une erreur</button></div>
+  </section>`).join('');
+}
+async function justifierAbsence(eleveId, date, motif, commentaire){
+  try{
+    const { data, error } = await sb.from('absences_signalees').insert({ eleve_id: eleveId, date_debut: date, date_fin: date, motif: motif.trim(), commentaire: commentaire || '', parent_nom: signatureAuteur() }).select().single();
+    if(error) throw erreurLisible(error);
+    DB.absencesSignalees = (DB.absencesSignalees || []).concat(rowToCamel(data));
+    sb.functions.invoke('notifier-personnel', { body: { type: 'absence' } }).catch(() => {});
+    toast(commentaire ? 'Merci : l’école va vérifier l’appel.' : 'Merci : l’école est prévenue du motif de l’absence.');
+    $('#viewContainer').innerHTML = renderParentDashboard();
+  }catch(e){ alert('Erreur : ' + e.message); }
+}
 function renderAujourdhuiParent(enfants){
   if(!enfants.length) return '';
   const e = enfants.find(x => x.id === ui.enfantAujourdhui) || enfants[0];
@@ -2079,7 +2107,7 @@ function renderParentDashboard(){
   return `<div class="view active parent-accueil">
     ${renderBandeDefilanteParent()}
     ${renderAnnonceDuMoment()}
-    ${renderAlerteAbsence(mesEnfants)}
+    ${renderAlerteAbsence(mesEnfants)}<div class="abs-justif-zone">${renderAbsencesAJustifier(mesEnfants)}</div>
     <div class="em-rise" style="--i:1">
       <div class="role-etiquette">${titreTableauDeBord('parent')}</div>
       <h2 class="parent-greeting">${escapeHtml(salutation())} <span class="salut-main em-wave">${window.EmIcones ? EmIcones.svg('hand') : '👋'}</span></h2>
@@ -2736,6 +2764,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.11.9-17', nouveautes: {
+    commun: [],
+    parent: [ 'Votre enfant a été noté absent ? Une carte « Absence à justifier » apparaît sur l’accueil : touchez le motif (maladie, rendez-vous…), l’école et l’enseignant sont prévenus. Vous pouvez aussi signaler une erreur d’appel.' ],
+    portier: [],
+    personnel: [],
+  } },
   { version: '2026.11.9-16', nouveautes: {
     commun: [],
     parent: [],

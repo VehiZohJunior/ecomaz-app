@@ -90,6 +90,7 @@
   --em-border: #26332d;
   --em-green-100: #1d3a2f;
   --em-terracotta-100: #3a221b;
+  --em-terracotta-800: #f2b8a2; /* texte clair sur fond terracotta sombre */
   --em-gold-100: #3a2e17;
   --em-shadow-md: 0 8px 24px rgba(0, 0, 0, 0.35);
   --em-shadow-hover: 0 14px 30px rgba(0, 0, 0, 0.45);
@@ -99,7 +100,7 @@
   :root:not([data-theme="light"]) {
     --em-bg: #0f1613; --em-surface: #17201c; --em-text: #eef3f0;
     --em-text-muted: #9fb0a7; --em-border: #26332d; --em-green-100: #1d3a2f;
-    --em-terracotta-100: #3a221b; --em-gold-100: #3a2e17;
+    --em-terracotta-100: #3a221b; --em-terracotta-800: #f2b8a2; --em-gold-100: #3a2e17;
     --em-shadow-md: 0 8px 24px rgba(0, 0, 0, 0.35);
   }
 }

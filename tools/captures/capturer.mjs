@@ -188,6 +188,7 @@ for(const theme of THEMES){
         emarg: () => { ouvrirListeClasse(DB.classes[0].id, 'emargement'); },
         cartes: () => { ouvrirCartesScolaires(DB.classes[0].id); },
         relance: () => { ouvrirRelanceEnseignants(); },
+        absjustif: () => { const e = DB.eleves[0]; DB.absencesSignalees = []; DB.presencesSemaine = (DB.presencesSemaine || []).filter(p => p.date !== todayISO()).concat([{ eleveId: e.id, date: todayISO(), statut: 'Absent' }]); $('#viewContainer').innerHTML = renderParentDashboard(); window.scrollTo(0, 0); },
         profilparent: () => { ouvrirProfilParent(); },
         coupons: async () => { window.__codesInvitation = {}; famillesARelancer(null).forEach((f, i) => { if(f.tel) window.__codesInvitation[f.tel] = 'CODEESSAI' + i + 'abcdef'; }); await imprimerInvitationsPapier(''); },
         avancement: () => { const c = classesVisibles()[0]; DB.programmes = [{ id:'prog-essai', enseignantId: session.enseignantId, classeId: c.id, matiere:'Langage', trimestre: trimestreCourant(), progression: 40, dateMaj:'2026-09-20', contenu:'' }]; renderView('programmes'); ouvrirAvancement('prog-essai'); },
