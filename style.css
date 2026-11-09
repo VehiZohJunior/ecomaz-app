@@ -1946,3 +1946,21 @@ body.theme-portier .alerte-inscription{ background:rgba(232,176,75,.12); color:i
 .se-plus[open] > summary{margin-bottom:8px}
 .db-bonjour > div{ min-width:0; max-width:100%; flex:1 1 220px; }
 .db-bonjour h2{ overflow-wrap:anywhere; }
+
+/* ===== Écran d'appel simplifié (2026-11-09) ===== */
+.appel-filtres{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end}
+.appel-champ{display:flex;flex-direction:column;gap:4px;font-size:var(--fs-xs,.8rem);color:var(--text-dim);font-weight:600;min-width:0}
+.appel-champ select,.appel-champ input{min-height:44px}
+.appel-classes{flex-wrap:wrap;max-width:100%}
+.appel-classes .seg{min-height:44px;padding:0 14px}
+.appel-fait{display:flex;gap:12px;align-items:flex-start;padding:12px 14px;margin:0 0 12px;border-radius:12px;border:1px solid color-mix(in srgb,var(--success) 35%,var(--border));background:color-mix(in srgb,var(--success) 12%,var(--surface))}
+.appel-fait-ic svg{width:26px;height:26px;color:var(--success)}
+.appel-fait-txt{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
+.appel-fait-txt span{color:var(--text-dim);font-size:var(--fs-xs,.85rem)}
+.appel-fait-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
+.appel-fait-actions .btn{min-height:44px;display:inline-flex;align-items:center;gap:6px}
+.appel-histo > summary{cursor:pointer;font-weight:700;min-height:44px;display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.appel-histo[open] > summary{margin-bottom:10px}
+.appel-lien-cahier{margin:4px 0 var(--sp-4)}
+.appel-lien-cahier .lien-discret{display:inline-flex;align-items:center;gap:6px;min-height:44px}
+#btnValiderAppel[disabled]{opacity:.7;cursor:progress}

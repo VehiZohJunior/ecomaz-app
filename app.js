@@ -2734,6 +2734,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.11.9-3', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Appel plus simple : consigne en 2 étapes, classes en boutons (✓ quand l’appel est fait), « Jour de l’appel » et « Revenir à aujourd’hui ». Après validation : « Appel suivant » ou « Retour à mes tâches ».', 'Appel enregistré en une seule fois pour toute la classe : beaucoup plus rapide avec un réseau faible, et un double appui sur « Valider » ne crée plus rien en double.', 'Historique de l’appel : seulement la classe choisie, replié (secrétariat, direction, fondation) ; l’enseignant passe par le Cahier d’appel.' ],
+  } },
   { version: '2026.11.9-2', nouveautes: {
     commun: [],
     parent: [],
@@ -5899,10 +5905,14 @@ function renderAppelDuJour(classeId, eleves, date){
     </li>`;
   }).join('');
   return `${!jourDeClasse ? `<div class="section-note">${auj === todayISO() ? 'Aujourd’hui n’est' : 'Ce jour n’est'} pas un jour de classe. Vous pouvez quand même faire l’appel si besoin.</div>` : ''}
-    ${dejaFait ? `<div class="banniere-discrete" style="margin-bottom:10px;"><span>${icone('circle-check')}</span><span>L’appel ${auj === todayISO() ? 'd’aujourd’hui' : 'de ce jour'} est déjà enregistré. Vous pouvez le corriger puis valider à nouveau.</span></div>` : ''}
+    ${dejaFait ? (() => {
+      const suivante = ui.role === 'enseignant' && auj === todayISO() ? classesVisibles().find(c => c.id !== classeId && DB.eleves.some(e => e.classeId === c.id && e.statut === 'Actif') && !DB.presencesEleves.some(p => p.classeId === c.id && p.date === auj)) : null;
+      return `<div class="appel-fait" role="status"><span class="appel-fait-ic" aria-hidden="true">${icone('circle-check')}</span>
+        <div class="appel-fait-txt"><strong>Appel ${auj === todayISO() ? 'd’aujourd’hui' : 'de ce jour'} enregistré.</strong><span>Vous pouvez encore le corriger : changez un statut puis validez à nouveau.</span>
+        ${ui.role === 'enseignant' ? `<div class="appel-fait-actions">${suivante ? `<button type="button" class="btn sm" onclick="allerAppel('${suivante.id}','${auj}')">Appel suivant : ${escapeHtml(suivante.nom)}</button>` : ''}<button type="button" class="btn ${suivante ? 'secondary ' : ''}sm" onclick="go('dashboard')">${icone('house')} Retour à mes tâches</button></div>` : ''}</div></div>`; })() : ''}
     <div class="cj-haut"><button type="button" class="btn secondary sm" onclick="tousPresents()">${icone('check')} Tous présents</button><span class="hint" style="margin:0;">${fmtDate(auj)}</span></div>
     <ul class="cj-liste">${lignes}</ul>
-    <div class="cj-valider"><span class="appel-compteur" id="appelCompteur"></span><button type="button" class="btn" onclick="validerAppelDuJour()">Valider l’appel</button></div>
+    <div class="cj-valider"><span class="appel-compteur" id="appelCompteur"></span><button type="button" class="btn" id="btnValiderAppel" onclick="validerAppelDuJour()">Valider l’appel</button></div>
     ${(setTimeout(majCompteurAppel, 0), '')}`;
 }
 function choisirStatutAppel(eleveId, statut){
@@ -7953,7 +7963,9 @@ function renderPresencesEleves(){
   }
   const eleves = DB.eleves.filter(e=>e.classeId===f.classeId && e.statut==='Actif').sort((a,b)=>a.nom.localeCompare(b.nom));
   const nbSignalees = eleves.filter(e => absenceSignalee(e.id, f.date)).length;
-  const recent = DB.presencesEleves.slice().sort((a,b)=>b.date.localeCompare(a.date)).slice(0,20);
+  const admin = ['secretariat','direction','fondation'].includes(ui.role);
+  // Historique : seulement la classe choisie (et replié) ; l'enseignant a le Cahier d'appel
+  const recent = admin ? DB.presencesEleves.filter(p => p.classeId === f.classeId).sort((a,b)=>b.date.localeCompare(a.date)).slice(0,20) : [];
   const recentRows = recent.map(p=>{
     const e = eleveById(p.eleveId);
     if(!e) return '';
@@ -7964,26 +7976,30 @@ function renderPresencesEleves(){
   return `
   <div class="view active">
     <div class="panel">
-      <div class="panel-head"><div><h2>Feuille de présence</h2><div class="sub">Par classe et par date</div></div></div>
-      ${nbSignalees ? `<div class="section-note">${nbSignalees} absence(s) signalée(s) à l'avance par les parents : déjà marquée(s) « Absent » ci-dessous. Vérifiez puis enregistrez.</div>` : ''}
-      <div class="filters">
-        <select onchange="ui.filters.presEleves.classeId=this.value; renderView('presences-eleves')">
-          ${mesClasses.map(c=>`<option value="${c.id}" ${f.classeId===c.id?'selected':''}>${c.nom}</option>`).join('')}
-        </select>
-        <input type="date" value="${f.date}" onchange="ui.filters.presEleves.date=this.value; renderView('presences-eleves')">
+      <div class="panel-head"><div><h2>${admin ? 'Feuille de présence' : `Faire l’appel — ${escapeHtml(classeName(f.classeId))}`}</h2>
+        <div class="sub">${admin ? 'Par classe et par date' : '① Touchez « Absent » ou « Retard » pour les élèves concernés : les autres restent « Présent ». ② Appuyez sur « Valider l’appel », en bas.'}</div></div></div>
+      ${nbSignalees ? `<div class="section-note">${nbSignalees} absence(s) signalée(s) à l'avance par les parents : déjà marquée(s) « Absent » ci-dessous. Vérifiez puis validez.</div>` : ''}
+      <div class="filters appel-filtres">
+        ${mesClasses.length === 1 ? '' : mesClasses.length <= 5
+          ? `<div class="segmente appel-classes" role="group" aria-label="Classe">${mesClasses.map(c => `<button type="button" class="seg${f.classeId === c.id ? ' actif' : ''}" aria-pressed="${f.classeId === c.id}" onclick="ui.filters.presEleves.classeId='${c.id}'; renderView('presences-eleves')">${escapeHtml(c.nom)}${DB.presencesEleves.some(p => p.classeId === c.id && p.date === f.date) ? ' ✓' : ''}</button>`).join('')}</div>`
+          : `<label class="appel-champ"><span>Classe</span><select onchange="ui.filters.presEleves.classeId=this.value; renderView('presences-eleves')">
+          ${mesClasses.map(c=>`<option value="${c.id}" ${f.classeId===c.id?'selected':''}>${escapeHtml(c.nom)}</option>`).join('')}
+        </select></label>`}
+        <label class="appel-champ"><span>Jour de l’appel</span><input type="date" value="${f.date}" max="${todayISO()}" onchange="ui.filters.presEleves.date=this.value || todayISO(); renderView('presences-eleves')"></label>
+        ${f.date !== todayISO() ? `<button type="button" class="btn secondary sm" onclick="ui.filters.presEleves.date=todayISO(); renderView('presences-eleves')">Revenir à aujourd’hui</button>` : ''}
       </div>
       ${eleves.length===0 ? `<div class="empty-state"><div class="em-ic">✅</div>Aucun élève actif dans cette classe.</div>` : `
       ${renderAppelDuJour(f.classeId, eleves, f.date)}`}
     </div>
     ${renderPrevenirParentsWhatsapp(f)}
 
-    <div class="panel">
-      <div class="panel-head"><div><h2>Historique récent</h2><div class="sub">20 derniers enregistrements</div></div></div>
+    ${admin ? `<details class="panel appel-histo">
+      <summary>Historique récent — ${escapeHtml(classeName(f.classeId))} <span class="hint" style="margin:0;">(20 derniers enregistrements)</span></summary>
       <div class="table-wrap"><table>
         <thead><tr><th>Date</th><th>Élève</th><th>Classe</th><th>Statut</th><th>Motif</th></tr></thead>
         <tbody>${recentRows || '<tr><td colspan="5" class="hint">Aucun enregistrement</td></tr>'}</tbody>
       </table></div>
-    </div>
+    </details>` : `<div class="appel-lien-cahier"><button type="button" class="lien-discret" onclick="go('cahier-appel')">${icone('clipboard')} Voir tous les appels du mois (Cahier d’appel)</button></div>`}
   </div>`;
 }
 
@@ -8039,30 +8055,46 @@ function majCompteurAppel(){
   const v = $$('.sel-statut').map(s => s.value);
   z.textContent = `${v.filter(x => x === 'Présent').length} présent(s) · ${v.filter(x => x === 'Absent').length} absent(s) · ${v.filter(x => x === 'Retard').length} retard(s)`;
 }
+let appelEnCours = false;
 async function savePresencesEleves(){
   const f = ui.filters.presEleves;
+  if(appelEnCours) return; // un deuxième appui pendant l'enregistrement ne relance rien
+  appelEnCours = true;
+  const btn = document.getElementById('btnValiderAppel');
+  if(btn){ btn.disabled = true; btn.textContent = 'Enregistrement…'; }
   let nbNotifs = 0;
   try{
+    // 1) Lire la feuille : nouveaux enregistrements, modifications réelles, nouveaux absents
+    const nouveaux = [], modifs = [], aPrevenir = [];
     for(const sel of $$('.sel-statut')){
       const eleveId = sel.dataset.eleve;
       const statut = sel.value;
       const motifInput = $(`[data-motif="${eleveId}"]`);
       const motif = motifInput ? motifInput.value.trim() : '';
-      let rec = DB.presencesEleves.find(p=>p.eleveId===eleveId && p.date===f.date);
+      const rec = DB.presencesEleves.find(p=>p.eleveId===eleveId && p.date===f.date);
       const wasAbsent = rec && rec.statut==='Absent';
-      if(rec){
-        await dbUpdate('presences_eleves', rec.id, {statut, motif});
-        rec.statut = statut; rec.motif = motif;
-      } else {
-        DB.presencesEleves.push(await dbInsert('presences_eleves', {date:f.date, classeId:f.classeId, eleveId, statut, motif}));
-      }
-      if(statut==='Absent' && !wasAbsent && !absenceSignalee(eleveId, f.date)){ await envoyerNotificationAbsenceEleve(eleveId, f.date, motif); nbNotifs += 3; }
+      if(!rec) nouveaux.push({date:f.date, classeId:f.classeId, eleveId, statut, motif});
+      else if(rec.statut !== statut || (rec.motif || '') !== motif) modifs.push({ rec, statut, motif });
+      if(statut==='Absent' && !wasAbsent && !absenceSignalee(eleveId, f.date)) aPrevenir.push({ eleveId, motif });
     }
+    // 2) Toute la classe en un seul envoi (rapide même avec un réseau faible ; file d'attente si hors ligne)
+    if(nouveaux.length){
+      try{ DB.presencesEleves.push(...await dbInsertMany('presences_eleves', nouveaux)); }
+      catch(_e){ for(const n of nouveaux){ DB.presencesEleves.push(await dbInsert('presences_eleves', n)); } } // ex. un autre appareil a déjà commencé l'appel
+    }
+    for(const m of modifs){ await dbUpdate('presences_eleves', m.rec.id, { statut: m.statut, motif: m.motif }); m.rec.statut = m.statut; m.rec.motif = m.motif; }
+    // 3) Prévenir les parents des nouveaux absents
+    for(const a of aPrevenir){ await envoyerNotificationAbsenceEleve(a.eleveId, f.date, a.motif); nbNotifs += 3; }
     toast(nbNotifs ? (['secretariat','direction','fondation'].includes(ui.role)
       ? 'Présence enregistrée · prévenez les parents des absents par WhatsApp (plus bas)'
       : 'Présence enregistrée · absences signalées au parent dans son application et à la direction') : 'Présence enregistrée');
+    appelEnCours = false;
     renderView('presences-eleves');
-  }catch(e){ alert('Erreur : ' + e.message); }
+  }catch(e){
+    appelEnCours = false;
+    if(btn){ btn.disabled = false; btn.textContent = 'Valider l’appel'; }
+    alert('Erreur : ' + e.message);
+  }
 }
 // Le numéro de téléphone du parent n'est plus jamais chargé ni manipulé
 // dans le navigateur : toute la logique (composition du message, journal
