@@ -2820,6 +2820,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.11.10-9', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Notes et bulletins (direction) : bouton « État des bulletins » à consulter à tout moment — moyennes, compositions et appréciations classe par classe, avec accès direct au suivi des enseignants pour relancer.' ],
+  } },
   { version: '2026.11.10-8', nouveautes: {
     commun: [],
     parent: [],
@@ -8348,19 +8354,21 @@ function etatBulletinsTrimestre(trimestre){
     return { c, eleves: eleves.length, avecMoyenne, attendues, saisies, appr, complet: avecMoyenne === eleves.length && saisies >= attendues && appr === eleves.length };
   }).filter(Boolean);
 }
-function confirmerPublicationBulletins(trimestre){
+function confirmerPublicationBulletins(trimestre, lecture){
   return new Promise(resoudre => {
     const etat = etatBulletinsTrimestre(trimestre), incomplets = etat.filter(x => !x.complet);
     window.__publication = ok => { window.__publication = null; closeModal(); resoudre(ok); };
     const cell = (n, sur) => `<td class="${n >= sur ? 'pb-ok' : 'pb-ko'}">${n} / ${sur}</td>`;
-    openModal(`Publier les bulletins du ${libelleTrimestre(trimestre)} ?`, `
+    openModal(lecture ? `État des bulletins — ${libelleTrimestre(trimestre)}` : `Publier les bulletins du ${libelleTrimestre(trimestre)} ?`, `
       ${incomplets.length
         ? `<div class="pb-alerte">${icone('triangle-alert')}<span><strong>${incomplets.length} classe${incomplets.length > 1 ? 's ont' : ' a'} des bulletins incomplets.</strong> Les parents verraient des notes ou des appréciations manquantes.</span></div>`
         : `<div class="pb-ok-bandeau">${icone('circle-check')}<span>Tous les bulletins sont complets.</span></div>`}
       <ul class="pb-liste">${etat.map(x => `<li class="pb-ligne${x.complet ? ' complet' : ''}"><strong>${escapeHtml(x.c.nom)}</strong>
         <span class="pb-puces"><span class="pb-puce ${x.avecMoyenne >= x.eleves ? 'pb-ok' : 'pb-ko'}">Moyennes ${x.avecMoyenne}/${x.eleves}</span><span class="pb-puce ${x.saisies >= x.attendues ? 'pb-ok' : 'pb-ko'}">Compositions ${x.saisies}/${x.attendues}</span><span class="pb-puce ${x.appr >= x.eleves ? 'pb-ok' : 'pb-ko'}">Appréciations ${x.appr}/${x.eleves}</span></span></li>`).join('')}</ul>
       <p class="hint">Après publication : chaque parent voit le bulletin de SES enfants et reçoit une notification ; les notes sont verrouillées (seule la direction peut encore corriger, avec historique).</p>
-      <div class="form-actions">${incomplets.length
+      <div class="form-actions">${lecture
+        ? `${incomplets.length ? `<button type="button" class="btn secondary" onclick="__publication(false); setTimeout(() => { go('dashboard'); setTimeout(() => document.getElementById('titreSuiviEns')?.scrollIntoView({ behavior:'smooth', block:'start' }), 300); }, 50)">Relancer les enseignants</button>` : ''}<button type="button" class="btn" onclick="__publication(false)">Fermer</button>`
+        : incomplets.length
         ? `<button type="button" class="btn" onclick="__publication(false)">Compléter d’abord</button><button type="button" class="btn danger" onclick="__publication(true)">Publier quand même</button>`
         : `<button type="button" class="btn secondary" onclick="__publication(false)">Annuler</button><button type="button" class="btn" onclick="__publication(true)">Publier aux parents</button>`}</div>`);
     // Fermeture par la croix ou Échap = pas de publication
@@ -8461,7 +8469,9 @@ function renderNotes(){
       <div class="panel-head"><div><h2>📒 Bulletins visibles par les parents</h2><div class="sub">Publiez un trimestre quand toutes les notes sont saisies : chaque parent verra le bulletin de SES enfants dans son application</div></div></div>
       <div style="display:flex;flex-wrap:wrap;gap:14px;">${TRIMESTRES.map(t => `<label style="display:flex;align-items:center;gap:8px;font-weight:700;"><input type="checkbox" ${(DB.meta.bulletinsPublies || []).includes(t) ? 'checked' : ''} onchange="publierBulletins('${t}', this.checked)"> ${t} publié</label>`).join('')}</div>
       <div class="hint" style="margin:10px 0 0;">Une fois un trimestre publié, ses notes sont verrouillées : seules la direction et la fondation peuvent encore les corriger, et chaque correction est gardée dans l’historique.</div>
-      <button type="button" class="btn secondary sm" style="margin-top:10px;" onclick="ouvrirHistoriqueNotes()">${icone('scroll-text')} Historique des modifications de notes</button>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;">
+        <button type="button" class="btn sm" onclick="confirmerPublicationBulletins(trimestreCourant(), true)">${icone('clipboard')} État des bulletins du ${libelleTrimestre(trimestreCourant())}</button>
+        <button type="button" class="btn secondary sm" onclick="ouvrirHistoriqueNotes()">${icone('scroll-text')} Historique des modifications de notes</button></div>
     </div>` : ''}
 
     <div class="panel">

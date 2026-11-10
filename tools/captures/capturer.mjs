@@ -188,6 +188,7 @@ for(const theme of THEMES){
         emarg: () => { ouvrirListeClasse(DB.classes[0].id, 'emargement'); },
         cartes: () => { ouvrirCartesScolaires(DB.classes[0].id); },
         relance: () => { ouvrirRelanceEnseignants(); },
+        etatbull: () => { confirmerPublicationBulletins(trimestreCourant(), true); },
         publication: () => { confirmerPublicationBulletins(trimestreCourant()); },
         reprisegroupe: () => { ouvrirRepriseVersements(ui.filters.comptaClasse || DB.classes[0].id); const b = document.querySelector('.rv-groupe .dv-puce'); if(b) b.click(); const m = document.querySelectorAll('.rv-montant'); if(m[0]) { m[0].value = ''; totalReprise(); } },
         rappelscol: () => { const e = DB.eleves[0]; DB.meta.scolariteVisibleParents = true; DB.versementsSaisis = true; const d = new Date(); const iso = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-05`; DB.echeancesScolarite = [{ id:'t1', label:'1er versement', montant:30000, dateEcheance: iso.slice(0,8) + '01', classeId: e.classeId, ordre:1 }, { id:'t2', label:'2e versement', montant:30000, dateEcheance: iso, classeId: e.classeId, ordre:2 }]; DB.paiementsScolarite = [{ eleveId: e.id, tranche:'1er versement', montant:30000 }]; $('#viewContainer').innerHTML = renderParentDashboard(); document.querySelectorAll('#viewContainer details').forEach(d => d.open = true); window.scrollTo(0, 0); },
