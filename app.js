@@ -2118,7 +2118,6 @@ function renderParentDashboard(){
   const prenomParent = (session.nomComplet||'').trim().split(/\s+/)[0] || '';
   const plusieurs = mesEnfants.length > 1;
   return `<div class="view active parent-accueil">
-    ${renderBandeDefilanteParent()}
     ${renderAnnonceDuMoment()}
     <div class="em-rise" style="--i:1">
       <div class="role-etiquette">${titreTableauDeBord('parent')}</div>
@@ -2126,7 +2125,9 @@ function renderParentDashboard(){
       <p class="parent-greeting-sub">Voici la semaine de ${plusieurs ? 'vos enfants' : 'votre enfant'}.</p>
       ${renderQuestionAppel()}
     </div>
-    <div class="zone-tete zone-privee" role="note">${icone('lock')}<div><strong>Mon espace privé</strong><span>Visible seulement par vous et l’école : absences, devoirs, notes, bulletins, scolarité et messages de ${plusieurs ? 'vos enfants' : 'votre enfant'}. Aucun autre parent n’y a accès.</span></div></div>
+    <section class="groupe-parent groupe-prive" aria-labelledby="titreGroupePrive">
+      <header class="groupe-tete">${icone('lock')}<div><h2 id="titreGroupePrive">C’est vous seul qui voyez ces informations</h2>
+        <span>Vos enfants, leurs absences, devoirs, notes, bulletins, scolarité et vos messages avec l’école. Aucun autre parent n’y a accès.</span></div></header>
     ${renderAlerteAbsence(mesEnfants)}<div class="abs-justif-zone">${renderAbsencesAJustifier(mesEnfants)}</div>
     ${renderRappelScolariteParent(mesEnfants)}
     ${renderBienvenueParent(mesEnfants)}
@@ -2136,13 +2137,18 @@ function renderParentDashboard(){
     </div>
     <div class="form-actions actions-parent" style="justify-content:flex-start;margin:0 0 var(--sp-4);"><button type="button" class="btn secondary" onclick="ouvrirSignalerAbsence()">📝 Signaler une absence à l’avance</button><button type="button" class="btn secondary" onclick="ouvrirDemandeDocument()">📄 Demander un document</button></div>
     ${renderDevoirsParent(mesEnfants)}
-    <div class="zone-tete zone-commune" role="note">${icone('school')}<div><strong>Le fil de l’école</strong><span>Informations communes à tous les parents : menu de la cantine, agenda, nouvelles, tableau d’honneur, photos.</span></div></div>
+    </section>
+    <section class="groupe-parent groupe-public" aria-labelledby="titreGroupePublic">
+      <header class="groupe-tete">${icone('school')}<div><h2 id="titreGroupePublic">Informations publiques de l’école</h2>
+        <span>Les mêmes pour tous les parents : activités, menu de la cantine, agenda, nouvelles, tableau d’honneur, photos.</span></div></header>
+    ${renderBandeDefilanteParent()}
     ${renderMenuParent()}
     ${renderAgendaParent()}
     ${renderInformationsPassees()}
     ${renderTableauHonneurParent()}
     <div class="form-actions" style="justify-content:flex-start;margin:0 0 var(--sp-4);"><button type="button" class="btn secondary" onclick="navParent('vie')">${icone('camera')} Voir les photos et nouvelles de l’école</button></div>
     ${renderContactEcole()}
+    </section>
   </div>`;
 }
 /* ---------- Parent : rappel de scolarité (dès le 25 pour le mois suivant), avec bip une fois par jour ----------
@@ -2869,6 +2875,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.11.10-13', nouveautes: {
+    commun: [],
+    parent: [ 'Votre accueil est rangé en deux groupes bien séparés : « C’est vous seul qui voyez ces informations » (vos enfants, absences, notes, bulletins, scolarité, messages) et « Informations publiques de l’école » (activités, cantine, agenda, nouvelles, tableau d’honneur, photos).' ],
+    portier: [],
+    personnel: [],
+  } },
   { version: '2026.11.10-12', nouveautes: {
     commun: [],
     parent: [ 'Scolarité : le suivi des paiements et le bouton Mobile Money apparaissent dès que l’école a enregistré les versements déjà reçus (pour qu’aucun parent ne paie deux fois).' ],
@@ -5857,7 +5869,7 @@ function fermerVisionneuse(){ const el = document.getElementById('visionneuse');
 function renderFilParent(){
   return `<div class="view active parent-accueil">
     <h2 class="parent-greeting" style="margin-bottom:var(--sp-2);">📸 Vie de l’école</h2>
-    <div class="zone-tete zone-commune" role="note">${icone('school')}<div><strong>Le fil de l’école</strong><span>Commun à tous les parents de l’école. Les informations de votre enfant restent dans votre espace privé (onglet Accueil).</span></div></div>
+    <div class="groupe-tete groupe-tete-seule groupe-public">${icone('school')}<div><h2>Informations publiques de l’école</h2><span>Les mêmes pour tous les parents. Les informations de votre enfant restent dans « C’est vous seul qui voyez ces informations » (onglet Accueil).</span></div></div>
     <div id="filContenu">${renderFilContenu()}</div>
   </div>`;
 }
