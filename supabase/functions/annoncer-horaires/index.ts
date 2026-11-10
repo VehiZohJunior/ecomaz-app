@@ -40,8 +40,9 @@ const fcfa = (n: number) => Math.round(n).toLocaleString('fr-FR').replace(/ |�
 const jj = (iso: string) => iso.split('-').reverse().join('/');
 const ecartJours = (a: string, b: string) => Math.round((Date.parse(a + 'T12:00:00Z') - Date.parse(b + 'T12:00:00Z')) / 86400000);
 
-// Relance polie des tranches impayées : J-3, jour J, J+7. Envoyée par
-// notification et dans la messagerie du parent, une seule fois par étape.
+// Relance polie des tranches impayées : dès le 25 du mois pour la tranche du mois suivant,
+// puis J-3, jour J, J+7. Envoyée par notification (avec son et vibration) et dans la
+// messagerie du parent, une seule fois par étape.
 // deno-lint-ignore no-explicit-any
 async function relancesScolarite(admin: any, aujourdhui: string, minuteActuelle: number): Promise<number> {
   const { data: ecoles } = await admin.from('ecoles').select('id, nom_ecole, heure_relances')
@@ -64,6 +65,8 @@ async function relancesScolarite(admin: any, aujourdhui: string, minuteActuelle:
     for (const p of (paiements || []) as { eleve_id: string; tranche: string; montant: number }[]) {
       paye[`${p.eleve_id}|${p.tranche}`] = (paye[`${p.eleve_id}|${p.tranche}`] || 0) + Number(p.montant || 0);
     }
+    const jourDuMois = Number(aujourdhui.slice(8, 10));
+    const moisSuivant = (([a, m]) => (m === 12 ? `${a + 1}-01` : `${a}-${String(m + 1).padStart(2, '0')}`))(aujourdhui.split('-').map(Number) as [number, number]);
     for (const e of (eleves || []) as { id: string; nom: string; prenom: string; classe_id: string }[]) {
       const propres = toutes.filter((t) => t.classe_id === e.classe_id);
       const grille = propres.length ? propres : toutes.filter((t) => !t.classe_id);
@@ -71,19 +74,23 @@ async function relancesScolarite(admin: any, aujourdhui: string, minuteActuelle:
         const reste = Number(t.montant || 0) - (paye[`${e.id}|${t.label}`] || 0);
         if (reste <= 0) continue;
         const d = ecartJours(t.date_echeance, aujourdhui);
-        const etape = d === 3 ? 'J-3' : d === 0 ? 'J' : d === -7 ? 'J+7' : null;
+        const etape = d === 3 ? 'J-3' : d === 0 ? 'J' : d === -7 ? 'J+7'
+          : (jourDuMois >= 25 && t.date_echeance.slice(0, 7) === moisSuivant) ? 'M25' : null; // dès le 25 : tranche du mois suivant
         if (!etape) continue;
         const { error: deja } = await admin.from('rappels_envoyes').insert({ ecole_id: ec.id, type: `scol|${e.id}|${t.id}|${etape}`, date: aujourdhui });
         if (deja) continue;
         const enfant = `${e.prenom} ${e.nom}`;
-        const texte = etape === 'J-3'
+        const nomMois = new Date(t.date_echeance + 'T12:00:00Z').toLocaleDateString('fr-FR', { month: 'long', timeZone: 'UTC' });
+        const texte = etape === 'M25'
+          ? `Scolarité de ${nomMois} : la tranche « ${t.label} » de ${enfant} (${fcfa(reste)}) est à régler avant le ${jj(t.date_echeance)}. Vous pouvez la payer dès maintenant au secrétariat. Merci !`
+          : etape === 'J-3'
           ? `Petit rappel : la tranche « ${t.label} » de ${enfant} (reste ${fcfa(reste)}) est à régler avant le ${jj(t.date_echeance)}. Merci !`
           : etape === 'J'
             ? `La tranche « ${t.label} » de ${enfant} (reste ${fcfa(reste)}) arrive à échéance aujourd’hui. Merci de passer au secrétariat.`
             : `La tranche « ${t.label} » de ${enfant} (reste ${fcfa(reste)}) n’est pas encore réglée (échéance du ${jj(t.date_echeance)}). Merci de passer au secrétariat ou de nous contacter.`;
         await admin.from('messages_internes').insert({ ecole_id: ec.id, destinataire_type: 'parent', eleve_id: e.id, contenu: '🎓 ' + texte, auteur_nom: ec.nom_ecole, auteur_id: null });
         const parents = await parentsDesEleves(admin, ec.id, [e.id]);
-        await envoyerPush(admin, parents, { title: `${ec.nom_ecole} — scolarité`, body: texte, url: './parent.html', tag: `scol-${e.id}-${t.id}` });
+        await envoyerPush(admin, parents, { title: `💰 ${ec.nom_ecole} — scolarité`, body: texte, url: './parent.html', tag: `scol-${e.id}-${t.id}`, insistant: true, type: 'scolarite' });
         n++;
       }
     }

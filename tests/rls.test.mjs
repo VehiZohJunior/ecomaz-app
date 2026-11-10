@@ -405,6 +405,12 @@ async function requete(accessToken, chemin, options = {}){
   const etatAnon = await requete(ANON_KEY, `/rest/v1/rpc/etat_comptes_enseignants`, { method:'POST', body:'{}' });
   verifier('Sans connexion, aucun état de compte', !etatAnon.ok || (Array.isArray(etatAnon.data) && etatAnon.data.length === 0), `statut ${etatAnon.status}`);
 
+  section('7unvicies. Versements saisis ? (10/11/2026) — oui / non seulement');
+  const vers = await requete(tokenEnseignant, `/rest/v1/rpc/ecole_a_des_versements`, { method:'POST', body:'{}' });
+  verifier('Réponse oui / non seulement (aucun montant, aucun nom)', vers.ok && typeof vers.data === 'boolean', `reçu ${JSON.stringify(vers.data)}`);
+  const versAnon = await requete(ANON_KEY, `/rest/v1/rpc/ecole_a_des_versements`, { method:'POST', body:'{}' });
+  verifier('Sans connexion : refusé', !versAnon.ok || versAnon.data === false, `statut ${versAnon.status}`);
+
   section('8. Visiteur non connecté — ne lit que les affichages publics prévus');
   for(const table of ['eleves','enseignants_lecture','profiles','paiements_scolarite','messages','parents_eleves','presences_eleves','eleves_portier_lecture','objets_perdus','push_abonnements','absences_signalees','evenements_agenda','devoirs','personnes_autorisees','sante_eleves','reponses_agenda','corrections_fiches','menus_cantine','preinscriptions','demandes_documents','evaluations','coefficients_matieres','bulletins_resultats']){
     const r = await requete(ANON_KEY, `/rest/v1/${table}?select=*&limit=1`);

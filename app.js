@@ -2116,27 +2116,74 @@ function renderParentDashboard(){
   return `<div class="view active parent-accueil">
     ${renderBandeDefilanteParent()}
     ${renderAnnonceDuMoment()}
-    ${renderAlerteAbsence(mesEnfants)}<div class="abs-justif-zone">${renderAbsencesAJustifier(mesEnfants)}</div>
     <div class="em-rise" style="--i:1">
       <div class="role-etiquette">${titreTableauDeBord('parent')}</div>
       <h2 class="parent-greeting">${escapeHtml(salutation())} <span class="salut-main em-wave">${window.EmIcones ? EmIcones.svg('hand') : '👋'}</span></h2>
       <p class="parent-greeting-sub">Voici la semaine de ${plusieurs ? 'vos enfants' : 'votre enfant'}.</p>
       ${renderQuestionAppel()}
     </div>
+    <div class="zone-tete zone-privee" role="note">${icone('lock')}<div><strong>Mon espace privé</strong><span>Visible seulement par vous et l’école : absences, devoirs, notes, bulletins, scolarité et messages de ${plusieurs ? 'vos enfants' : 'votre enfant'}. Aucun autre parent n’y a accès.</span></div></div>
+    ${renderAlerteAbsence(mesEnfants)}<div class="abs-justif-zone">${renderAbsencesAJustifier(mesEnfants)}</div>
+    ${renderRappelScolariteParent(mesEnfants)}
     ${renderBienvenueParent(mesEnfants)}
     ${renderAujourdhuiParent(mesEnfants)}
     <div class="enfants${plusieurs ? ' enfants--carrousel' : ''} em-rise" style="--i:2">
       ${mesEnfants.map(renderFicheEnfant).join('')}
     </div>
     <div class="form-actions actions-parent" style="justify-content:flex-start;margin:0 0 var(--sp-4);"><button type="button" class="btn secondary" onclick="ouvrirSignalerAbsence()">📝 Signaler une absence à l’avance</button><button type="button" class="btn secondary" onclick="ouvrirDemandeDocument()">📄 Demander un document</button></div>
-    ${renderMenuParent()}
     ${renderDevoirsParent(mesEnfants)}
+    <div class="zone-tete zone-commune" role="note">${icone('school')}<div><strong>Le fil de l’école</strong><span>Informations communes à tous les parents : menu de la cantine, agenda, nouvelles, tableau d’honneur, photos.</span></div></div>
+    ${renderMenuParent()}
     ${renderAgendaParent()}
     ${renderInformationsPassees()}
     ${renderTableauHonneurParent()}
+    <div class="form-actions" style="justify-content:flex-start;margin:0 0 var(--sp-4);"><button type="button" class="btn secondary" onclick="navParent('vie')">${icone('camera')} Voir les photos et nouvelles de l’école</button></div>
     ${renderContactEcole()}
   </div>`;
 }
+/* ---------- Parent : rappel de scolarité (dès le 25 pour le mois suivant), avec bip une fois par jour ----------
+   Jamais tant que l'école n'a saisi aucun versement (sinon tout le monde paraîtrait « à payer » à tort). */
+function renderRappelScolariteParent(enfants){
+  if(!DB.meta?.scolariteVisibleParents) return '';
+  if(DB.versementsSaisis === undefined){ DB.versementsSaisis = null; sb.rpc('ecole_a_des_versements').then(({ data }) => { DB.versementsSaisis = data === true; if(DB.versementsSaisis && ui.role === 'parent' && ui.vueParent !== 'vie') $('#viewContainer').innerHTML = renderParentDashboard(); }, () => { DB.versementsSaisis = false; }); return ''; }
+  if(DB.versementsSaisis !== true) return '';
+  const auj = todayISO(), jour = Number(auj.slice(8, 10)), moisCourant = auj.slice(0, 7);
+  const moisSuivant = (([a, m]) => m === 12 ? `${a + 1}-01` : `${a}-${String(m + 1).padStart(2, '0')}`)(auj.split('-').map(Number));
+  const lignes = [];
+  enfants.forEach(e => (scolariteEleveParEcheance(e.id).detail || []).forEach(d => {
+    if(d.statut === 'paye' || !d.dateEcheance) return;
+    const mois = d.dateEcheance.slice(0, 7), ecart = Math.round((new Date(d.dateEcheance + 'T12:00:00') - new Date(auj + 'T12:00:00')) / 86400000);
+    if((mois === moisCourant && ecart >= -7) || (mois === moisSuivant && jour >= 25)) lignes.push({ e, d, reste: Math.max(0, (d.montant || 0) - (d.paye || 0)), ecart });
+  }));
+  if(!lignes.length) return '';
+  // Bip une fois par jour (après un premier toucher si le téléphone l'exige)
+  try{ const cle = 'ecomaz_bip_scol_' + auj; if(localStorage.getItem(cle) !== '1'){ localStorage.setItem(cle, '1'); setTimeout(() => { if(!bipDoux()) document.addEventListener('pointerdown', () => bipDoux(), { once: true }); }, 400); } }catch(_e){}
+  return `<section class="panel rappel-scol" aria-label="Scolarité à régler">
+    <div class="rappel-scol-tete">${icone('wallet')}<strong>Scolarité à régler</strong></div>
+    <ul>${lignes.map(({ e, d, reste, ecart }) => `<li><strong>${escapeHtml(e.prenom)}</strong> — tranche « ${escapeHtml(d.label)} » : <strong>${fmtFCFA(reste)}</strong>
+      ${ecart > 0 ? `à régler avant le ${fmtDate(d.dateEcheance)}` : ecart === 0 ? `<span class="rs-urgent">à régler aujourd’hui</span>` : `<span class="rs-urgent">échéance dépassée (${fmtDate(d.dateEcheance)})</span>`}</li>`).join('')}</ul>
+    <div class="hint" style="margin:6px 0 0;">Vous pouvez payer dès maintenant au secrétariat. Déjà payé ? L’école le mettra à jour à réception.</div>
+  </section>`;
+}
+// Bip court et agréable (2 tons) pour les rappels de scolarité des parents
+function bipDoux(){
+  if(navigator.vibrate) try{ navigator.vibrate([300, 120, 300]); }catch(_e){}
+  try{
+    if(!audioRappel){ const C = window.AudioContext || window.webkitAudioContext; if(!C) return false; audioRappel = new C(); }
+    if(audioRappel.state === 'suspended') audioRappel.resume();
+    if(audioRappel.state !== 'running') return false;
+    const t0 = audioRappel.currentTime;
+    [[0, 880], [0.25, 1175]].forEach(([dt, fq]) => {
+      const o = audioRappel.createOscillator(), g = audioRappel.createGain(); o.type = 'sine'; o.frequency.value = fq;
+      g.gain.setValueAtTime(0.0001, t0 + dt); g.gain.exponentialRampToValueAtTime(0.4, t0 + dt + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t0 + dt + 0.22);
+      o.connect(g); g.connect(audioRappel.destination); o.start(t0 + dt); o.stop(t0 + dt + 0.24);
+    });
+    return true;
+  }catch(_e){ return false; }
+}
+if('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('message', ev => {
+  if(ev.data && ev.data.type === 'rappel-scolarite' && ui.role === 'parent'){ bipDoux(); if(ui.vueParent !== 'vie') $('#viewContainer').innerHTML = renderParentDashboard(); }
+});
 // Première ouverture : ce que le parent trouve ici et les 3 gestes utiles (fermé par « J'ai compris »)
 function renderBienvenueParent(enfants){
   const cle = 'ecomaz_bienvenue_parent_' + (session.userId || '');
@@ -2773,6 +2820,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.11.10-6', nouveautes: {
+    commun: [],
+    parent: [ 'Votre accueil est séparé en deux : « Mon espace privé » (visible seulement par vous et l’école : absences, devoirs, notes, bulletins, scolarité, messages) et « Le fil de l’école » (informations communes à tous les parents).', 'Scolarité : dès le 25 du mois, un rappel (notification avec son et vibration) vous indique la tranche du mois suivant à régler ; un encadré « Scolarité à régler » apparaît sur votre accueil.' ],
+    portier: [],
+    personnel: [],
+  } },
   { version: '2026.11.10-5', nouveautes: {
     commun: [],
     parent: [],
@@ -5699,7 +5752,8 @@ function fermerVisionneuse(){ const el = document.getElementById('visionneuse');
 // --- Console parent : onglet « Vie de l'école » ---
 function renderFilParent(){
   return `<div class="view active parent-accueil">
-    <h2 class="parent-greeting" style="margin-bottom:var(--sp-3);">📸 Vie de l’école</h2>
+    <h2 class="parent-greeting" style="margin-bottom:var(--sp-2);">📸 Vie de l’école</h2>
+    <div class="zone-tete zone-commune" role="note">${icone('school')}<div><strong>Le fil de l’école</strong><span>Commun à tous les parents de l’école. Les informations de votre enfant restent dans votre espace privé (onglet Accueil).</span></div></div>
     <div id="filContenu">${renderFilContenu()}</div>
   </div>`;
 }
@@ -10106,7 +10160,7 @@ function scolariteEleveParEcheance(eleveId){
   const detail = echeances.map(ech=>{
     const paye = parTranche[ech.label] || 0;
     const statut = ech.montant>0 && paye>=ech.montant ? 'paye' : paye>0 ? 'partiel' : 'impaye';
-    return {label:ech.label, montant:ech.montant, paye, statut};
+    return {label:ech.label, montant:ech.montant, paye, statut, dateEcheance: ech.dateEcheance || ''};
   });
   const total = echeances.reduce((s,e)=>s+e.montant,0);
   const totalPaye = paiements.reduce((s,p)=>s+Number(p.montant||0),0);

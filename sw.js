@@ -6,7 +6,7 @@
    d'attente hors ligne (voir supabase-client.js) — pas ce fichier, qui ne
    s'occupe que des fichiers de l'application (HTML/CSS/JS/icônes).
    ========================================================================= */
-const CACHE_NAME = 'ecomaz-shell-v166';
+const CACHE_NAME = 'ecomaz-shell-v167';
 const SHELL_FILES = [
   './',
   './index.html',
@@ -93,6 +93,6 @@ self.addEventListener('push', (event) => {
       vibrate: insistant ? [600, 200, 600, 200, 600, 200, 1000] : [200, 100, 200],
       requireInteraction: insistant,
     }),
-    insistant ? self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(f => f.forEach(c => c.postMessage({ type: 'rappel-appel' }))) : null,
+    insistant ? self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(f => f.forEach(c => c.postMessage({ type: d.type === 'scolarite' ? 'rappel-scolarite' : 'rappel-appel' }))) : null,
   ]));
 });

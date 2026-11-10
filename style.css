@@ -2140,3 +2140,24 @@ body.theme-portier .gate-classe strong{ overflow-wrap:anywhere; }
 .classe-unique svg{ width:18px; height:18px; }
 .mes-classes{ display:inline-flex; align-items:center; gap:6px; margin-top:6px; padding:4px 12px; border-radius:99px; background:var(--surface-2); font-size:var(--fs-sm); }
 .mes-classes svg{ width:16px; height:16px; }
+
+/* ===== Parent : espace privé / fil de l'école ; rappel de scolarité (2026-11-10) ===== */
+.zone-tete{ display:flex; gap:10px; align-items:flex-start; padding:10px 14px; margin:var(--sp-4) 0 var(--sp-3); border-radius:14px; }
+.zone-tete > svg{ width:22px; height:22px; flex:0 0 22px; margin-top:2px; }
+.zone-tete div{ display:flex; flex-direction:column; gap:2px; min-width:0; }
+.zone-tete span{ font-size:var(--fs-xs); color:var(--text-dim); line-height:1.4; }
+.zone-privee{ background:color-mix(in srgb, var(--primary) 10%, var(--surface)); border:1px solid color-mix(in srgb, var(--primary) 30%, var(--border)); }
+.zone-privee > svg{ color:var(--primary); }
+.zone-commune{ background:var(--surface-2); border:1px dashed var(--border-strong, var(--border)); }
+.rappel-scol{ border-left:5px solid var(--warning); background:color-mix(in srgb, var(--warning) 8%, var(--surface)); }
+.rappel-scol-tete{ display:flex; align-items:center; gap:8px; margin-bottom:6px; }
+.rappel-scol-tete svg{ width:22px; height:22px; color:var(--warning); }
+.rappel-scol ul{ margin:0; padding-left:18px; }
+.rappel-scol li{ margin-bottom:4px; line-height:1.45; }
+.rs-urgent{ color:var(--danger); font-weight:700; }
+
+/* Scolarité dans la carte verte de l'enfant : lisible (le lien était vert foncé sur vert foncé) — 2026-11-10 */
+.enfant-carte .es-detail summary{ color:#fff; text-decoration:underline; text-underline-offset:3px; }
+.enfant-carte .enfant-scolarite .hint, .enfant-carte .es-reste{ color:rgba(255,255,255,.85); }
+.enfant-carte .es-detail li{ border-bottom-color:rgba(255,255,255,.22); }
+.enfant-carte .enfant-scolarite{ border-top-color:rgba(255,255,255,.25); }

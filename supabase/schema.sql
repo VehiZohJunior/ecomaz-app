@@ -4309,3 +4309,17 @@ end $$;
 drop trigger if exists reporter_motif_parent on absences_signalees;
 create trigger reporter_motif_parent after insert on absences_signalees
   for each row execute function reporter_motif_parent();
+
+-- =====================================================================
+-- 111. L'ÉCOLE A-T-ELLE SAISI DES VERSEMENTS ? (2026-11-10)
+-- =====================================================================
+-- Le parent ne voit que les paiements de SES enfants : il ne peut pas savoir si
+-- l'école a commencé à saisir les versements. Tant qu'aucun versement n'est saisi,
+-- l'application n'affiche ni rappel « Scolarité à régler » ni bip (même garde que les
+-- relances du serveur). Réponse : oui / non, rien d'autre.
+create or replace function ecole_a_des_versements() returns boolean
+language sql stable security definer set search_path = public as $$
+  select exists (select 1 from paiements_scolarite where ecole_id = mon_ecole_id());
+$$;
+revoke all on function ecole_a_des_versements() from public, anon;
+grant execute on function ecole_a_des_versements() to authenticated;
