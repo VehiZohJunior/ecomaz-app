@@ -2773,6 +2773,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.11.10-5', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Téléphone : le bouton « Aa » (taille du texte) est sur la même ligne que la recherche et les notifications ; la barre du haut reprend sa hauteur normale.' ],
+  } },
   { version: '2026.11.10-4', nouveautes: {
     commun: [],
     parent: [],

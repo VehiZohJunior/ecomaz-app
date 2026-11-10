@@ -628,14 +628,15 @@ body:not(.theme-parent):not(.theme-portier) .topbar .theme-toggle:not(#btnRecher
 @media (max-width:900px){
   body.has-bottom-nav:not(.theme-parent):not(.theme-portier) .burger{ display:none; }   /* « Menu » est déjà en bas */
   body:not(.theme-parent):not(.theme-portier) .topbar{
-    display:grid; grid-template-columns:minmax(0,1fr) auto auto; grid-template-rows:auto auto; column-gap:6px; row-gap:0;
+    display:grid; grid-template-columns:minmax(0,1fr) auto auto auto; grid-template-rows:auto auto; column-gap:6px; row-gap:0;
     padding:6px 16px; min-height:56px; max-height:56px; align-content:center; }
   body:not(.theme-parent):not(.theme-portier) .topbar h1{ grid-column:1; grid-row:1; font-size:18px; line-height:24px; font-weight:800;
     display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; -webkit-line-clamp:unset; }
   body:not(.theme-parent):not(.theme-portier) .topbar-right{ display:contents; }
   body:not(.theme-parent):not(.theme-portier) #topbarPill{ grid-column:1; grid-row:2; justify-self:start; margin:0; padding:1px 8px; font-size:11px; line-height:16px; }
-  body:not(.theme-parent):not(.theme-portier) #btnRechercheGlobale{ grid-column:2; grid-row:1 / span 2; align-self:center; }
-  body:not(.theme-parent):not(.theme-portier) .topbar .bulles{ grid-column:3; grid-row:1 / span 2; align-self:center; flex-wrap:nowrap; }
+  body:not(.theme-parent):not(.theme-portier) .topbar .texte-toggle{ grid-column:2; grid-row:1 / span 2; align-self:center; width:38px; height:38px; }
+  body:not(.theme-parent):not(.theme-portier) #btnRechercheGlobale{ grid-column:3; grid-row:1 / span 2; align-self:center; }
+  body:not(.theme-parent):not(.theme-portier) .topbar .bulles{ grid-column:4; grid-row:1 / span 2; align-self:center; flex-wrap:nowrap; }
 }
 .bulle-item{ padding:var(--sp-3); border-radius:var(--r-control); background:var(--surface-2); margin-bottom:var(--sp-2); font-size:var(--fs-sm); line-height:1.4; }
 .bulle-item.non-lu{ background:var(--primary-soft); border-left:3px solid var(--primary); }
