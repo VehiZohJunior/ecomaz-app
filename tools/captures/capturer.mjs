@@ -188,6 +188,7 @@ for(const theme of THEMES){
         emarg: () => { ouvrirListeClasse(DB.classes[0].id, 'emargement'); },
         cartes: () => { ouvrirCartesScolaires(DB.classes[0].id); },
         relance: () => { ouvrirRelanceEnseignants(); },
+        sonnerie: async () => { ouvrirSonnerieAppel(); const u = fichierBip(); const buf = await (await fetch(u)).arrayBuffer(); const C = window.AudioContext || window.webkitAudioContext; const ctx = new C(); const dec = await ctx.decodeAudioData(buf); window.__testBip = { octets: buf.byteLength, duree: Math.round(dec.duration * 100) / 100 }; console.log('TESTBIP ' + JSON.stringify(window.__testBip)); },
         obligatoire: () => { DB.horairesAnnonces = Object.assign({}, DB.horairesAnnonces || {}, { rappelAppel: '00:01:00', joursCours: [1,2,3,4,5,6,7] }); DB.agenda = []; DB.presencesEleves = DB.presencesEleves.filter(x => x.date !== todayISO()); verifierAppelObligatoire(true); },
         guideens: () => { imprimerGuideEnseignant(); },
         pmsg: async () => { navParent('msg'); await new Promise(r => setTimeout(r, 700)); },

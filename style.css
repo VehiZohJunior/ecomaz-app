@@ -2127,3 +2127,9 @@ body.theme-portier .gate-classe strong{ overflow-wrap:anywhere; }
 .ao-son{ font-size:var(--fs-xs); margin:10px 0 0 !important; }
 @keyframes aoPulse{ 0%,100%{ transform:scale(1); } 50%{ transform:scale(1.02); } }
 @media (prefers-reduced-motion: reduce){ .ao-boite{ animation:none; } }
+
+/* ===== Autoriser la sonnerie de l'appel (2026-11-10) ===== */
+.son-etapes{ padding-left:20px; margin:0 0 12px; }
+.son-etapes li{ margin-bottom:8px; line-height:1.45; }
+.son-test{ display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin:6px 0 10px; }
+.son-test .btn{ min-height:48px; display:inline-flex; align-items:center; gap:8px; }

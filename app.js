@@ -2767,6 +2767,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.11.10-2', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Nouvelle étape sur l’accueil enseignant : « Autoriser la sonnerie de l’appel » (tester les 3 bips, laisser passer EcoMaZ en mode « Ne pas déranger »). Le bip de l’écran « Appel non fait » passe par le son des médias : il sonne même téléphone en silencieux, tant que le volume des médias n’est pas à zéro.' ],
+  } },
   { version: '2026.11.10-1', nouveautes: {
     commun: [],
     parent: [],
@@ -3522,8 +3528,21 @@ function afficherNouveautes(){
    fermer : seulement « Faire l'appel maintenant ») et un bip retentit chaque minute.
    L'écran disparaît dès que l'appel de toutes ses classes est enregistré.
    ===================================================================== */
-let audioRappel = null, minuterieAppel = null, dernierBip = 0;
+let audioRappel = null, minuterieAppel = null, dernierBip = 0, sonBip = null, sonDebloque = false;
+// Son du bip fabriqué une fois (3 tons de 880 Hz, fichier WAV en mémoire)
+function fichierBip(){
+  const f = 22050, tons = [[0, 0.3], [0.4, 0.7], [0.8, 1.1]], n = Math.round(f * 1.2), b = new ArrayBuffer(44 + n * 2), v = new DataView(b);
+  const ecr = (o, t) => { for(let i = 0; i < t.length; i++) v.setUint8(o + i, t.charCodeAt(i)); };
+  ecr(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); ecr(8, 'WAVE'); ecr(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, f, true); v.setUint32(28, f * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true); ecr(36, 'data'); v.setUint32(40, n * 2, true);
+  for(let i = 0; i < n; i++){ const t = i / f, on = tons.some(([a, z]) => t >= a && t < z); v.setInt16(44 + i * 2, on ? (Math.sin(2 * Math.PI * 880 * t) > 0 ? 1 : -1) * 20000 : 0, true); }
+  return URL.createObjectURL(new Blob([b], { type: 'audio/wav' }));
+}
 function debloquerSon(){
+  try{
+    if(!sonBip){ sonBip = new Audio(fichierBip()); sonBip.preload = 'auto'; }
+    if(!sonDebloque){ sonBip.muted = true; const p = sonBip.play(); if(p && p.then) p.then(() => { sonBip.pause(); sonBip.currentTime = 0; sonBip.muted = false; sonDebloque = true; }).catch(() => { sonBip.muted = false; }); }
+  }catch(_e){}
   try{
     if(!audioRappel){ const C = window.AudioContext || window.webkitAudioContext; if(!C) return; audioRappel = new C(); }
     if(audioRappel.state === 'suspended') audioRappel.resume();
@@ -3533,8 +3552,13 @@ function debloquerSon(){
 document.addEventListener('pointerdown', debloquerSon, { passive: true });
 function bipRappel(){
   if(navigator.vibrate) try{ navigator.vibrate([500, 150, 500, 150, 800]); }catch(_e){}
+  // 1) son « média » (passe en mode silencieux) ; 2) à défaut, synthèse audio
   try{
-    debloquerSon(); if(!audioRappel || audioRappel.state !== 'running') return false;
+    debloquerSon();
+    if(sonBip){ sonBip.muted = false; sonBip.volume = 1; sonBip.currentTime = 0; const p = sonBip.play(); if(p && p.catch) p.catch(() => {}); if(sonDebloque) return true; }
+  }catch(_e){}
+  try{
+    if(!audioRappel || audioRappel.state !== 'running') return false;
     const t0 = audioRappel.currentTime;
     [0, 0.4, 0.8].forEach(dt => {
       const o = audioRappel.createOscillator(), g = audioRappel.createGain();
@@ -3575,7 +3599,7 @@ function verifierAppelObligatoire(forcerBip){
     <p class="ao-classes">${manquantes.map(c => `<strong>${escapeHtml(c.nom)}</strong>`).join(' · ')}</p>
     <p>Les parents attendent de savoir si leur enfant est en classe. Cet écran disparaîtra dès que l’appel sera validé.</p>
     <button type="button" class="btn ao-btn" onclick="allerAppel('${manquantes[0].id}','${auj}')">${icone('circle-check')} Faire l’appel maintenant${manquantes.length > 1 ? ` — ${escapeHtml(manquantes[0].nom)}` : ''}</button>
-    ${audioRappel && audioRappel.state === 'running' ? '' : '<p class="ao-son">Touchez l’écran une fois pour activer le son des rappels.</p>'}
+    ${sonDebloque || (audioRappel && audioRappel.state === 'running') ? '' : '<p class="ao-son">Touchez l’écran une fois pour activer le son des rappels.</p>'}
   </div>`;
   const maintenant = Date.now();
   if(!document.hidden && (forcerBip || maintenant - dernierBip > 60000)){ dernierBip = maintenant; bipRappel(); }
@@ -4341,7 +4365,32 @@ function tacheAlertesTelephone(){
   if(!pushPossible()) return null;
   if(Notification.permission === 'default') return { etat:'afaire', titre:`Recevoir le rappel de l’appel${quand} sur ce téléphone`, detail:'Un seul toucher : vous serez prévenu même application fermée (appel oublié, parent au portail).', bouton:'Activer les alertes', action:"autoriserAlertesTelephone().then(() => renderView('dashboard'))" };
   if(Notification.permission === 'denied') return { etat:'info', titre:'Les alertes sont bloquées sur ce téléphone', detail:'Pour recevoir le rappel de l’appel : dans Chrome, touchez ⋮ → Paramètres → Paramètres des sites → Notifications, puis autorisez ce site.' };
+  // Alertes activées : reste à autoriser la sonnerie (test du bip + « Ne pas déranger »), une fois par téléphone
+  let faite = false; try{ faite = localStorage.getItem('ecomaz_sonnerie_ok') === '1'; }catch(_e){}
+  if(!faite) return { etat:'afaire', titre:'Autoriser la sonnerie de l’appel sur ce téléphone', detail:'Pour entendre le rappel même téléphone en silencieux : testez la sonnerie et laissez passer EcoMaZ en mode « Ne pas déranger ».', bouton:'Autoriser la sonnerie', action:'ouvrirSonnerieAppel()' };
   return null;
+}
+function ouvrirSonnerieAppel(){
+  const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  openModal('Autoriser la sonnerie de l’appel', `
+    <p style="margin-top:0;">Quand l’appel n’est pas fait, EcoMaZ fait <strong>sonner et vibrer</strong> votre téléphone. Pour l’entendre même en mode silencieux :</p>
+    <ol class="son-etapes">
+      <li><strong>Touchez « Tester la sonnerie »</strong> : vous devez entendre 3 bips. Rien ? Montez le <strong>volume des médias</strong> (touche volume du téléphone, curseur « Médias » ou « Contenu multimédia »).</li>
+      ${ios ? `<li><strong>iPhone :</strong> ouvrez EcoMaZ depuis son icône sur l’écran d’accueil. Dans Réglages → Notifications → EcoMaZ, activez « Sons » et « Notifications ».</li>`
+        : `<li><strong>Mode « Ne pas déranger »</strong> : ouvrez les <strong>Paramètres</strong> du téléphone → <strong>Notifications</strong> → <strong>Ne pas déranger</strong> → <strong>Applications</strong> (ou « Exceptions ») → ajoutez <strong>EcoMaZ</strong> (ou <strong>Chrome</strong> si EcoMaZ n’est pas installé).</li>
+      <li>Dans <strong>Paramètres → Applications → EcoMaZ (ou Chrome) → Notifications</strong>, laissez « Son » et « Vibreur » activés.</li>`}
+    </ol>
+    <div class="son-test"><button type="button" class="btn" onclick="testerSonnerieAppel(this)">${icone('bell')} Tester la sonnerie</button><span class="hint" id="sonResultat" style="margin:0;"></span></div>
+    <p class="hint">Bon à savoir : avec l’application fermée, c’est la notification du téléphone qui sonne (elle reste affichée jusqu’à ce que vous la touchiez). Le mode silencieux complet du téléphone ne peut pas être contourné par une application web : gardez au moins le vibreur.</p>
+    <div class="form-actions"><button type="button" class="btn secondary" onclick="closeModal()">Plus tard</button><button type="button" class="btn" onclick="try{localStorage.setItem('ecomaz_sonnerie_ok','1')}catch(_e){}; closeModal(); toast('Sonnerie de l’appel autorisée sur ce téléphone'); renderView('dashboard')">C’est fait</button></div>`);
+}
+function testerSonnerieAppel(btn){
+  debloquerSon();
+  setTimeout(() => {
+    const ok = bipRappel();
+    const r = document.getElementById('sonResultat');
+    if(r) r.textContent = ok ? 'Vous entendez 3 bips ? Parfait. Sinon, montez le volume des médias.' : 'Le son a été bloqué : touchez encore une fois « Tester la sonnerie ».';
+  }, 150);
 }
 
 /* =====================================================================
