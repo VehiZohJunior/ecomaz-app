@@ -183,6 +183,71 @@ async function resumeHebdo(admin: any, aujourdhui: string, minuteActuelle: numbe
   return n;
 }
 
+// Bilan de la semaine pour la direction et la fondation : le vendredi à 17h30,
+// une notification avec l'appel de la semaine (jours-classes faits, classes sans
+// appel), les alertes des enseignants, les versements saisis et, dans le dernier
+// mois d'un trimestre, les appréciations écrites. Une seule fois par école et par semaine.
+// deno-lint-ignore no-explicit-any
+async function resumeDirection(admin: any, aujourdhui: string, minuteActuelle: number): Promise<number> {
+  if (minuteActuelle < 17 * 60 + 30 || minuteActuelle > 18 * 60) return 0;
+  const decale = (n: number) => { const d = new Date(aujourdhui + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+  const lundi = decale(-4);
+  const { data: ecoles } = await admin.from('ecoles').select('id, nom_ecole').eq('actif', true);
+  let n = 0;
+  for (const ec of (ecoles || []) as { id: string; nom_ecole: string }[]) {
+    const [{ data: classes }, { data: eleves }, { data: pres }, { data: horaires }, { data: agenda }, { data: comptes }, { data: paie }] = await Promise.all([
+      admin.from('classes').select('id, nom').eq('ecole_id', ec.id),
+      admin.from('eleves').select('id, classe_id').eq('ecole_id', ec.id).eq('statut', 'Actif'),
+      admin.from('presences_eleves').select('classe_id, date').eq('ecole_id', ec.id).gte('date', lundi).lte('date', aujourdhui),
+      admin.from('horaires_annonces').select('jours_cours').eq('ecole_id', ec.id).maybeSingle(),
+      admin.from('evenements_agenda').select('titre, type, date_debut, date_fin, classe_ids').eq('ecole_id', ec.id),
+      admin.from('profiles').select('id, role, enseignant_id').eq('ecole_id', ec.id).in('role', ['direction', 'fondation', 'enseignant']),
+      admin.from('paiements_scolarite').select('montant, date').eq('ecole_id', ec.id).gte('date', lundi).lte('date', aujourdhui),
+    ]);
+    const dirigeants = ((comptes || []) as { id: string; role: string }[]).filter((c) => c.role !== 'enseignant').map((c) => c.id);
+    if (!dirigeants.length || !(eleves || []).length) continue;
+    // Jours de classe de la semaine (jours de cours, hors vacances de toute l'école)
+    const jours = ((horaires as { jours_cours?: number[] } | null)?.jours_cours) || [1, 2, 3, 4, 5];
+    const vac = ((agenda || []) as { type: string; date_debut: string; date_fin: string; classe_ids: string[] | null }[]).filter((a) => a.type === 'vacances' && (!a.classe_ids || !a.classe_ids.length));
+    const joursClasse: string[] = [];
+    for (let k = 0; k <= 4; k++) {
+      const d = decale(-4 + k), iso = ((new Date(d + 'T12:00:00Z').getUTCDay() + 6) % 7) + 1;
+      if (jours.includes(iso) && !vac.some((v) => v.date_debut <= d && v.date_fin >= d)) joursClasse.push(d);
+    }
+    if (!joursClasse.length) continue; // semaine de vacances : rien à dire
+    const avecEleves = ((classes || []) as { id: string; nom: string }[]).filter((c) => (eleves as { classe_id: string }[]).some((e) => e.classe_id === c.id));
+    const faits = new Set(((pres || []) as { classe_id: string; date: string }[]).map((p) => `${p.classe_id}|${p.date}`));
+    const attendus = avecEleves.length * joursClasse.length;
+    const realises = avecEleves.reduce((t, c) => t + joursClasse.filter((d) => faits.has(`${c.id}|${d}`)).length, 0);
+    const jamais = avecEleves.filter((c) => !joursClasse.some((d) => faits.has(`${c.id}|${d}`))).map((c) => c.nom);
+    const lignes: string[] = [];
+    lignes.push(`Appel : ${realises}/${attendus} jours-classes${realises >= attendus ? ' ✅' : ''}${jamais.length ? ` — sans appel cette semaine : ${jamais.slice(0, 5).join(', ')}${jamais.length > 5 ? '…' : ''}` : ''}`);
+    // Alertes des enseignants (téléphones abonnés)
+    const profs = ((comptes || []) as { id: string; role: string; enseignant_id: string | null }[]).filter((c) => c.role === 'enseignant' && c.enseignant_id);
+    if (profs.length) {
+      const { data: abos } = await admin.from('push_abonnements').select('user_id').in('user_id', profs.map((p) => p.id));
+      const avec = new Set(((abos || []) as { user_id: string }[]).map((a) => a.user_id));
+      lignes.push(`Alertes activées : ${avec.size}/${profs.length} enseignant(s)`);
+    }
+    const vers = (paie || []) as { montant: number }[];
+    lignes.push(vers.length ? `Versements saisis : ${vers.length} (${fcfa(vers.reduce((t, x) => t + Number(x.montant || 0), 0))})` : 'Aucun versement saisi cette semaine');
+    // Dernier mois d'un trimestre : appréciations écrites
+    const fins = ((agenda || []) as { titre: string; date_debut: string; date_fin: string }[])
+      .map((a) => ({ n: /fin du\s*1/i.test(a.titre) ? 1 : /fin du\s*2/i.test(a.titre) ? 2 : /fin du\s*3/i.test(a.titre) ? 3 : 0, d: a.date_fin || a.date_debut }))
+      .filter((x) => x.n && x.d >= aujourdhui).sort((a, b) => a.d.localeCompare(b.d));
+    if (fins.length && fins[0].d <= decale(30)) {
+      const trim = `Trimestre ${fins[0].n}`;
+      const { count } = await admin.from('bulletins_commentaires').select('eleve_id', { count: 'exact', head: true }).eq('ecole_id', ec.id).eq('trimestre', trim);
+      lignes.push(`Bulletins du ${fins[0].n === 1 ? '1er' : fins[0].n + 'e'} trimestre (fin le ${fins[0].d.split('-').reverse().slice(0, 2).join('/')}) : ${count || 0}/${(eleves || []).length} appréciation(s)`);
+    }
+    const { error: deja } = await admin.from('rappels_envoyes').insert({ ecole_id: ec.id, type: 'resume-direction', date: aujourdhui });
+    if (deja) continue;
+    await envoyerPush(admin, dirigeants, { title: `📊 Bilan de la semaine — ${ec.nom_ecole}`, body: lignes.join('\n').slice(0, 480), url: './index.html', tag: 'resume-direction' });
+    n++;
+  }
+  return n;
+}
+
 // Nouvelles pré-inscriptions en ligne (schema.sql section 71) : notification
 // au secrétariat et à la direction, une seule fois par demande.
 // deno-lint-ignore no-explicit-any
@@ -457,6 +522,8 @@ Deno.serve(async (req) => {
     if (jourIso === 5) {
       try { nbEnvoyees += await resumeHebdo(supabaseAdmin, dateDuJour, minuteActuelle); }
       catch (e) { erreurs.push(`resume: ${(e as Error).message}`); }
+      try { nbEnvoyees += await resumeDirection(supabaseAdmin, dateDuJour, minuteActuelle); }
+      catch (e) { erreurs.push(`resume direction: ${(e as Error).message}`); }
     }
 
     // Rappel de l'agenda — la veille, tous les jours à 18h
