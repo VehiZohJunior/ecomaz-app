@@ -2767,6 +2767,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.11.10-3', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Appel non fait : l’alarme est beaucoup plus insistante — 3 secondes de sonnerie à deux tons, toutes les 15 secondes puis toutes les 8 secondes, longue vibration, écran maintenu allumé. Elle ne s’arrête qu’avec l’appel validé.', 'Sur le téléphone : un rappel toutes les 5 minutes pendant la demi-heure qui suit l’heure du rappel, tant que l’appel n’est pas fait.' ],
+  } },
   { version: '2026.11.10-2', nouveautes: {
     commun: [],
     parent: [],
@@ -3528,14 +3534,22 @@ function afficherNouveautes(){
    fermer : seulement « Faire l'appel maintenant ») et un bip retentit chaque minute.
    L'écran disparaît dès que l'appel de toutes ses classes est enregistré.
    ===================================================================== */
-let audioRappel = null, minuterieAppel = null, dernierBip = 0, sonBip = null, sonDebloque = false;
+let audioRappel = null, minuterieAppel = null, dernierBip = 0, sonBip = null, sonDebloque = false, debutAlarme = 0, verrouEcran = null;
+// Écran maintenu allumé tant que l'alarme est affichée (sinon le téléphone se met en veille et l'alarme se tait)
+async function garderEcranAllume(oui){
+  try{
+    if(oui && !verrouEcran && 'wakeLock' in navigator && !document.hidden){ verrouEcran = await navigator.wakeLock.request('screen'); verrouEcran.addEventListener('release', () => { verrouEcran = null; }); }
+    if(!oui && verrouEcran){ await verrouEcran.release(); verrouEcran = null; }
+  }catch(_e){ verrouEcran = null; }
+}
 // Son du bip fabriqué une fois (3 tons de 880 Hz, fichier WAV en mémoire)
 function fichierBip(){
-  const f = 22050, tons = [[0, 0.3], [0.4, 0.7], [0.8, 1.1]], n = Math.round(f * 1.2), b = new ArrayBuffer(44 + n * 2), v = new DataView(b);
+  // Alarme de 3 s : 10 tons alternés 1 000 Hz / 750 Hz (0,25 s chacun, 0,05 s de silence) — fait pour déranger
+  const f = 22050, tons = Array.from({ length: 10 }, (_, k) => [k * 0.3, k * 0.3 + 0.25, k % 2 ? 750 : 1000]), n = Math.round(f * 3), b = new ArrayBuffer(44 + n * 2), v = new DataView(b);
   const ecr = (o, t) => { for(let i = 0; i < t.length; i++) v.setUint8(o + i, t.charCodeAt(i)); };
   ecr(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); ecr(8, 'WAVE'); ecr(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
   v.setUint32(24, f, true); v.setUint32(28, f * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true); ecr(36, 'data'); v.setUint32(40, n * 2, true);
-  for(let i = 0; i < n; i++){ const t = i / f, on = tons.some(([a, z]) => t >= a && t < z); v.setInt16(44 + i * 2, on ? (Math.sin(2 * Math.PI * 880 * t) > 0 ? 1 : -1) * 20000 : 0, true); }
+  for(let i = 0; i < n; i++){ const t = i / f, ton = tons.find(([a, z]) => t >= a && t < z); v.setInt16(44 + i * 2, ton ? (Math.sin(2 * Math.PI * ton[2] * t) > 0 ? 1 : -1) * 26000 : 0, true); }
   return URL.createObjectURL(new Blob([b], { type: 'audio/wav' }));
 }
 function debloquerSon(){
@@ -3551,7 +3565,7 @@ function debloquerSon(){
 // Les navigateurs n'autorisent le son qu'après un premier toucher de l'écran
 document.addEventListener('pointerdown', debloquerSon, { passive: true });
 function bipRappel(){
-  if(navigator.vibrate) try{ navigator.vibrate([500, 150, 500, 150, 800]); }catch(_e){}
+  if(navigator.vibrate) try{ navigator.vibrate([800, 200, 800, 200, 800, 200, 800]); }catch(_e){}
   // 1) son « média » (passe en mode silencieux) ; 2) à défaut, synthèse audio
   try{
     debloquerSon();
@@ -3560,9 +3574,9 @@ function bipRappel(){
   try{
     if(!audioRappel || audioRappel.state !== 'running') return false;
     const t0 = audioRappel.currentTime;
-    [0, 0.4, 0.8].forEach(dt => {
+    Array.from({ length: 10 }, (_, k) => k * 0.3).forEach((dt, k) => {
       const o = audioRappel.createOscillator(), g = audioRappel.createGain();
-      o.type = 'square'; o.frequency.value = 880;
+      o.type = 'square'; o.frequency.value = k % 2 ? 750 : 1000;
       g.gain.setValueAtTime(0.0001, t0 + dt); g.gain.exponentialRampToValueAtTime(0.35, t0 + dt + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t0 + dt + 0.3);
       o.connect(g); g.connect(audioRappel.destination); o.start(t0 + dt); o.stop(t0 + dt + 0.32);
     });
@@ -3583,7 +3597,9 @@ function verifierAppelObligatoire(forcerBip){
   // Rien à faire, ou l'enseignant est déjà sur l'écran d'appel : on laisse travailler
   if(!manquantes.length || ui.currentView === 'presences-eleves'){
     if(el) el.remove();
-    if(!manquantes.length && minuterieAppel){ clearInterval(minuterieAppel); minuterieAppel = null; }
+    try{ if(sonBip) sonBip.pause(); }catch(_e){}
+    garderEcranAllume(false);
+    if(!manquantes.length){ debutAlarme = 0; if(minuterieAppel){ clearInterval(minuterieAppel); minuterieAppel = null; } }
     return;
   }
   if(!el){
@@ -3597,13 +3613,16 @@ function verifierAppelObligatoire(forcerBip){
     <div class="ao-ic" aria-hidden="true">${icone('alarm-clock')}</div>
     <h2 id="aoTitre">L’appel n’est pas encore fait</h2>
     <p class="ao-classes">${manquantes.map(c => `<strong>${escapeHtml(c.nom)}</strong>`).join(' · ')}</p>
-    <p>Les parents attendent de savoir si leur enfant est en classe. Cet écran disparaîtra dès que l’appel sera validé.</p>
+    <p>Les parents attendent de savoir si leur enfant est en classe. L’alarme sonne de plus en plus souvent et ne s’arrête que lorsque l’appel est validé.</p>
     <button type="button" class="btn ao-btn" onclick="allerAppel('${manquantes[0].id}','${auj}')">${icone('circle-check')} Faire l’appel maintenant${manquantes.length > 1 ? ` — ${escapeHtml(manquantes[0].nom)}` : ''}</button>
     ${sonDebloque || (audioRappel && audioRappel.state === 'running') ? '' : '<p class="ao-son">Touchez l’écran une fois pour activer le son des rappels.</p>'}
   </div>`;
   const maintenant = Date.now();
-  if(!document.hidden && (forcerBip || maintenant - dernierBip > 60000)){ dernierBip = maintenant; bipRappel(); }
-  if(!minuterieAppel) minuterieAppel = setInterval(() => verifierAppelObligatoire(), 20000);
+  if(!debutAlarme) debutAlarme = maintenant;
+  const delai = maintenant - debutAlarme < 120000 ? 15000 : 8000; // de plus en plus insistant
+  if(!document.hidden && (forcerBip || maintenant - dernierBip > delai)){ dernierBip = maintenant; bipRappel(); }
+  garderEcranAllume(true);
+  if(!minuterieAppel) minuterieAppel = setInterval(() => verifierAppelObligatoire(), 4000);
 }
 document.addEventListener('visibilitychange', () => { if(!document.hidden && ui.role === 'enseignant') verifierAppelObligatoire(true); });
 if('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('message', ev => {
