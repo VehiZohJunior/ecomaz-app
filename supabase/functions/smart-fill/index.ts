@@ -43,7 +43,10 @@ const CONSIGNE =
   "N'invente RIEN : information absente ou illisible = valeur null et confiance \"faible\". " +
   "Lisible sans doute = \"élevé\" ; demande une interprétation (écriture peu claire, son ambigu) = \"moyen\". " +
   "Dates au format AAAA-MM-JJ. Sexe : \"M\" ou \"F\". NOM de famille en MAJUSCULES, prénoms en casse normale. " +
-  "Téléphone : les 10 chiffres ivoiriens, sans indicatif.";
+  "Téléphone : les 10 chiffres ivoiriens, sans indicatif. " +
+  "Le document peut contenir beaucoup d'autres informations : ne retiens QUE celles qui correspondent exactement à chaque champ demandé (ex. le montant payé, pas un total ou un solde ; la date du paiement, pas une date d'impression). " +
+  "Pour un champ avec une liste de valeurs permises, réponds par EXACTEMENT l'une d'elles (ou null). " +
+  "Montants : nombre entier en francs CFA, sans espace ni devise (ex. 25000).";
 
 function descriptionChamps(schema: ChampSchema[]) {
   return schema.map((c) => `- "${c.name}" : ${c.label}${c.format ? ' (format : ' + c.format + ')' : ''}`).join('\n');
@@ -87,6 +90,8 @@ function normaliser(schema: ChampSchema[], brut: Resultat): Resultat {
       else if (c.name === 'nom') valeur = valeur.toUpperCase();
       else if (c.name === 'prenom') valeur = valeur.toLowerCase().replace(/(^|[\s-])\p{L}/gu, (x) => x.toUpperCase());
       else if (c.type === 'email' || c.name === 'email') valeur = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(valeur) ? valeur.toLowerCase() : null;
+      else if (c.type === 'number') { const n = Number(String(valeur).replace(/[^\d,.]/g, '').replace(/[.,](?=\d{3}(\D|$))/g, '').replace(',', '.')); valeur = Number.isFinite(n) && n >= 0 && String(valeur).match(/\d/) ? String(Math.round(n)) : null; }
+      else if (c.type === 'url') valeur = /^https:\/\/\S+$/.test(valeur) ? valeur : null;
     }
     if (!valeur) confiance = 'faible';
     res[c.name] = { valeur, confiance };
@@ -191,11 +196,12 @@ Deno.serve(async (req) => {
 
     const { formulaire, schema, typeSource, fichierBase64, fichiersBase64, mimeType, texte } = await req.json();
     if (!formulaire || !Array.isArray(schema) || !schema.length || schema.length > 20) throw new Error('Paramètres manquants');
-    if (!['photo', 'audio', 'texte'].includes(typeSource)) throw new Error('Type de source invalide');
+    if (!['photo', 'audio', 'texte', 'document'].includes(typeSource)) throw new Error('Type de source invalide');
     const photos: string[] = (Array.isArray(fichiersBase64) ? fichiersBase64 : fichierBase64 ? [fichierBase64] : []).slice(0, 2);
     if (typeSource === 'photo' && (!photos.length || photos.some((p) => typeof p !== 'string' || p.length > 5_500_000))) throw new Error('Photo absente ou trop lourde (4 Mo maximum).');
     if (typeSource === 'audio' && (typeof fichierBase64 !== 'string' || fichierBase64.length > 11_000_000)) throw new Error('Enregistrement absent ou trop long (2 minutes maximum).');
     if (typeSource === 'texte' && (typeof texte !== 'string' || texte.trim().length < 5 || texte.length > 4000)) throw new Error('Collez un texte de 5 à 4000 caractères.');
+    if (typeSource === 'document' && (typeof texte !== 'string' || texte.trim().length < 5 || texte.length > 15000)) throw new Error('Document vide ou trop long (15 000 caractères au maximum).');
 
     const admin = createClient(url, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
     const { data: ecole } = await admin.from('ecoles').select('limite_remplissage_mensuelle').eq('id', profil.ecole_id).single();
@@ -221,7 +227,7 @@ Deno.serve(async (req) => {
       const contenuTexte = typeSource === 'audio' ? await transcrireAudio(fichierBase64, mimeType || 'audio/webm') : String(texte).trim();
       contenuSecours = [{ type: 'text', text: `Texte :\n"""${contenuTexte}"""` }];
       try {
-        brut = await groqChat(MODELES_TEXTE, [{ role: 'system', content: consigne }, { role: 'user', content: `Texte à analyser :\n"""${contenuTexte}"""` }]);
+        brut = await groqChat(MODELES_TEXTE, [{ role: 'system', content: consigne }, { role: 'user', content: `${typeSource === 'document' ? 'Contenu du document (PDF, Word ou Excel converti en texte) à analyser' : 'Texte à analyser'} :\n"""${contenuTexte}"""` }]);
         source = 'groq';
       } catch (e) { motifSecours = (e as Error).message.slice(0, 200); brut = await claudeSecours(schema, contenuSecours).catch(() => { throw new Error('Analyse impossible pour le moment (' + (e as Error).message.slice(0, 80) + '). Réessayez dans un instant.'); }); source = 'secours'; }
     }

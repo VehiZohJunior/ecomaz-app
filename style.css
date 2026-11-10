@@ -2203,3 +2203,18 @@ body.theme-portier .gate-classe strong{ overflow-wrap:anywhere; }
 .groupe-tete-seule{ border-radius:16px; padding:12px; margin:0 0 var(--sp-3); border:2px dashed var(--border-strong, var(--border)); }
 .groupe-parent > :last-child{ margin-bottom:0; }
 @media (max-width:480px){ .groupe-parent{ padding:8px; border-radius:16px; } }
+
+/* ===== Souches des reçus (2026-11-10) ===== */
+.souches{ list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:6px; }
+.souche{ display:grid; grid-template-columns:auto 1fr auto auto; gap:10px; align-items:center; padding:8px 10px; border:1px solid var(--border); border-radius:10px; }
+.souche-num{ font-family:ui-monospace, monospace; font-weight:800; font-size:var(--fs-xs); background:var(--surface-2); padding:3px 8px; border-radius:6px; }
+.souche-txt{ display:flex; flex-direction:column; min-width:0; }
+.souche-txt small{ color:var(--text-dim); font-size:var(--fs-xs); overflow-wrap:anywhere; }
+.souche-montant{ font-weight:800; white-space:nowrap; }
+@media (max-width:520px){ .souche{ grid-template-columns:1fr auto; } .souche-num{ grid-column:1 / -1; justify-self:start; } }
+.btn-recu{ min-height:32px; display:inline-flex; align-items:center; gap:4px; }
+.enfant-carte .btn-recu{ background:rgba(255,255,255,.14); color:#fff; border-color:rgba(255,255,255,.35); }
+
+/* Remplissage intelligent : bouton (2026-11-10) */
+.btn-sf{ margin:0 0 12px; display:inline-flex; flex-wrap:wrap; align-items:center; gap:4px 6px; text-align:left; }
+.btn-sf small{ font-weight:400; color:var(--text-dim); font-size:var(--fs-xs); }

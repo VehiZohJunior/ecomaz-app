@@ -4341,3 +4341,74 @@ language sql stable security definer set search_path = public as $$
 $$;
 revoke all on function etat_alertes_personnel() from public, anon;
 grant execute on function etat_alertes_personnel() to authenticated;
+
+-- =====================================================================
+-- 113. SOUCHES DES REÇUS (2026-11-10)
+-- =====================================================================
+-- Chaque versement de scolarité (saisi au secrétariat OU payé en ligne)
+-- reçoit automatiquement un numéro de reçu unique par école et par année
+-- (R2026-00001…). La souche est conservée par l'école ; le parent lit les
+-- souches de SES enfants (reçu téléchargeable). Aucune modification ni
+-- suppression possible depuis l'application : seule la base les crée.
+create table if not exists recus (
+  id uuid primary key default gen_random_uuid(),
+  ecole_id uuid not null references ecoles(id) on delete cascade,
+  numero text not null,
+  table_cible text not null default 'paiements_scolarite',
+  enregistrement_id uuid not null,
+  eleve_id uuid references eleves(id) on delete set null,
+  montant numeric not null,
+  objet text not null default '',
+  mode_paiement text not null default '',
+  date_paiement date,
+  emis_le timestamptz not null default now(),
+  emis_par uuid references auth.users(id) on delete set null,
+  en_ligne boolean not null default false,
+  unique (ecole_id, numero),
+  unique (table_cible, enregistrement_id)
+);
+create index if not exists recus_ecole on recus(ecole_id, emis_le desc);
+create index if not exists recus_eleve on recus(eleve_id);
+alter table recus enable row level security;
+drop policy if exists "lecture recus personnel" on recus;
+create policy "lecture recus personnel" on recus for select using (ecole_id = mon_ecole_id() and est_perso_admin());
+drop policy if exists "lecture recus parent" on recus;
+create policy "lecture recus parent" on recus for select using (
+  ecole_id = mon_ecole_id() and est_parent()
+  and exists (select 1 from parents_eleves pe where pe.parent_profile_id = auth.uid() and pe.eleve_id = recus.eleve_id));
+drop policy if exists "double verification" on recus;
+create policy "double verification" on recus as restrictive for all to authenticated
+  using (double_verification_ok()) with check (double_verification_ok());
+
+create or replace function emettre_recu() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare v_annee text := to_char(coalesce(new.date, current_date), 'YYYY'); v_n int;
+begin
+  perform pg_advisory_xact_lock(hashtext('recus|' || new.ecole_id::text || '|' || v_annee));
+  select coalesce(max(substring(numero from '^R' || v_annee || '-(\d+)$')::int), 0) + 1 into v_n
+    from recus where ecole_id = new.ecole_id and numero like 'R' || v_annee || '-%';
+  insert into recus (ecole_id, numero, table_cible, enregistrement_id, eleve_id, montant, objet, mode_paiement, date_paiement, emis_par, en_ligne)
+  values (new.ecole_id, 'R' || v_annee || '-' || lpad(v_n::text, 5, '0'), 'paiements_scolarite', new.id, new.eleve_id, new.montant,
+          'Scolarité — ' || coalesce(new.tranche, ''), coalesce(new.mode_paiement, ''), new.date, auth.uid(), coalesce(new.mode_paiement, '') = 'Mobile Money')
+  on conflict (table_cible, enregistrement_id) do nothing;
+  return new;
+end $$;
+drop trigger if exists emettre_recu on paiements_scolarite;
+create trigger emettre_recu after insert on paiements_scolarite for each row execute function emettre_recu();
+-- Le montant et la tranche de la souche suivent une correction du versement (avec la piste d'audit comptable)
+create or replace function maj_recu() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  update recus set montant = new.montant, objet = 'Scolarité — ' || coalesce(new.tranche, ''), mode_paiement = coalesce(new.mode_paiement, ''), date_paiement = new.date
+    where table_cible = 'paiements_scolarite' and enregistrement_id = new.id;
+  return new;
+end $$;
+drop trigger if exists maj_recu on paiements_scolarite;
+create trigger maj_recu after update on paiements_scolarite for each row execute function maj_recu();
+
+-- =====================================================================
+-- 114. REMPLISSAGE INTELLIGENT — source « document » (PDF, Word, Excel) (2026-11-10)
+-- =====================================================================
+alter table usage_remplissage_intelligent drop constraint if exists usage_remplissage_intelligent_type_source_check;
+alter table usage_remplissage_intelligent add constraint usage_remplissage_intelligent_type_source_check
+  check (type_source in ('photo','audio','texte','document'));

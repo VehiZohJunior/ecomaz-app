@@ -136,8 +136,10 @@ Deno.serve(async (req) => {
             supabaseAdmin.from('ecoles').select('nom_ecole').eq('id', ecoleId).maybeSingle(),
           ]);
           const enfant = el ? `${el.prenom} ${el.nom}` : 'votre enfant';
+          // Numéro de la souche créée automatiquement par la base (schema.sql section 113)
+          const { data: souche } = await supabaseAdmin.from('recus').select('numero').eq('table_cible', 'paiements_scolarite').eq('enregistrement_id', paiement.id).maybeSingle();
           const somme = `${montant.toLocaleString('fr-FR').replace(/\u202f|\u00a0/g, ' ')} F CFA`;
-          const recu = `✅ Paiement reçu : ${somme} — « ${ligne.tranche} » de ${enfant}, par Mobile Money le ${new Date().toLocaleDateString('fr-FR')}. Merci ! Le reçu est dans votre application (Scolarité).`;
+          const recu = `✅ Paiement reçu : ${somme} — « ${ligne.tranche} » de ${enfant}, par Mobile Money le ${new Date().toLocaleDateString('fr-FR')}. Merci !${souche?.numero ? ` Reçu n° ${souche.numero}` : ' Votre reçu'} à télécharger dans l’application (Scolarité de votre enfant → « Reçu »).`;
           await supabaseAdmin.from('messages_internes').insert({ ecole_id: ecoleId, destinataire_type: 'parent', eleve_id: ligne.eleve_id, contenu: recu, auteur_nom: ec?.nom_ecole || 'École', auteur_id: null });
           const parents = await parentsDesEleves(supabaseAdmin, ecoleId, [ligne.eleve_id]);
           await envoyerPush(supabaseAdmin, parents, { title: `💰 ${ec?.nom_ecole || 'École'} — paiement reçu`, body: recu, url: './parent.html', tag: `paie-${ligne.id}` });

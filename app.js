@@ -1931,6 +1931,7 @@ function ouvrirBulletinImprimable(eleveId, trimestre){
 // Console parent : scolarité de l'enfant (si l'école l'a rendue visible)
 function renderScolariteEnfant(e){
   if(!DB.meta?.scolariteVisibleParents) return '';
+  if(ui.role === 'parent' && DB.recus === undefined){ DB.recus = []; sb.from('recus').select('*').then(({ data }) => { DB.recus = rowsToCamel(data || []); }, () => {}); }
   const info = scolariteEleveParEcheance(e.id);
   if(!info.total) return '';
   // Tant que l'école n'a saisi aucun versement, tout le monde paraîtrait « tout devoir » : on ne montre pas de reste
@@ -1946,7 +1947,7 @@ function renderScolariteEnfant(e){
     <div class="es-reste">${info.reste ? `Reste à payer : <strong>${fmtFCFA(info.reste)}</strong>${prochaine ? ` · prochaine tranche : ${escapeHtml(prochaine.label)}` : ''}` : '✅ Scolarité soldée, merci !'}</div>
     <details class="es-detail"><summary>Voir les tranches${recus.length ? ' et les paiements' : ''}</summary>
       <ul>${info.detail.map(d => `<li><span>${escapeHtml(d.label)}</span><span class="badge ${d.statut === 'paye' ? 'green' : d.statut === 'partiel' ? 'amber' : 'gray'}">${d.statut === 'paye' ? 'payé' : d.statut === 'partiel' ? fmtFCFA(d.paye) + ' / ' + fmtFCFA(d.montant) : fmtFCFA(d.montant)}</span>${boutonPayerEnLigne(e, d)}</li>`).join('')}</ul>
-      ${recus.length ? `<div class="hint" style="margin:6px 0 2px;">Paiements reçus :</div><ul>${recus.map(p => `<li><span>${fmtDate(p.date)} — ${escapeHtml(p.tranche || '')}</span><span>${fmtFCFA(p.montant)} (${escapeHtml(p.modePaiement || '')})</span></li>`).join('')}</ul>` : ''}
+      ${recus.length ? `<div class="hint" style="margin:6px 0 2px;">Paiements reçus :</div><ul>${recus.map(p => `<li><span>${fmtDate(p.date)} — ${escapeHtml(p.tranche || '')}</span><span>${fmtFCFA(p.montant)} (${escapeHtml(p.modePaiement || '')})</span><button type="button" class="btn secondary sm btn-recu" onclick="ouvrirRecuParent('${p.id}')">${icone('download')} Reçu</button></li>`).join('')}</ul>` : ''}
     </details>
   </div>`;
 }
@@ -2875,6 +2876,18 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.11.10-15', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Remplissage intelligent : nouvelle source « Document » (PDF, Word, Excel, image) en plus de la photo, du vocal et du texte ; l’application reconnaît, parmi toutes les informations du document, celles qui conviennent à chaque champ (montant payé, date, tranche, mode de paiement…).', 'Bouton « ✨ Remplir automatiquement » ajouté aux formulaires de paiement de scolarité, de dépense, d’événement de l’agenda et de numéro FNE.' ],
+  } },
+  { version: '2026.11.10-14', nouveautes: {
+    commun: [],
+    parent: [ 'Chaque paiement de scolarité a son reçu officiel numéroté : bouton « Reçu » dans la scolarité de votre enfant, à télécharger en PDF ou imprimer (les paiements Mobile Money aussi).' ],
+    portier: [],
+    personnel: [ 'Souches des reçus : chaque versement (au secrétariat ou en ligne) reçoit automatiquement un numéro de reçu unique (R2026-00001…), impossible à modifier ; liste « Souches des reçus » par mois dans Comptabilité → Scolarité, avec réimpression.' ],
+  } },
   { version: '2026.11.10-13', nouveautes: {
     commun: [],
     parent: [ 'Votre accueil est rangé en deux groupes bien séparés : « C’est vous seul qui voyez ces informations » (vos enfants, absences, notes, bulletins, scolarité, messages) et « Informations publiques de l’école » (activités, cantine, agenda, nouvelles, tableau d’honneur, photos).' ],
@@ -7341,7 +7354,8 @@ function renderAgenda(){
   return `<div class="view active">
     ${gestion ? `<div class="panel">
       <div class="panel-head"><div><h2>📅 Ajouter une date</h2><div class="sub">Visible par le personnel et par les parents concernés. Les vacances arrêtent automatiquement les annonces et le rappel d’appel.</div></div></div>
-      <form onsubmit="return ajouterEvenementAgenda(event)">
+      ${boutonRemplissage('agenda', 'SCHEMA_AGENDA', 'formAgenda')}
+      <form id="formAgenda" onsubmit="return ajouterEvenementAgenda(event)">
         <div class="form-grid">
           <div class="field"><label>Titre</label><input name="titre" required minlength="2" maxlength="150" placeholder="Ex : Compositions du 1er trimestre"></div>
           <div class="field"><label>Type</label><select name="type">${Object.entries(TYPES_AGENDA).map(([k, v]) => `<option value="${k}">${v.ic} ${v.lib}</option>`).join('')}</select></div>
@@ -7887,6 +7901,48 @@ const SCHEMA_PERSONNEL = [
   {name:'telephone', label:'Téléphone', type:'tel', format:"10 chiffres, Côte d'Ivoire"},
 ];
 
+const SCHEMA_PAIEMENT = [
+  {name:'montant', label:'Montant payé (francs CFA)', type:'number', format:'nombre entier, ex. 25000'},
+  {name:'date', label:'Date du paiement', type:'date', format:'AAAA-MM-JJ'},
+  {name:'tranche', label:'Tranche / échéance payée', type:'select'},
+  {name:'modePaiement', label:'Mode de paiement', type:'select'},
+];
+const SCHEMA_DEPENSE = [
+  {name:'libelle', label:'Libellé de la dépense (objet, fournisseur)', type:'text'},
+  {name:'montant', label:'Montant total payé (francs CFA)', type:'number', format:'nombre entier, ex. 25000'},
+  {name:'date', label:'Date de la facture ou du paiement', type:'date', format:'AAAA-MM-JJ'},
+  {name:'categorie', label:'Catégorie', type:'select'},
+  {name:'modePaiement', label:'Mode de paiement', type:'select'},
+];
+const SCHEMA_AGENDA = [
+  {name:'titre', label:'Titre de l’événement', type:'text'},
+  {name:'type', label:'Type d’événement', type:'select'},
+  {name:'dateDebut', label:'Date de début', type:'date', format:'AAAA-MM-JJ'},
+  {name:'dateFin', label:'Date de fin (incluse)', type:'date', format:'AAAA-MM-JJ'},
+  {name:'description', label:'Précision (lieu, heure, consignes)', type:'text'},
+];
+const SCHEMA_FNE = [
+  {name:'fneNumero', label:'Numéro de la facture normalisée électronique (FNE) de la DGI', type:'text'},
+  {name:'fneLien', label:'Lien de vérification de la facture (commence par https://)', type:'url'},
+];
+// Pour chaque liste déroulante du formulaire, on donne au moteur les valeurs permises :
+// parmi toutes les informations du document, il choisit celle qui convient.
+function schemaAvecOptions(schema, formId){
+  const form = document.getElementById(formId);
+  return schema.map(c => {
+    const el = form && form.elements[c.name];
+    if(el && el.tagName === 'SELECT'){
+      const opts = [...el.options].map(o => o.textContent.trim()).filter(Boolean).slice(0, 25);
+      return { ...c, type: 'text', format: 'une valeur parmi : ' + opts.join(' | ') };
+    }
+    return c;
+  });
+}
+function boutonRemplissage(formulaire, schemaNom, formId){
+  if(!['secretariat','direction','fondation'].includes(ui.role)) return '';
+  return `<button type="button" class="btn secondary sm btn-sf" onclick="ouvrirRemplissageIntelligent('${formulaire}', schemaAvecOptions(${schemaNom}, '${formId}'), (r)=>appliquerRemplissage('${formId}', r))">✨ Remplir automatiquement <small>(photo, PDF, Word, Excel, vocal, texte)</small></button>`;
+}
+
 let smartFillRecorder = null;
 let smartFillChunks = [];
 let smartFillMinuteur = null;
@@ -7915,7 +7971,7 @@ function renderSmartFillModal(etat, message){
     </div>`;
   }
   return `
-    <div class="hint" style="margin-bottom:14px;">Trois façons de remplir la fiche sans tout taper : une <strong>photo</strong> de document (acte de naissance, fiche de renseignements — recto et verso possibles), un <strong>message vocal</strong>, ou un <strong>texte collé</strong> (par exemple un message WhatsApp du parent). Vous relisez tout avant de l’appliquer.</div>
+    <div class="hint" style="margin-bottom:14px;">Quatre façons de remplir la fiche sans tout taper : une <strong>photo</strong> de document (acte de naissance, fiche de renseignements — recto et verso possibles), un <strong>message vocal</strong>, ou un <strong>texte collé</strong> (par exemple un message WhatsApp du parent). Vous relisez tout avant de l’appliquer.</div>
     ${message ? `<div class="pin-error" style="margin-bottom:12px;" role="alert">${escapeHtml(message)}</div>` : ''}
     <div class="sf-sources">
       <div class="sf-source">
@@ -7931,6 +7987,13 @@ function renderSmartFillModal(etat, message){
         <label class="btn secondary sm" style="cursor:pointer;">Importer (dont WhatsApp)
           <input type="file" accept="audio/*" style="display:none;" onchange="handleSmartFillAudioFichier(event)">
         </label>
+      </div>
+      <div class="sf-source">
+        <div class="sf-ic">📄</div><strong>Document</strong>
+        <label class="btn secondary sm" style="cursor:pointer;">PDF, Word, Excel, image
+          <input type="file" accept=".pdf,.docx,.xlsx,.xls,.csv,.txt,image/*,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" style="display:none;" onchange="handleSmartFillDocument(event)">
+        </label>
+        <span class="hint" style="margin:0;">Reçu, facture, relevé, fiche d’inscription, circulaire…</span>
       </div>
       <div class="sf-source sf-texte">
         <div class="sf-ic">📝</div><strong>Texte</strong>
@@ -8002,6 +8065,67 @@ async function handleSmartFillAudioFichier(ev){
     await smartFillEnvoyer({ typeSource: 'audio', fichierBase64: base64, mimeType: fichier.type || 'audio/ogg' });
   }catch(e){ $('#smartFillBody').innerHTML = renderSmartFillModal(null, e.message); }
 }
+// Documents : le texte est extrait SUR LE TÉLÉPHONE (rien n'est stocké), puis seul ce texte est analysé.
+const PDFJS_URL = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js';
+const PDFJS_WORKER = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+const MAMMOTH_URL = 'https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js';
+function chargerScript(url, global){
+  if(window[global]) return Promise.resolve(window[global]);
+  return new Promise((ok, ko) => { const sc = document.createElement('script'); sc.src = url; sc.onload = () => ok(window[global]); sc.onerror = () => ko(new Error('Connexion internet nécessaire pour lire ce type de document.')); document.head.appendChild(sc); });
+}
+async function texteDuPdf(fichier){
+  const pdfjs = await chargerScript(PDFJS_URL, 'pdfjsLib');
+  pdfjs.GlobalWorkerOptions.workerSrc = PDFJS_WORKER;
+  const doc = await pdfjs.getDocument({ data: await fichier.arrayBuffer() }).promise;
+  let texte = '';
+  for(let i = 1; i <= Math.min(doc.numPages, 6); i++){
+    const page = await doc.getPage(i), c = await page.getTextContent();
+    texte += c.items.map(x => x.str).join(' ') + '\n';
+  }
+  if(texte.replace(/\s/g, '').length >= 30) return { texte };
+  // PDF scanné (pas de texte) : les 2 premières pages sont lues comme des photos
+  const images = [];
+  for(let i = 1; i <= Math.min(doc.numPages, 2); i++){
+    const page = await doc.getPage(i), vue = page.getViewport({ scale: 1 });
+    const echelle = Math.min(2, 1600 / Math.max(vue.width, vue.height)), v = page.getViewport({ scale: echelle });
+    const canvas = document.createElement('canvas'); canvas.width = v.width; canvas.height = v.height;
+    await page.render({ canvasContext: canvas.getContext('2d'), viewport: v }).promise;
+    images.push(canvas.toDataURL('image/jpeg', 0.82).split(',')[1]);
+  }
+  return { images };
+}
+async function texteDuWord(fichier){
+  const mammoth = await chargerScript(MAMMOTH_URL, 'mammoth');
+  const r = await mammoth.extractRawText({ arrayBuffer: await fichier.arrayBuffer() });
+  return r.value || '';
+}
+async function texteDuTableur(fichier){
+  const XLSX = await chargerXLSX();
+  const wb = XLSX.read(await fichier.arrayBuffer(), { type: 'array' });
+  return wb.SheetNames.slice(0, 3).map(n => `Feuille « ${n} » :\n` + XLSX.utils.sheet_to_csv(wb.Sheets[n], { FS: ' ; ' })).join('\n');
+}
+async function handleSmartFillDocument(ev){
+  const fichier = ev.target.files[0]; if(!fichier) return;
+  const nom = (fichier.name || '').toLowerCase(), type = fichier.type || '';
+  if(fichier.size > 15 * 1024 * 1024){ $('#smartFillBody').innerHTML = renderSmartFillModal(null, 'Document trop lourd (15 Mo maximum).'); return; }
+  $('#smartFillBody').innerHTML = renderSmartFillModal('chargement');
+  try{
+    if(type.startsWith('image/')) return await smartFillEnvoyer({ typeSource: 'photo', fichiersBase64: [await smartFillCompresserImage(fichier)], mimeType: 'image/jpeg' });
+    let texte = '';
+    if(nom.endsWith('.pdf') || type === 'application/pdf'){
+      const r = await texteDuPdf(fichier);
+      if(r.images) return await smartFillEnvoyer({ typeSource: 'photo', fichiersBase64: r.images, mimeType: 'image/jpeg' });
+      texte = r.texte;
+    } else if(nom.endsWith('.docx')) texte = await texteDuWord(fichier);
+    else if(/\.(xlsx|xls|csv)$/.test(nom)) texte = await texteDuTableur(fichier);
+    else if(nom.endsWith('.txt') || type.startsWith('text/')) texte = await fichier.text();
+    else if(nom.endsWith('.doc')) throw new Error('Ancien format Word (.doc) : enregistrez-le en .docx ou en PDF, ou prenez-le en photo.');
+    else throw new Error('Format non reconnu : PDF, Word (.docx), Excel (.xlsx, .xls, .csv), texte ou image.');
+    texte = texte.replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+    if(texte.length < 5) throw new Error('Aucun texte lisible dans ce document : prenez-le en photo.');
+    await smartFillEnvoyer({ typeSource: 'document', texte: texte.slice(0, 15000) });
+  }catch(e){ $('#smartFillBody').innerHTML = renderSmartFillModal(null, e.message); }
+}
 async function handleSmartFillTexte(){
   const texte = ($('#smartFillTexte')?.value || '').trim();
   if(texte.length < 5){ $('#smartFillBody').innerHTML = renderSmartFillModal(null, 'Collez d’abord le texte à analyser.'); return; }
@@ -8052,6 +8176,27 @@ async function smartFillEnvoyer(source){
     $('#smartFillBody').innerHTML = renderSmartFillApercu(data.resultat);
   }catch(e){ $('#smartFillBody').innerHTML = renderSmartFillModal(null, e.message); }
 }
+const SYNONYMES_OPTIONS = [
+  [/orange|mtn|moov|wave|momo|mobile|flooz|transfert/, 'mobile money'],
+  [/esp[eè]ce|cash|liquide/, 'especes'],
+  [/ch[eè]que/, 'cheque'],
+  [/virement|banque|bancaire|rib/, 'virement bancaire'],
+];
+function sansAccents(t){ return String(t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim(); }
+function optionCorrespondante(select, valeur){
+  const opts = [...select.options].filter(o => o.value !== '' || o.textContent.trim());
+  let v = sansAccents(valeur);
+  const exact = opts.find(o => sansAccents(o.value) === v || sansAccents(o.textContent) === v);
+  if(exact) return exact;
+  for(const [re, cible] of SYNONYMES_OPTIONS){ if(re.test(v)){ const o = opts.find(x => sansAccents(x.textContent).includes(cible)); if(o) return o; } }
+  const contient = opts.find(o => { const t = sansAccents(o.textContent); return t && (t.includes(v) || v.includes(t)); });
+  if(contient) return contient;
+  // Mots en commun (ex. « 2e tranche » ↔ « 2e versement », « électricité » ↔ « Électricité & Eau »)
+  const mots = t => sansAccents(t).split(/[^a-z0-9]+/).filter(m => m.length > 1);
+  const mv = mots(v); let meilleur = null, score = 0;
+  opts.forEach(o => { const n = mots(o.textContent).filter(m => mv.includes(m)).length; if(n > score){ score = n; meilleur = o; } });
+  return score ? meilleur : null;
+}
 function appliquerRemplissage(formId, resultat){
   const form = document.getElementById(formId);
   if(!form) return;
@@ -8060,9 +8205,13 @@ function appliquerRemplissage(formId, resultat){
     const { valeur, confiance } = resultat[champ];
     const input = form.elements[champ];
     if(!input || valeur == null || valeur === '') continue;
-    // Liste déroulante : on ne choisit qu'une option qui existe vraiment
-    if(input.tagName === 'SELECT' && ![...input.options].some(o => o.value === valeur)) continue;
-    input.value = valeur;
+    // Liste déroulante : on ne choisit qu'une option qui existe vraiment (correspondance souple)
+    if(input.tagName === 'SELECT'){
+      const opt = optionCorrespondante(input, valeur);
+      if(!opt) continue;
+      input.value = opt.value;
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    } else input.value = valeur;
     input.classList.remove('champ-a-verifier');
     input.classList.add('champ-pre-rempli');
     input.addEventListener('input', () => input.classList.remove('champ-pre-rempli', 'champ-a-verifier'), { once: true });
@@ -10371,7 +10520,10 @@ function nombreEnLettres(n){
 function capitalize(s){ return s ? s.charAt(0).toUpperCase()+s.slice(1) : s; }
 
 let recuSeq = 0;
+function souchePour(refId){ return refId ? (DB.recus || []).find(x => x.enregistrementId === refId) || null : null; }
 function genRecuNumero(type, refId){
+  const souche = souchePour(refId);
+  if(souche) return souche.numero; // numéro officiel (souche conservée par l'école)
   return `REC-${type==='entree'?'E':'S'}-${(refId||uid()).toUpperCase()}`;
 }
 function certificationDe(refId){ return (DB.certificationsFne || []).find(c => c.enregistrementId === refId) || null; }
@@ -10426,7 +10578,7 @@ function buildRecuHtml(r){
       <div class="recu-row"><span>${r.type==='entree'?'Reçu de':'Payé à'}</span><strong>${escapeHtml(r.personne||'—')}</strong></div>
       <div class="recu-row"><span>Objet</span><strong>${escapeHtml(r.objet)}</strong></div>
       ${r.sousInfo ? `<div class="recu-row"><span>Détail</span><strong>${escapeHtml(r.sousInfo)}</strong></div>` : ''}
-      <div class="recu-row"><span>Mode de paiement</span><strong>${escapeHtml(r.modePaiement||'—')}</strong></div>
+      <div class="recu-row"><span>Mode de paiement</span><strong>${escapeHtml(r.modePaiement||'—')}${souchePour(r.refId)?.enLigne ? ' (paiement en ligne PayDunya, confirmé)' : ''}</strong></div>
       ${detailTvaRecu(r)}
       <div class="recu-montant" style="color:${couleur};">${r.type==='entree'?'+':'−'} ${fmtFCFA(r.montant)}${tvaConcerne?' TTC':''}</div>
       <div class="recu-lettres">Arrêtée la présente somme à : <em>${capitalize(nombreEnLettres(r.montant))} francs CFA</em></div>
@@ -10441,8 +10593,39 @@ function openRecu(r){
     ${buildRecuHtml(r)}
     <div class="form-actions no-print">
       <button type="button" class="btn secondary" onclick="closeModal()">Fermer</button>
-      <button type="button" class="btn" onclick="window.print()">🖨️ Imprimer le reçu</button>
-    </div>`);
+      <button type="button" class="btn" onclick="window.print()">${icone('download')} ${ui.role === 'parent' ? 'Télécharger (PDF) / imprimer' : 'Imprimer le reçu'}</button>
+    </div>
+    ${ui.role === 'parent' ? '<p class="hint no-print" style="margin:6px 0 0;">Pour l’enregistrer : touchez « Télécharger », puis choisissez « Enregistrer au format PDF ».</p>' : ''}`);
+}
+// Parent : reçu d'un versement de son enfant (souche officielle de l'école)
+function ouvrirRecuParent(paiementId){
+  const p = (DB.paiementsScolarite || []).find(x => x.id === paiementId); if(!p) return;
+  const e = (DB.eleves || []).find(x => x.id === p.eleveId);
+  openRecu({ type:'entree', refId: p.id, montant: p.montant, date: p.date, modePaiement: p.modePaiement, objet: `Scolarité — ${p.tranche || ''}`, personne: e ? eleveFullName(e) : '', sousInfo: e ? classeName(e.classeId) : '' });
+}
+// École : souches des reçus du mois (numéro, élève, objet, mode, montant) — consultation et réimpression
+function ouvrirSouchesRecus(mois){
+  mois = mois || thisMonthISO();
+  const liste = (DB.recus || []).filter(x => String(x.datePaiement || x.emisLe || '').slice(0, 7) === mois).sort((a, b) => String(b.numero).localeCompare(String(a.numero)));
+  const total = liste.reduce((t, x) => t + Number(x.montant || 0), 0);
+  const decale = n => { const [a, m] = mois.split('-').map(Number); const d = new Date(a, m - 1 + n, 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; };
+  const nomMois = (t => t.charAt(0).toUpperCase() + t.slice(1))(new Date(mois + '-15T12:00:00').toLocaleDateString('fr-FR', { month:'long', year:'numeric' }));
+  openModal(`Souches des reçus — ${nomMois}`, `
+    <div class="form-actions no-print" style="margin-top:0;justify-content:space-between;">
+      <span style="display:flex;gap:6px;"><button type="button" class="btn secondary sm" onclick="ouvrirSouchesRecus('${decale(-1)}')">‹ Mois précédent</button>${mois < thisMonthISO() ? `<button type="button" class="btn secondary sm" onclick="ouvrirSouchesRecus('${decale(1)}')">Mois suivant ›</button>` : ''}</span>
+      <button type="button" class="btn sm" onclick="window.print()">${icone('printer')} Imprimer</button></div>
+    <p class="hint">Un numéro par versement, attribué par la base (impossible à modifier ou effacer). <strong>${liste.length}</strong> reçu(s) · total <strong>${fmtFCFA(total)}</strong>.</p>
+    ${liste.length ? `<ul class="souches">${liste.map(x => { const e = eleveById(x.eleveId); return `<li class="souche">
+      <span class="souche-num">${escapeHtml(x.numero)}</span>
+      <span class="souche-txt"><strong>${e ? escapeHtml(eleveFullName(e)) : 'Élève'}</strong><small>${escapeHtml(x.objet || '')} · ${fmtDate(x.datePaiement || String(x.emisLe).slice(0, 10))} · ${escapeHtml(x.modePaiement || '')}${x.enLigne ? ' (en ligne)' : ''}</small></span>
+      <span class="souche-montant">${fmtFCFA(x.montant)}</span>
+      <button type="button" class="icon-btn no-print" title="Réimprimer le reçu" aria-label="Réimprimer le reçu ${escapeHtml(x.numero)}" onclick="reimprimerSouche('${x.id}')">🧾</button></li>`; }).join('')}</ul>`
+      : '<div class="etat-vide"><span>Aucun reçu ce mois-ci.</span></div>'}`);
+}
+function reimprimerSouche(id){
+  const x = (DB.recus || []).find(r => r.id === id); if(!x) return;
+  const e = eleveById(x.eleveId);
+  openRecu({ type:'entree', refId: x.enregistrementId, montant: x.montant, date: x.datePaiement, modePaiement: x.modePaiement, objet: x.objet, personne: e ? eleveFullName(e) : '', sousInfo: e ? classeName(e.classeId) : '' });
 }
 
 function renderComptabilite(){
@@ -10536,7 +10719,7 @@ function ouvrirSaisieFne(table, id){
   const c = certificationDe(id);
   openModal('Numéro FNE de l’encaissement', `
     <div class="section-note">${escapeHtml(x.objet)} · ${fmtFCFA(x.montant)} · ${fmtDate(x.date)}<br><small>${escapeHtml(x.payeur)}</small></div>
-    <form onsubmit="return enregistrerSaisieFne(event,'${table}','${id}')">
+    ${boutonRemplissage('fne', 'SCHEMA_FNE', 'formFne')}<form id="formFne" onsubmit="return enregistrerSaisieFne(event,'${table}','${id}')">
       <div class="field"><label for="fneNumero">Numéro de la facture FNE (donné par la plateforme de la DGI)</label><input id="fneNumero" required minlength="3" maxlength="60" value="${escapeHtml(c ? c.numero : '')}" autocomplete="off"></div>
       <div class="field"><label for="fneLien">Lien de vérification (facultatif, commence par https://)</label><input id="fneLien" type="url" maxlength="300" placeholder="https://…" value="${escapeHtml(c && c.lien ? c.lien : '')}"></div>
       <div class="pin-error" id="fneErr"></div>
@@ -11299,6 +11482,7 @@ function renderComptaScolarite(){
     : `<tr><th>Élève</th><th>Dû (annuel)</th><th>Payé</th><th>Solde</th><th>Statut</th><th>Actions</th></tr>`;
 
   return `
+    <div class="form-actions no-print" style="justify-content:flex-end;margin:0 0 8px;"><button type="button" class="btn secondary sm" onclick="ouvrirSouchesRecus()">${icone('receipt')} Souches des reçus</button></div>
     <div class="panel">
       <div class="panel-head">
         <div><h2>État de la scolarité par classe</h2><div class="sub">${grilleActive ? `Recouvré : ${tauxClasse}% (${fmtFCFA(totalPaye)} / ${fmtFCFA(totalDu)})` : `Frais annuel : ${fmtFCFA(du)} · Recouvré : ${tauxClasse}% (${fmtFCFA(totalPaye)} / ${fmtFCFA(totalDu)})`}</div></div>
@@ -11483,7 +11667,8 @@ function openPaiementScolariteForm(eleveId, trancheLabel){
   const montantDefaut = echCible ? Math.max(0, echCible.montant - echCible.paye) : (Math.min(info.solde,info.du)||10000);
   openModal(`Paiement scolarité — ${eleveFullName(e)}`, `
     <div class="section-note">${echCible ? `${escapeHtml(echCible.label)} : reste <strong>${fmtFCFA(montantDefaut)}</strong> sur ${fmtFCFA(echCible.montant)}` : `Solde restant dû : <strong>${fmtFCFA(info.solde)}</strong> sur ${fmtFCFA(info.du)}`}</div>
-    <form onsubmit="return handleSavePaiementScolarite(event,'${eleveId}')">
+    ${boutonRemplissage('paiement', 'SCHEMA_PAIEMENT', 'formPaiement')}
+    <form id="formPaiement" onsubmit="return handleSavePaiementScolarite(event,'${eleveId}')">
       <div class="form-grid">
         <div class="field"><label>Montant (${DEVISE})</label><input type="number" id="paiementMontant" name="montant" min="500" step="500" required value="${montantDefaut}"></div>
         <div class="field"><label>Échéance / Tranche</label><select name="tranche" onchange="const o=this.selectedOptions[0]; if(o && o.dataset.montant) document.getElementById('paiementMontant').value = o.dataset.montant;">${optionsEcheancesScolarite(trancheLabel, e?.classeId)}</select></div>
@@ -12107,7 +12292,8 @@ function renderComptaDepenses(){
 function openDepenseForm(id){
   const d = id ? DB.depenses.find(x=>x.id===id) : null;
   openModal(d ? 'Modifier la dépense' : 'Nouvelle dépense', `
-    <form onsubmit="return handleSaveDepense(event,'${id||''}')">
+    ${boutonRemplissage('depense', 'SCHEMA_DEPENSE', 'formDepense')}
+    <form id="formDepense" onsubmit="return handleSaveDepense(event,'${id||''}')">
       <div class="form-grid">
         <div class="field"><label>Catégorie</label><select name="categorie">${CATEGORIES_DEPENSES.map(c=>`<option ${d?.categorie===c?'selected':''}>${c}</option>`).join('')}</select></div>
         <div class="field"><label>Montant (${DEVISE})</label><input type="number" name="montant" min="0" step="500" required value="${d?d.montant:10000}"></div>
