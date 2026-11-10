@@ -2820,6 +2820,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.11.10-8', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Publication des bulletins : avant de publier un trimestre, un tableau montre classe par classe les moyennes calculées, les notes de composition saisies et les appréciations écrites ; en cas de manques, « Compléter d’abord » ou « Publier quand même ».' ],
+  } },
   { version: '2026.11.10-7', nouveautes: {
     commun: [],
     parent: [],
@@ -8323,9 +8329,48 @@ function renderEleveProfile(id){
   </div>`;
 }
 
+/* ---------- Avant de publier un trimestre : état des bulletins, classe par classe ---------- */
+function etatBulletinsTrimestre(trimestre){
+  return DB.classes.map(c => {
+    const eleves = DB.eleves.filter(e => e.classeId === c.id && e.statut === 'Actif');
+    if(!eleves.length) return null;
+    const r = resultatsClasse(c.id, trimestre);
+    const avecMoyenne = (r.lignes || []).filter(l => l.moyenne !== null).length;
+    // Compositions attendues : une par élève et par matière (sauf matière « au choix » que l'élève ne suit pas)
+    const matieres = MATIERES_BY_CYCLE[c.cycle] || [];
+    let attendues = 0, saisies = 0;
+    eleves.forEach(e => matieres.forEach(m => {
+      const ses = (DB.notes || []).filter(n => n.eleveId === e.id && n.matiere === m && n.trimestre === trimestre && n.note != null);
+      if(MATIERES_AU_CHOIX.includes(m) && !ses.length) return;
+      attendues++; if(ses.some(n => n.type === 'Composition')) saisies++;
+    }));
+    const appr = eleves.filter(e => String((DB.bulletinsComments || {})[`${e.id}_${trimestre}`] || '').trim()).length;
+    return { c, eleves: eleves.length, avecMoyenne, attendues, saisies, appr, complet: avecMoyenne === eleves.length && saisies >= attendues && appr === eleves.length };
+  }).filter(Boolean);
+}
+function confirmerPublicationBulletins(trimestre){
+  return new Promise(resoudre => {
+    const etat = etatBulletinsTrimestre(trimestre), incomplets = etat.filter(x => !x.complet);
+    window.__publication = ok => { window.__publication = null; closeModal(); resoudre(ok); };
+    const cell = (n, sur) => `<td class="${n >= sur ? 'pb-ok' : 'pb-ko'}">${n} / ${sur}</td>`;
+    openModal(`Publier les bulletins du ${libelleTrimestre(trimestre)} ?`, `
+      ${incomplets.length
+        ? `<div class="pb-alerte">${icone('triangle-alert')}<span><strong>${incomplets.length} classe${incomplets.length > 1 ? 's ont' : ' a'} des bulletins incomplets.</strong> Les parents verraient des notes ou des appréciations manquantes.</span></div>`
+        : `<div class="pb-ok-bandeau">${icone('circle-check')}<span>Tous les bulletins sont complets.</span></div>`}
+      <ul class="pb-liste">${etat.map(x => `<li class="pb-ligne${x.complet ? ' complet' : ''}"><strong>${escapeHtml(x.c.nom)}</strong>
+        <span class="pb-puces"><span class="pb-puce ${x.avecMoyenne >= x.eleves ? 'pb-ok' : 'pb-ko'}">Moyennes ${x.avecMoyenne}/${x.eleves}</span><span class="pb-puce ${x.saisies >= x.attendues ? 'pb-ok' : 'pb-ko'}">Compositions ${x.saisies}/${x.attendues}</span><span class="pb-puce ${x.appr >= x.eleves ? 'pb-ok' : 'pb-ko'}">Appréciations ${x.appr}/${x.eleves}</span></span></li>`).join('')}</ul>
+      <p class="hint">Après publication : chaque parent voit le bulletin de SES enfants et reçoit une notification ; les notes sont verrouillées (seule la direction peut encore corriger, avec historique).</p>
+      <div class="form-actions">${incomplets.length
+        ? `<button type="button" class="btn" onclick="__publication(false)">Compléter d’abord</button><button type="button" class="btn danger" onclick="__publication(true)">Publier quand même</button>`
+        : `<button type="button" class="btn secondary" onclick="__publication(false)">Annuler</button><button type="button" class="btn" onclick="__publication(true)">Publier aux parents</button>`}</div>`);
+    // Fermeture par la croix ou Échap = pas de publication
+    const fermer = document.getElementById('modalClose');
+    if(fermer) fermer.addEventListener('click', () => { if(window.__publication) window.__publication(false); }, { once: true });
+  });
+}
 async function publierBulletins(trimestre, publier){
   const actuels = DB.meta.bulletinsPublies || [];
-  if(publier && !confirm(`Publier les bulletins du ${trimestre} ? Chaque parent verra les notes et l’appréciation de ses enfants, et recevra une notification.`)){ renderView('notes'); return; }
+  if(publier && !(await confirmerPublicationBulletins(trimestre))){ renderView('notes'); return; }
   const liste = publier ? [...new Set(actuels.concat(trimestre))] : actuels.filter(t => t !== trimestre);
   try{
     if(publier){ const nb = await figerResultats(trimestre); if(!nb && !confirm('Aucune moyenne n’a pu être calculée pour ce trimestre. Publier quand même ?')){ renderView('notes'); return; } }

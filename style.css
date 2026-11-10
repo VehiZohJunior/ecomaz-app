@@ -2164,3 +2164,21 @@ body.theme-portier .gate-classe strong{ overflow-wrap:anywhere; }
 
 /* Versements déjà reçus : tranche pour toute la classe (2026-11-10) */
 .rv-groupe{ display:flex; flex-direction:column; gap:6px; margin:0 0 12px; padding:10px 12px; border-radius:12px; background:var(--surface-2); }
+
+/* ===== Avant publication des bulletins (2026-11-10) ===== */
+.pb-alerte, .pb-ok-bandeau{ display:flex; gap:10px; align-items:flex-start; padding:10px 12px; border-radius:12px; margin:0 0 12px; }
+.pb-alerte{ background:color-mix(in srgb, var(--danger) 10%, var(--surface)); border:1px solid color-mix(in srgb, var(--danger) 35%, var(--border)); }
+.pb-ok-bandeau{ background:color-mix(in srgb, var(--success) 12%, var(--surface)); border:1px solid color-mix(in srgb, var(--success) 35%, var(--border)); }
+.pb-alerte svg, .pb-ok-bandeau svg{ width:22px; height:22px; flex:0 0 22px; }
+.pb-alerte svg{ color:var(--danger); } .pb-ok-bandeau svg{ color:var(--success); }
+.pb-table{ width:100%; }
+.pb-table td, .pb-table th{ white-space:nowrap; }
+.pb-ok{ color:var(--success); font-weight:700; }
+.pb-ko{ color:var(--danger); font-weight:800; }
+.pb-table th, .pb-table td{ padding:8px 6px; font-size:var(--fs-sm); }
+.pb-table th{ font-size:var(--fs-xs); }
+.pb-liste{ list-style:none; margin:0 0 8px; padding:0; display:flex; flex-direction:column; gap:6px; }
+.pb-ligne{ display:flex; flex-direction:column; gap:6px; padding:8px 10px; border:1px solid var(--border); border-radius:10px; border-left:4px solid var(--danger); }
+.pb-ligne.complet{ border-left-color:var(--success); }
+.pb-puces{ display:flex; flex-wrap:wrap; gap:6px; }
+.pb-puce{ font-size:var(--fs-xs); padding:3px 8px; border-radius:99px; background:var(--surface-2); }
