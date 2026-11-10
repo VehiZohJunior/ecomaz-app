@@ -34,7 +34,8 @@ export async function parentsDesEleves(admin: Client, ecoleId: string, eleveIds:
   return [...ids];
 }
 
-export interface MessagePush { title: string; body: string; url?: string; tag?: string }
+// insistant : la notification reste affichée jusqu'à ce qu'on la touche, longue vibration, son (rappel de l'appel)
+export interface MessagePush { title: string; body: string; url?: string; tag?: string; insistant?: boolean }
 
 // Envoie la notification à tous les téléphones abonnés de ces comptes.
 export async function envoyerPush(admin: Client, userIds: string[], message: MessagePush): Promise<{ envoyes: number; echecs: number }> {

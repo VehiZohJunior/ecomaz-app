@@ -6,7 +6,7 @@
    d'attente hors ligne (voir supabase-client.js) — pas ce fichier, qui ne
    s'occupe que des fichiers de l'application (HTML/CSS/JS/icônes).
    ========================================================================= */
-const CACHE_NAME = 'ecomaz-shell-v161';
+const CACHE_NAME = 'ecomaz-shell-v162';
 const SHELL_FILES = [
   './',
   './index.html',
@@ -83,8 +83,16 @@ self.addEventListener('notificationclick', (event) => {
 self.addEventListener('push', (event) => {
   let d = {};
   try { d = event.data ? event.data.json() : {}; } catch (_e) { d = { body: event.data ? event.data.text() : '' }; }
-  event.waitUntil(self.registration.showNotification(d.title || 'EcoMaZ', {
-    body: d.body || '', icon: 'icon-192.png', badge: 'icon-192.png', tag: d.tag || undefined,
-    renotify: !!d.tag, data: { url: d.url || './parent.html' }, vibrate: [200, 100, 200],
-  }));
+  // Rappel insistant (appel non fait) : reste à l'écran jusqu'à ce qu'on le touche, longue vibration, son du téléphone ;
+  // si l'application est ouverte, elle affiche aussi son écran « Appel non fait » avec un bip.
+  const insistant = !!d.insistant;
+  event.waitUntil(Promise.all([
+    self.registration.showNotification(d.title || 'EcoMaZ', {
+      body: d.body || '', icon: 'icon-192.png', badge: 'icon-192.png', tag: d.tag || undefined,
+      renotify: !!d.tag, data: { url: d.url || './parent.html' }, silent: false,
+      vibrate: insistant ? [600, 200, 600, 200, 600, 200, 1000] : [200, 100, 200],
+      requireInteraction: insistant,
+    }),
+    insistant ? self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(f => f.forEach(c => c.postMessage({ type: 'rappel-appel' }))) : null,
+  ]));
 });

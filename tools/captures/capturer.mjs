@@ -188,6 +188,7 @@ for(const theme of THEMES){
         emarg: () => { ouvrirListeClasse(DB.classes[0].id, 'emargement'); },
         cartes: () => { ouvrirCartesScolaires(DB.classes[0].id); },
         relance: () => { ouvrirRelanceEnseignants(); },
+        obligatoire: () => { DB.horairesAnnonces = Object.assign({}, DB.horairesAnnonces || {}, { rappelAppel: '00:01:00', joursCours: [1,2,3,4,5,6,7] }); DB.agenda = []; DB.presencesEleves = DB.presencesEleves.filter(x => x.date !== todayISO()); verifierAppelObligatoire(true); },
         guideens: () => { imprimerGuideEnseignant(); },
         pmsg: async () => { navParent('msg'); await new Promise(r => setTimeout(r, 700)); },
         pvie: async () => { navParent('vie'); await new Promise(r => setTimeout(r, 900)); document.querySelectorAll('#viewContainer details').forEach(d => d.open = true); },

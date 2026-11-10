@@ -888,6 +888,7 @@ function go(view){
   $('#viewTitle').textContent = view === 'dashboard' ? titreTableauDeBord() : (VIEW_TITLES[view] || '');
   ui.currentView = view;
   renderView(view);
+  if(ui.role === 'enseignant') setTimeout(verifierAppelObligatoire, 0);
   $('#sidebar').classList.remove('open');
   $('#sidebarBackdrop').classList.remove('open');
   window.scrollTo(0,0);
@@ -2766,6 +2767,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.11.10-1', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Appel obligatoire : à partir de l’heure du rappel, tant que l’appel de ses classes n’est pas validé, l’enseignant voit un écran « L’appel n’est pas encore fait » avec un bip chaque minute ; seul le bouton « Faire l’appel maintenant » le fait disparaître.', 'Rappel sur le téléphone : la notification reste affichée jusqu’à ce qu’on la touche (longue vibration, son), puis revient 10 et 20 minutes plus tard si l’appel n’est toujours pas fait ; au 3e rappel, la direction est informée des classes sans appel.' ],
+  } },
   { version: '2026.11.9-22', nouveautes: {
     commun: [],
     parent: [],
@@ -3507,6 +3514,77 @@ function afficherNouveautes(){
     }, 900);
   }catch(_e){ /* stockage indisponible : on n'insiste pas */ }
 }
+/* =====================================================================
+   APPEL OBLIGATOIRE (enseignant) — 2026-11-10
+   À partir de l'heure du rappel (Paramètres → horaires) et jusqu'à 17 h, les jours
+   de classe : tant que l'appel d'une de ses classes n'est pas validé, un écran
+   « L'appel n'est pas fait » couvre l'application de l'enseignant (pas de bouton
+   fermer : seulement « Faire l'appel maintenant ») et un bip retentit chaque minute.
+   L'écran disparaît dès que l'appel de toutes ses classes est enregistré.
+   ===================================================================== */
+let audioRappel = null, minuterieAppel = null, dernierBip = 0;
+function debloquerSon(){
+  try{
+    if(!audioRappel){ const C = window.AudioContext || window.webkitAudioContext; if(!C) return; audioRappel = new C(); }
+    if(audioRappel.state === 'suspended') audioRappel.resume();
+  }catch(_e){}
+}
+// Les navigateurs n'autorisent le son qu'après un premier toucher de l'écran
+document.addEventListener('pointerdown', debloquerSon, { passive: true });
+function bipRappel(){
+  if(navigator.vibrate) try{ navigator.vibrate([500, 150, 500, 150, 800]); }catch(_e){}
+  try{
+    debloquerSon(); if(!audioRappel || audioRappel.state !== 'running') return false;
+    const t0 = audioRappel.currentTime;
+    [0, 0.4, 0.8].forEach(dt => {
+      const o = audioRappel.createOscillator(), g = audioRappel.createGain();
+      o.type = 'square'; o.frequency.value = 880;
+      g.gain.setValueAtTime(0.0001, t0 + dt); g.gain.exponentialRampToValueAtTime(0.35, t0 + dt + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t0 + dt + 0.3);
+      o.connect(g); g.connect(audioRappel.destination); o.start(t0 + dt); o.stop(t0 + dt + 0.32);
+    });
+    return true;
+  }catch(_e){ return false; }
+}
+function classesAppelObligatoire(){
+  if(ui.role !== 'enseignant' || !session.enseignantId) return [];
+  const auj = todayISO(); if(!estJourDeCours(auj)) return [];
+  const rappel = String(DB.horairesAnnonces?.rappelAppel || '').slice(0, 5); if(!/^\d{2}:\d{2}$/.test(rappel)) return [];
+  const d = new Date(), hm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  if(hm < rappel || hm >= '17:00') return [];
+  return classesVisibles().filter(c => DB.eleves.some(e => e.classeId === c.id && e.statut === 'Actif') && !DB.presencesEleves.some(p => p.classeId === c.id && p.date === auj));
+}
+function verifierAppelObligatoire(forcerBip){
+  let el = document.getElementById('appelObligatoire');
+  const manquantes = classesAppelObligatoire();
+  // Rien à faire, ou l'enseignant est déjà sur l'écran d'appel : on laisse travailler
+  if(!manquantes.length || ui.currentView === 'presences-eleves'){
+    if(el) el.remove();
+    if(!manquantes.length && minuterieAppel){ clearInterval(minuterieAppel); minuterieAppel = null; }
+    return;
+  }
+  if(!el){
+    el = document.createElement('div'); el.id = 'appelObligatoire'; el.className = 'appel-obligatoire no-print';
+    el.setAttribute('role', 'alertdialog'); el.setAttribute('aria-modal', 'true'); el.setAttribute('aria-labelledby', 'aoTitre');
+    document.body.appendChild(el);
+    forcerBip = true;
+  }
+  const auj = todayISO();
+  el.innerHTML = `<div class="ao-boite">
+    <div class="ao-ic" aria-hidden="true">${icone('alarm-clock')}</div>
+    <h2 id="aoTitre">L’appel n’est pas encore fait</h2>
+    <p class="ao-classes">${manquantes.map(c => `<strong>${escapeHtml(c.nom)}</strong>`).join(' · ')}</p>
+    <p>Les parents attendent de savoir si leur enfant est en classe. Cet écran disparaîtra dès que l’appel sera validé.</p>
+    <button type="button" class="btn ao-btn" onclick="allerAppel('${manquantes[0].id}','${auj}')">${icone('circle-check')} Faire l’appel maintenant${manquantes.length > 1 ? ` — ${escapeHtml(manquantes[0].nom)}` : ''}</button>
+    ${audioRappel && audioRappel.state === 'running' ? '' : '<p class="ao-son">Touchez l’écran une fois pour activer le son des rappels.</p>'}
+  </div>`;
+  const maintenant = Date.now();
+  if(!document.hidden && (forcerBip || maintenant - dernierBip > 60000)){ dernierBip = maintenant; bipRappel(); }
+  if(!minuterieAppel) minuterieAppel = setInterval(() => verifierAppelObligatoire(), 20000);
+}
+document.addEventListener('visibilitychange', () => { if(!document.hidden && ui.role === 'enseignant') verifierAppelObligatoire(true); });
+if('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('message', ev => {
+  if(ev.data && ev.data.type === 'rappel-appel' && ui.role === 'enseignant') verifierAppelObligatoire(true);
+});
 function enterApp(){
   document.body.classList.remove('theme-parent');
   $('#loginGate').classList.remove('open');
@@ -3517,6 +3595,7 @@ function enterApp(){
   applyRoleVisibility();
   rafraichirBulles();
   go('dashboard');
+  if(ui.role === 'enseignant'){ chargerAgenda(); setInterval(() => verifierAppelObligatoire(), 60000); }
   startIdleWatcher();
   majBanniereHorsLigne();
   synchroniserFileAttente();
