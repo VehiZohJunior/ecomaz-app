@@ -58,6 +58,9 @@ Deno.serve(async (req) => {
 
     // Parent : seulement SON enfant, seulement une tranche existante, jamais plus que le reste dû (calculé ici)
     if (estParent) {
+      // Garde-fou « double paiement » : tant que l'école n'a saisi aucun versement, les restes dus seraient faux
+      const { count: nbVersements } = await supabaseAdmin.from('paiements_scolarite').select('id', { count: 'exact', head: true }).eq('ecole_id', profil.ecole_id);
+      if (!nbVersements) throw new Error("L'école n'a pas encore enregistré les versements déjà reçus : le paiement en ligne sera possible dès que ce sera fait (vous pouvez payer au secrétariat)");
       const { data: lien } = await supabaseAdmin.from('parents_eleves').select('eleve_id').eq('parent_profile_id', user.id).eq('eleve_id', eleveId).maybeSingle();
       if (!lien) throw new Error("Cet élève n'est pas relié à votre compte");
       const { data: ech } = await supabaseAdmin.from('echeances_scolarite').select('label, montant, classe_id').eq('ecole_id', profil.ecole_id);

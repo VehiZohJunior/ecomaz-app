@@ -1933,6 +1933,10 @@ function renderScolariteEnfant(e){
   if(!DB.meta?.scolariteVisibleParents) return '';
   const info = scolariteEleveParEcheance(e.id);
   if(!info.total) return '';
+  // Tant que l'école n'a saisi aucun versement, tout le monde paraîtrait « tout devoir » : on ne montre pas de reste
+  versementsSaisisParent();
+  if(DB.versementsSaisis !== true) return `<div class="enfant-scolarite"><div class="es-tete"><strong>Scolarité ${escapeHtml(DB.meta?.anneeScolaire || '')}</strong></div>
+    <div class="es-reste">Le suivi de vos paiements apparaîtra ici dès que l’école aura enregistré les versements déjà reçus.</div></div>`;
   const recus = (DB.paiementsScolarite || []).filter(p => p.eleveId === e.id);
   const pct = Math.min(100, Math.round(100 * info.totalPaye / info.total));
   const prochaine = info.detail.find(d => d.statut !== 'paye');
@@ -2029,7 +2033,7 @@ function renderAujourdhuiParent(enfants){
   const devoirs = (DB.devoirs || []).filter(d => d.classeId === e.classeId && d.pourLe > auj).sort((a, b) => a.pourLe.localeCompare(b.pourLe));
   const prochainJour = devoirs[0]?.pourLe, nbDevoirs = devoirs.filter(d => d.pourLe === prochainJour).length;
   let reste = null;
-  if(DB.meta?.scolariteVisibleParents){ const info = scolariteEleveParEcheance(e.id); if(info.total) reste = info.reste; }
+  if(DB.meta?.scolariteVisibleParents){ versementsSaisisParent(); if(DB.versementsSaisis === true){ const info = scolariteEleveParEcheance(e.id); if(info.total) reste = info.reste; } }
   const ligne = (ic, lib, val, cls) => `<li class="aj-ligne"><span class="aj-ic ${cls || ''}" aria-hidden="true">${icone(ic)}</span><span class="aj-txt"><small>${lib}</small><strong>${val}</strong></span></li>`;
   return `<section class="aj-parent em-rise" style="--i:2" id="aujParent" aria-label="Aujourd’hui">
     ${enfants.length > 1 ? `<div class="aj-enfants" role="tablist" aria-label="Choisir l’enfant">${enfants.map(x => `<button type="button" role="tab" class="aj-enfant${x.id === e.id ? ' actif' : ''}" aria-selected="${x.id === e.id}" onclick="choisirEnfantAujourdhui('${x.id}')"><span class="aj-av" aria-hidden="true">${escapeHtml(initials(x.prenom, x.nom))}</span><span>${escapeHtml(x.prenom || x.nom)}</span></button>`).join('')}</div>` : ''}
@@ -2152,10 +2156,16 @@ function chargerPaiementEnLigneParent(){
   sb.from('paiement_en_ligne_config_lecture').select('actif, prestataire').maybeSingle()
     .then(({ data }) => { DB.paiementEnLigne = data || { actif:false, prestataire:'' }; if(DB.paiementEnLigne.actif && ui.role === 'parent' && ui.vueParent !== 'vie') $('#viewContainer').innerHTML = renderParentDashboard(); }, () => { DB.paiementEnLigne = { actif:false }; });
 }
+function versementsSaisisParent(){
+  if(DB.versementsSaisis !== undefined) return;
+  DB.versementsSaisis = null;
+  sb.rpc('ecole_a_des_versements').then(({ data }) => { DB.versementsSaisis = data === true; if(DB.versementsSaisis && ui.role === 'parent' && ui.vueParent !== 'vie') $('#viewContainer').innerHTML = renderParentDashboard(); }, () => { DB.versementsSaisis = false; });
+}
 function boutonPayerEnLigne(e, d){
   if(ui.role !== 'parent') return '';
   chargerPaiementEnLigneParent();
-  if(!DB.paiementEnLigne?.actif || d.statut === 'paye') return '';
+  versementsSaisisParent();
+  if(!DB.paiementEnLigne?.actif || DB.versementsSaisis !== true || d.statut === 'paye') return '';
   const reste = Math.max(0, (d.montant || 0) - (d.paye || 0)); if(reste < 100) return '';
   return ` <button type="button" class="btn sm btn-momo" onclick="payerEnLigneParent('${e.id}', ${escapeHtml(JSON.stringify(d.label))}, ${reste})">${icone('smartphone')} Payer ${fmtFCFA(reste)} par Mobile Money</button>`;
 }
@@ -2184,7 +2194,7 @@ async function payerEnLigneParent(eleveId, tranche, reste){
 })();
 function renderRappelScolariteParent(enfants){
   if(!DB.meta?.scolariteVisibleParents) return '';
-  if(DB.versementsSaisis === undefined){ DB.versementsSaisis = null; sb.rpc('ecole_a_des_versements').then(({ data }) => { DB.versementsSaisis = data === true; if(DB.versementsSaisis && ui.role === 'parent' && ui.vueParent !== 'vie') $('#viewContainer').innerHTML = renderParentDashboard(); }, () => { DB.versementsSaisis = false; }); return ''; }
+  if(DB.versementsSaisis === undefined){ versementsSaisisParent(); return ''; }
   if(DB.versementsSaisis !== true) return '';
   const auj = todayISO(), jour = Number(auj.slice(8, 10)), moisCourant = auj.slice(0, 7);
   const moisSuivant = (([a, m]) => m === 12 ? `${a + 1}-01` : `${a}-${String(m + 1).padStart(2, '0')}`)(auj.split('-').map(Number));
@@ -2859,6 +2869,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.11.10-12', nouveautes: {
+    commun: [],
+    parent: [ 'Scolarité : le suivi des paiements et le bouton Mobile Money apparaissent dès que l’école a enregistré les versements déjà reçus (pour qu’aucun parent ne paie deux fois).' ],
+    portier: [],
+    personnel: [],
+  } },
   { version: '2026.11.10-11', nouveautes: {
     commun: [],
     parent: [ 'Payer la scolarité par Mobile Money depuis l’application : bouton « Payer … par Mobile Money » sur chaque tranche à régler (Orange Money, MTN, Moov, Wave, via la page sécurisée PayDunya ; l’argent va directement à l’école). Le reçu arrive tout seul (notification et Messages).' ],
