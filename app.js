@@ -773,11 +773,17 @@ function hasAccess(view){
 // voit que ses classes assignées. Un compte non relié (générique, ou tout
 // autre rôle) voit toutes les classes — inchangé par rapport à avant.
 function classesVisibles(){
-  if(session.enseignantId){
-    const t = enseignantById(session.enseignantId);
-    if(t) return DB.classes.filter(c => (t.classesAssignees||[]).includes(c.id));
+  if(ui.role === 'enseignant' || session.enseignantId){
+    const t = session.enseignantId ? enseignantById(session.enseignantId) : null;
+    return t ? DB.classes.filter(c => (t.classesAssignees || []).includes(c.id)) : [];
   }
   return DB.classes;
+}
+// Choix de la classe : une seule classe → simple étiquette (pas de liste) ; plusieurs → liste de SES classes seulement
+function choixClasse(classes, choisie, onchange, options){
+  options = options || {};
+  if(classes.length === 1 && !options.tous) return `<span class="classe-unique" aria-label="Classe">${icone('school')} ${escapeHtml(classes[0].nom)}</span>`;
+  return `<select class="${options.classe || 'puce-select'}" aria-label="Classe" onchange="${onchange}">${options.tous ? `<option value="">${options.tous}</option>` : ''}${classes.map(c => `<option value="${c.id}" ${c.id === choisie ? 'selected' : ''}>${escapeHtml(c.nom)}</option>`).join('')}</select>`;
 }
 
 /* ---------- Tableau de bord par rôle et salutations personnalisées ---------- */
@@ -2767,6 +2773,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.11.10-4', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Enseignant : uniquement sa ou ses classes partout. Avec une seule classe (ex. CP1), plus aucune liste à choisir : la page affiche « CP1 » ; avec plusieurs classes, la liste ne propose que les siennes. L’accueil indique « Ma classe » / « Mes classes ». L’agenda ne montre que les événements de toute l’école et de ses classes ; la liste des collègues n’affiche plus leurs classes.' ],
+  } },
   { version: '2026.11.10-3', nouveautes: {
     commun: [],
     parent: [],
@@ -4200,7 +4212,9 @@ function renderAccueilEnseignant(){
   const auj = todayISO();
   const fiche = session.enseignantId ? enseignantById(session.enseignantId) : null;
   const dateLongue = (d => d.charAt(0).toUpperCase() + d.slice(1))(new Date(auj + 'T12:00:00').toLocaleDateString('fr-FR', { weekday:'long', day:'numeric', month:'long', year:'numeric' }));
-  const entete = `<div class="db-bonjour"><div><h2>${escapeHtml(salutation())}</h2><div class="db-date">${dateLongue}</div>${renderQuestionAppel()}</div></div>`;
+  const mes = classesVisibles();
+  const entete = `<div class="db-bonjour"><div><h2>${escapeHtml(salutation())}</h2><div class="db-date">${dateLongue}</div>
+    ${mes.length ? `<div class="mes-classes">${icone('school')} ${mes.length > 1 ? 'Mes classes' : 'Ma classe'} : <strong>${mes.map(c => escapeHtml(c.nom)).join(', ')}</strong></div>` : ''}${renderQuestionAppel()}</div></div>`;
   const annexe = `<details class="panel acc-annexe"><summary>${icone('users')} Mon inscription et la liste des enseignants</summary>${renderJeMEnrole()}${renderListeCollegues()}</details>`;
   if(!fiche) return `<div class="view active">${entete}${renderJeMEnrole()}${renderListeCollegues()}</div>`;
   if(!(fiche.classesAssignees || []).length) return `<div class="view active">${entete}
@@ -5012,7 +5026,7 @@ function renderListeCollegues(){
     <ul class="collegues">${liste.map(t => `<li class="collegue${t.id === session.enseignantId ? ' moi' : ''}">
       <span class="avatar" aria-hidden="true">${escapeHtml(initials(t.prenom, t.nom))}</span>
       <span class="collegue-txt"><strong>${escapeHtml([titre(t), t.prenom, t.nom].filter(Boolean).join(' '))}${t.id === session.enseignantId ? ' <span class="badge green">Vous</span>' : ''}</strong>
-        <small>${(t.classesAssignees || []).map(id => escapeHtml(classeName(id))).join(', ') || 'Classes à valider'}${(t.matieres || []).length ? ' · ' + escapeHtml(t.matieres.join(', ')) : ''}</small></span>
+        <small>${ui.role === 'enseignant' && t.id !== session.enseignantId ? ((t.matieres || []).length ? escapeHtml(t.matieres.join(', ')) : 'Enseignant(e)') : ((t.classesAssignees || []).map(id => escapeHtml(classeName(id))).join(', ') || 'Classes à valider') + ((t.matieres || []).length ? ' · ' + escapeHtml(t.matieres.join(', ')) : '')}</small></span>
     </li>`).join('')}</ul>
   </div>`;
 }
@@ -6272,7 +6286,7 @@ function renderCahierAppel(){
           <button class="btn secondary sm" onclick="exporterCahierAppel()">⬇️ Excel</button>
           <button class="btn secondary sm" onclick="window.print()">🖨️ Imprimer</button></div></div>
       <div class="ca-barre no-print">
-        <select class="puce-select" aria-label="Classe" onchange="ui.filters.cahier.classeId=this.value; renderView('cahier-appel')">${mesClasses.map(c => `<option value="${c.id}" ${c.id === f.classeId ? 'selected' : ''}>${escapeHtml(c.nom)}</option>`).join('')}</select>
+        ${choixClasse(mesClasses, f.classeId, "ui.filters.cahier.classeId=this.value; renderView('cahier-appel')")}
         <div class="segmente" role="tablist" aria-label="Affichage">${[['jour', 'Aujourd’hui'], ['mois', 'Mois']].map(([k, l]) => `<button type="button" role="tab" class="seg${onglet === k ? ' actif' : ''}" aria-selected="${onglet === k}" onclick="ui.filters.cahierOnglet='${k}'; renderView('cahier-appel')">${l}</button>`).join('')}</div>
       </div>
       ${onglet === 'jour' ? renderAppelDuJour(f.classeId, eleves) : `
@@ -6901,7 +6915,7 @@ function renderDevoirs(){
       <div class="panel-head"><div><h2>📒 Noter un devoir</h2><div class="sub">Les parents de la classe le voient aussitôt dans leur application, avec une notification s’ils le souhaitent.</div></div></div>
       <form onsubmit="return ajouterDevoir(event)">
         <div class="form-grid">
-          <div class="field"><label>Classe</label><select name="classeId" required>${classes.map(c => `<option value="${c.id}"${c.id === choix ? ' selected' : ''}>${escapeHtml(c.nom)}</option>`).join('')}</select></div>
+          <div class="field"><label>Classe</label>${classes.length === 1 ? `<input type="hidden" name="classeId" value="${classes[0].id}"><span class="classe-unique">${icone('school')} ${escapeHtml(classes[0].nom)}</span>` : `<select name="classeId" required>${classes.map(c => `<option value="${c.id}"${c.id === choix ? ' selected' : ''}>${escapeHtml(c.nom)}</option>`).join('')}</select>`}</div>
           <div class="field span2"><label>Matière <span class="hint" style="margin:0;font-weight:400;">— touchez-en une (ou écrivez)</span></label>
             <div class="dv-puces" role="group" aria-label="Matière">${matieres.map(m => `<button type="button" class="dv-puce" onclick="choisirPuceDevoir(this,'matiere')">${escapeHtml(m)}</button>`).join('')}</div>
             <input name="matiere" maxlength="80" placeholder="Ou écrivez la matière ici" oninput="majPucesDevoir('matiere', this.value)"></div>
@@ -6919,7 +6933,7 @@ function renderDevoirs(){
     <div class="panel">
       <div class="panel-head"><div><h2>${tous ? 'Devoirs des 2 dernières semaines' : 'Devoirs à venir'}</h2></div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
-          <select onchange="ui.filters.devoirsClasse=this.value; renderView('devoirs')"><option value="">Toutes mes classes</option>${classes.map(c => `<option value="${c.id}"${c.id === choix ? ' selected' : ''}>${escapeHtml(c.nom)}</option>`).join('')}</select>
+          ${classes.length > 1 ? choixClasse(classes, choix, "ui.filters.devoirsClasse=this.value; renderView('devoirs')", { tous: 'Toutes mes classes', classe: '' }) : ''}
           <button class="btn secondary sm" onclick="ui.filters.devoirsPasses=${!tous}; renderView('devoirs')">${tous ? 'À venir seulement' : 'Voir aussi les passés'}</button></div></div>
       ${DB.devoirs === null ? '<div class="hint">Chargement…</div>' : !liste.length ? '<div class="empty-state"><div class="em-ic">📒</div>Aucun devoir noté pour l’instant.</div>' : `<div class="table-wrap"><table>
         <thead><tr><th>Pour le</th><th>Classe</th><th>Travail</th><th></th></tr></thead>
@@ -7146,7 +7160,8 @@ function renderAgenda(){
   chargerAgenda();
   const gestion = ['secretariat','direction','fondation'].includes(ui.role);
   const tous = ui.filters.agendaPasses;
-  const liste = (DB.agenda || []).filter(e => tous || e.dateFin >= todayISO());
+  const sesClasses = ui.role === 'enseignant' ? new Set(classesVisibles().map(c => c.id)) : null;
+  const liste = (DB.agenda || []).filter(e => (tous || e.dateFin >= todayISO()) && (!sesClasses || !e.classeIds || !e.classeIds.length || e.classeIds.some(id => sesClasses.has(id))));
   return `<div class="view active">
     ${gestion ? `<div class="panel">
       <div class="panel-head"><div><h2>📅 Ajouter une date</h2><div class="sub">Visible par le personnel et par les parents concernés. Les vacances arrêtent automatiquement les annonces et le rappel d’appel.</div></div></div>
@@ -9496,9 +9511,7 @@ function renderEmploiTemps(){
       <div class="panel-head">
         <div><h2>Emploi du temps</h2><div class="sub">${c.nom} · ${c.cycle} · ${nbRemplis} / ${nbCours} créneaux remplis</div></div>
         <span style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-        <select class="puce-select" aria-label="Classe" onchange="ui.filters.ttClasse=this.value; renderView('emploi-temps')">
-          ${mesClasses.map(cl=>`<option value="${cl.id}" ${classeId===cl.id?'selected':''}>${cl.nom}</option>`).join('')}
-        </select>
+        ${choixClasse(mesClasses, classeId, "ui.filters.ttClasse=this.value; renderView('emploi-temps')")}
         ${modif ? `<button type="button" class="btn sm" onclick="ouvrirRemplissageEdt('${classeId}')">⚡ Remplir rapidement</button>` : ''}
         <button type="button" class="btn secondary sm" onclick="imprimerEmploiTemps('${classeId}')">${icone('printer')} Imprimer</button></span>
       </div>
@@ -9627,9 +9640,7 @@ function renderEdtLibre(c, mesClasses){
       <div class="panel-head">
         <div><h2>Emploi du temps</h2><div class="sub">${escapeHtml(c.nom)} · ${escapeHtml(c.cycle)} · ${total} séances par semaine${vs.length > 1 ? ' · ' + libelleVersionEdt(v) : ''}</div></div>
         <span style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-          <select class="puce-select" aria-label="Classe" onchange="ui.filters.ttClasse=this.value; ui.filters.ttVersion=''; renderView('emploi-temps')">
-            ${mesClasses.map(cl => `<option value="${cl.id}" ${classeId === cl.id ? 'selected' : ''}>${escapeHtml(cl.nom)}</option>`).join('')}
-          </select>
+          ${choixClasse(mesClasses, classeId, "ui.filters.ttClasse=this.value; ui.filters.ttVersion=''; renderView('emploi-temps')")}
           <button type="button" class="btn secondary sm" onclick="imprimerEmploiTemps('${classeId}')">${icone('printer')} Imprimer</button></span>
       </div>
       ${vs.length > 1 ? `<div class="segmente edtl-versions" role="tablist" aria-label="Période">${vs.map(x => `<button type="button" role="tab" class="seg${x.cle === v.cle ? ' actif' : ''}" aria-selected="${x.cle === v.cle}" onclick="ui.filters.ttVersion='${x.cle}'; renderView('emploi-temps')">${escapeHtml(libelleVersionEdt(x))}${(!x.du || x.du <= auj) && (!x.au || x.au >= auj) ? ' · en cours' : ''}</button>`).join('')}</div>` : ''}
@@ -9855,10 +9866,10 @@ function renderProgrammes(){
         <button class="btn" onclick="openProgrammeForm()">${icone('plus')} ${ens ? 'Ajouter une matière' : 'Nouveau programme'}</button>
       </div>
       <div class="prog-filtres">
-        <select class="puce-select petit${f.classeId ? ' actif' : ''}" aria-label="Classe" onchange="ui.filters.prog.classeId=this.value; renderView('programmes')">
-          <option value="">Toutes les classes</option>
-          ${DB.classes.map(c=>`<option value="${c.id}" ${f.classeId===c.id?'selected':''}>${escapeHtml(c.nom)}</option>`).join('')}
-        </select>
+        ${ens && classesVisibles().length <= 1 ? '' : `<select class="puce-select petit${f.classeId ? ' actif' : ''}" aria-label="Classe" onchange="ui.filters.prog.classeId=this.value; renderView('programmes')">
+          <option value="">${ens ? 'Toutes mes classes' : 'Toutes les classes'}</option>
+          ${(ens ? classesVisibles() : DB.classes).map(c=>`<option value="${c.id}" ${f.classeId===c.id?'selected':''}>${escapeHtml(c.nom)}</option>`).join('')}
+        </select>`}
         ${ens ? '' : `<select class="puce-select petit${f.enseignantId ? ' actif' : ''}" aria-label="Enseignant" onchange="ui.filters.prog.enseignantId=this.value; renderView('programmes')">
           <option value="">Tous les enseignants</option>
           ${DB.enseignants.map(t=>`<option value="${t.id}" ${f.enseignantId===t.id?'selected':''}>${escapeHtml(ensFullName(t))}</option>`).join('')}

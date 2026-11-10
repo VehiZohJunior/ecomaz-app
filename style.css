@@ -2133,3 +2133,9 @@ body.theme-portier .gate-classe strong{ overflow-wrap:anywhere; }
 .son-etapes li{ margin-bottom:8px; line-height:1.45; }
 .son-test{ display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin:6px 0 10px; }
 .son-test .btn{ min-height:48px; display:inline-flex; align-items:center; gap:8px; }
+
+/* ===== Classe(s) de l'enseignant (2026-11-10) ===== */
+.classe-unique{ display:inline-flex; align-items:center; gap:6px; min-height:40px; padding:0 14px; border-radius:99px; background:var(--primary-soft, var(--surface-2)); color:var(--primary-ink, var(--text)); font-weight:800; }
+.classe-unique svg{ width:18px; height:18px; }
+.mes-classes{ display:inline-flex; align-items:center; gap:6px; margin-top:6px; padding:4px 12px; border-radius:99px; background:var(--surface-2); font-size:var(--fs-sm); }
+.mes-classes svg{ width:16px; height:16px; }
