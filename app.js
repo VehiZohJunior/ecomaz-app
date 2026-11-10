@@ -1941,7 +1941,7 @@ function renderScolariteEnfant(e){
     <div class="mer-barre" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><div style="width:${pct}%"></div></div>
     <div class="es-reste">${info.reste ? `Reste à payer : <strong>${fmtFCFA(info.reste)}</strong>${prochaine ? ` · prochaine tranche : ${escapeHtml(prochaine.label)}` : ''}` : '✅ Scolarité soldée, merci !'}</div>
     <details class="es-detail"><summary>Voir les tranches${recus.length ? ' et les paiements' : ''}</summary>
-      <ul>${info.detail.map(d => `<li><span>${escapeHtml(d.label)}</span><span class="badge ${d.statut === 'paye' ? 'green' : d.statut === 'partiel' ? 'amber' : 'gray'}">${d.statut === 'paye' ? 'payé' : d.statut === 'partiel' ? fmtFCFA(d.paye) + ' / ' + fmtFCFA(d.montant) : fmtFCFA(d.montant)}</span></li>`).join('')}</ul>
+      <ul>${info.detail.map(d => `<li><span>${escapeHtml(d.label)}</span><span class="badge ${d.statut === 'paye' ? 'green' : d.statut === 'partiel' ? 'amber' : 'gray'}">${d.statut === 'paye' ? 'payé' : d.statut === 'partiel' ? fmtFCFA(d.paye) + ' / ' + fmtFCFA(d.montant) : fmtFCFA(d.montant)}</span>${boutonPayerEnLigne(e, d)}</li>`).join('')}</ul>
       ${recus.length ? `<div class="hint" style="margin:6px 0 2px;">Paiements reçus :</div><ul>${recus.map(p => `<li><span>${fmtDate(p.date)} — ${escapeHtml(p.tranche || '')}</span><span>${fmtFCFA(p.montant)} (${escapeHtml(p.modePaiement || '')})</span></li>`).join('')}</ul>` : ''}
     </details>
   </div>`;
@@ -2143,6 +2143,45 @@ function renderParentDashboard(){
 }
 /* ---------- Parent : rappel de scolarité (dès le 25 pour le mois suivant), avec bip une fois par jour ----------
    Jamais tant que l'école n'a saisi aucun versement (sinon tout le monde paraîtrait « à payer » à tort). */
+/* ---------- Parent : payer une tranche par Mobile Money (PayDunya) ----------
+   Le serveur vérifie que l'enfant est relié au parent, que la tranche existe et calcule
+   lui-même le reste dû ; la page de paiement est celle de PayDunya (sécurisée). */
+function chargerPaiementEnLigneParent(){
+  if(DB.paiementEnLigne !== undefined) return;
+  DB.paiementEnLigne = null;
+  sb.from('paiement_en_ligne_config_lecture').select('actif, prestataire').maybeSingle()
+    .then(({ data }) => { DB.paiementEnLigne = data || { actif:false, prestataire:'' }; if(DB.paiementEnLigne.actif && ui.role === 'parent' && ui.vueParent !== 'vie') $('#viewContainer').innerHTML = renderParentDashboard(); }, () => { DB.paiementEnLigne = { actif:false }; });
+}
+function boutonPayerEnLigne(e, d){
+  if(ui.role !== 'parent') return '';
+  chargerPaiementEnLigneParent();
+  if(!DB.paiementEnLigne?.actif || d.statut === 'paye') return '';
+  const reste = Math.max(0, (d.montant || 0) - (d.paye || 0)); if(reste < 100) return '';
+  return ` <button type="button" class="btn sm btn-momo" onclick="payerEnLigneParent('${e.id}', ${escapeHtml(JSON.stringify(d.label))}, ${reste})">${icone('smartphone')} Payer ${fmtFCFA(reste)} par Mobile Money</button>`;
+}
+async function payerEnLigneParent(eleveId, tranche, reste){
+  const e = eleveById(eleveId) || (DB.eleves || []).find(x => x.id === eleveId);
+  if(!confirm(`Payer ${fmtFCFA(reste)} pour « ${tranche} » de ${e ? e.prenom : 'votre enfant'} ?\n\nVous allez sur la page sécurisée PayDunya : choisissez Orange Money, MTN, Moov ou Wave, puis validez sur votre téléphone. L’argent va directement à l’école.`)) return;
+  toast('Ouverture de la page de paiement…');
+  try{
+    const { data, error } = await sb.functions.invoke('initier-paiement-en-ligne', { body: { eleveId, tranche } });
+    if(error) throw new Error(await messageErreurFonction(error));
+    if(!data?.ok || !data.url) throw new Error(data?.error || 'Le paiement n’a pas pu être préparé');
+    try{ sessionStorage.setItem('ecomaz_paiement_en_cours', JSON.stringify({ eleveId, tranche, montant: data.montant || reste })); }catch(_e){}
+    window.location.href = data.url;
+  }catch(err){ alert('Paiement impossible pour le moment : ' + err.message + '\nVous pouvez aussi payer au secrétariat.'); }
+}
+// Retour de la page PayDunya (?paiement=retour ou annule)
+(function retourPaiementParent(){
+  try{
+    const etat = new URLSearchParams(location.search).get('paiement'); if(!etat) return;
+    const u = new URL(location.href); u.searchParams.delete('paiement'); history.replaceState(null, '', u.toString());
+    setTimeout(() => {
+      if(etat === 'retour') toast('Merci ! Votre paiement est en cours de confirmation : vous recevrez le reçu dans quelques instants (notification et Messages).');
+      else toast('Paiement annulé : rien n’a été prélevé. Vous pouvez réessayer quand vous voulez.');
+    }, 1500);
+  }catch(_e){}
+})();
 function renderRappelScolariteParent(enfants){
   if(!DB.meta?.scolariteVisibleParents) return '';
   if(DB.versementsSaisis === undefined){ DB.versementsSaisis = null; sb.rpc('ecole_a_des_versements').then(({ data }) => { DB.versementsSaisis = data === true; if(DB.versementsSaisis && ui.role === 'parent' && ui.vueParent !== 'vie') $('#viewContainer').innerHTML = renderParentDashboard(); }, () => { DB.versementsSaisis = false; }); return ''; }
@@ -2161,8 +2200,8 @@ function renderRappelScolariteParent(enfants){
   return `<section class="panel rappel-scol" aria-label="Scolarité à régler">
     <div class="rappel-scol-tete">${icone('wallet')}<strong>Scolarité à régler</strong></div>
     <ul>${lignes.map(({ e, d, reste, ecart }) => `<li><strong>${escapeHtml(e.prenom)}</strong> — tranche « ${escapeHtml(d.label)} » : <strong>${fmtFCFA(reste)}</strong>
-      ${ecart > 0 ? `à régler avant le ${fmtDate(d.dateEcheance)}` : ecart === 0 ? `<span class="rs-urgent">à régler aujourd’hui</span>` : `<span class="rs-urgent">échéance dépassée (${fmtDate(d.dateEcheance)})</span>`}</li>`).join('')}</ul>
-    <div class="hint" style="margin:6px 0 0;">Vous pouvez payer dès maintenant au secrétariat. Déjà payé ? L’école le mettra à jour à réception.</div>
+      ${ecart > 0 ? `à régler avant le ${fmtDate(d.dateEcheance)}` : ecart === 0 ? `<span class="rs-urgent">à régler aujourd’hui</span>` : `<span class="rs-urgent">échéance dépassée (${fmtDate(d.dateEcheance)})</span>`}${boutonPayerEnLigne(e, d)}</li>`).join('')}</ul>
+    <div class="hint" style="margin:6px 0 0;">${DB.paiementEnLigne?.actif ? 'Payez par Mobile Money (Orange, MTN, Moov, Wave) ou au secrétariat.' : 'Vous pouvez payer dès maintenant au secrétariat.'} Déjà payé ? L’école le mettra à jour à réception.</div>
   </section>`;
 }
 // Bip court et agréable (2 tons) pour les rappels de scolarité des parents
@@ -2820,6 +2859,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.11.10-11', nouveautes: {
+    commun: [],
+    parent: [ 'Payer la scolarité par Mobile Money depuis l’application : bouton « Payer … par Mobile Money » sur chaque tranche à régler (Orange Money, MTN, Moov, Wave, via la page sécurisée PayDunya ; l’argent va directement à l’école). Le reçu arrive tout seul (notification et Messages).' ],
+    portier: [],
+    personnel: [ 'Paiement Mobile Money : à chaque paiement reçu, le secrétariat et la direction sont prévenus ; le paiement est déjà enregistré en comptabilité.' ],
+  } },
   { version: '2026.11.10-10', nouveautes: {
     commun: [],
     parent: [],

@@ -2182,3 +2182,9 @@ body.theme-portier .gate-classe strong{ overflow-wrap:anywhere; }
 .pb-ligne.complet{ border-left-color:var(--success); }
 .pb-puces{ display:flex; flex-wrap:wrap; gap:6px; }
 .pb-puce{ font-size:var(--fs-xs); padding:3px 8px; border-radius:99px; background:var(--surface-2); }
+
+/* Paiement Mobile Money (parent) — 2026-11-10 */
+.btn-momo{ display:inline-flex; align-items:center; gap:6px; margin-top:6px; min-height:40px; }
+.enfant-carte .btn-momo{ background:#f2b84b; color:#14392d; }
+.es-detail li{ flex-wrap:wrap; }
+.es-detail .btn-momo, .rappel-scol .btn-momo{ width:100%; justify-content:center; }

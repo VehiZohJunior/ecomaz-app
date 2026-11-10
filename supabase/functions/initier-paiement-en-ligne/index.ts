@@ -30,13 +30,13 @@ Deno.serve(async (req) => {
 
     const { data: profil } = await supabaseCaller.from('profiles').select('role, ecole_id').eq('id', user.id).single();
     if (!profil || !profil.ecole_id) throw new Error('Compte non rattaché à une école');
-    if (!['secretariat', 'direction', 'fondation'].includes(profil.role)) throw new Error('Rôle non autorisé à générer un lien de paiement');
+    const estParent = profil.role === 'parent';
+    if (!estParent && !['secretariat', 'direction', 'fondation'].includes(profil.role)) throw new Error('Rôle non autorisé à générer un lien de paiement');
 
-    const { eleveId, tranche, montant } = await req.json();
-    if (!eleveId || !tranche || !montant) throw new Error('Paramètres manquants');
-    // Montant entier, positif et raisonnable (aucune scolarité ne dépasse 5 000 000 F CFA)
-    const montantEntier = Math.round(Number(montant));
-    if (!Number.isFinite(montantEntier) || montantEntier < 100 || montantEntier > 5000000) throw new Error('Montant invalide');
+    const corps = await req.json();
+    const { eleveId, tranche } = corps;
+    let montant = Number(corps.montant || 0);
+    if (!eleveId || !tranche || (!estParent && !montant)) throw new Error('Paramètres manquants');
     if (typeof tranche !== 'string' || tranche.length > 60) throw new Error('Tranche invalide');
 
     // 2) Clé service_role pour lire la config + les identifiants PayDunya
@@ -53,8 +53,27 @@ Deno.serve(async (req) => {
     if (!ident.masterKey || !ident.privateKey || !ident.token) throw new Error('Identifiants PayDunya incomplets — vérifie Paramètres');
 
     const { data: eleve } = await supabaseAdmin
-      .from('eleves').select('id, nom, prenom, parent_nom, parent_tel').eq('id', eleveId).eq('ecole_id', profil.ecole_id).single();
+      .from('eleves').select('id, nom, prenom, parent_nom, parent_tel, classe_id').eq('id', eleveId).eq('ecole_id', profil.ecole_id).single();
     if (!eleve) throw new Error("Élève introuvable dans votre école");
+
+    // Parent : seulement SON enfant, seulement une tranche existante, jamais plus que le reste dû (calculé ici)
+    if (estParent) {
+      const { data: lien } = await supabaseAdmin.from('parents_eleves').select('eleve_id').eq('parent_profile_id', user.id).eq('eleve_id', eleveId).maybeSingle();
+      if (!lien) throw new Error("Cet élève n'est pas relié à votre compte");
+      const { data: ech } = await supabaseAdmin.from('echeances_scolarite').select('label, montant, classe_id').eq('ecole_id', profil.ecole_id);
+      const toutes = (ech || []) as { label: string; montant: number; classe_id: string | null }[];
+      const propres = toutes.filter((t) => t.classe_id === eleve.classe_id);
+      const grille = propres.length ? propres : toutes.filter((t) => !t.classe_id);
+      const t = grille.find((x) => x.label === tranche);
+      if (!t) throw new Error('Tranche inconnue');
+      const { data: deja } = await supabaseAdmin.from('paiements_scolarite').select('montant').eq('ecole_id', profil.ecole_id).eq('eleve_id', eleveId).eq('tranche', tranche);
+      const reste = Number(t.montant || 0) - ((deja || []) as { montant: number }[]).reduce((s, p) => s + Number(p.montant || 0), 0);
+      if (reste <= 0) throw new Error('Cette tranche est déjà réglée');
+      montant = reste;
+    }
+    // Montant entier, positif et raisonnable (aucune scolarité ne dépasse 5 000 000 F CFA)
+    const montantEntier = Math.round(Number(montant));
+    if (!Number.isFinite(montantEntier) || montantEntier < 100 || montantEntier > 5000000) throw new Error('Montant invalide');
 
     const { data: ecole } = await supabaseAdmin.from('ecoles').select('nom_ecole').eq('id', profil.ecole_id).single();
 
@@ -76,7 +95,7 @@ Deno.serve(async (req) => {
       },
       store: { name: ecole?.nom_ecole || 'École' },
       custom_data: { ecole_id: profil.ecole_id, eleve_id: eleveId, tranche },
-      actions: { callback_url: WEBHOOK_URL, return_url: RETOUR_URL, cancel_url: RETOUR_URL },
+      actions: { callback_url: WEBHOOK_URL, return_url: estParent ? RETOUR_URL + 'parent.html?paiement=retour' : RETOUR_URL, cancel_url: estParent ? RETOUR_URL + 'parent.html?paiement=annule' : RETOUR_URL },
     };
 
     const reponsePaydunya = await fetch(`${baseUrl}/checkout-invoice/create`, {
@@ -104,7 +123,7 @@ Deno.serve(async (req) => {
     // on ne donne pas le lien.
     if (errInsert) throw new Error('Lien non créé (enregistrement impossible), réessayez');
 
-    return new Response(JSON.stringify({ ok: true, url: resultat.response_text, mode: 'production' }), {
+    return new Response(JSON.stringify({ ok: true, url: resultat.response_text, mode: 'production', montant: montantEntier }), {
       headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
     });
   } catch (e) {

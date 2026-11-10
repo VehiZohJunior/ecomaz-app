@@ -419,6 +419,14 @@ async function requete(accessToken, chemin, options = {}){
   const alAnon = await requete(ANON_KEY, `/rest/v1/rpc/etat_alertes_personnel`, { method:'POST', body:'{}' });
   verifier('Sans connexion : rien', !alAnon.ok || (Array.isArray(alAnon.data) && alAnon.data.length === 0), `statut ${alAnon.status}`);
 
+  section('7trevicies. Paiement Mobile Money par le parent (10/11/2026) — rôles refusés');
+  const corpsPaie = JSON.stringify({ eleveId: '00000000-0000-4000-8000-000000000001', tranche: '1er versement' });
+  const paieEns = await fetch(`${URL_BASE}/functions/v1/initier-paiement-en-ligne`, { method:'POST', headers:{ Authorization:`Bearer ${tokenEnseignant}`, 'Content-Type':'application/json' }, body: corpsPaie });
+  let rPaieEns = {}; try{ rPaieEns = await paieEns.json(); }catch(_e){}
+  verifier('Un enseignant ne peut pas lancer un paiement', !paieEns.ok && /rôle non autorisé/i.test(rPaieEns.error || ''), `statut ${paieEns.status} ${rPaieEns.error || ''}`);
+  const paieAnon = await fetch(`${URL_BASE}/functions/v1/initier-paiement-en-ligne`, { method:'POST', headers:{ Authorization:`Bearer ${ANON_KEY}`, 'Content-Type':'application/json' }, body: corpsPaie });
+  verifier('Sans connexion, aucun paiement ne peut être lancé', !paieAnon.ok, `statut ${paieAnon.status}`);
+
   section('8. Visiteur non connecté — ne lit que les affichages publics prévus');
   for(const table of ['eleves','enseignants_lecture','profiles','paiements_scolarite','messages','parents_eleves','presences_eleves','eleves_portier_lecture','objets_perdus','push_abonnements','absences_signalees','evenements_agenda','devoirs','personnes_autorisees','sante_eleves','reponses_agenda','corrections_fiches','menus_cantine','preinscriptions','demandes_documents','evaluations','coefficients_matieres','bulletins_resultats']){
     const r = await requete(ANON_KEY, `/rest/v1/${table}?select=*&limit=1`);

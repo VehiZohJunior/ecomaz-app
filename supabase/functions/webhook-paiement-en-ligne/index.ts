@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { envoyerPush, parentsDesEleves } from '../_shared/push.ts';
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -128,6 +129,21 @@ Deno.serve(async (req) => {
           auteur_nom: 'Paiement en ligne (PayDunya)',
           auteur_role: 'systeme',
         });
+        // Reçu au parent (notification + message) et avis au personnel administratif
+        try {
+          const [{ data: el }, { data: ec }] = await Promise.all([
+            supabaseAdmin.from('eleves').select('prenom, nom').eq('id', ligne.eleve_id).maybeSingle(),
+            supabaseAdmin.from('ecoles').select('nom_ecole').eq('id', ecoleId).maybeSingle(),
+          ]);
+          const enfant = el ? `${el.prenom} ${el.nom}` : 'votre enfant';
+          const somme = `${montant.toLocaleString('fr-FR').replace(/\u202f|\u00a0/g, ' ')} F CFA`;
+          const recu = `✅ Paiement reçu : ${somme} — « ${ligne.tranche} » de ${enfant}, par Mobile Money le ${new Date().toLocaleDateString('fr-FR')}. Merci ! Le reçu est dans votre application (Scolarité).`;
+          await supabaseAdmin.from('messages_internes').insert({ ecole_id: ecoleId, destinataire_type: 'parent', eleve_id: ligne.eleve_id, contenu: recu, auteur_nom: ec?.nom_ecole || 'École', auteur_id: null });
+          const parents = await parentsDesEleves(supabaseAdmin, ecoleId, [ligne.eleve_id]);
+          await envoyerPush(supabaseAdmin, parents, { title: `💰 ${ec?.nom_ecole || 'École'} — paiement reçu`, body: recu, url: './parent.html', tag: `paie-${ligne.id}` });
+          const { data: perso } = await supabaseAdmin.from('profiles').select('id').eq('ecole_id', ecoleId).in('role', ['secretariat', 'direction', 'fondation']);
+          await envoyerPush(supabaseAdmin, ((perso || []) as { id: string }[]).map((x) => x.id), { title: '💰 Paiement Mobile Money reçu', body: `${somme} — ${ligne.tranche} — ${enfant}. Déjà enregistré en comptabilité.`, url: './index.html', tag: `paie-${ligne.id}` });
+        } catch (_e) { /* l'avis ne doit jamais empêcher l'enregistrement du paiement */ }
       }
     } else if (statutReel === 'failed' || statutReel === 'cancelled') {
       await supabaseAdmin.from('paiements_en_ligne').update({
