@@ -4323,3 +4323,21 @@ language sql stable security definer set search_path = public as $$
 $$;
 revoke all on function ecole_a_des_versements() from public, anon;
 grant execute on function ecole_a_des_versements() to authenticated;
+
+-- =====================================================================
+-- 112. ALERTES DU PERSONNEL PAR RÔLE (2026-11-10)
+-- =====================================================================
+-- Pour la liste « Mise en route » de la direction : par rôle (direction,
+-- fondation, secrétariat, portier), nombre de comptes et nombre de comptes
+-- ayant activé les alertes sur au moins un téléphone. Rien d'autre.
+create or replace function etat_alertes_personnel()
+returns table (role text, comptes int, avec_alertes int)
+language sql stable security definer set search_path = public as $$
+  select p.role::text, count(*)::int,
+    count(*) filter (where exists (select 1 from push_abonnements a where a.user_id = p.id))::int
+  from profiles p
+  where p.ecole_id = mon_ecole_id() and p.role in ('direction', 'fondation', 'secretariat', 'portier') and coalesce(est_admin(), false)
+  group by p.role;
+$$;
+revoke all on function etat_alertes_personnel() from public, anon;
+grant execute on function etat_alertes_personnel() to authenticated;

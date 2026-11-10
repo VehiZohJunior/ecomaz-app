@@ -411,6 +411,14 @@ async function requete(accessToken, chemin, options = {}){
   const versAnon = await requete(ANON_KEY, `/rest/v1/rpc/ecole_a_des_versements`, { method:'POST', body:'{}' });
   verifier('Sans connexion : refusé', !versAnon.ok || versAnon.data === false, `statut ${versAnon.status}`);
 
+  section('7duovicies. Alertes du personnel par rôle (10/11/2026) — direction et fondation seulement');
+  const alSec = await requete(tokenSecretariat, `/rest/v1/rpc/etat_alertes_personnel`, { method:'POST', body:'{}' });
+  verifier('Le secrétariat ne voit pas l’état des alertes du personnel', alSec.ok && Array.isArray(alSec.data) && alSec.data.length === 0, `statut ${alSec.status}`);
+  const alEns = await requete(tokenEnseignant, `/rest/v1/rpc/etat_alertes_personnel`, { method:'POST', body:'{}' });
+  verifier('Un enseignant ne voit pas l’état des alertes du personnel', alEns.ok && Array.isArray(alEns.data) && alEns.data.length === 0, `statut ${alEns.status}`);
+  const alAnon = await requete(ANON_KEY, `/rest/v1/rpc/etat_alertes_personnel`, { method:'POST', body:'{}' });
+  verifier('Sans connexion : rien', !alAnon.ok || (Array.isArray(alAnon.data) && alAnon.data.length === 0), `statut ${alAnon.status}`);
+
   section('8. Visiteur non connecté — ne lit que les affichages publics prévus');
   for(const table of ['eleves','enseignants_lecture','profiles','paiements_scolarite','messages','parents_eleves','presences_eleves','eleves_portier_lecture','objets_perdus','push_abonnements','absences_signalees','evenements_agenda','devoirs','personnes_autorisees','sante_eleves','reponses_agenda','corrections_fiches','menus_cantine','preinscriptions','demandes_documents','evaluations','coefficients_matieres','bulletins_resultats']){
     const r = await requete(ANON_KEY, `/rest/v1/${table}?select=*&limit=1`);

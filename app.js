@@ -2820,6 +2820,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.11.10-10', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Mise en route (direction, fondation) : nouvelle étape « Alertes sur les téléphones du personnel » — indique qui (fondation, secrétariat, portier…) n’a pas encore activé les alertes, avec la marche à suivre.' ],
+  } },
   { version: '2026.11.10-9', nouveautes: {
     commun: [],
     parent: [],
@@ -4892,6 +4898,17 @@ function ouvrirBilanHebdo(lundi){
    Liste d'étapes calculée sur les vraies données : ce qui est fait, ce
    qui manque, et un bouton pour y aller. Se replie quand tout est fait.
    --------------------------------------------------------------------- */
+function ouvrirAideAlertesPersonnel(){
+  openModal('Activer les alertes sur un téléphone', `
+    <p style="margin-top:0;">Chaque personne le fait <strong>une fois, sur son propre téléphone</strong> :</p>
+    <ol class="son-etapes">
+      <li>Ouvrir EcoMaZ et se connecter avec <strong>son</strong> compte (fondation, secrétariat ou portier).</li>
+      <li>Sur le tableau de bord, toucher <strong>« Activer »</strong> dans le bandeau « Recevez les alertes sur ce téléphone », puis <strong>« Autoriser »</strong>.</li>
+      <li>Sur iPhone : d’abord installer EcoMaZ sur l’écran d’accueil (Partager → « Sur l’écran d’accueil »), puis l’ouvrir depuis son icône.</li>
+    </ol>
+    <p class="hint">Bandeau fermé par erreur ? Dans Chrome : ⋮ → Paramètres → Paramètres des sites → Notifications → autoriser le site d’EcoMaZ.</p>
+    <div class="form-actions"><button type="button" class="btn" onclick="closeModal()">J’ai compris</button></div>`);
+}
 function etapesMiseEnRoute(){
   const actifs = (DB.eleves || []).filter(e => e.statut === 'Actif');
   const relies = actifs.filter(e => (DB.parentsEleves || []).some(pe => pe.eleveId === e.id)).length;
@@ -4904,6 +4921,11 @@ function etapesMiseEnRoute(){
   if(DB.etatComptes === undefined && ['secretariat','direction','fondation'].includes(ui.role)){ DB.etatComptes = null; sb.rpc('etat_comptes_enseignants')
     .then(({ data }) => { DB.etatComptes = rowsToCamel(data || []); if(ui.currentView === 'dashboard') renderView('dashboard'); }, () => { DB.etatComptes = []; }); }
   const ensAvecCompte = (DB.etatComptes || []).filter(x => x.aCompte), ensAlertes = ensAvecCompte.filter(x => x.alertesActives);
+  // Alertes du personnel (direction, fondation, secrétariat, portier) — schema.sql section 112
+  if(DB.alertesPersonnel === undefined && ['direction','fondation'].includes(ui.role)){ DB.alertesPersonnel = null; sb.rpc('etat_alertes_personnel')
+    .then(({ data }) => { DB.alertesPersonnel = rowsToCamel(data || []); if(ui.currentView === 'dashboard') renderView('dashboard'); }, () => { DB.alertesPersonnel = []; }); }
+  const libRole = { direction:'direction', fondation:'fondation', secretariat:'secrétariat', portier:'portier' };
+  const rolesSansAlertes = (DB.alertesPersonnel || []).filter(x => x.comptes > 0 && x.avecAlertes < x.comptes).map(x => libRole[x.role] || x.role);
   const m = DB.meta || {};
   const comptesEnseignants = (DB.profiles || []).filter(pr => pr.role === 'enseignant' && pr.enseignantId).length;
   const classesAvecEdt = (DB.classes || []).filter(c => (DB.emploiTemps || []).some(e => e.classeId === c.id));
@@ -4916,6 +4938,9 @@ function etapesMiseEnRoute(){
     { ok: classesAvecEleves.length > 0 && !classesSansAppel.length, titre: 'Appel fait dans chaque classe cette semaine', detail: !appelsRecents ? 'Aucun appel depuis 7 jours : les parents ne sont pas prévenus des absences'
         : classesSansAppel.length ? `${classesAvecEleves.length - classesSansAppel.length} / ${classesAvecEleves.length} classe(s) — sans appel : ${classesSansAppel.slice(0, 5).map(c => c.nom).join(', ')}${classesSansAppel.length > 5 ? '…' : ''}` : `${classesAvecEleves.length} / ${classesAvecEleves.length} classe(s)`,
       vue: 'dashboard', bouton: 'Voir le suivi des enseignants', action: "document.getElementById('titreSuiviEns')?.scrollIntoView({ behavior:'smooth', block:'start' })" },
+    ...(Array.isArray(DB.alertesPersonnel) && DB.alertesPersonnel.length ? [{ ok: !rolesSansAlertes.length, titre: 'Alertes sur les téléphones du personnel',
+      detail: rolesSansAlertes.length ? `Sans alertes : ${rolesSansAlertes.join(', ')} — pas de bilan du vendredi, ni d’alerte « appel non fait », d’absence signalée ou de demande` : 'direction, fondation, secrétariat et portier sont prévenus',
+      vue: 'dashboard', bouton: 'Comment faire', action: 'ouvrirAideAlertesPersonnel()' }] : []),
     ...(DB.etatComptes && ensAvecCompte.length ? [{ ok: ensAlertes.length >= ensAvecCompte.length, titre: 'Rappel de l’appel sur le téléphone des enseignants', detail: `${ensAlertes.length} / ${ensAvecCompte.length} enseignant(s) ont activé les alertes — sans elles, le rappel de l’appel n’arrive pas`,
       vue: 'dashboard', bouton: 'Voir qui relancer', action: "document.getElementById('titreSuiviEns')?.scrollIntoView({ behavior:'smooth', block:'start' })" }] : []),
     { ok: (DB.paiementsScolarite || []).length > 0, titre: 'Paiements de scolarité enregistrés', detail: (DB.paiementsScolarite || []).length ? `${DB.paiementsScolarite.length} paiement(s)` : 'Aucun paiement saisi : reprenez le cahier de caisse classe par classe (« Versements déjà reçus »)', vue: 'comptabilite', bouton: 'Saisir les versements reçus',
