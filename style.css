@@ -2161,3 +2161,6 @@ body.theme-portier .gate-classe strong{ overflow-wrap:anywhere; }
 .enfant-carte .enfant-scolarite .hint, .enfant-carte .es-reste{ color:rgba(255,255,255,.85); }
 .enfant-carte .es-detail li{ border-bottom-color:rgba(255,255,255,.22); }
 .enfant-carte .enfant-scolarite{ border-top-color:rgba(255,255,255,.25); }
+
+/* Versements déjà reçus : tranche pour toute la classe (2026-11-10) */
+.rv-groupe{ display:flex; flex-direction:column; gap:6px; margin:0 0 12px; padding:10px 12px; border-radius:12px; background:var(--surface-2); }

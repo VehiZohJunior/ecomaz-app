@@ -2820,6 +2820,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.11.10-7', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Versements déjà reçus : nouveaux boutons « Toute la classe a payé : 1er versement » (une tranche pour toute la classe en un toucher) ; il ne reste qu’à corriger les exceptions avant d’enregistrer.' ],
+  } },
   { version: '2026.11.10-6', nouveautes: {
     commun: [],
     parent: [ 'Votre accueil est séparé en deux : « Mon espace privé » (visible seulement par vous et l’école : absences, devoirs, notes, bulletins, scolarité, messages) et « Le fil de l’école » (informations communes à tous les parents).', 'Scolarité : dès le 25 du mois, un rappel (notification avec son et vibration) vous indique la tranche du mois suivant à régler ; un encadré « Scolarité à régler » apparaît sur votre accueil.' ],
@@ -11197,10 +11203,22 @@ function ouvrirRepriseVersements(classeId){
       <div class="field"><label for="rvDate">Date des versements</label><input type="date" id="rvDate" value="${todayISO()}" max="${todayISO()}"></div>
       <div class="field"><label for="rvMode">Mode de paiement</label><select id="rvMode">${MODES_PAIEMENT.map(m => `<option>${m}</option>`).join('')}</select></div>
     </div>
+    ${(() => { const ordre = echeancesDeClasse(classeId).map(x => x.label); const libs = [...new Set(eleves.flatMap(e => scolariteEleveParEcheance(e.id).detail.filter(d => d.montant > d.paye).map(d => d.label)))].sort((x, y) => ordre.indexOf(x) - ordre.indexOf(y));
+      return libs.length && eleves.length > 1 ? `<div class="rv-groupe"><span class="hint" style="margin:0;">Gagnez du temps : si presque toute la classe a payé une tranche, touchez-la, puis corrigez seulement les exceptions.</span>
+        <div class="dv-puces">${libs.map(l => `<button type="button" class="dv-puce" data-tranche="${escapeHtml(l)}" onclick="repriseToutLaClasse(this)">Toute la classe a payé : ${escapeHtml(l)}</button>`).join('')}</div></div>` : ''; })()}
     <div class="rv-liste">${blocs}</div>
     <div class="rv-pied"><span id="rvTotal">Rien de saisi pour le moment</span>
       <span style="display:flex;gap:8px;"><button type="button" class="btn secondary" onclick="closeModal()">Annuler</button>
       <button type="button" class="btn" id="rvBouton" onclick="enregistrerReprise('${classeId}')" disabled>Enregistrer</button></span></div>`);
+}
+// Remplit (ou vide, si c'est déjà fait) la tranche choisie pour tous les élèves de la classe
+function repriseToutLaClasse(btn){
+  const champs = [...document.querySelectorAll('.rv-montant')].filter(i => i.dataset.tranche === btn.dataset.tranche);
+  const toutRempli = champs.length && champs.every(i => Number(i.value) === Number(i.dataset.reste));
+  champs.forEach(i => { i.value = toutRempli ? '' : i.dataset.reste; });
+  btn.classList.toggle('actif', !toutRempli);
+  totalReprise();
+  toast(toutRempli ? `« ${btn.dataset.tranche} » vidée pour toute la classe` : `« ${btn.dataset.tranche} » remplie pour ${champs.length} élève(s) : corrigez les exceptions puis enregistrez`);
 }
 function lignesReprise(){
   return $$('.rv-montant').map(i => ({ i, montant: Math.round(Number(i.value) || 0), reste: Number(i.dataset.reste) })).filter(x => x.montant > 0);
