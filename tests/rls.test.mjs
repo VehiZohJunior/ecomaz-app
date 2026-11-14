@@ -427,8 +427,24 @@ async function requete(accessToken, chemin, options = {}){
   const paieAnon = await fetch(`${URL_BASE}/functions/v1/initier-paiement-en-ligne`, { method:'POST', headers:{ Authorization:`Bearer ${ANON_KEY}`, 'Content-Type':'application/json' }, body: corpsPaie });
   verifier('Sans connexion, aucun paiement ne peut être lancé', !paieAnon.ok, `statut ${paieAnon.status}`);
 
+  section('7quattuorvicies. Horaires de cours et sujets d’évaluation (14/11/2026) — sans aucune écriture');
+  const crEtr = await requete(tokenEnseignant, `/rest/v1/rpc/definir_creneaux`, { method:'POST', body: JSON.stringify({ p_creneaux: [{ classe:'classe-inexistante', jour:1, debut:'07:30', fin:'12:00' }] }) });
+  verifier('Un enseignant ne peut pas mettre un horaire sur une classe qui n’est pas la sienne', !crEtr.ok && /pas la vôtre/i.test(JSON.stringify(crEtr.data)), `statut ${crEtr.status}`);
+  const crAutre = await requete(tokenEnseignant, `/rest/v1/rpc/definir_creneaux`, { method:'POST', body: JSON.stringify({ p_creneaux: [], p_enseignant: '00000000-0000-4000-8000-000000000001' }) });
+  verifier('Un enseignant ne peut pas changer l’horaire d’un collègue', !crAutre.ok && /secrétariat/i.test(JSON.stringify(crAutre.data)), `statut ${crAutre.status}`);
+  const crSec = await requete(tokenSecretariat, `/rest/v1/rpc/definir_creneaux`, { method:'POST', body: JSON.stringify({ p_creneaux: [], p_enseignant: '00000000-0000-4000-8000-000000000001' }) });
+  verifier('Secrétariat : enseignant inconnu refusé', !crSec.ok && /introuvable/i.test(JSON.stringify(crSec.data)), `statut ${crSec.status}`);
+  const sjSec = await requete(tokenSecretariat, `/rest/v1/sujets_evaluation`, { method:'POST', headers:{ Prefer:'return=minimal' }, body: JSON.stringify({ enseignant_id:'00000000-0000-4000-8000-000000000001', classe_id:'cp1', titre:'Essai refusé' }) });
+  verifier('Le secrétariat ne peut pas créer de sujet (boîte en lecture seule)', !sjSec.ok, `statut ${sjSec.status}`);
+  const sjMaj = await requete(tokenSecretariat, `/rest/v1/sujets_evaluation?id=not.is.null`, { method:'PATCH', headers:{ Prefer:'return=representation' }, body: JSON.stringify({ titre:'modifié' }) });
+  verifier('Le secrétariat ne peut modifier aucun sujet reçu', !sjMaj.ok || (Array.isArray(sjMaj.data) && sjMaj.data.length === 0), `statut ${sjMaj.status} ${JSON.stringify(sjMaj.data)?.slice(0, 60)}`);
+  const sjBr = await requete(tokenSecretariat, `/rest/v1/sujets_evaluation?select=id&statut=eq.brouillon`);
+  verifier('Le secrétariat ne voit aucun brouillon d’enseignant', sjBr.ok && Array.isArray(sjBr.data) && sjBr.data.length === 0, `reçu ${JSON.stringify(sjBr.data)?.slice(0, 60)}`);
+  const convAnon = await fetch(`${URL_BASE}/functions/v1/convertir-evaluation`, { method:'POST', headers:{ Authorization:`Bearer ${ANON_KEY}`, 'Content-Type':'application/json' }, body: JSON.stringify({ typeSource:'document', texte:'Exercice 1 : calculez.' }) });
+  verifier('Sans connexion, aucune conversion de sujet', !convAnon.ok, `statut ${convAnon.status}`);
+
   section('8. Visiteur non connecté — ne lit que les affichages publics prévus');
-  for(const table of ['eleves','enseignants_lecture','profiles','paiements_scolarite','messages','parents_eleves','presences_eleves','eleves_portier_lecture','objets_perdus','push_abonnements','absences_signalees','evenements_agenda','devoirs','personnes_autorisees','sante_eleves','reponses_agenda','corrections_fiches','menus_cantine','preinscriptions','demandes_documents','evaluations','coefficients_matieres','bulletins_resultats']){
+  for(const table of ['eleves','enseignants_lecture','profiles','paiements_scolarite','messages','parents_eleves','presences_eleves','eleves_portier_lecture','objets_perdus','push_abonnements','absences_signalees','evenements_agenda','devoirs','personnes_autorisees','sante_eleves','reponses_agenda','corrections_fiches','menus_cantine','preinscriptions','demandes_documents','evaluations','coefficients_matieres','bulletins_resultats','sujets_evaluation']){
     const r = await requete(ANON_KEY, `/rest/v1/${table}?select=*&limit=1`);
     verifier(`Sans connexion, rien à lire dans ${table}`, !r.ok || (Array.isArray(r.data) && r.data.length === 0), `reçu ${JSON.stringify(r.data)?.slice(0,80)}`);
   }

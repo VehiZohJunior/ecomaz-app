@@ -4412,3 +4412,150 @@ create trigger maj_recu after update on paiements_scolarite for each row execute
 alter table usage_remplissage_intelligent drop constraint if exists usage_remplissage_intelligent_type_source_check;
 alter table usage_remplissage_intelligent add constraint usage_remplissage_intelligent_type_source_check
   check (type_source in ('photo','audio','texte','document'));
+
+-- =====================================================================
+-- 115. HORAIRES DE COURS DE CHAQUE ENSEIGNANT (2026-11-14)
+-- =====================================================================
+-- À l'enrôlement, l'enseignant indique pour chaque classe le ou les jours
+-- et les heures où il fait cours (créneaux). Les rappels d'appel ne lui
+-- sont envoyés QUE pendant ses créneaux ; sans horaire : aucun rappel.
+-- Format : [{"classe":"<id>","jour":1..6,"debut":"HH:MM","fin":"HH:MM"}]
+alter table enseignants add column if not exists creneaux jsonb not null default '[]';
+alter table enseignants drop constraint if exists enseignants_creneaux_forme;
+alter table enseignants add constraint enseignants_creneaux_forme
+  check (jsonb_typeof(creneaux) = 'array' and jsonb_array_length(creneaux) <= 60);
+
+-- Enregistre les créneaux : l'enseignant pour lui-même (p_enseignant null),
+-- le secrétariat / la direction pour n'importe quel enseignant de l'école.
+create or replace function definir_creneaux(p_creneaux jsonb, p_enseignant uuid default null)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare v_ecole uuid := mon_ecole_id(); v_ens uuid; v_classes text[]; v_c jsonb; v_propres jsonb := '[]';
+begin
+  if v_ecole is null then raise exception 'Non autorisé'; end if;
+  if p_enseignant is null then
+    if mon_role() is distinct from 'enseignant' or mon_enseignant_id() is null then raise exception 'Inscrivez-vous d''abord (Je m''enrôle)'; end if;
+    v_ens := mon_enseignant_id();
+  else
+    if not est_perso_admin() then raise exception 'Réservé au secrétariat et à la direction'; end if;
+    v_ens := p_enseignant;
+  end if;
+  select coalesce(classes_assignees, '{}') || coalesce(classes_demandees, '{}') into v_classes
+    from enseignants where id = v_ens and ecole_id = v_ecole;
+  if not found then raise exception 'Enseignant introuvable'; end if;
+  if jsonb_typeof(coalesce(p_creneaux, '[]')) <> 'array' or jsonb_array_length(coalesce(p_creneaux, '[]')) > 60 then raise exception 'Créneaux invalides'; end if;
+  for v_c in select * from jsonb_array_elements(coalesce(p_creneaux, '[]')) loop
+    if not (v_c->>'classe' = any(v_classes)) then raise exception 'Créneau pour une classe qui n''est pas la vôtre'; end if;
+    if (v_c->>'jour') !~ '^[1-6]$' then raise exception 'Jour invalide (lundi à samedi)'; end if;
+    if (v_c->>'debut') !~ '^([01]\d|2[0-3]):[0-5]\d$' or (v_c->>'fin') !~ '^([01]\d|2[0-3]):[0-5]\d$' then raise exception 'Heure invalide'; end if;
+    if (v_c->>'debut') >= (v_c->>'fin') then raise exception 'L''heure de fin doit être après l''heure de début'; end if;
+    v_propres := v_propres || jsonb_build_object('classe', v_c->>'classe', 'jour', (v_c->>'jour')::int, 'debut', v_c->>'debut', 'fin', v_c->>'fin');
+  end loop;
+  update enseignants set creneaux = v_propres where id = v_ens;
+  return v_propres;
+end $$;
+revoke all on function definir_creneaux(jsonb, uuid) from public, anon;
+grant execute on function definir_creneaux(jsonb, uuid) to authenticated;
+
+-- Les créneaux sont visibles par l'enseignant lui-même et par le personnel administratif
+create or replace view enseignants_lecture as
+select
+  e.id, e.ecole_id, e.matricule, e.nom, e.prenom, e.sexe,
+  case when est_perso_admin() then e.telephone else null end as telephone,
+  case when est_perso_admin() then e.email else null end as email,
+  e.classes_assignees, e.matieres, e.date_embauche, e.statut,
+  case when est_admin() then coalesce((select s.salaire_mensuel from salaires_enseignants s where s.enseignant_id = e.id), 0) else null end as salaire_mensuel,
+  case when est_perso_admin() then e.qr_token else null end as qr_token,
+  case when est_perso_admin() or e.id = mon_enseignant_id() then e.classes_demandees else null end as classes_demandees,
+  case when est_perso_admin() or e.id = mon_enseignant_id() then e.creneaux else null end as creneaux
+from enseignants e
+where e.ecole_id = mon_ecole_id() or developpeur_a_acces(e.ecole_id);
+
+-- =====================================================================
+-- 116. « JE CRÉE UNE ÉVALUATION » (enseignant) ET « BOÎTE À ÉVALUATIONS »
+--      (secrétariat) (2026-11-14)
+-- =====================================================================
+-- L'enseignant prépare le sujet d'une évaluation (photo d'une feuille
+-- convertie, fichier importé ou saisie), le modifie, puis le VALIDE.
+-- Une fois validé, le sujet ne peut plus être modifié ni supprimé par
+-- personne, et il arrive dans la Boîte à évaluations du secrétariat,
+-- qui ne peut que le lire et l'imprimer.
+create table if not exists sujets_evaluation (
+  id uuid primary key default gen_random_uuid(),
+  ecole_id uuid not null references ecoles(id) on delete cascade default mon_ecole_id(),
+  enseignant_id uuid not null references enseignants(id) on delete cascade,
+  auteur_id uuid default auth.uid(),
+  classe_id text not null references classes(id),
+  matiere text not null default '',
+  type text not null default 'Devoir',
+  titre text not null,
+  date_prevue date,
+  duree text not null default '',
+  contenu_html text not null default '',
+  source text not null default 'saisie',
+  statut text not null default 'brouillon',
+  valide_le timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint sujets_evaluation_bornes check (
+    char_length(titre) between 2 and 160 and char_length(matiere) <= 80 and char_length(type) <= 40
+    and char_length(duree) <= 40 and char_length(contenu_html) <= 1500000
+    and source in ('saisie','photo','fichier') and statut in ('brouillon','validee'))
+);
+create index if not exists sujets_evaluation_ecole on sujets_evaluation (ecole_id, statut, valide_le desc);
+create index if not exists sujets_evaluation_enseignant on sujets_evaluation (enseignant_id, updated_at desc);
+alter table sujets_evaluation enable row level security;
+
+-- L'enseignant : uniquement SES sujets, pour SES classes
+drop policy if exists "enseignant sujets lecture" on sujets_evaluation;
+create policy "enseignant sujets lecture" on sujets_evaluation for select using (
+  ecole_id = mon_ecole_id() and mon_role() = 'enseignant' and enseignant_id = mon_enseignant_id());
+drop policy if exists "enseignant sujets creation" on sujets_evaluation;
+create policy "enseignant sujets creation" on sujets_evaluation for insert with check (
+  ecole_id = mon_ecole_id() and mon_role() = 'enseignant' and enseignant_id = mon_enseignant_id()
+  and classe_id = any(mes_classes()) and statut = 'brouillon');
+drop policy if exists "enseignant sujets modification" on sujets_evaluation;
+create policy "enseignant sujets modification" on sujets_evaluation for update
+  using (ecole_id = mon_ecole_id() and mon_role() = 'enseignant' and enseignant_id = mon_enseignant_id() and statut = 'brouillon')
+  with check (ecole_id = mon_ecole_id() and mon_role() = 'enseignant' and enseignant_id = mon_enseignant_id() and classe_id = any(mes_classes()));
+drop policy if exists "enseignant sujets suppression" on sujets_evaluation;
+create policy "enseignant sujets suppression" on sujets_evaluation for delete using (
+  ecole_id = mon_ecole_id() and mon_role() = 'enseignant' and enseignant_id = mon_enseignant_id() and statut = 'brouillon');
+-- Le secrétariat : lecture seule des sujets VALIDÉS (aucune modification possible)
+drop policy if exists "secretariat boite evaluations" on sujets_evaluation;
+create policy "secretariat boite evaluations" on sujets_evaluation for select using (
+  ecole_id = mon_ecole_id() and mon_role() = 'secretariat' and statut = 'validee');
+drop policy if exists "double verification" on sujets_evaluation;
+create policy "double verification" on sujets_evaluation as restrictive for all to authenticated
+  using (double_verification_ok()) with check (double_verification_ok());
+
+-- Validation : définitive (date posée par la base), contenu obligatoire ; un sujet validé est figé
+create or replace function figer_sujet_evaluation() returns trigger
+language plpgsql set search_path = public as $$
+begin
+  if tg_op = 'UPDATE' and old.statut = 'validee' then raise exception 'Évaluation déjà validée : elle ne peut plus être modifiée'; end if;
+  if tg_op = 'UPDATE' then
+    new.id := old.id; new.ecole_id := old.ecole_id; new.enseignant_id := old.enseignant_id; new.auteur_id := old.auteur_id; new.created_at := old.created_at;
+  end if;
+  new.updated_at := now();
+  if new.statut = 'validee' then
+    if char_length(regexp_replace(new.contenu_html, '<[^>]*>|&nbsp;|\s', '', 'g')) < 10 then raise exception 'Le sujet est vide : ajoutez son contenu avant de le valider'; end if;
+    new.valide_le := now();
+  else
+    new.valide_le := null;
+  end if;
+  return new;
+end $$;
+drop trigger if exists figer_sujet_evaluation on sujets_evaluation;
+create trigger figer_sujet_evaluation before insert or update on sujets_evaluation for each row execute function figer_sujet_evaluation();
+create or replace function proteger_sujet_valide() returns trigger
+language plpgsql set search_path = public as $$
+begin
+  -- (seul un traitement d'administration sans utilisateur connecté, ex. suppression d'une école, peut l'effacer)
+  if old.statut = 'validee' and auth.uid() is not null then raise exception 'Évaluation validée : elle ne peut pas être supprimée'; end if;
+  return old;
+end $$;
+drop trigger if exists proteger_sujet_valide on sujets_evaluation;
+create trigger proteger_sujet_valide before delete on sujets_evaluation for each row execute function proteger_sujet_valide();
+
+grant select, insert, update, delete on sujets_evaluation to authenticated;
+

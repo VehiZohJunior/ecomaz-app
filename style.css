@@ -2218,3 +2218,77 @@ body.theme-portier .gate-classe strong{ overflow-wrap:anywhere; }
 /* Remplissage intelligent : bouton (2026-11-10) */
 .btn-sf{ margin:0 0 12px; display:inline-flex; flex-wrap:wrap; align-items:center; gap:4px 6px; text-align:left; }
 .btn-sf small{ font-weight:400; color:var(--text-dim); font-size:var(--fs-xs); }
+
+/* ===== Horaires de cours des enseignants (2026-11-14) ===== */
+.creneaux-editeur{ display:flex; flex-direction:column; gap:6px; }
+.creneaux-editeur .cr-titre{ font-weight:700; }
+.creneaux-liste{ display:flex; flex-direction:column; gap:8px; }
+.creneau-ligne{ display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding:8px; border:1px solid var(--border); border-radius:12px; background:var(--surface-2); }
+.creneau-ligne .cr-classe{ min-width:110px; flex:1 1 110px; }
+.cr-jours{ display:flex; flex-wrap:wrap; gap:4px; }
+.cr-jour{ position:relative; display:inline-flex; }
+.cr-jour input{ position:absolute; opacity:0; inset:0; width:100%; height:100%; margin:0; cursor:pointer; }
+.cr-jour span{ min-width:40px; min-height:36px; display:inline-flex; align-items:center; justify-content:center; padding:0 6px; border:1px solid var(--border); border-radius:8px; font-size:var(--fs-xs); font-weight:700; background:var(--surface); color:var(--text); }
+.cr-jour input:checked + span{ background:var(--primary); color:var(--on-primary, #fff); border-color:var(--primary); }
+.cr-jour input:focus-visible + span{ outline:2px solid var(--primary); outline-offset:2px; }
+.cr-heure{ display:inline-flex; align-items:center; gap:4px; font-size:var(--fs-xs); }
+.cr-heure input{ width:auto; min-height:36px; }
+.cr-retirer{ margin-left:auto; }
+.creneaux-fiche{ margin-top:10px; display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
+.cr-titre-court{ font-weight:700; font-size:var(--fs-xs); display:inline-flex; gap:4px; align-items:center; }
+.creneau-resume{ font-size:var(--fs-xs); background:var(--surface-2); border:1px solid var(--border); border-radius:999px; padding:3px 10px; }
+
+/* ===== Je crée une évaluation / Boîte à évaluations (2026-11-14) ===== */
+.sujet-etapes{ list-style:none; margin:10px 0 0; padding:0; display:flex; flex-wrap:wrap; gap:6px; }
+.sujet-etapes li{ font-size:var(--fs-xs); background:var(--surface-2); border:1px solid var(--border); border-radius:999px; padding:4px 10px; }
+.sujets-liste{ list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:8px; }
+.sujet-ligne{ display:flex; gap:10px; align-items:center; padding:10px; border:1px solid var(--border); border-radius:12px; }
+.sujet-ligne.nouveau{ border-color:color-mix(in srgb, var(--primary) 55%, var(--border)); background:color-mix(in srgb, var(--primary) 5%, transparent); }
+.sl-txt{ flex:1 1 0; min-width:0; display:flex; flex-direction:column; gap:3px; }
+.sl-txt strong{ overflow-wrap:anywhere; }
+.sl-txt small{ color:var(--text-dim); font-size:var(--fs-xs); overflow-wrap:anywhere; }
+.sl-txt .badge-etat{ align-self:flex-start; display:inline-flex; gap:4px; align-items:center; }
+.sl-actions{ display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end; }
+.sl-coche input{ width:22px; height:22px; }
+@media (max-width:560px){ .sujet-ligne{ flex-wrap:wrap; } .sl-actions{ width:100%; justify-content:flex-start; } }
+.sujet-import{ display:grid; grid-template-columns:repeat(auto-fit, minmax(190px, 1fr)); gap:10px; margin:0 0 12px; }
+.si-choix{ display:flex; flex-direction:column; gap:4px; align-items:flex-start; text-align:left; padding:14px; border:2px dashed var(--border-strong, var(--border)); border-radius:14px; background:var(--surface); color:var(--text); cursor:pointer; font:inherit; min-height:44px; }
+.si-choix:hover, .si-choix:focus-within{ border-color:var(--primary); }
+.si-choix:focus-visible{ outline:2px solid var(--primary); outline-offset:2px; }
+.si-choix small{ color:var(--text-dim); font-size:var(--fs-xs); }
+.si-ic svg{ width:28px; height:28px; color:var(--primary); }
+.sujet-etat{ min-height:0; }
+.sujet-etat.encours, .sujet-etat.erreur{ padding:10px 12px; border-radius:10px; margin:0 0 10px; display:flex; gap:8px; align-items:center; }
+.sujet-etat.encours{ background:var(--surface-2); }
+.sujet-etat.erreur{ background:color-mix(in srgb, var(--danger, #b42318) 10%, transparent); color:var(--danger-ink, var(--danger, #b42318)); font-weight:600; }
+.sujet-barre{ display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:0 0 10px; }
+.sujet-outils{ display:flex; flex-wrap:wrap; gap:4px; }
+.sujet-btn-modifier{ font-weight:800; }
+.sujet-page{ background:#fff; color:#111; border:1px solid var(--border); border-radius:6px; padding:22px; box-shadow:var(--shadow-1, none); max-width:820px; margin:0 auto; }
+.sujet-corps{ font-size:15px; line-height:1.55; overflow-wrap:anywhere; }
+.sujet-corps.en-edition{ outline:2px dashed var(--primary); outline-offset:6px; min-height:240px; cursor:text; }
+.sujet-corps table, .sujet-impression table{ border-collapse:collapse; width:100%; margin:8px 0; }
+.sujet-corps td, .sujet-corps th, .sujet-impression td, .sujet-impression th{ border:1px solid #333; padding:5px 7px; vertical-align:top; text-align:left; }
+.sujet-corps img, .sujet-impression img{ max-width:100%; height:auto; }
+.sujet-corps h2{ font-size:18px; margin:14px 0 6px; } .sujet-corps h3{ font-size:16px; margin:14px 0 6px; }
+.sujet-entete{ border-bottom:2px solid #111; padding-bottom:10px; margin-bottom:14px; color:#111; }
+.se-ecole{ display:flex; gap:10px; align-items:center; }
+.se-ecole img{ height:44px; width:auto; }
+.se-ecole div{ display:flex; flex-direction:column; } .se-ecole span{ font-size:12px; }
+.se-infos{ display:flex; flex-wrap:wrap; gap:6px 18px; margin:8px 0; font-size:13px; }
+.se-eleve{ font-size:13px; margin:6px 0 10px; }
+.se-titre{ font-size:20px; text-align:center; margin:6px 0 2px; color:#111; }
+.se-sous{ text-align:center; font-size:13px; }
+.sujet-actions{ flex-wrap:wrap; justify-content:flex-start; }
+.sujet-valider{ margin-left:auto; }
+@media (max-width:560px){ .sujet-page{ padding:12px; } .sujet-valider{ margin-left:0; width:100%; } }
+.sujets-impression .sujet-impression{ background:#fff; color:#111; padding:10px 0; }
+.sujets-impression .sujet-impression + .sujet-impression{ border-top:1px dashed var(--border); margin-top:16px; padding-top:16px; }
+@media print{
+  .sujets-impression .sujet-impression + .sujet-impression{ break-before:page; page-break-before:always; border:0; margin:0; }
+  .sujet-impression{ font-size:12pt; }
+}
+/* Le sujet est une feuille blanche : texte noir partout, même en mode sombre */
+.sujet-page *, .sujet-impression *{ color:inherit; }
+.sujet-page td, .sujet-page th, .sujet-impression td, .sujet-impression th{ background:#fff; }
+.sujet-impression{ color:#111; }

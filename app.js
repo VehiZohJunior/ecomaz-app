@@ -198,6 +198,8 @@ const VIEW_TITLES = {
   'camps-de-base': 'Camps de base — devoirs et exercices',
   renforcement: 'Cours de renforcement',
   'rapport-activite': 'Rapport d’activité',
+  'creer-evaluation': 'Je crée une évaluation',
+  'boite-evaluations': 'Boîte à évaluations',
 };
 
 /* --- Comptabilité --- */
@@ -233,8 +235,8 @@ const COMPTA_TABS = [
 
 /* --- Rôles / Interfaces --- */
 const ROLES = {
-  enseignant:  {label:'Enseignant(e)', icon:'👩‍🏫', desc:'Notes, présences, emploi du temps', nav:['dashboard','cahier-appel','camps-de-base','notes','presences-eleves','devoirs','emploi-temps','programmes','rapport-activite','vie-ecole','agenda']},
-  secretariat: {label:'Secrétariat', icon:'🗂️', desc:'Gestion administrative & scolarité', nav:['dashboard','eleves','liens-parents','renforcement','vie-ecole','agenda','devoirs','cantine','cahier-appel','camps-de-base','notes','presences-eleves','emploi-temps','programmes','pointage-scan','enseignants','presences-enseignants','comptabilite','messagerie']},
+  enseignant:  {label:'Enseignant(e)', icon:'👩‍🏫', desc:'Notes, présences, emploi du temps', nav:['dashboard','cahier-appel','camps-de-base','creer-evaluation','notes','presences-eleves','devoirs','emploi-temps','programmes','rapport-activite','vie-ecole','agenda']},
+  secretariat: {label:'Secrétariat', icon:'🗂️', desc:'Gestion administrative & scolarité', nav:['dashboard','eleves','liens-parents','renforcement','vie-ecole','agenda','devoirs','cantine','cahier-appel','camps-de-base','notes','presences-eleves','emploi-temps','programmes','pointage-scan','enseignants','presences-enseignants','comptabilite','messagerie','boite-evaluations']},
   direction:   {label:'Direction', icon:'🎩', desc:'Accès complet', nav:'all'},
   fondation:   {label:'Fondation', icon:'🏛️', desc:'Accès complet', nav:'all'},
   parent:      {label:'Parent', icon:'👪', desc:"Suivi de l'enfant", nav:[]},
@@ -922,6 +924,8 @@ function renderView(view){
     cantine: renderCantine,
     'cahier-appel': renderCahierAppel,
     'rapport-activite': renderRapportActivite,
+    'creer-evaluation': renderCreerEvaluation,
+    'boite-evaluations': renderBoiteEvaluations,
     'camps-de-base': renderCampsDeBase,
     renforcement: renderRenforcement,
   };
@@ -2876,6 +2880,18 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.11.14-2', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Enseignants — « Je crée une évaluation » : photographiez votre sujet sur papier (il devient un document modifiable), importez votre fichier (PDF, Word, Excel, image) ou écrivez-le directement ; bouton « Modifier le document », téléchargement Word ou Excel, puis « Valider l’évaluation ».', 'Secrétariat — « Boîte à évaluations » : les évaluations validées par les enseignants y arrivent, prêtes à imprimer (une ou plusieurs à la fois, avec l’effectif de la classe). Lecture seule : aucune modification possible.' ],
+  } },
+  { version: '2026.11.14-1', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Horaires de cours : chaque enseignant indique, pour chacune de ses classes, ses jours et ses heures de cours (Je m’enrôle). Le rappel de l’appel ne lui arrive QUE pendant ses cours (10 minutes après le début), jamais en dehors ; sans horaire, aucun rappel. Le secrétariat et la direction peuvent aussi les saisir dans la fiche de l’enseignant.' ],
+  } },
   { version: '2026.11.10-15', nouveautes: {
     commun: [],
     parent: [],
@@ -3764,13 +3780,69 @@ function bipRappel(){
     return true;
   }catch(_e){ return false; }
 }
+/* ---------- Horaires de cours de l'enseignant (schema.sql section 115) ----------
+   Créneaux déclarés à l'enrôlement : [{ classe, jour 1-6, debut 'HH:MM', fin 'HH:MM' }] */
+const JOURS_COURS = ['', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
+function creneauxEnseignant(fiche){ return Array.isArray(fiche?.creneaux) ? fiche.creneaux : []; }
+function jourIsoDe(iso){ return ((new Date(iso + 'T12:00:00').getDay() + 6) % 7) + 1; }
+function creneauxDuJour(fiche, iso){
+  const j = jourIsoDe(iso), mes = new Set(fiche?.classesAssignees || []);
+  return creneauxEnseignant(fiche).filter(c => Number(c.jour) === j && mes.has(c.classe)).sort((a, b) => a.debut.localeCompare(b.debut));
+}
+// Sans horaire déclaré, on ne restreint pas l'affichage (mais aucune alarme n'est envoyée)
+function aCoursLe(fiche, classeId, iso){ return !creneauxEnseignant(fiche).length || creneauxDuJour(fiche, iso).some(c => c.classe === classeId); }
+const heureLisible = hm => String(hm || '').slice(0, 5).replace(':', 'h');
+const minutesDe = hm => { const [h, m] = String(hm).split(':').map(Number); return h * 60 + m; };
+// Regroupe les créneaux identiques (même classe, mêmes heures) sur plusieurs jours : « CE1 · Lun, Mar · 07h30–12h00 »
+function groupesCreneaux(liste){
+  const g = new Map();
+  (liste || []).forEach(c => { const k = `${c.classe}|${c.debut}|${c.fin}`; if(!g.has(k)) g.set(k, { classe:c.classe, debut:c.debut, fin:c.fin, jours:[] }); g.get(k).jours.push(Number(c.jour)); });
+  return [...g.values()].map(x => ({ ...x, jours: [...new Set(x.jours)].sort() })).sort((a, b) => (a.jours[0] - b.jours[0]) || a.debut.localeCompare(b.debut));
+}
+function texteCreneaux(liste){
+  return groupesCreneaux(liste).map(x => `<span class="creneau-resume"><strong>${escapeHtml(classeName(x.classe))}</strong> · ${x.jours.map(j => JOURS_COURS[j].slice(0, 3)).join(', ')} · ${heureLisible(x.debut)}–${heureLisible(x.fin)}</span>`).join('');
+}
+function ligneCreneau(classeIds, x){
+  const jours = new Set(x?.jours || []);
+  return `<div class="creneau-ligne">
+    <select class="cr-classe" aria-label="Classe">${classeIds.map(id => `<option value="${id}" ${x?.classe === id ? 'selected' : ''}>${escapeHtml(classeName(id))}</option>`).join('')}</select>
+    <div class="cr-jours" role="group" aria-label="Jours de cours">${[1, 2, 3, 4, 5, 6].map(j => `<label class="cr-jour" title="${JOURS_COURS[j]}"><input type="checkbox" value="${j}" ${jours.has(j) ? 'checked' : ''}><span>${JOURS_COURS[j].slice(0, 3)}</span></label>`).join('')}</div>
+    <label class="cr-heure"><span>De</span><input type="time" class="cr-debut" value="${escapeHtml(x?.debut || '07:30')}" required></label>
+    <label class="cr-heure"><span>à</span><input type="time" class="cr-fin" value="${escapeHtml(x?.fin || '12:00')}" required></label>
+    <button type="button" class="icon-btn cr-retirer" aria-label="Retirer ce créneau" title="Retirer" onclick="this.closest('.creneau-ligne').remove()">✕</button>
+  </div>`;
+}
+function editeurCreneaux(classeIds, creneaux, titre){
+  const groupes = groupesCreneaux(creneaux);
+  return `<div class="creneaux-editeur" data-classes="${classeIds.join(',')}">
+    <label class="cr-titre">${titre || 'Mes jours et heures de cours'}</label>
+    <div class="hint" style="margin:0 0 8px;">Une ligne par classe et par horaire : cochez les jours, puis l’heure de début et de fin. Les rappels d’appel n’arrivent <strong>que pendant ces heures</strong> (10 minutes après le début du cours).</div>
+    <div class="creneaux-liste">${groupes.map(x => ligneCreneau(classeIds, x)).join('')}</div>
+    ${classeIds.length ? `<button type="button" class="btn secondary sm" onclick="const e=this.closest('.creneaux-editeur'); e.querySelector('.creneaux-liste').insertAdjacentHTML('beforeend', ligneCreneau(e.dataset.classes.split(','), null))">+ Ajouter un horaire</button>` : '<div class="hint">Cochez d’abord une classe.</div>'}
+  </div>`;
+}
+// Lit l'éditeur → liste de créneaux (un par jour coché) ; renvoie { erreur } si une ligne est incomplète
+function lireCreneaux(racine){
+  const ed = racine?.querySelector('.creneaux-editeur'); if(!ed) return null;
+  const sortie = [];
+  for(const l of ed.querySelectorAll('.creneau-ligne')){
+    const classe = l.querySelector('.cr-classe').value, debut = l.querySelector('.cr-debut').value.slice(0, 5), fin = l.querySelector('.cr-fin').value.slice(0, 5);
+    const jours = [...l.querySelectorAll('.cr-jours input:checked')].map(x => Number(x.value));
+    if(!jours.length) return { erreur:`Cochez au moins un jour pour ${classeName(classe)}.` };
+    if(!/^\d{2}:\d{2}$/.test(debut) || !/^\d{2}:\d{2}$/.test(fin) || debut >= fin) return { erreur:`Vérifiez les heures de ${classeName(classe)} : la fin doit être après le début.` };
+    jours.forEach(jour => sortie.push({ classe, jour, debut, fin }));
+  }
+  return { creneaux: sortie };
+}
 function classesAppelObligatoire(){
   if(ui.role !== 'enseignant' || !session.enseignantId) return [];
   const auj = todayISO(); if(!estJourDeCours(auj)) return [];
-  const rappel = String(DB.horairesAnnonces?.rappelAppel || '').slice(0, 5); if(!/^\d{2}:\d{2}$/.test(rappel)) return [];
-  const d = new Date(), hm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-  if(hm < rappel || hm >= '17:00') return [];
-  return classesVisibles().filter(c => DB.eleves.some(e => e.classeId === c.id && e.statut === 'Actif') && !DB.presencesEleves.some(p => p.classeId === c.id && p.date === auj));
+  const fiche = enseignantById(session.enseignantId);
+  // Uniquement pendant SES cours : de 10 minutes après le début du créneau jusqu'à sa fin. Sans horaire : jamais.
+  const d = new Date(), m = d.getHours() * 60 + d.getMinutes();
+  const enCours = new Set(creneauxDuJour(fiche, auj).filter(c => m >= minutesDe(c.debut) + 10 && m <= minutesDe(c.fin)).map(c => c.classe));
+  if(!enCours.size) return [];
+  return classesVisibles().filter(c => enCours.has(c.id) && DB.eleves.some(e => e.classeId === c.id && e.statut === 'Actif') && !DB.presencesEleves.some(p => p.classeId === c.id && p.date === auj));
 }
 function verifierAppelObligatoire(forcerBip){
   let el = document.getElementById('appelObligatoire');
@@ -4384,7 +4456,7 @@ function renderAccueilEnseignant(){
   const mes = classesVisibles();
   const entete = `<div class="db-bonjour"><div><h2>${escapeHtml(salutation())}</h2><div class="db-date">${dateLongue}</div>
     ${mes.length ? `<div class="mes-classes">${icone('school')} ${mes.length > 1 ? 'Mes classes' : 'Ma classe'} : <strong>${mes.map(c => escapeHtml(c.nom)).join(', ')}</strong></div>` : ''}${renderQuestionAppel()}</div></div>`;
-  const annexe = `<details class="panel acc-annexe"><summary>${icone('users')} Mon inscription et la liste des enseignants</summary>${renderJeMEnrole()}${renderListeCollegues()}</details>`;
+  const annexe = `<details class="panel acc-annexe" ${ui.filters.enroleOuvert ? 'open' : ''}><summary>${icone('users')} Mon inscription et la liste des enseignants</summary>${renderJeMEnrole()}${renderListeCollegues()}</details>`;
   if(!fiche) return `<div class="view active">${entete}${renderJeMEnrole()}${renderListeCollegues()}</div>`;
   if(!(fiche.classesAssignees || []).length) return `<div class="view active">${entete}
     <div class="panel acc-attente"><h2>${icone('hourglass')} Vos classes sont en attente de validation</h2>
@@ -4411,9 +4483,13 @@ function renderAccueilEnseignant(){
   const jour = [];
   // Le rappel « Pensez à l'appel » n'arrive que si les alertes sont activées sur CE téléphone
   const tacheAlertes = tacheAlertesTelephone();
-  if(tacheAlertes) jour.push(tacheAlertes);
+  const sansHoraire = !creneauxEnseignant(fiche).length;
+  if(sansHoraire) jour.push({ etat:'afaire', titre:'Indiquer mes jours et heures de cours', detail:'Pour chaque classe : les jours et les heures où vous faites cours. Les rappels d’appel n’arrivent qu’à ces moments-là (aucun rappel tant que ce n’est pas rempli).', bouton:'Indiquer mes horaires', action:"ui.filters.enroleOuvert=true; renderView('dashboard'); setTimeout(() => document.getElementById('jeMEnrole')?.scrollIntoView({ block:'start' }), 80)" });
+  if(tacheAlertes && !sansHoraire) jour.push(tacheAlertes);
+  const mesCoursAuj = creneauxDuJour(fiche, auj);
+  if(coursAuj && mesCoursAuj.length) jour.push({ etat:'info', titre:'Mes cours aujourd’hui', detail: mesCoursAuj.map(c => `${escapeHtml(classeName(c.classe))} de ${heureLisible(c.debut)} à ${heureLisible(c.fin)}`).join(' · ') });
   if(coursAuj){
-    classes.forEach(c => {
+    classes.filter(c => aCoursLe(fiche, c.id, auj)).forEach(c => {
       const pres = DB.presencesEleves.filter(p => p.classeId === c.id && p.date === auj);
       if(pres.length){
         const nb = st => pres.filter(p => p.statut === st).length;
@@ -4424,7 +4500,7 @@ function renderAccueilEnseignant(){
     });
   }
   if(prochain && DB.devoirs){
-    classes.forEach(c => {
+    classes.filter(c => aCoursLe(fiche, c.id, auj) || aCoursLe(fiche, c.id, prochain)).forEach(c => {
       const dv = DB.devoirs.filter(d => d.classeId === c.id && d.pourLe === prochain);
       jour.push(dv.length
         ? { etat:'fait', titre:`Cahier de textes rempli pour ${quandProchain} — ${escapeHtml(c.nom)}`, detail: dv.map(d => escapeHtml(d.matiere || 'travail')).join(', '), bouton:'Voir', action:`ui.filters.devoirsClasse='${c.id}'; go('devoirs')` }
@@ -4454,7 +4530,7 @@ function renderAccueilEnseignant(){
   const lundi = lundiDe(auj), semaine = [];
   const passesSemaine = listeJours(lundi, auj).filter(d => d < auj && estJourDeCours(d));
   const manques = [];
-  passesSemaine.forEach(d => classes.forEach(c => { if(!appelFait(c.id, d)) manques.push({ d, c }); }));
+  passesSemaine.forEach(d => classes.forEach(c => { if(aCoursLe(fiche, c.id, d) && !appelFait(c.id, d)) manques.push({ d, c }); }));
   manques.slice(0, 5).forEach(({ d, c }) => semaine.push({ etat:'afaire', titre:`Rattraper l’appel du ${dateLongueFr(d)} — ${escapeHtml(c.nom)}`, detail:'Cet appel n’a pas été enregistré.', bouton:'Rattraper', action:`allerAppel('${c.id}','${d}')` }));
   if(manques.length > 5) semaine.push({ etat:'afaire', titre:`${manques.length - 5} autre(s) appel(s) à rattraper cette semaine`, bouton:'Ouvrir le cahier d’appel', action:"go('cahier-appel')" });
   if(passesSemaine.length && !manques.length) semaine.push({ etat:'fait', titre:'Tous les appels de la semaine sont faits', detail:'Merci : les parents sont informés chaque jour.' });
@@ -4560,8 +4636,7 @@ function renderAccueilEnseignant(){
   </div>`;
 }
 function tacheAlertesTelephone(){
-  const rappel = String(DB.horairesAnnonces?.rappelAppel || '').slice(0, 5);
-  const quand = /^\d{2}:\d{2}$/.test(rappel) ? ` (${rappel.replace(/^0/, '').replace(':', ' h ').replace(' h 00', ' h')})` : '';
+  const quand = ' pendant mes cours';
   const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
   if(ios && !window.navigator.standalone) return { etat:'afaire', titre:`Recevoir le rappel de l’appel${quand} sur ce téléphone`, detail:'Sur iPhone : touchez « Partager » (carré avec une flèche) puis « Sur l’écran d’accueil ». Ouvrez ensuite EcoMaZ depuis cette icône et activez les alertes.' };
   if(!pushPossible()) return null;
@@ -5142,6 +5217,9 @@ function renderJeMEnrole(){
       <div class="enrole-classes">${assignees.size ? [...assignees].map(id => `<span class="badge-etat ok">${escapeHtml(classeName(id))}</span>`).join(' ') : '<span class="hint" style="margin:0;">Aucune classe validée pour le moment.</span>'}
         ${[...demandees].map(id => `<span class="badge-etat attente">${escapeHtml(classeName(id))} · en attente</span>`).join(' ')}</div>
       ${demandees.size ? `<div class="hint">Les classes « en attente » seront ouvertes dès que la direction ou le secrétariat les aura validées.</div>` : ''}
+      <div class="creneaux-fiche">${creneauxEnseignant(fiche).length ? `<span class="cr-titre-court">${icone('clock') || '🕒'} Mes heures de cours :</span>${texteCreneaux(creneauxEnseignant(fiche))}`
+        : `<div class="alerte-inscription" style="margin:0;"><strong>Indiquez vos jours et heures de cours.</strong> Sans eux, EcoMaZ ne peut pas vous rappeler l’appel au bon moment.
+          <button type="button" class="btn sm" style="margin-top:8px;" onclick="ui.filters.enroleOuvert=true; renderView('dashboard')">Indiquer mes horaires</button></div>`}</div>
     </div>`;
   }
   const civ = fiche?.sexe || session.civilite || '';
@@ -5167,6 +5245,7 @@ function renderJeMEnrole(){
       <div class="field"><label>Mes matières</label><div class="enrole-choix">${matieres.map(m => `<label class="enrol-choix"><input type="checkbox" name="mat" value="${escapeHtml(m)}" ${mesMat.has(m) ? 'checked' : ''}> ${escapeHtml(m)}</label>`).join('')}</div></div>
       <div class="field"><label>${fiche ? 'Classes supplémentaires à demander' : 'Mes classes (validées ensuite par l’école)'}</label><div class="enrole-choix">
         ${DB.classes.filter(c => !assignees.has(c.id)).map(c => `<label class="enrol-choix"><input type="checkbox" name="cls" value="${c.id}" ${demandees.has(c.id) ? 'checked' : ''}> ${escapeHtml(c.nom)}</label>`).join('') || '<span class="hint">Aucune autre classe.</span>'}</div></div>
+      <div class="field">${editeurCreneaux(DB.classes.map(c => c.id), creneauxEnseignant(fiche))}</div>
       <div class="pin-error" id="enrErr"></div>
       <div class="form-actions" style="justify-content:flex-start;">
         <button type="submit" class="btn">${fiche ? 'Enregistrer' : 'M’inscrire'}</button>
@@ -5184,17 +5263,28 @@ async function enregistrerEnrolement(ev){
   const classes = [...f.querySelectorAll('input[name=cls]:checked')].map(x => x.value);
   if(!civ){ err.textContent = 'Choisissez Monsieur ou Madame.'; return false; }
   if(!session.enseignantId && !classes.length){ err.textContent = 'Cochez au moins une classe.'; return false; }
+  // Horaires : seulement pour ses classes (validées ou cochées)
+  const lu = lireCreneaux(f) || { creneaux: [] };
+  if(lu.erreur){ err.textContent = lu.erreur; return false; }
+  const fiche = session.enseignantId ? enseignantById(session.enseignantId) : null;
+  const siennes = new Set([...(fiche?.classesAssignees || []), ...classes]);
+  const horsClasse = lu.creneaux.find(c => !siennes.has(c.classe));
+  if(horsClasse){ err.textContent = `Cochez aussi la classe ${classeName(horsClasse.classe)} (ou retirez son horaire).`; return false; }
   const bouton = f.querySelector('button[type=submit]'); bouton.disabled = true;
   const { data: id, error } = await sb.rpc('m_enroler_enseignant', { p_civilite: civ, p_prenom: prenom, p_nom: nom, p_telephone: tel, p_matieres: matieres, p_classes: classes });
+  let errHoraires = null;
+  if(!error) ({ error: errHoraires } = await sb.rpc('definir_creneaux', { p_creneaux: lu.creneaux }));
   bouton.disabled = false;
   if(error){ err.textContent = 'Envoi impossible : ' + error.message; return false; }
+  if(errHoraires){ err.textContent = 'Fiche enregistrée, mais horaires refusés : ' + errHoraires.message; }
   const nouveau = !session.enseignantId;
   session.enseignantId = id; session.civilite = civ;
   if(nouveau){ session.nomComplet = `${prenom} ${nom}`; session.nomAppel = `${prenom} ${nom}`; }
   try{ const k = 'ecomaz_profil_cache'; const v = JSON.parse(localStorage.getItem(k) || 'null'); if(v){ v.enseignant_id = id; v.civilite = civ; if(nouveau){ v.nom_complet = session.nomComplet; v.nom_appel = session.nomAppel; } localStorage.setItem(k, JSON.stringify(v)); } }catch(_e){}
   try{ DB.enseignants = await dbSelectAll('enseignants_lecture'); }catch(_e){}
   ui.filters.enroleOuvert = false;
-  toast(classes.length ? 'Inscription enregistrée ✅ : l’école va valider vos classes' : 'Fiche mise à jour ✅');
+  if(errHoraires) return false;
+  toast(classes.length ? 'Inscription enregistrée ✅ : l’école va valider vos classes' : (lu.creneaux.length ? 'Fiche et horaires enregistrés ✅ : rappels seulement pendant vos cours' : 'Fiche mise à jour ✅'));
   renderView('dashboard');
   return false;
 }
@@ -9296,6 +9386,7 @@ function openEnseignantForm(id){
               <input type="checkbox" name="classes" value="${c.id}" ${t?.classesAssignees.includes(c.id)?'checked':''}> ${c.nom}</label>`).join('')}
           </div>
         </div>
+        <div class="field span2">${editeurCreneaux(DB.classes.map(c => c.id), creneauxEnseignant(t), 'Jours et heures de cours')}</div>
         <div class="field span2"><label>Matières enseignées</label>
           <div style="display:flex;flex-wrap:wrap;gap:8px;">
             ${allMatieres.map(m=>`<label style="display:flex;align-items:center;gap:5px;font-size:var(--fs-xs);background:var(--surface-2);padding:5px 9px;border-radius:var(--r-control);border:1px solid var(--border);">
@@ -9323,6 +9414,10 @@ async function handleSaveEnseignant(ev){
   };
   // Le salaire n'est saisi que par Direction/Fondation (le secrétariat ne l'envoie jamais)
   if(fd.has('salaireMensuel')) patch.salaireMensuel = Math.max(0, parseInt(fd.get('salaireMensuel'))||0);
+  const lu = lireCreneaux(ev.target) || { creneaux: [] };
+  if(lu.erreur){ alert(lu.erreur); return false; }
+  const horsClasse = lu.creneaux.find(c => !patch.classesAssignees.includes(c.classe));
+  if(horsClasse){ alert(`Cochez aussi la classe ${classeName(horsClasse.classe)} dans « Classes assignées » (ou retirez son horaire).`); return false; }
   if(!patch.matricule) patch.matricule = await prochainMatricule('enseignants', 'ENS-', 3);
   try{
     if(id){
@@ -9334,6 +9429,12 @@ async function handleSaveEnseignant(ev){
       const cree = await insererAvecMatricule('enseignants', patch, 'ENS-', 3);
       if('salaireMensuel' in patch) cree.salaireMensuel = patch.salaireMensuel;
       DB.enseignants.push(cree);
+    }
+    const idEns = id || DB.enseignants[DB.enseignants.length - 1]?.id;
+    if(idEns && JSON.stringify(lu.creneaux) !== JSON.stringify(creneauxEnseignant(enseignantById(idEns)))){
+      const { data: enreg, error } = await sb.rpc('definir_creneaux', { p_creneaux: lu.creneaux, p_enseignant: idEns });
+      if(error) throw error;
+      const f = enseignantById(idEns); if(f) f.creneaux = enreg;
     }
     closeModal(); toast('Enseignant enregistré');
     renderView('enseignants');
@@ -13940,6 +14041,390 @@ window.addEventListener('unhandledrejection', (ev) => {
 // salaires et dépenses) — impossible à contourner ou à falsifier. Cette
 // fonction est gardée pour ne rien casser, mais n'écrit plus rien.
 async function journaliserCompta(){ /* voir schema.sql section 96 */ }
+
+
+/* =====================================================================
+   « JE CRÉE UNE ÉVALUATION » (enseignant) et « BOÎTE À ÉVALUATIONS »
+   (secrétariat) — schema.sql section 116, fonction convertir-evaluation.
+   Le sujet : photo d'une feuille → document modifiable (IA gratuite),
+   fichier importé (Word / Excel lus sur le téléphone, PDF remis en forme),
+   ou saisie directe. « Modifier le document », export Word / Excel,
+   impression, puis « Valider l'évaluation » : le sujet part au secrétariat
+   et devient non modifiable. Le secrétariat ne peut que lire et imprimer.
+   ===================================================================== */
+const TYPES_SUJET = ['Devoir', 'Interrogation', 'Devoir surveillé', 'Composition', 'Examen blanc', 'Exercice'];
+// Liste blanche : tout le reste est retiré (seul le texte est gardé). Indispensable : le
+// secrétariat affiche des sujets écrits par d'autres comptes.
+function nettoyerHtmlSujet(html){
+  const doc = new DOMParser().parseFromString(`<body>${String(html || '')}</body>`, 'text/html');
+  const RENOMME = { h1:'h2', h2:'h2', h3:'h3', h4:'h3', h5:'h3', h6:'h3', b:'strong', strong:'strong', i:'em', em:'em', u:'u', p:'p', div:'p',
+    br:'br', ol:'ol', ul:'ul', li:'li', table:'table', thead:'thead', tbody:'tbody', tr:'tr', th:'th', td:'td', img:'img', blockquote:'p' };
+  const IGNORE = new Set(['script', 'style', 'iframe', 'object', 'embed', 'link', 'meta', 'title', 'noscript', 'template', 'svg', 'math', 'form', 'input', 'button', 'select', 'textarea']);
+  const copier = (src, dest) => {
+    src.childNodes.forEach(n => {
+      if(n.nodeType === 3){ dest.appendChild(document.createTextNode(n.nodeValue)); return; }
+      if(n.nodeType !== 1) return;
+      const nom = n.nodeName.toLowerCase();
+      if(IGNORE.has(nom)) return;
+      const cible = RENOMME[nom];
+      if(!cible){ copier(n, dest); return; } // balise inconnue (span, font, a…) : on garde le texte
+      if(cible === 'img'){
+        const s = n.getAttribute('src') || '';
+        if(/^data:image\/(png|jpe?g|gif|webp);base64,[a-z0-9+/=\s]+$/i.test(s) && s.length < 1200000){ const im = document.createElement('img'); im.setAttribute('src', s.replace(/\s/g, '')); im.setAttribute('alt', ''); dest.appendChild(im); }
+        return;
+      }
+      const el = document.createElement(cible);
+      if(cible === 'td' || cible === 'th') ['colspan', 'rowspan'].forEach(a => { const v = parseInt(n.getAttribute(a), 10); if(v > 1 && v < 30) el.setAttribute(a, String(v)); });
+      copier(n, el); dest.appendChild(el);
+    });
+  };
+  const sortie = document.createElement('div');
+  copier(doc.body, sortie);
+  return sortie.innerHTML.replace(/<p>\s*<\/p>/g, '').trim();
+}
+const texteSeulSujet = html => String(html || '').replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
+function chargerSujets(){
+  if(DB.sujets !== undefined) return;
+  DB.sujets = null;
+  sb.from('sujets_evaluation').select('*').order('updated_at', { ascending: false })
+    .then(({ data, error }) => { DB.sujets = error ? [] : rowsToCamel(data || []); if(['creer-evaluation', 'boite-evaluations'].includes(ui.currentView)) renderView(ui.currentView); }, () => { DB.sujets = []; });
+}
+function enteteSujet(s){
+  const m = DB.meta || {};
+  const lignes = [s.type, s.matiere].filter(Boolean).map(escapeHtml).join(' — ');
+  return `<header class="sujet-entete">
+    <div class="se-ecole">${m.logo ? `<img src="${escapeHtml(m.logo)}" alt="">` : ''}<div><strong>${escapeHtml(m.nomEcole || '')}</strong><span>Année scolaire ${escapeHtml(m.anneeScolaire || '')}</span></div></div>
+    <div class="se-infos"><span>Classe : <strong>${escapeHtml(classeName(s.classeId))}</strong></span>${s.duree ? `<span>Durée : <strong>${escapeHtml(s.duree)}</strong></span>` : ''}${s.datePrevue ? `<span>Date : <strong>${fmtDate(s.datePrevue)}</strong></span>` : ''}</div>
+    <div class="se-eleve">Nom et prénoms : ……………………………………………………………… N° : ………</div>
+    <h1 class="se-titre">${escapeHtml(s.titre || '')}</h1>${lignes ? `<div class="se-sous">${lignes}</div>` : ''}
+  </header>`;
+}
+function htmlImpressionSujet(s){ return `<article class="sujet-impression">${enteteSujet(s)}<div class="sujet-corps">${nettoyerHtmlSujet(s.contenuHtml)}</div></article>`; }
+
+/* ---------- Console enseignant ---------- */
+function renderCreerEvaluation(){
+  if(ui.role !== 'enseignant') return '<div class="view active"></div>';
+  const fiche = session.enseignantId ? enseignantById(session.enseignantId) : null;
+  const classes = classesVisibles();
+  if(!fiche || !classes.length) return `<div class="view active"><div class="panel"><h2>${icone('file-text')} Je crée une évaluation</h2>
+    <p class="hint">Ce module s’ouvre dès que la direction a validé votre ou vos classes (Accueil → Mon inscription).</p></div></div>`;
+  if(ui.sujet) return renderEditeurSujet(fiche, classes);
+  chargerSujets();
+  if(DB.sujets === null) return `<div class="view active"><div class="panel"><div class="etat-vide"><span>Chargement de vos évaluations…</span></div></div></div>`;
+  const mes = (DB.sujets || []).filter(s => s.enseignantId === fiche.id);
+  const brouillons = mes.filter(s => s.statut !== 'validee'), validees = mes.filter(s => s.statut === 'validee');
+  const ligne = s => `<li class="sujet-ligne">
+      <div class="sl-txt"><strong>${escapeHtml(s.titre)}</strong><small>${escapeHtml(s.type)} · ${escapeHtml(s.matiere || '')} · ${escapeHtml(classeName(s.classeId))}${s.datePrevue ? ' · prévue le ' + fmtDate(s.datePrevue) : ''}</small>
+        ${s.statut === 'validee' ? `<span class="badge-etat ok">${icone('lock')} Validée le ${fmtDate(String(s.valideLe).slice(0, 10))} · envoyée au secrétariat</span>` : '<span class="badge-etat attente">Brouillon — pas encore envoyé</span>'}</div>
+      <div class="sl-actions">${s.statut === 'validee'
+        ? `<button type="button" class="btn secondary sm" onclick="apercuSujet('${s.id}')">${icone('eye')} Voir / imprimer</button>`
+        : `<button type="button" class="btn sm" onclick="ouvrirSujet('${s.id}')">${icone('pencil')} Continuer</button>
+           <button type="button" class="icon-btn" aria-label="Supprimer le brouillon ${escapeHtml(s.titre)}" title="Supprimer le brouillon" onclick="supprimerSujet('${s.id}')">🗑️</button>`}</div></li>`;
+  return `<div class="view active">
+    <div class="panel sujet-accueil">
+      <div class="panel-head"><div><h2>${icone('file-text')} Je crée une évaluation</h2>
+        <div class="sub">Photographiez votre feuille, importez votre fichier (PDF, Word, Excel) ou écrivez directement. Vous modifiez, puis vous validez : le secrétariat l’imprime.</div></div>
+        <button type="button" class="btn" onclick="nouveauSujet()">+ Nouvelle évaluation</button></div>
+      <ol class="sujet-etapes"><li><strong>1.</strong> Classe, matière, titre</li><li><strong>2.</strong> Photo, fichier ou saisie</li><li><strong>3.</strong> Modifier le document</li><li><strong>4.</strong> Valider l’évaluation</li></ol>
+    </div>
+    <div class="panel"><h3>Brouillons (${brouillons.length})</h3>${brouillons.length ? `<ul class="sujets-liste">${brouillons.map(ligne).join('')}</ul>` : '<p class="hint">Aucun brouillon.</p>'}</div>
+    <div class="panel"><h3>Évaluations validées (${validees.length})</h3>${validees.length ? `<ul class="sujets-liste">${validees.map(ligne).join('')}</ul>` : '<p class="hint">Aucune évaluation validée pour le moment.</p>'}</div>
+  </div>`;
+}
+function nouveauSujet(){
+  const fiche = enseignantById(session.enseignantId), c = classesVisibles()[0];
+  ui.sujet = { id:null, classeId:c?.id || '', matiere:(matieresDeEnseignant(fiche, c?.id)[0] || ''), type:'Devoir', titre:'', datePrevue:'', duree:'', contenuHtml:'', source:'saisie', statut:'brouillon' };
+  ui.sujetEdition = false; ui.sujetImport = true;
+  renderView('creer-evaluation');
+}
+function ouvrirSujet(id){
+  const s = (DB.sujets || []).find(x => x.id === id); if(!s || s.statut === 'validee') return;
+  ui.sujet = { ...s }; ui.sujetEdition = false; ui.sujetImport = !texteSeulSujet(s.contenuHtml);
+  renderView('creer-evaluation');
+}
+function fermerSujet(){
+  lireFormSujet();
+  const s = ui.sujet;
+  const original = s?.id ? (DB.sujets || []).find(x => x.id === s.id) : null;
+  const modifie = s && (original ? ['titre', 'classeId', 'matiere', 'type', 'datePrevue', 'duree', 'contenuHtml'].some(k => String(original[k] || '') !== String(s[k] || '')) : (s.titre || texteSeulSujet(s.contenuHtml)));
+  if(modifie && !confirm('Quitter sans enregistrer vos dernières modifications ?')) return;
+  ui.sujet = null; ui.sujetEdition = false; renderView('creer-evaluation');
+}
+function renderEditeurSujet(fiche, classes){
+  const s = ui.sujet, aContenu = !!texteSeulSujet(s.contenuHtml) || /<img/i.test(s.contenuHtml || '');
+  const matieres = [...new Set([...matieresDeEnseignant(fiche, s.classeId), s.matiere].filter(Boolean))];
+  const choixImport = `<div class="sujet-import">
+      <label class="si-choix"><input type="file" accept="image/*" capture="environment" multiple onchange="importerPhotosSujet(event)" hidden>
+        <span class="si-ic">${icone('camera')}</span><strong>Photographier ma feuille</strong><small>Le modèle sur papier devient un document modifiable (jusqu’à 4 pages).</small></label>
+      <label class="si-choix"><input type="file" accept=".pdf,.docx,.xlsx,.xls,.csv,.txt,image/*,application/pdf" onchange="importerFichierSujet(event)" hidden>
+        <span class="si-ic">${icone('upload')}</span><strong>Importer un fichier</strong><small>Depuis le téléphone ou l’ordinateur : PDF, Word (.docx), Excel, image.</small></label>
+      <button type="button" class="si-choix" onclick="ecrireSujetDirect()"><span class="si-ic">${icone('pencil')}</span><strong>Écrire directement</strong><small>Une page vierge avec un modèle d’en-tête et d’exercices.</small></button>
+    </div>`;
+  return `<div class="view active sujet-editeur">
+    <div class="panel">
+      <div class="panel-head"><div><h2>${icone('file-text')} ${s.id ? 'Modifier mon évaluation' : 'Nouvelle évaluation'}</h2><div class="sub">Brouillon : rien n’est envoyé tant que vous n’avez pas touché « Valider l’évaluation ».</div></div>
+        <button type="button" class="btn secondary sm" onclick="fermerSujet()">‹ Mes évaluations</button></div>
+      <form id="formSujet" class="form-grid" onsubmit="return false" oninput="ui.sujetModifie=true">
+        <div class="field"><label for="sjClasse">Classe</label><select id="sjClasse" onchange="lireFormSujet(); renderView('creer-evaluation')">${classes.map(c => `<option value="${c.id}" ${c.id === s.classeId ? 'selected' : ''}>${escapeHtml(c.nom)}</option>`).join('')}</select></div>
+        <div class="field"><label for="sjMatiere">Matière</label><select id="sjMatiere">${matieres.map(m => `<option ${m === s.matiere ? 'selected' : ''}>${escapeHtml(m)}</option>`).join('')}</select></div>
+        <div class="field"><label for="sjType">Type d’évaluation</label><select id="sjType">${TYPES_SUJET.map(t => `<option ${t === s.type ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
+        <div class="field"><label for="sjDate">Date prévue</label><input id="sjDate" type="date" value="${escapeHtml(s.datePrevue || '')}"></div>
+        <div class="field span2"><label for="sjTitre">Titre</label><input id="sjTitre" maxlength="160" required placeholder="Ex : Devoir de mathématiques n°2 — les fractions" value="${escapeHtml(s.titre || '')}"></div>
+        <div class="field"><label for="sjDuree">Durée</label><input id="sjDuree" maxlength="40" placeholder="Ex : 1 heure" value="${escapeHtml(s.duree || '')}"></div>
+      </form>
+    </div>
+    <div class="panel">
+      <h3>Le sujet</h3>
+      <div id="sujetEtat" class="sujet-etat" role="status" aria-live="polite"></div>
+      ${!aContenu || ui.sujetImport ? choixImport : ''}
+      ${aContenu ? `
+        <div class="sujet-barre no-print">
+          ${ui.sujetEdition
+            ? `<div class="sujet-outils" role="toolbar" aria-label="Mise en forme">
+                <button type="button" class="btn secondary sm" onmousedown="event.preventDefault()" onclick="document.execCommand('bold')" title="Gras"><strong>G</strong></button>
+                <button type="button" class="btn secondary sm" onmousedown="event.preventDefault()" onclick="document.execCommand('italic')" title="Italique"><em>I</em></button>
+                <button type="button" class="btn secondary sm" onmousedown="event.preventDefault()" onclick="document.execCommand('underline')" title="Souligné"><u>S</u></button>
+                <button type="button" class="btn secondary sm" onmousedown="event.preventDefault()" onclick="document.execCommand('formatBlock', false, 'h3')">Titre</button>
+                <button type="button" class="btn secondary sm" onmousedown="event.preventDefault()" onclick="document.execCommand('formatBlock', false, 'p')">Texte</button>
+                <button type="button" class="btn secondary sm" onmousedown="event.preventDefault()" onclick="document.execCommand('insertOrderedList')">1. Liste</button>
+                <button type="button" class="btn secondary sm" onmousedown="event.preventDefault()" onclick="document.execCommand('insertText', false, ' ………………………………………… ')">… Ligne à compléter</button>
+                <button type="button" class="btn secondary sm" onmousedown="event.preventDefault()" onclick="insererTableauSujet()">Tableau</button>
+              </div>
+              <button type="button" class="btn sm" onclick="lireFormSujet(); ui.sujetEdition=false; renderView('creer-evaluation')">${icone('check')} Terminer la modification</button>`
+            : `<button type="button" class="btn sujet-btn-modifier" onclick="lireFormSujet(); ui.sujetEdition=true; ui.sujetImport=false; renderView('creer-evaluation'); setTimeout(() => document.getElementById('sujetDoc')?.focus(), 50)">${icone('pencil')} Modifier le document</button>
+               ${ui.sujetImport ? '' : `<button type="button" class="btn secondary sm" onclick="lireFormSujet(); ui.sujetImport=true; renderView('creer-evaluation')">Remplacer par un autre modèle</button>`}`}
+        </div>
+        <div class="sujet-page">${enteteSujet(s)}<div id="sujetDoc" class="sujet-corps ${ui.sujetEdition ? 'en-edition' : ''}" ${ui.sujetEdition ? 'contenteditable="true" spellcheck="true" aria-label="Contenu du sujet, modifiable" role="textbox" aria-multiline="true"' : ''}>${nettoyerHtmlSujet(s.contenuHtml)}</div></div>` : ''}
+      <div class="form-actions sujet-actions">
+        <button type="button" class="btn secondary" onclick="enregistrerSujet(false)">${icone('save') || '💾'} Enregistrer le brouillon</button>
+        ${aContenu ? `<button type="button" class="btn secondary" onclick="lireFormSujet(); telechargerSujetWord(ui.sujet)">${icone('download')} Word</button>
+        <button type="button" class="btn secondary" onclick="lireFormSujet(); telechargerSujetExcel(ui.sujet)">${icone('download')} Excel</button>
+        <button type="button" class="btn secondary" onclick="lireFormSujet(); imprimerSujets([ui.sujet])">${icone('printer')} Aperçu avant impression</button>
+        <button type="button" class="btn sujet-valider" onclick="enregistrerSujet(true)">${icone('circle-check')} Valider l’évaluation</button>` : ''}
+      </div>
+    </div>
+  </div>`;
+}
+// Recopie le formulaire et le document dans ui.sujet (avant tout réaffichage)
+function lireFormSujet(){
+  const s = ui.sujet; if(!s) return;
+  const v = id => document.getElementById(id);
+  if(v('sjClasse')) s.classeId = v('sjClasse').value;
+  if(v('sjMatiere')) s.matiere = v('sjMatiere').value;
+  if(v('sjType')) s.type = v('sjType').value;
+  if(v('sjDate')) s.datePrevue = v('sjDate').value || '';
+  if(v('sjTitre')) s.titre = v('sjTitre').value.trim();
+  if(v('sjDuree')) s.duree = v('sjDuree').value.trim();
+  if(v('sujetDoc')) s.contenuHtml = nettoyerHtmlSujet(v('sujetDoc').innerHTML);
+}
+function ecrireSujetDirect(){
+  lireFormSujet();
+  const s = ui.sujet;
+  if(!texteSeulSujet(s.contenuHtml)) s.contenuHtml = `<p><strong>Consigne :</strong> lisez attentivement chaque question avant de répondre.</p>
+    <h3>Exercice 1</h3><p>…</p><h3>Exercice 2</h3><p>…</p><h3>Exercice 3</h3><p>…</p>`;
+  s.source = s.source || 'saisie'; ui.sujetImport = false; ui.sujetEdition = true;
+  renderView('creer-evaluation');
+  setTimeout(() => document.getElementById('sujetDoc')?.focus(), 50);
+}
+function insererTableauSujet(){
+  const html = '<table><tbody><tr><th>…</th><th>…</th><th>…</th></tr><tr><td>…</td><td>…</td><td>…</td></tr><tr><td>…</td><td>…</td><td>…</td></tr></tbody></table><p></p>';
+  document.getElementById('sujetDoc')?.focus();
+  document.execCommand('insertHTML', false, html);
+}
+function etatSujet(texte, erreur){
+  const el = document.getElementById('sujetEtat'); if(!el) return;
+  el.className = 'sujet-etat' + (erreur ? ' erreur' : texte ? ' encours' : '');
+  el.innerHTML = texte ? (erreur ? escapeHtml(texte) : `<span class="spinner" aria-hidden="true"></span> ${escapeHtml(texte)}`) : '';
+}
+function sujetConverti(html, titre, source){
+  const s = ui.sujet; if(!s) return;
+  s.contenuHtml = nettoyerHtmlSujet(html); s.source = source;
+  if(!s.titre && titre) s.titre = String(titre).slice(0, 160);
+  ui.sujetImport = false; ui.sujetEdition = false;
+  renderView('creer-evaluation');
+  toast('Document prêt ✅ : relisez-le, puis « Modifier le document » si besoin');
+  setTimeout(() => document.querySelector('.sujet-btn-modifier')?.scrollIntoView({ block:'center', behavior:'smooth' }), 80);
+}
+async function convertirSujetEnLigne(corps){
+  if(!navigator.onLine) throw new Error('Pas de connexion internet : la conversion a besoin du réseau. Vous pouvez « Écrire directement ».');
+  const { data, error } = await sb.functions.invoke('convertir-evaluation', { body: corps });
+  if(error) throw new Error(await messageErreurFonction(error));
+  if(!data?.ok) throw new Error(data?.error || 'Conversion impossible');
+  return data;
+}
+async function importerPhotosSujet(ev){
+  lireFormSujet();
+  const fichiers = [...(ev.target.files || [])].filter(f => (f.type || '').startsWith('image/')).slice(0, 4);
+  if(!fichiers.length) return;
+  try{
+    etatSujet(`Lecture de ${fichiers.length > 1 ? fichiers.length + ' pages' : 'la feuille'}… (10 à 40 secondes)`);
+    const photos = []; for(const f of fichiers) photos.push(await smartFillCompresserImage(f));
+    const r = await convertirSujetEnLigne({ typeSource:'photo', photos, mimeType:'image/jpeg' });
+    sujetConverti(r.html, r.titre, 'photo');
+  }catch(e){ etatSujet(e.message, true); }
+  finally{ ev.target.value = ''; }
+}
+async function importerFichierSujet(ev){
+  lireFormSujet();
+  const f = ev.target.files?.[0]; if(!f) return;
+  const nom = (f.name || '').toLowerCase(), type = f.type || '';
+  try{
+    if(f.size > 20 * 1024 * 1024) throw new Error('Fichier trop lourd (20 Mo au maximum).');
+    etatSujet('Lecture du fichier…');
+    if(type.startsWith('image/')){
+      etatSujet('Lecture de l’image… (10 à 40 secondes)');
+      const r = await convertirSujetEnLigne({ typeSource:'photo', photos:[await smartFillCompresserImage(f)], mimeType:'image/jpeg' });
+      return sujetConverti(r.html, r.titre, 'photo');
+    }
+    if(nom.endsWith('.docx')){
+      // Word : la mise en forme (titres, listes, tableaux, images) est gardée, sur le téléphone
+      const mammoth = await chargerScript(MAMMOTH_URL, 'mammoth');
+      const r = await mammoth.convertToHtml({ arrayBuffer: await f.arrayBuffer() });
+      if(!texteSeulSujet(r.value) && !/<img/i.test(r.value)) throw new Error('Ce document Word est vide.');
+      return sujetConverti(r.value, f.name.replace(/\.[^.]+$/, ''), 'fichier');
+    }
+    if(/\.(xlsx|xls|csv)$/.test(nom)){
+      const XLSX = await chargerXLSX();
+      const wb = XLSX.read(await f.arrayBuffer(), { type:'array' });
+      const html = wb.SheetNames.slice(0, 5).map(n => `${wb.SheetNames.length > 1 ? `<h3>${escapeHtml(n)}</h3>` : ''}${XLSX.utils.sheet_to_html(wb.Sheets[n], { header:'', footer:'' })}`).join('');
+      return sujetConverti(html, f.name.replace(/\.[^.]+$/, ''), 'fichier');
+    }
+    if(nom.endsWith('.txt') || type.startsWith('text/')){
+      const t = await f.text();
+      return sujetConverti(t.split(/\n{2,}/).map(b => `<p>${escapeHtml(b).replace(/\n/g, '<br>')}</p>`).join(''), f.name.replace(/\.[^.]+$/, ''), 'fichier');
+    }
+    if(nom.endsWith('.pdf') || type === 'application/pdf'){
+      // PDF : texte remis en forme ; PDF scanné : lu comme des photos
+      etatSujet('Lecture du PDF… (10 à 40 secondes)');
+      const r = await texteDuPdf(f);
+      const conv = r.images ? await convertirSujetEnLigne({ typeSource:'photo', photos:r.images, mimeType:'image/jpeg' })
+        : await convertirSujetEnLigne({ typeSource:'document', texte:r.texte.slice(0, 30000) });
+      return sujetConverti(conv.html, conv.titre || f.name.replace(/\.[^.]+$/, ''), 'fichier');
+    }
+    if(nom.endsWith('.doc')) throw new Error('Ancien format Word (.doc) : enregistrez-le en .docx ou en PDF, ou prenez la feuille en photo.');
+    throw new Error('Format non reconnu : PDF, Word (.docx), Excel (.xlsx, .xls, .csv), texte ou image.');
+  }catch(e){ etatSujet(e.message, true); }
+  finally{ ev.target.value = ''; }
+}
+async function enregistrerSujet(valider){
+  lireFormSujet();
+  const s = ui.sujet; if(!s) return;
+  if(!s.titre || s.titre.length < 2){ toast('Donnez un titre à l’évaluation'); document.getElementById('sjTitre')?.focus(); return; }
+  if(!s.classeId){ toast('Choisissez la classe'); return; }
+  if(valider && texteSeulSujet(s.contenuHtml).length < 10){ toast('Le sujet est vide : ajoutez son contenu avant de le valider'); return; }
+  if(valider && !confirm(`Valider « ${s.titre} » ?\n\nL’évaluation part au secrétariat pour être imprimée.\nAprès validation, plus personne ne pourra la modifier.`)) return;
+  if(!navigator.onLine){ toast('Pas de connexion internet : réessayez dès que le réseau revient'); return; }
+  const ligne = { classe_id:s.classeId, matiere:s.matiere || '', type:s.type || 'Devoir', titre:s.titre, date_prevue:s.datePrevue || null, duree:s.duree || '', contenu_html:s.contenuHtml || '', source:s.source || 'saisie' };
+  try{
+    let res;
+    if(s.id) res = await sb.from('sujets_evaluation').update(ligne).eq('id', s.id).select().single();
+    else res = await sb.from('sujets_evaluation').insert({ ...ligne, enseignant_id: session.enseignantId }).select().single();
+    if(res.error) throw res.error;
+    let row = rowToCamel(res.data);
+    if(valider){
+      const v = await sb.from('sujets_evaluation').update({ statut:'validee' }).eq('id', row.id).select().single();
+      if(v.error){ ui.sujet = { ...row }; throw v.error; }
+      row = rowToCamel(v.data);
+    }
+    DB.sujets = [row, ...(DB.sujets || []).filter(x => x.id !== row.id)];
+    if(valider){ ui.sujet = null; ui.sujetEdition = false; toast('Évaluation validée ✅ : elle est dans la Boîte à évaluations du secrétariat'); }
+    else { ui.sujet = { ...row }; toast('Brouillon enregistré ✅'); }
+    renderView('creer-evaluation');
+  }catch(e){ toast('Enregistrement impossible : ' + (e.message || e)); }
+}
+async function supprimerSujet(id){
+  const s = (DB.sujets || []).find(x => x.id === id); if(!s || s.statut === 'validee') return;
+  if(!confirm(`Supprimer le brouillon « ${s.titre} » ? Il sera effacé définitivement.`)) return;
+  const { error } = await sb.from('sujets_evaluation').delete().eq('id', id);
+  if(error){ toast('Suppression impossible : ' + error.message); return; }
+  DB.sujets = DB.sujets.filter(x => x.id !== id); toast('Brouillon supprimé'); renderView('creer-evaluation');
+}
+function apercuSujet(id){ const s = (DB.sujets || []).find(x => x.id === id); if(s) imprimerSujets([s]); }
+
+/* ---------- Export Word / Excel ---------- */
+const nomFichierSujet = s => (`${s.type || 'Evaluation'} ${s.matiere || ''} ${classeName(s.classeId)} ${s.titre || ''}`).normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\w-]+/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '').slice(0, 90) || 'evaluation';
+function telechargerBlobSujet(blob, nom){ const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = nom; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); }
+function telechargerSujetWord(s){
+  const corps = htmlImpressionSujet(s);
+  const doc = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"><title>${escapeHtml(s.titre || '')}</title>
+    <!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View><w:Zoom>100</w:Zoom></w:WordDocument></xml><![endif]-->
+    <style>@page{size:21cm 29.7cm;margin:1.8cm} body{font-family:Calibri,Arial,sans-serif;font-size:12pt} h1{font-size:16pt;text-align:center;margin:8pt 0 2pt} h2{font-size:14pt} h3{font-size:12.5pt;margin:12pt 0 4pt}
+    table{border-collapse:collapse;width:100%} td,th{border:1px solid #000;padding:4pt;vertical-align:top} .se-ecole img{height:48px} .se-ecole span,.se-sous{display:block;font-size:10pt} .se-infos span{margin-right:18pt} .se-eleve{margin:8pt 0;border-bottom:1px solid #000;padding-bottom:6pt} .se-sous{text-align:center}</style></head><body>${corps}</body></html>`;
+  telechargerBlobSujet(new Blob(['﻿', doc], { type:'application/msword' }), nomFichierSujet(s) + '.doc');
+  toast('Fichier Word téléchargé (ouvrez-le avec Word ou WPS Office)');
+}
+async function telechargerSujetExcel(s){
+  try{
+    const XLSX = await chargerXLSX();
+    const m = DB.meta || {}, lignes = [[m.nomEcole || ''], [`Année scolaire ${m.anneeScolaire || ''}`], [`Classe : ${classeName(s.classeId)}`, s.duree ? `Durée : ${s.duree}` : '', s.datePrevue ? `Date : ${fmtDate(s.datePrevue)}` : ''],
+      ['Nom et prénoms : ……………………………………'], [], [s.titre || ''], [[s.type, s.matiere].filter(Boolean).join(' — ')], []];
+    const racine = document.createElement('div'); racine.innerHTML = nettoyerHtmlSujet(s.contenuHtml);
+    const parcourir = el => [...el.children].forEach(n => {
+      const nom = n.nodeName.toLowerCase();
+      if(nom === 'table') n.querySelectorAll('tr').forEach(tr => lignes.push([...tr.children].map(c => c.textContent.trim())));
+      else if(nom === 'ol' || nom === 'ul') [...n.children].forEach((li, i) => lignes.push([`${nom === 'ol' ? (i + 1) + '.' : '•'} ${li.textContent.trim()}`]));
+      else if(n.textContent.trim()) lignes.push([n.textContent.trim()]);
+    });
+    parcourir(racine);
+    const ws = XLSX.utils.aoa_to_sheet(lignes);
+    ws['!cols'] = [{ wch: 90 }, { wch: 28 }, { wch: 22 }];
+    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Sujet');
+    XLSX.writeFile(wb, nomFichierSujet(s) + '.xlsx');
+    toast('Fichier Excel téléchargé');
+  }catch(e){ toast('Export Excel impossible : ' + e.message); }
+}
+
+/* ---------- Impression (enseignant : aperçu ; secrétariat : impression) ---------- */
+function imprimerSujets(liste){
+  if(!liste.length) return;
+  const un = liste.length === 1 ? liste[0] : null;
+  const effectif = id => (DB.eleves || []).filter(e => e.classeId === id && e.statut === 'Actif').length;
+  const exemplaires = ui.role === 'secretariat' ? `<p class="hint no-print" style="margin:0 0 8px;">${liste.map(s => `${escapeHtml(classeName(s.classeId))} : <strong>${effectif(s.classeId)} élève(s)</strong>`).filter((v, i, a) => a.indexOf(v) === i).join(' · ')} — choisissez le nombre d’exemplaires dans la fenêtre d’impression.</p>` : '';
+  openModal(un ? un.titre : `${liste.length} évaluations à imprimer`, `
+    <div class="form-actions no-print" style="margin-top:0;justify-content:space-between;">
+      <span class="hint" style="margin:0;">${ui.role === 'secretariat' ? 'Lecture seule : le secrétariat imprime, sans modifier.' : 'Aperçu tel qu’il sera imprimé.'}</span>
+      <button type="button" class="btn" onclick="window.print()">${icone('printer')} Imprimer / PDF</button></div>
+    ${exemplaires}
+    <div class="sujets-impression">${liste.map(htmlImpressionSujet).join('')}</div>`);
+}
+
+/* ---------- Secrétariat : Boîte à évaluations (lecture et impression uniquement) ---------- */
+function renderBoiteEvaluations(){
+  if(ui.role !== 'secretariat') return '<div class="view active"><div class="panel"><p class="hint">La Boîte à évaluations est réservée au secrétariat.</p></div></div>';
+  chargerSujets();
+  if(DB.sujets === null) return `<div class="view active"><div class="panel"><div class="etat-vide"><span>Chargement de la boîte…</span></div></div></div>`;
+  // « Nouveau » : validé depuis la dernière ouverture de la boîte (repère lu une fois par session)
+  if(ui.boiteVu === undefined){ ui.boiteVu = ''; try{ ui.boiteVu = localStorage.getItem('ecomaz_boite_eval_vu') || ''; }catch(_e){} }
+  const vu = ui.boiteVu;
+  const f = ui.filters, recues = (DB.sujets || []).filter(s => s.statut === 'validee');
+  const liste = recues.filter(s => (!f.boiteClasse || s.classeId === f.boiteClasse) && (!f.boiteEns || s.enseignantId === f.boiteEns))
+    .sort((a, b) => String(b.valideLe).localeCompare(String(a.valideLe)));
+  const nouvelles = recues.filter(s => String(s.valideLe) > vu).length;
+  // La visite marque les évaluations comme vues (pour la prochaine ouverture)
+  try{ const max = recues.reduce((m, s) => String(s.valideLe) > m ? String(s.valideLe) : m, vu); localStorage.setItem('ecomaz_boite_eval_vu', max); }catch(_e){}
+  const classes = [...new Set(recues.map(s => s.classeId))].map(id => ({ id, nom: classeName(id) })).sort((a, b) => a.nom.localeCompare(b.nom));
+  const profs = [...new Set(recues.map(s => s.enseignantId))].map(id => ({ id, nom: (e => e ? ensFullName(e) : 'Enseignant')(enseignantById(id)) })).sort((a, b) => a.nom.localeCompare(b.nom));
+  const sel = ui.boiteSel || (ui.boiteSel = new Set());
+  return `<div class="view active">
+    <div class="panel">
+      <div class="panel-head"><div><h2>${icone('inbox') || '📥'} Boîte à évaluations</h2>
+        <div class="sub">Les évaluations validées par les enseignants arrivent ici. Le secrétariat les <strong>imprime</strong> ; il ne peut pas les modifier.</div></div>
+        ${nouvelles ? `<span class="badge-etat attente">${nouvelles} nouvelle(s)</span>` : ''}</div>
+      <div class="filters no-print">
+        <select aria-label="Classe" onchange="ui.filters.boiteClasse=this.value; renderView('boite-evaluations')"><option value="">Toutes les classes</option>${classes.map(c => `<option value="${c.id}" ${f.boiteClasse === c.id ? 'selected' : ''}>${escapeHtml(c.nom)}</option>`).join('')}</select>
+        <select aria-label="Enseignant" onchange="ui.filters.boiteEns=this.value; renderView('boite-evaluations')"><option value="">Tous les enseignants</option>${profs.map(p => `<option value="${p.id}" ${f.boiteEns === p.id ? 'selected' : ''}>${escapeHtml(p.nom)}</option>`).join('')}</select>
+        ${liste.length ? `<button type="button" class="btn sm" ${sel.size ? '' : 'disabled'} onclick="imprimerSujets((DB.sujets || []).filter(s => ui.boiteSel.has(s.id)))">${icone('printer')} Imprimer la sélection (${sel.size})</button>` : ''}
+      </div>
+      ${liste.length ? `<ul class="sujets-liste">${liste.map(s => { const e = enseignantById(s.enseignantId); const nouveau = String(s.valideLe) > vu; return `<li class="sujet-ligne ${nouveau ? 'nouveau' : ''}">
+          <label class="sl-coche"><input type="checkbox" ${sel.has(s.id) ? 'checked' : ''} aria-label="Sélectionner ${escapeHtml(s.titre)}" onchange="this.checked ? ui.boiteSel.add('${s.id}') : ui.boiteSel.delete('${s.id}'); renderView('boite-evaluations')"></label>
+          <div class="sl-txt"><strong>${escapeHtml(s.titre)}${nouveau ? ' <span class="badge-etat attente">Nouveau</span>' : ''}</strong>
+            <small>${escapeHtml(s.type)} · ${escapeHtml(s.matiere || '')} · <strong>${escapeHtml(classeName(s.classeId))}</strong>${s.datePrevue ? ' · prévue le ' + fmtDate(s.datePrevue) : ''}</small>
+            <small>Par ${e ? escapeHtml(ensFullName(e)) : 'un enseignant'} · validée le ${new Date(s.valideLe).toLocaleString('fr-FR', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' })}</small></div>
+          <div class="sl-actions"><button type="button" class="btn sm" onclick="apercuSujet('${s.id}')">${icone('printer')} Voir et imprimer</button></div></li>`; }).join('')}</ul>`
+        : `<div class="etat-vide"><span>${recues.length ? 'Aucune évaluation pour ce filtre.' : 'Aucune évaluation reçue pour le moment. Elles arrivent ici dès qu’un enseignant touche « Valider l’évaluation ».'}</span></div>`}
+    </div>
+  </div>`;
+}
 
 /* ---------------------------------------------------------------------
    13. INITIALISATION

@@ -311,6 +311,47 @@ async function rappelAgenda(admin: any, aujourdhui: string, minuteActuelle: numb
   return n;
 }
 
+// Rappel d'appel personnel (schema.sql section 115). Fenêtre : 10 minutes après le début du
+// créneau, puis toutes les 5 minutes (6 rappels au plus), jamais après la fin du créneau.
+type Creneau = { classe: string; jour: number; debut: string; fin: string };
+// deno-lint-ignore no-explicit-any
+async function rappelsAppelEnseignants(admin: any, ecoleId: string, dateDuJour: string, jourIso: number, minute: number): Promise<number> {
+  const { data: fiches } = await admin.from('enseignants').select('id, classes_assignees, creneaux').eq('ecole_id', ecoleId).eq('statut', 'Actif');
+  const aVerifier: { ens: string; classe: string; etape: number; fin: string }[] = [];
+  for (const f of (fiches || []) as { id: string; classes_assignees: string[] | null; creneaux: Creneau[] | null }[]) {
+    for (const c of Array.isArray(f.creneaux) ? f.creneaux : []) {
+      if (Number(c.jour) !== jourIso || !(f.classes_assignees || []).includes(c.classe)) continue;
+      const depart = enMinutes(c.debut) + 10, fin = enMinutes(c.fin);
+      if (minute < depart || minute > fin) continue;
+      aVerifier.push({ ens: f.id, classe: c.classe, etape: Math.min(6, Math.floor((minute - depart) / 5) + 1), fin: c.fin });
+    }
+  }
+  if (!aVerifier.length) return 0;
+  const ids = [...new Set(aVerifier.map((x) => x.classe))];
+  const [{ data: classes }, { data: inscrits }, { data: faits }, { data: comptes }] = await Promise.all([
+    admin.from('classes').select('id, nom').in('id', ids),
+    admin.from('eleves').select('classe_id').eq('ecole_id', ecoleId).eq('statut', 'Actif').in('classe_id', ids),
+    admin.from('presences_eleves').select('classe_id').eq('ecole_id', ecoleId).eq('date', dateDuJour).in('classe_id', ids),
+    admin.from('profiles').select('id, enseignant_id').eq('ecole_id', ecoleId).eq('role', 'enseignant').in('enseignant_id', [...new Set(aVerifier.map((x) => x.ens))]),
+  ]);
+  const avecEleves = new Set((inscrits || []).map((e: { classe_id: string }) => e.classe_id));
+  const appelFait = new Set((faits || []).map((p: { classe_id: string }) => p.classe_id));
+  const titres = ['', '📋 Pensez à l’appel', '⚠️ 2e rappel : l’appel n’est pas fait', '⚠️ 3e rappel : l’appel n’est pas fait', '🚨 4e rappel : faites l’appel', '🚨 5e rappel : faites l’appel', '⛔ Dernier rappel : faites l’appel maintenant'];
+  let n = 0;
+  for (const x of aVerifier) {
+    if (!avecEleves.has(x.classe) || appelFait.has(x.classe)) continue;
+    const destinataires = (comptes || []).filter((c: { enseignant_id: string }) => c.enseignant_id === x.ens).map((c: { id: string }) => c.id);
+    if (!destinataires.length) continue;
+    const { error: deja } = await admin.from('rappels_envoyes').insert({ ecole_id: ecoleId, type: `appel-ens|${x.ens}|${x.classe}|${x.etape}`, date: dateDuJour });
+    if (deja) continue;
+    const nom = (classes || []).find((c: { id: string }) => c.id === x.classe)?.nom || 'votre classe';
+    await envoyerPush(admin, destinataires, { title: titres[x.etape], url: './enseignant.html', tag: 'rappel-appel', insistant: true,
+      body: `Votre cours en ${nom} a commencé : l'appel n'est pas encore enregistré. Touchez ici pour le faire (cours jusqu'à ${lisible(x.fin)}).` });
+    n++;
+  }
+  return n;
+}
+
 // Rappel des devoirs (schema.sql section 64) : à 18h, la veille d'un jour
 // de classe, les parents de chaque classe reçoivent la liste des devoirs
 // prévus pour le lendemain. Une seule fois par classe et par jour.
@@ -476,8 +517,8 @@ Deno.serve(async (req) => {
               const noms = manquantes.map((c: { nom: string }) => c.nom);
               const liste = `${noms.slice(0, 6).join(', ')}${noms.length > 6 ? '…' : ''}`;
               const { data: comptes } = await supabaseAdmin.from('profiles').select('id, role, enseignant_id').eq('ecole_id', h.ecole_id)
-                .in('role', ['secretariat', 'direction', 'fondation', 'enseignant']);
-              const admins = (comptes || []).filter((c: { role: string }) => c.role !== 'enseignant').map((c: { id: string }) => c.id);
+                .in('role', ['secretariat', 'direction', 'fondation']);
+              const admins = (comptes || []).map((c: { id: string }) => c.id);
               if (etape === 1) await envoyerPush(supabaseAdmin, admins, {
                 title: '📋 Appel non fait', url: './index.html', tag: 'rappel-appel',
                 body: `À ${lisible(rappel)}, l'appel n'est pas enregistré pour ${noms.length} classe(s) : ${liste}.`,
@@ -486,21 +527,16 @@ Deno.serve(async (req) => {
                 title: '⏰ Appel toujours pas fait', url: './index.html', tag: 'rappel-appel', insistant: true,
                 body: `20 minutes après le rappel, toujours pas d'appel pour ${noms.length} classe(s) : ${liste}.`,
               });
-              // Chaque enseignant : seulement ses classes, notification insistante (reste à l'écran, longue vibration, son)
-              const profs = (comptes || []).filter((c: { role: string; enseignant_id: string | null }) => c.role === 'enseignant' && c.enseignant_id);
-              if (profs.length) {
-                const { data: fiches } = await supabaseAdmin.from('enseignants').select('id, classes_assignees').in('id', profs.map((p: { enseignant_id: string }) => p.enseignant_id));
-                const titres = ['', '📋 Pensez à l’appel', '⚠️ 2e rappel : l’appel n’est pas fait', '⚠️ 3e rappel : l’appel n’est pas fait', '🚨 4e rappel : faites l’appel', '🚨 5e rappel : la direction est informée', '⛔ Dernier rappel : faites l’appel maintenant'];
-                for (const p of profs as { id: string; enseignant_id: string }[]) {
-                  const sesClasses = ((fiches || []).find((f: { id: string }) => f.id === p.enseignant_id)?.classes_assignees || []) as string[];
-                  const lesSiennes = manquantes.filter((c: { id: string }) => sesClasses.includes(c.id)).map((c: { nom: string }) => c.nom);
-                  if (lesSiennes.length) await envoyerPush(supabaseAdmin, [p.id], { title: titres[etape], url: './enseignant.html', tag: 'rappel-appel', insistant: true,
-                    body: `L'appel n'est pas encore enregistré pour ${lesSiennes.join(', ')}. Touchez ici pour le faire${etape >= 5 ? ' — la direction est informée' : ''}.` });
-                }
-              }
             }
           }
         } catch (e) { erreurs.push(`rappel appel: ${(e as Error).message}`); }
+      }
+
+      // Rappel d'appel de CHAQUE ENSEIGNANT (schema.sql section 115) : seulement pendant les créneaux
+      // de cours qu'il a déclarés (classe + jour + heures). Sans horaire déclaré : aucun rappel.
+      if (jourIso <= 6) {
+        try { nbEnvoyees += await rappelsAppelEnseignants(supabaseAdmin, h.ecole_id, dateDuJour, jourIso, minuteActuelle); }
+        catch (e) { erreurs.push(`rappel appel enseignants: ${(e as Error).message}`); }
       }
     }
 
