@@ -2307,3 +2307,4 @@ body.theme-portier .gate-classe strong{ overflow-wrap:anywhere; }
 .hs-ligne{ display:flex; gap:10px; align-items:flex-start; padding:10px; border:1px solid var(--border); border-radius:12px; cursor:pointer; }
 .hs-ligne input{ width:22px; height:22px; flex:0 0 22px; margin-top:2px; }
 .creneau-resume{ border-radius:10px; overflow-wrap:anywhere; }
+.hs-origine{ display:block; color:var(--text-dim); font-size:var(--fs-xs); }

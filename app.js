@@ -2880,6 +2880,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.11.14-4', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Horaires de cours : pour une classe sans emploi du temps (maternelle), l’horaire proposé reprend les horaires de l’école (Paramètres → Horaires) sur les jours de classe. Chaque enseignant peut maintenant être rempli en un geste.' ],
+  } },
   { version: '2026.11.14-3', nouveautes: {
     commun: [],
     parent: [],
@@ -3834,9 +3840,21 @@ function creneauxProposes(ficheId, classeIds){
       const d = hhmmEdt(e.heureDebut), f = hhmmEdt(e.heureFin), x = parJour.get(j);
       parJour.set(j, x ? { debut: d < x.debut ? d : x.debut, fin: f > x.fin ? f : x.fin } : { debut: d, fin: f });
     });
-    [...parJour.entries()].sort((a, b) => a[0] - b[0]).forEach(([jour, h]) => { if(h.debut < h.fin) sortie.push({ classe, jour, debut: h.debut, fin: h.fin }); });
+    [...parJour.entries()].sort((a, b) => a[0] - b[0]).forEach(([jour, h]) => { if(h.debut < h.fin) sortie.push({ classe, jour, debut: h.debut, fin: h.fin, origine: 'edt' }); });
+    // Classe sans emploi du temps (ex. maternelle) : horaires de l'école (Paramètres → Horaires), jours de classe de l'école
+    if(!parJour.size){
+      const h = DB.horairesAnnonces || {}, mat = classeCycle(classe) !== 'Primaire';
+      const debut = hhmmEdt(mat ? h.matinDebutMaternelle : h.matinDebutPrimaire), fin = hhmmEdt(mat ? h.apresmidiFinMaternelle : h.apresmidiFinPrimaire);
+      if(/^\d{2}:\d{2}$/.test(debut) && /^\d{2}:\d{2}$/.test(fin) && debut < fin)
+        (h.joursCours || []).filter(j => j >= 1 && j <= 6).sort().forEach(jour => sortie.push({ classe, jour, debut, fin, origine: 'ecole' }));
+    }
   });
   return sortie;
+}
+function origineProposition(proposes){
+  const o = new Set((proposes || []).map(p => p.origine || 'edt'));
+  if(o.has('edt') && o.has('ecole')) return 'l’emploi du temps de l’école et, pour les classes qui n’en ont pas, les horaires de l’école (Paramètres)';
+  return o.has('ecole') ? 'les horaires de l’école (Paramètres → Horaires) : cette classe n’a pas d’emploi du temps' : 'l’emploi du temps de l’école';
 }
 function reprendreEmploiDuTemps(bouton){
   const ed = bouton.closest('.creneaux-editeur'); if(!ed) return;
@@ -3852,9 +3870,9 @@ function editeurCreneaux(classeIds, creneaux, titre, proposes){
   return `<div class="creneaux-editeur" data-classes="${classeIds.join(',')}" data-proposes="${escapeHtml(JSON.stringify(proposes))}">
     <label class="cr-titre">${titre || 'Mes jours et heures de cours'}</label>
     <div class="hint" style="margin:0 0 8px;">Une ligne par classe et par horaire : cochez les jours, puis l’heure de début et de fin. Les rappels d’appel n’arrivent <strong>que pendant ces heures</strong> (10 minutes après le début du cours).</div>
-    <div class="cr-propose" role="note" ${preRempli ? '' : 'hidden'}>${icone('sparkles')} <span>Proposé d’après <strong>l’emploi du temps de l’école</strong> : vérifiez, corrigez si besoin, puis enregistrez.</span></div>
+    <div class="cr-propose" role="note" ${preRempli ? '' : 'hidden'}>${icone('sparkles')} <span>Proposé d’après <strong>${origineProposition(proposes)}</strong> : vérifiez, corrigez si besoin, puis enregistrez.</span></div>
     <div class="creneaux-liste">${groupes.map(x => ligneCreneau(classeIds, x)).join('')}</div>
-    ${proposes.length && !preRempli ? `<button type="button" class="btn secondary sm" style="margin-bottom:6px;" onclick="reprendreEmploiDuTemps(this)">${icone('calendar')} Reprendre l’emploi du temps de l’école</button>` : ''}
+    ${proposes.length && !preRempli ? `<button type="button" class="btn secondary sm" style="margin-bottom:6px;" onclick="reprendreEmploiDuTemps(this)">${icone('calendar')} Reprendre ${proposes.every(p => p.origine === 'ecole') ? 'les horaires de l’école' : 'l’emploi du temps de l’école'}</button>` : ''}
     ${classeIds.length ? `<button type="button" class="btn secondary sm" onclick="const e=this.closest('.creneaux-editeur'); e.querySelector('.creneaux-liste').insertAdjacentHTML('beforeend', ligneCreneau(e.dataset.classes.split(','), null))">+ Ajouter un horaire</button>` : '<div class="hint">Cochez d’abord une classe.</div>'}
   </div>`;
 }
@@ -9216,9 +9234,9 @@ function ouvrirRemplissageHoraires(){
   const liste = (DB.enseignants || []).filter(t => t.statut === 'Actif' && (t.classesAssignees || []).length && !creneauxEnseignant(t).length)
     .map(t => ({ t, cr: creneauxProposes(t.id, t.classesAssignees) })).filter(x => x.cr.length);
   openModal('Remplir les horaires de cours', `
-    <p style="margin-top:0;">Horaires proposés d’après <strong>l’emploi du temps de l’école</strong> (du début de la première séance à la fin de la dernière, chaque jour). Décochez ceux qui ne conviennent pas ; ils restent modifiables dans la fiche de chaque enseignant.</p>
+    <p style="margin-top:0;">Horaires proposés d’après <strong>l’emploi du temps de l’école</strong> (du début de la première séance à la fin de la dernière, chaque jour) ou, pour une classe sans emploi du temps, d’après <strong>les horaires de l’école</strong> (Paramètres → Horaires). Décochez ceux qui ne conviennent pas ; ils restent modifiables dans la fiche de chaque enseignant.</p>
     <ul class="hs-liste">${liste.map(x => `<li><label class="hs-ligne"><input type="checkbox" class="hs-coche" value="${x.t.id}" checked>
-      <span><strong>${escapeHtml(ensFullName(x.t))}</strong><span class="creneaux-fiche" style="margin-top:4px;">${texteCreneaux(x.cr)}</span></span></label></li>`).join('')}</ul>
+      <span><strong>${escapeHtml(ensFullName(x.t))}</strong><small class="hs-origine">D’après ${x.cr.every(p => p.origine === 'ecole') ? 'les horaires de l’école' : x.cr.some(p => p.origine === 'ecole') ? 'l’emploi du temps et les horaires de l’école' : 'l’emploi du temps'}</small><span class="creneaux-fiche" style="margin-top:4px;">${texteCreneaux(x.cr)}</span></span></label></li>`).join('')}</ul>
     <div class="pin-error" id="hsErr"></div>
     <div class="form-actions"><button type="button" class="btn secondary" onclick="closeModal()">Annuler</button>
       <button type="button" class="btn" id="hsOk" onclick="enregistrerRemplissageHoraires()">${icone('save')} Enregistrer ces horaires</button></div>`);
