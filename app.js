@@ -2880,6 +2880,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.11.14-6', nouveautes: {
+    commun: [ 'Audit complet : sécurité de la base renforcée (aucun droit d’écriture pour un visiteur non connecté), tous les écrans vérifiés sur téléphone et ordinateur, en clair et en sombre.' ],
+    parent: [],
+    portier: [],
+    personnel: [],
+  } },
   { version: '2026.11.14-5', nouveautes: {
     commun: [],
     parent: [],

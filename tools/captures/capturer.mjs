@@ -291,10 +291,10 @@ for(const theme of THEMES){
           const vus = new Set();
           document.querySelectorAll('body *').forEach(el => {
             const cs = getComputedStyle(el); if(cs.display === 'none' || cs.visibility === 'hidden' || cs.position === 'fixed') return;
-            if(el.closest('[hidden], .modal-backdrop:not(.open), .sidebar, svg, .skip-link, select, option, input, textarea, .ta-bandeau')) return; // champs (texte qui défile dedans) et bandeau défilant : voulus
+            if(el.closest('[hidden], .modal-backdrop:not(.open), .sidebar, svg, .skip-link, .sr-only, select, option, input, textarea, .ta-bandeau')) return; // champs (texte qui défile dedans) et bandeau défilant : voulus
             const r = el.getBoundingClientRect(); if(!r.width || !r.height) return;
             if((r.right > W + 1 || r.left < -1) && !defile(el) && ![...vus].some(v => v.contains(el))){ vus.add(el); sortis.push(nomEl(el) + ' +' + Math.round(Math.max(r.right - W, -r.left)) + 'px'); }
-            if(['hidden', 'clip'].includes(cs.overflowX) && cs.textOverflow !== 'ellipsis' && el.scrollWidth > el.clientWidth + 2 && !el.querySelector('img,canvas,video')) coupes.push(nomEl(el) + ' ' + (el.scrollWidth - el.clientWidth) + 'px');
+            if(['hidden', 'clip'].includes(cs.overflowX) && cs.textOverflow !== 'ellipsis' && el.scrollWidth > el.clientWidth + 2 && !el.querySelector('img,canvas,video') && !el.matches('.enfant-carte') /* carte enfant : cercle décoratif (::after) volontairement rogné */) coupes.push(nomEl(el) + ' ' + (el.scrollWidth - el.clientWidth) + 'px');
           });
           return { page: document.documentElement.scrollWidth - W, sortis: sortis.slice(0, 8), coupes: coupes.slice(0, 8) };
         });

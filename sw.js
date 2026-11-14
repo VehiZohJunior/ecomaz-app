@@ -6,7 +6,7 @@
    d'attente hors ligne (voir supabase-client.js) — pas ce fichier, qui ne
    s'occupe que des fichiers de l'application (HTML/CSS/JS/icônes).
    ========================================================================= */
-const CACHE_NAME = 'ecomaz-shell-v179';
+const CACHE_NAME = 'ecomaz-shell-v180';
 const SHELL_FILES = [
   './',
   './index.html',
@@ -30,6 +30,7 @@ const SHELL_FILES = [
   './manifest.json',
   './icon-192.png',
   './icon-512.png',
+  './icon-maskable-512.png',
 ];
 
 self.addEventListener('install', (event) => {

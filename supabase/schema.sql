@@ -4600,3 +4600,22 @@ drop policy if exists "enseignant sujets modification" on sujets_evaluation;
 create policy "enseignant sujets modification" on sujets_evaluation for update
   using (ecole_id = mon_ecole_id() and mon_role() = 'enseignant' and enseignant_id = mon_enseignant_id())
   with check (ecole_id = mon_ecole_id() and mon_role() = 'enseignant' and enseignant_id = mon_enseignant_id() and classe_id = any(mes_classes()));
+
+-- =====================================================================
+-- 118. DURCISSEMENT DES DROITS (audit du 2026-11-14)
+-- =====================================================================
+-- Les règles RLS protégeaient déjà chaque table ; on retire en plus au
+-- visiteur non connecté (anon) tout droit d'écriture sur les tables, et
+-- à tout le monde les droits TRUNCATE / REFERENCES / TRIGGER, que la
+-- RLS ne couvre pas et dont l'application n'a jamais besoin.
+-- Les fonctions de déclencheurs ne sont plus appelables directement.
+do $$ declare t record; f record; begin
+  for t in select c.relname from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'public' and c.relkind in ('r', 'v') loop
+    execute format('revoke insert, update, delete, truncate, references, trigger on public.%I from anon', t.relname);
+    execute format('revoke truncate, references, trigger on public.%I from authenticated', t.relname);
+  end loop;
+  for f in select p.oid, p.proname, pg_get_function_identity_arguments(p.oid) args from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+           where n.nspname = 'public' and p.prorettype = 'trigger'::regtype loop
+    execute format('revoke all on function public.%I(%s) from public, anon, authenticated', f.proname, f.args);
+  end loop;
+end $$;
