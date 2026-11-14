@@ -316,9 +316,9 @@ async function rappelAgenda(admin: any, aujourdhui: string, minuteActuelle: numb
 type Creneau = { classe: string; jour: number; debut: string; fin: string };
 // deno-lint-ignore no-explicit-any
 async function rappelsAppelEnseignants(admin: any, ecoleId: string, dateDuJour: string, jourIso: number, minute: number): Promise<number> {
-  const { data: fiches } = await admin.from('enseignants').select('id, classes_assignees, creneaux').eq('ecole_id', ecoleId).eq('statut', 'Actif');
+  const { data: fiches } = await admin.from('enseignants').select('id, nom, prenom, sexe, classes_assignees, creneaux').eq('ecole_id', ecoleId).eq('statut', 'Actif');
   const aVerifier: { ens: string; classe: string; etape: number; fin: string }[] = [];
-  for (const f of (fiches || []) as { id: string; classes_assignees: string[] | null; creneaux: Creneau[] | null }[]) {
+  for (const f of (fiches || []) as { id: string; nom: string; prenom: string; sexe: string; classes_assignees: string[] | null; creneaux: Creneau[] | null }[]) {
     for (const c of Array.isArray(f.creneaux) ? f.creneaux : []) {
       if (Number(c.jour) !== jourIso || !(f.classes_assignees || []).includes(c.classe)) continue;
       const depart = enMinutes(c.debut) + 10, fin = enMinutes(c.fin);
@@ -332,22 +332,30 @@ async function rappelsAppelEnseignants(admin: any, ecoleId: string, dateDuJour: 
     admin.from('classes').select('id, nom').in('id', ids),
     admin.from('eleves').select('classe_id').eq('ecole_id', ecoleId).eq('statut', 'Actif').in('classe_id', ids),
     admin.from('presences_eleves').select('classe_id').eq('ecole_id', ecoleId).eq('date', dateDuJour).in('classe_id', ids),
-    admin.from('profiles').select('id, enseignant_id').eq('ecole_id', ecoleId).eq('role', 'enseignant').in('enseignant_id', [...new Set(aVerifier.map((x) => x.ens))]),
+    admin.from('profiles').select('id, role, enseignant_id').eq('ecole_id', ecoleId).in('role', ['enseignant', 'direction', 'fondation']),
   ]);
+  const direction = (comptes || []).filter((c: { role: string }) => c.role !== 'enseignant').map((c: { id: string }) => c.id);
   const avecEleves = new Set((inscrits || []).map((e: { classe_id: string }) => e.classe_id));
   const appelFait = new Set((faits || []).map((p: { classe_id: string }) => p.classe_id));
-  const titres = ['', '📋 Pensez à l’appel', '⚠️ 2e rappel : l’appel n’est pas fait', '⚠️ 3e rappel : l’appel n’est pas fait', '🚨 4e rappel : faites l’appel', '🚨 5e rappel : faites l’appel', '⛔ Dernier rappel : faites l’appel maintenant'];
+  const titres = ['', '📋 Pensez à l’appel', '⚠️ 2e rappel : l’appel n’est pas fait', '⚠️ 3e rappel : l’appel n’est pas fait', '🚨 4e rappel : faites l’appel', '🚨 5e rappel : la direction est informée', '⛔ Dernier rappel : faites l’appel maintenant'];
   let n = 0;
   for (const x of aVerifier) {
     if (!avecEleves.has(x.classe) || appelFait.has(x.classe)) continue;
-    const destinataires = (comptes || []).filter((c: { enseignant_id: string }) => c.enseignant_id === x.ens).map((c: { id: string }) => c.id);
+    const destinataires = (comptes || []).filter((c: { role: string; enseignant_id: string | null }) => c.role === 'enseignant' && c.enseignant_id === x.ens).map((c: { id: string }) => c.id);
     if (!destinataires.length) continue;
     const { error: deja } = await admin.from('rappels_envoyes').insert({ ecole_id: ecoleId, type: `appel-ens|${x.ens}|${x.classe}|${x.etape}`, date: dateDuJour });
     if (deja) continue;
     const nom = (classes || []).find((c: { id: string }) => c.id === x.classe)?.nom || 'votre classe';
     await envoyerPush(admin, destinataires, { title: titres[x.etape], url: './enseignant.html', tag: 'rappel-appel', insistant: true,
-      body: `Votre cours en ${nom} a commencé : l'appel n'est pas encore enregistré. Touchez ici pour le faire (cours jusqu'à ${lisible(x.fin)}).` });
+      body: `Votre cours en ${nom} a commencé : l'appel n'est pas encore enregistré. Touchez ici pour le faire (cours jusqu'à ${lisible(x.fin)})${x.etape >= 5 ? ' — la direction est informée' : ''}.` });
     n++;
+    // Au 5e rappel (30 minutes après le début du cours), la direction est prévenue : qui, quelle classe
+    if (x.etape === 5 && direction.length) {
+      const f = (fiches || []).find((y: { id: string }) => y.id === x.ens) as { nom: string; prenom: string; sexe: string } | undefined;
+      const qui = f ? `${f.sexe === 'F' ? 'Mme' : 'M.'} ${f.prenom} ${f.nom}` : 'Un enseignant';
+      await envoyerPush(admin, direction, { title: '⏰ Appel toujours pas fait', url: './index.html', tag: 'rappel-appel', insistant: true,
+        body: `${qui} n'a pas enregistré l'appel en ${nom}, 30 minutes après le début du cours, malgré 5 rappels.` });
+    }
   }
   return n;
 }

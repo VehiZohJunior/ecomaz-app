@@ -2880,6 +2880,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.11.14-9', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Rappel d’appel personnel : au 5e rappel (30 minutes après le début du cours), la direction et la fondation sont prévenues (nom de l’enseignant et classe). L’enseignant en est informé dans son rappel.' ],
+  } },
   { version: '2026.11.14-8', nouveautes: {
     commun: [],
     parent: [],
@@ -3945,7 +3951,7 @@ function verifierAppelObligatoire(forcerBip){
     <div class="ao-ic" aria-hidden="true">${icone('alarm-clock')}</div>
     <h2 id="aoTitre">L’appel n’est pas encore fait</h2>
     <p class="ao-classes">${manquantes.map(c => `<strong>${escapeHtml(c.nom)}</strong>`).join(' · ')}</p>
-    <p>Les parents attendent de savoir si leur enfant est en classe. L’alarme sonne de plus en plus souvent et ne s’arrête que lorsque l’appel est validé.</p>
+    <p>Les parents attendent de savoir si leur enfant est en classe. L’alarme sonne de plus en plus souvent et ne s’arrête que lorsque l’appel est validé. Au bout de 30 minutes, la direction est prévenue.</p>
     <button type="button" class="btn ao-btn" onclick="allerAppel('${manquantes[0].id}','${auj}')">${icone('circle-check')} Faire l’appel maintenant${manquantes.length > 1 ? ` — ${escapeHtml(manquantes[0].nom)}` : ''}</button>
     ${sonDebloque || (audioRappel && audioRappel.state === 'running') ? '' : '<p class="ao-son">Touchez l’écran une fois pour activer le son des rappels.</p>'}
   </div>`;
