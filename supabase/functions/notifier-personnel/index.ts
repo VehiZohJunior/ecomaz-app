@@ -83,6 +83,19 @@ Deno.serve(async (req) => {
       ecoleId = d.ecole_id; roles = ['secretariat', 'direction'];
       titre = '📄 Document demandé par un parent';
       texte = `${d.type === 'certificat_scolarite' ? 'Certificat de scolarité' : 'Document'} pour ${e ? e.prenom + ' ' + e.nom : 'un élève'}. À préparer dans Élèves & Inscriptions.`;
+    } else if (type === 'sujet_valide') {
+      // Évaluation validée par un enseignant → le secrétariat (Boîte à évaluations, schema.sql section 116)
+      const { data: s } = await admin.from('sujets_evaluation').select('ecole_id, enseignant_id, classe_id, matiere, type, titre, date_prevue')
+        .eq('auteur_id', user.id).eq('statut', 'validee').gte('valide_le', depuis).order('valide_le', { ascending: false }).limit(1).maybeSingle();
+      if (!s) throw new Error('Évaluation introuvable');
+      const [{ data: e }, { data: c }] = await Promise.all([
+        admin.from('enseignants').select('nom, prenom, sexe').eq('id', s.enseignant_id).single(),
+        admin.from('classes').select('nom').eq('id', s.classe_id).single(),
+      ]);
+      ecoleId = s.ecole_id; roles = ['secretariat'];
+      titre = '🖨️ Évaluation à imprimer';
+      const quand = s.date_prevue ? ` (prévue le ${String(s.date_prevue).split('-').reverse().join('/')})` : '';
+      texte = `« ${s.titre} » — ${s.type}, ${s.matiere}, ${c?.nom || 'classe'}${quand}, par ${e ? (e.sexe === 'F' ? 'Mme ' : 'M. ') + e.prenom + ' ' + e.nom : 'un enseignant'}. Dans la Boîte à évaluations.`;
     } else {
       throw new Error('Type inconnu');
     }

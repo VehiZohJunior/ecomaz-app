@@ -2880,6 +2880,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.11.14-3', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Horaires de cours proposés automatiquement d’après l’emploi du temps de l’école (Je m’enrôle et fiche enseignant) : il suffit de vérifier et d’enregistrer.', 'Enseignants : encadré « Horaires de cours » (qui les a remplis) et bouton « Remplir d’après l’emploi du temps » pour tous les enseignants d’un coup.', 'Secrétariat : notification « Évaluation à imprimer » dès qu’un enseignant valide une évaluation.' ],
+  } },
   { version: '2026.11.14-2', nouveautes: {
     commun: [],
     parent: [],
@@ -3812,12 +3818,43 @@ function ligneCreneau(classeIds, x){
     <button type="button" class="icon-btn cr-retirer" aria-label="Retirer ce créneau" title="Retirer" onclick="this.closest('.creneau-ligne').remove()">✕</button>
   </div>`;
 }
-function editeurCreneaux(classeIds, creneaux, titre){
-  const groupes = groupesCreneaux(creneaux);
-  return `<div class="creneaux-editeur" data-classes="${classeIds.join(',')}">
+// Horaires proposés d'après l'emploi du temps de l'école (séances valables aujourd'hui) :
+// pour chaque classe et chaque jour, du début de la 1re séance à la fin de la dernière.
+// Si des séances sont nommément attribuées à cet enseignant, seules celles-ci comptent ;
+// les séances attribuées à un autre enseignant ne comptent jamais.
+function creneauxProposes(ficheId, classeIds){
+  const auj = todayISO(), sortie = [];
+  (classeIds || []).forEach(classe => {
+    const seances = (DB.emploiTemps || []).filter(e => e.classeId === classe && e.heureDebut && e.heureFin && seanceValide(e, auj));
+    const miennes = seances.filter(e => ficheId && e.enseignantId === ficheId);
+    const retenues = miennes.length ? miennes : seances.filter(e => !e.enseignantId || e.enseignantId === ficheId);
+    const parJour = new Map();
+    retenues.forEach(e => {
+      const j = JOURS_COURS.indexOf(e.jour); if(j < 1) return;
+      const d = hhmmEdt(e.heureDebut), f = hhmmEdt(e.heureFin), x = parJour.get(j);
+      parJour.set(j, x ? { debut: d < x.debut ? d : x.debut, fin: f > x.fin ? f : x.fin } : { debut: d, fin: f });
+    });
+    [...parJour.entries()].sort((a, b) => a[0] - b[0]).forEach(([jour, h]) => { if(h.debut < h.fin) sortie.push({ classe, jour, debut: h.debut, fin: h.fin }); });
+  });
+  return sortie;
+}
+function reprendreEmploiDuTemps(bouton){
+  const ed = bouton.closest('.creneaux-editeur'); if(!ed) return;
+  const proposes = JSON.parse(ed.dataset.proposes || '[]'); if(!proposes.length) return;
+  const ids = ed.dataset.classes.split(',');
+  ed.querySelector('.creneaux-liste').innerHTML = groupesCreneaux(proposes).map(x => ligneCreneau(ids, x)).join('');
+  const n = ed.querySelector('.cr-propose'); if(n) n.hidden = false;
+}
+function editeurCreneaux(classeIds, creneaux, titre, proposes){
+  proposes = proposes || [];
+  const preRempli = !(creneaux || []).length && proposes.length;
+  const groupes = groupesCreneaux(preRempli ? proposes : creneaux);
+  return `<div class="creneaux-editeur" data-classes="${classeIds.join(',')}" data-proposes="${escapeHtml(JSON.stringify(proposes))}">
     <label class="cr-titre">${titre || 'Mes jours et heures de cours'}</label>
     <div class="hint" style="margin:0 0 8px;">Une ligne par classe et par horaire : cochez les jours, puis l’heure de début et de fin. Les rappels d’appel n’arrivent <strong>que pendant ces heures</strong> (10 minutes après le début du cours).</div>
+    <div class="cr-propose" role="note" ${preRempli ? '' : 'hidden'}>${icone('sparkles')} <span>Proposé d’après <strong>l’emploi du temps de l’école</strong> : vérifiez, corrigez si besoin, puis enregistrez.</span></div>
     <div class="creneaux-liste">${groupes.map(x => ligneCreneau(classeIds, x)).join('')}</div>
+    ${proposes.length && !preRempli ? `<button type="button" class="btn secondary sm" style="margin-bottom:6px;" onclick="reprendreEmploiDuTemps(this)">${icone('calendar')} Reprendre l’emploi du temps de l’école</button>` : ''}
     ${classeIds.length ? `<button type="button" class="btn secondary sm" onclick="const e=this.closest('.creneaux-editeur'); e.querySelector('.creneaux-liste').insertAdjacentHTML('beforeend', ligneCreneau(e.dataset.classes.split(','), null))">+ Ajouter un horaire</button>` : '<div class="hint">Cochez d’abord une classe.</div>'}
   </div>`;
 }
@@ -5245,7 +5282,7 @@ function renderJeMEnrole(){
       <div class="field"><label>Mes matières</label><div class="enrole-choix">${matieres.map(m => `<label class="enrol-choix"><input type="checkbox" name="mat" value="${escapeHtml(m)}" ${mesMat.has(m) ? 'checked' : ''}> ${escapeHtml(m)}</label>`).join('')}</div></div>
       <div class="field"><label>${fiche ? 'Classes supplémentaires à demander' : 'Mes classes (validées ensuite par l’école)'}</label><div class="enrole-choix">
         ${DB.classes.filter(c => !assignees.has(c.id)).map(c => `<label class="enrol-choix"><input type="checkbox" name="cls" value="${c.id}" ${demandees.has(c.id) ? 'checked' : ''}> ${escapeHtml(c.nom)}</label>`).join('') || '<span class="hint">Aucune autre classe.</span>'}</div></div>
-      <div class="field">${editeurCreneaux(DB.classes.map(c => c.id), creneauxEnseignant(fiche))}</div>
+      <div class="field">${editeurCreneaux(DB.classes.map(c => c.id), creneauxEnseignant(fiche), '', fiche ? creneauxProposes(fiche.id, [...assignees, ...demandees]) : [])}</div>
       <div class="pin-error" id="enrErr"></div>
       <div class="form-actions" style="justify-content:flex-start;">
         <button type="submit" class="btn">${fiche ? 'Enregistrer' : 'M’inscrire'}</button>
@@ -9162,6 +9199,43 @@ window.addEventListener('online', () => setTimeout(renvoyerNotifsAbsence, 4000))
 /* ---------------------------------------------------------------------
    8. ENSEIGNANTS
    --------------------------------------------------------------------- */
+/* ---------- Horaires de cours : qui les a remplis, et remplissage groupé d'après l'emploi du temps ---------- */
+function renderSuiviHoraires(){
+  const actifs = (DB.enseignants || []).filter(t => t.statut === 'Actif' && (t.classesAssignees || []).length);
+  if(!actifs.length) return '';
+  const sans = actifs.filter(t => !creneauxEnseignant(t).length);
+  const proposables = sans.filter(t => creneauxProposes(t.id, t.classesAssignees).length);
+  if(!sans.length) return `<div class="panel horaires-suivi ok"><div class="hs-tete">${icone('circle-check')} <div><strong>Horaires de cours : ${actifs.length}/${actifs.length} enseignants</strong><span>Chaque enseignant reçoit le rappel de l’appel pendant ses cours.</span></div></div></div>`;
+  return `<div class="panel horaires-suivi">
+    <div class="hs-tete">${icone('clock')} <div><strong>Horaires de cours : ${actifs.length - sans.length}/${actifs.length} enseignants</strong>
+      <span>Sans horaire, un enseignant ne reçoit <strong>aucun</strong> rappel d’appel. Manquent : ${sans.map(t => escapeHtml(ensFullName(t))).join(', ')}.</span></div></div>
+    ${proposables.length ? `<button type="button" class="btn sm" onclick="ouvrirRemplissageHoraires()">${icone('sparkles')} Remplir d’après l’emploi du temps (${proposables.length})</button>` : '<p class="hint" style="margin:6px 0 0;">Ouvrez la fiche de chaque enseignant (✏️) pour indiquer ses jours et heures.</p>'}
+  </div>`;
+}
+function ouvrirRemplissageHoraires(){
+  const liste = (DB.enseignants || []).filter(t => t.statut === 'Actif' && (t.classesAssignees || []).length && !creneauxEnseignant(t).length)
+    .map(t => ({ t, cr: creneauxProposes(t.id, t.classesAssignees) })).filter(x => x.cr.length);
+  openModal('Remplir les horaires de cours', `
+    <p style="margin-top:0;">Horaires proposés d’après <strong>l’emploi du temps de l’école</strong> (du début de la première séance à la fin de la dernière, chaque jour). Décochez ceux qui ne conviennent pas ; ils restent modifiables dans la fiche de chaque enseignant.</p>
+    <ul class="hs-liste">${liste.map(x => `<li><label class="hs-ligne"><input type="checkbox" class="hs-coche" value="${x.t.id}" checked>
+      <span><strong>${escapeHtml(ensFullName(x.t))}</strong><span class="creneaux-fiche" style="margin-top:4px;">${texteCreneaux(x.cr)}</span></span></label></li>`).join('')}</ul>
+    <div class="pin-error" id="hsErr"></div>
+    <div class="form-actions"><button type="button" class="btn secondary" onclick="closeModal()">Annuler</button>
+      <button type="button" class="btn" id="hsOk" onclick="enregistrerRemplissageHoraires()">${icone('save')} Enregistrer ces horaires</button></div>`);
+}
+async function enregistrerRemplissageHoraires(){
+  const ids = [...document.querySelectorAll('.hs-coche:checked')].map(x => x.value);
+  if(!ids.length){ closeModal(); return; }
+  const b = document.getElementById('hsOk'); if(b) b.disabled = true;
+  let ok = 0; const echecs = [];
+  for(const id of ids){
+    const t = enseignantById(id); if(!t) continue;
+    const { data, error } = await sb.rpc('definir_creneaux', { p_creneaux: creneauxProposes(id, t.classesAssignees), p_enseignant: id });
+    if(error) echecs.push(`${ensFullName(t)} : ${error.message}`); else { t.creneaux = data; ok++; }
+  }
+  if(echecs.length){ const e = document.getElementById('hsErr'); if(e) e.textContent = echecs.join(' · '); if(b) b.disabled = false; renderView('enseignants'); return; }
+  closeModal(); toast(`Horaires enregistrés pour ${ok} enseignant(s) ✅ : rappels d’appel pendant leurs cours`); renderView('enseignants');
+}
 function renderEnseignants(){
   const list = DB.enseignants.slice().sort((a,b)=>a.nom.localeCompare(b.nom));
   const sansCompte = list.filter(t => t.statut === 'Actif' && !(DB.profiles || []).some(p => p.enseignantId === t.id)).length;
@@ -9187,6 +9261,7 @@ function renderEnseignants(){
 
   return `
   <div class="view active">
+    ${renderSuiviHoraires()}
     <div class="panel panneau-inscriptions" id="panneauInscriptionsEns">
       <div class="panel-head">
         <div><h2>Inscriptions des enseignants</h2><div class="sub" id="compteurInscriptions">Chargement…</div></div>
@@ -9386,7 +9461,7 @@ function openEnseignantForm(id){
               <input type="checkbox" name="classes" value="${c.id}" ${t?.classesAssignees.includes(c.id)?'checked':''}> ${c.nom}</label>`).join('')}
           </div>
         </div>
-        <div class="field span2">${editeurCreneaux(DB.classes.map(c => c.id), creneauxEnseignant(t), 'Jours et heures de cours')}</div>
+        <div class="field span2">${editeurCreneaux(DB.classes.map(c => c.id), creneauxEnseignant(t), 'Jours et heures de cours', t ? creneauxProposes(t.id, t.classesAssignees || []) : [])}</div>
         <div class="field span2"><label>Matières enseignées</label>
           <div style="display:flex;flex-wrap:wrap;gap:8px;">
             ${allMatieres.map(m=>`<label style="display:flex;align-items:center;gap:5px;font-size:var(--fs-xs);background:var(--surface-2);padding:5px 9px;border-radius:var(--r-control);border:1px solid var(--border);">
@@ -14327,7 +14402,8 @@ async function enregistrerSujet(valider){
       row = rowToCamel(v.data);
     }
     DB.sujets = [row, ...(DB.sujets || []).filter(x => x.id !== row.id)];
-    if(valider){ ui.sujet = null; ui.sujetEdition = false; toast('Évaluation validée ✅ : elle est dans la Boîte à évaluations du secrétariat'); }
+    if(valider){ ui.sujet = null; ui.sujetEdition = false; toast('Évaluation validée ✅ : elle est dans la Boîte à évaluations du secrétariat');
+      sb.functions.invoke('notifier-personnel', { body: { type: 'sujet_valide' } }).catch(() => {}); }
     else { ui.sujet = { ...row }; toast('Brouillon enregistré ✅'); }
     renderView('creer-evaluation');
   }catch(e){ toast('Enregistrement impossible : ' + (e.message || e)); }

@@ -2292,3 +2292,18 @@ body.theme-portier .gate-classe strong{ overflow-wrap:anywhere; }
 .sujet-page *, .sujet-impression *{ color:inherit; }
 .sujet-page td, .sujet-page th, .sujet-impression td, .sujet-impression th{ background:#fff; }
 .sujet-impression{ color:#111; }
+
+/* ===== Horaires proposés / suivi des horaires (2026-11-14) ===== */
+.cr-propose{ display:flex; gap:8px; align-items:flex-start; padding:8px 10px; border-radius:10px; background:color-mix(in srgb, var(--primary) 8%, transparent); border:1px solid color-mix(in srgb, var(--primary) 30%, var(--border)); font-size:var(--fs-xs); margin:0 0 8px; }
+.cr-propose[hidden]{ display:none; }
+.cr-propose svg{ flex:0 0 18px; width:18px; height:18px; color:var(--primary); margin-top:1px; }
+.horaires-suivi{ display:flex; flex-wrap:wrap; gap:10px; align-items:center; justify-content:space-between; border-left:4px solid var(--warning, #b54708); }
+.horaires-suivi.ok{ border-left-color:var(--success, #1a7f4b); }
+.hs-tete{ display:flex; gap:10px; align-items:flex-start; min-width:0; flex:1 1 280px; }
+.hs-tete > svg{ width:24px; height:24px; flex:0 0 24px; margin-top:2px; }
+.hs-tete div{ display:flex; flex-direction:column; gap:3px; min-width:0; }
+.hs-tete span{ font-size:var(--fs-xs); color:var(--text-dim); overflow-wrap:anywhere; }
+.hs-liste{ list-style:none; margin:0 0 8px; padding:0; display:flex; flex-direction:column; gap:8px; }
+.hs-ligne{ display:flex; gap:10px; align-items:flex-start; padding:10px; border:1px solid var(--border); border-radius:12px; cursor:pointer; }
+.hs-ligne input{ width:22px; height:22px; flex:0 0 22px; margin-top:2px; }
+.creneau-resume{ border-radius:10px; overflow-wrap:anywhere; }
