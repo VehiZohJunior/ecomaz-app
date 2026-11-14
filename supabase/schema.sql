@@ -4559,3 +4559,44 @@ create trigger proteger_sujet_valide before delete on sujets_evaluation for each
 
 grant select, insert, update, delete on sujets_evaluation to authenticated;
 
+
+-- =====================================================================
+-- 117. ÉVALUATION VALIDÉE → GRILLE DE NOTES (2026-11-14)
+-- =====================================================================
+-- Le jour prévu de l'évaluation passé, l'accueil de l'enseignant propose
+-- « Saisir les notes » : une grille de notes (table evaluations, Camps de
+-- base) est créée d'après le sujet, et le sujet garde le lien. Seul ce
+-- lien peut encore changer sur un sujet validé : tout le reste reste figé.
+alter table sujets_evaluation add column if not exists evaluation_id uuid references evaluations(id) on delete set null;
+
+create or replace function figer_sujet_evaluation() returns trigger
+language plpgsql set search_path = public as $$
+begin
+  if tg_op = 'UPDATE' and old.statut = 'validee' then
+    if to_jsonb(new) - 'evaluation_id' - 'updated_at' <> to_jsonb(old) - 'evaluation_id' - 'updated_at' then
+      raise exception 'Évaluation déjà validée : elle ne peut plus être modifiée';
+    end if;
+    if new.evaluation_id is not null and not exists (select 1 from evaluations ev where ev.id = new.evaluation_id and ev.ecole_id = old.ecole_id and ev.classe_id = old.classe_id) then
+      raise exception 'Grille de notes invalide';
+    end if;
+    new.updated_at := now();
+    return new;
+  end if;
+  if tg_op = 'UPDATE' then
+    new.id := old.id; new.ecole_id := old.ecole_id; new.enseignant_id := old.enseignant_id; new.auteur_id := old.auteur_id; new.created_at := old.created_at;
+  end if;
+  new.updated_at := now();
+  if new.statut = 'validee' then
+    if char_length(regexp_replace(new.contenu_html, '<[^>]*>|&nbsp;|\s', '', 'g')) < 10 then raise exception 'Le sujet est vide : ajoutez son contenu avant de le valider'; end if;
+    new.valide_le := now();
+  else
+    new.valide_le := null;
+  end if;
+  return new;
+end $$;
+
+-- L'enseignant peut mettre à jour ses propres sujets (le déclencheur ci-dessus fige ceux qui sont validés)
+drop policy if exists "enseignant sujets modification" on sujets_evaluation;
+create policy "enseignant sujets modification" on sujets_evaluation for update
+  using (ecole_id = mon_ecole_id() and mon_role() = 'enseignant' and enseignant_id = mon_enseignant_id())
+  with check (ecole_id = mon_ecole_id() and mon_role() = 'enseignant' and enseignant_id = mon_enseignant_id() and classe_id = any(mes_classes()));

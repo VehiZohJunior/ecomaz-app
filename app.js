@@ -2880,6 +2880,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.11.14-5', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Enseignants : le jour prévu d’une évaluation validée, l’accueil propose « Saisir les notes » ; un geste crée la grille de notes (Camps de base) d’après le sujet (classe, matière, type, titre, date). Les compositions renvoient vers « Compositions et bulletins ». Plus de rappel de notes « au hasard » : il suit l’évaluation que vous avez vous-même validée.' ],
+  } },
   { version: '2026.11.14-4', nouveautes: {
     commun: [],
     parent: [],
@@ -4526,6 +4532,7 @@ function renderAccueilEnseignant(){
     .then(({ data }) => { DB.devoirs = rowsToCamel(data || []); reafficher(); }); }
   if(DB.evaluations === undefined){ DB.evaluations = null; sb.from('evaluations').select('*').eq('ecole_id', session.ecoleId).order('date')
     .then(({ data }) => { DB.evaluations = rowsToCamel(data || []); reafficher(); }); }
+  chargerSujets();
 
   const classes = classesVisibles().filter(c => DB.eleves.some(e => e.classeId === c.id && e.statut === 'Actif'));
   const effectif = id => DB.eleves.filter(e => e.classeId === id && e.statut === 'Actif');
@@ -4599,6 +4606,8 @@ function renderAccueilEnseignant(){
       if(eff && saisies < eff) semaine.push({ etat:'afaire', titre:`Saisir les notes — ${escapeHtml(ev.type)}${ev.titre ? ' « ' + escapeHtml(ev.titre) + ' »' : ''} (${escapeHtml(classeName(ev.classeId))})`,
         detail:`${escapeHtml(ev.matiere)} · du ${fmtDate(ev.date)} · ${saisies} note(s) sur ${eff} élèves`, bouton:'Saisir les notes', action:`allerEvaluation('${ev.id}')` });
     });
+    // Évaluations validées (Je crée une évaluation) dont le jour est passé : la grille de notes se crée en un geste
+    tachesNotesDepuisSujets(fiche, ids, auj, effectif).forEach(t => semaine.push(t));
     const cetteSemaine = mesEvals.filter(e => e.date >= lundi).length;
     semaine.push(cetteSemaine
       ? { etat:'fait', titre:`${cetteSemaine} exercice(s) ou devoir(s) noté(s) enregistré(s) cette semaine`, detail:'Ils comptent dans la moyenne de classe du bulletin (Camps de base).', bouton:'Voir', action:"go('camps-de-base')" }
@@ -14180,7 +14189,7 @@ function chargerSujets(){
   if(DB.sujets !== undefined) return;
   DB.sujets = null;
   sb.from('sujets_evaluation').select('*').order('updated_at', { ascending: false })
-    .then(({ data, error }) => { DB.sujets = error ? [] : rowsToCamel(data || []); if(['creer-evaluation', 'boite-evaluations'].includes(ui.currentView)) renderView(ui.currentView); }, () => { DB.sujets = []; });
+    .then(({ data, error }) => { DB.sujets = error ? [] : rowsToCamel(data || []); if(['creer-evaluation', 'boite-evaluations', 'dashboard'].includes(ui.currentView)) renderView(ui.currentView); }, () => { DB.sujets = []; });
 }
 function enteteSujet(s){
   const m = DB.meta || {};
@@ -14208,7 +14217,7 @@ function renderCreerEvaluation(){
   const brouillons = mes.filter(s => s.statut !== 'validee'), validees = mes.filter(s => s.statut === 'validee');
   const ligne = s => `<li class="sujet-ligne">
       <div class="sl-txt"><strong>${escapeHtml(s.titre)}</strong><small>${escapeHtml(s.type)} · ${escapeHtml(s.matiere || '')} · ${escapeHtml(classeName(s.classeId))}${s.datePrevue ? ' · prévue le ' + fmtDate(s.datePrevue) : ''}</small>
-        ${s.statut === 'validee' ? `<span class="badge-etat ok">${icone('lock')} Validée le ${fmtDate(String(s.valideLe).slice(0, 10))} · envoyée au secrétariat</span>` : '<span class="badge-etat attente">Brouillon — pas encore envoyé</span>'}</div>
+        ${s.statut === 'validee' ? `<span class="badge-etat ok">${icone('lock')} Validée le ${fmtDate(String(s.valideLe).slice(0, 10))} · envoyée au secrétariat</span>${s.evaluationId ? `<span class="badge-etat ok">${icone('notebook-pen')} Grille de notes créée</span>` : (s.datePrevue && s.datePrevue <= todayISO() && !estComposition(s) ? `<button type="button" class="btn secondary sm" style="align-self:flex-start;" onclick="creerGrilleDepuisSujet('${s.id}')">${icone('notebook-pen')} Créer la grille de notes</button>` : '')}` : '<span class="badge-etat attente">Brouillon — pas encore envoyé</span>'}</div>
       <div class="sl-actions">${s.statut === 'validee'
         ? `<button type="button" class="btn secondary sm" onclick="apercuSujet('${s.id}')">${icone('eye')} Voir / imprimer</button>`
         : `<button type="button" class="btn sm" onclick="ouvrirSujet('${s.id}')">${icone('pencil')} Continuer</button>
@@ -14435,6 +14444,38 @@ async function supprimerSujet(id){
 }
 function apercuSujet(id){ const s = (DB.sujets || []).find(x => x.id === id); if(s) imprimerSujets([s]); }
 
+/* ---------- Évaluation validée → grille de notes (schema.sql section 117) ---------- */
+const TYPE_GRILLE = { 'Devoir':'Devoir', 'Devoir surveillé':'Devoir', 'Interrogation':'Interrogation', 'Exercice':'Exercice de classe' };
+const estComposition = s => /composition|examen/i.test(s.type || '');
+function tachesNotesDepuisSujets(fiche, ids, auj, effectif){
+  const sortie = [], depuis = isoDansJours(-45);
+  (DB.sujets || []).filter(s => s.statut === 'validee' && s.enseignantId === fiche.id && ids.has(s.classeId) && s.datePrevue && s.datePrevue <= auj && s.datePrevue >= depuis)
+    .sort((a, b) => a.datePrevue.localeCompare(b.datePrevue)).forEach(s => {
+      const cl = escapeHtml(classeName(s.classeId)), quand = `${escapeHtml(s.matiere || '')} · ${s.datePrevue === auj ? 'aujourd’hui' : 'le ' + fmtDate(s.datePrevue)}`;
+      if(estComposition(s)){
+        const trim = trimestreDeDate(s.datePrevue), eleves = new Set(effectif(s.classeId).map(e => e.id));
+        const saisies = (DB.notes || []).some(n => eleves.has(n.eleveId) && n.matiere === s.matiere && n.trimestre === trim && /composition/i.test(n.type || '') && n.note != null);
+        if(!saisies) sortie.push({ etat:'afaire', titre:`Saisir les notes de la composition « ${escapeHtml(s.titre)} » (${cl})`, detail:`${quand} · les notes de composition se saisissent dans « Compositions et bulletins ».`, bouton:'Saisir les notes', action:`allerNotesClasse('${s.classeId}','${trim}')` });
+        return;
+      }
+      if(s.evaluationId && (DB.evaluations || []).some(e => e.id === s.evaluationId)) return; // la grille existe : la tâche « Saisir les notes » classique prend le relais
+      sortie.push({ etat:'afaire', titre:`Saisir les notes — ${escapeHtml(s.type)} « ${escapeHtml(s.titre)} » (${cl})`, detail:`${quand} · évaluation validée, faite en classe : créez la grille de notes et tapez les notes.`, bouton:'Créer la grille de notes', action:`creerGrilleDepuisSujet('${s.id}')` });
+    });
+  return sortie;
+}
+async function creerGrilleDepuisSujet(sujetId){
+  const s = (DB.sujets || []).find(x => x.id === sujetId); if(!s) return;
+  if(s.evaluationId && (DB.evaluations || []).some(e => e.id === s.evaluationId)) return allerEvaluation(s.evaluationId);
+  try{
+    const ev = await dbInsert('evaluations', { classeId: s.classeId, matiere: s.matiere || 'Autre', trimestre: trimestreDeDate(s.datePrevue), type: TYPE_GRILLE[s.type] || 'Devoir', titre: String(s.titre || '').slice(0, 120), date: s.datePrevue, noteSur: 20 });
+    DB.evaluations = (DB.evaluations || []).concat(ev);
+    const { error } = await sb.from('sujets_evaluation').update({ evaluation_id: ev.id }).eq('id', s.id);
+    if(!error) s.evaluationId = ev.id;
+    toast('Grille de notes créée ✅ : tapez les notes (sur 20)');
+    allerEvaluation(ev.id);
+    setTimeout(() => { const p = document.querySelector('[name^=n_]'); if(p) p.focus(); }, 80);
+  }catch(e){ toast('Création impossible : ' + (e.message || e)); }
+}
 /* ---------- Export Word / Excel ---------- */
 const nomFichierSujet = s => (`${s.type || 'Evaluation'} ${s.matiere || ''} ${classeName(s.classeId)} ${s.titre || ''}`).normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\w-]+/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '').slice(0, 90) || 'evaluation';
 function telechargerBlobSujet(blob, nom){ const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = nom; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); }
