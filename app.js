@@ -2880,6 +2880,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.11.14-7', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Élèves : les fiches en double probable (même nom et prénoms, même classe ou même date de naissance) sont signalées en haut de la liste, avec ce que contient chaque fiche (appels, versements, notes). Un bouton passe la fiche en trop en « Inactif » (réversible), ou vous indiquez que ce sont deux élèves différents.' ],
+  } },
   { version: '2026.11.14-6', nouveautes: {
     commun: [ 'Audit complet : sécurité de la base renforcée (aucun droit d’écriture pour un visiteur non connecté), tous les écrans vérifiés sur téléphone et ordinateur, en clair et en sombre.' ],
     parent: [],
@@ -5023,6 +5029,48 @@ function ouvrirCartesScolaires(classeId){
 function renderEleves(){
   if(ui.eleveProfileId) return renderEleveProfile(ui.eleveProfileId);
   return renderEleveListe();
+}
+/* ---------- Élèves en double (même nom et prénoms + même classe ou même date de naissance) ----------
+   Repérés automatiquement ; l'école décide : passer la fiche en trop en « Inactif » (réversible), ou
+   indiquer que ce sont bien deux élèves différents (choix mémorisé sur cet appareil). */
+const cleNom = e => `${e.nom || ''} ${e.prenom || ''}`.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+function doublonsIgnores(){ try{ return new Set(JSON.parse(localStorage.getItem('ecomaz_doublons_ok') || '[]')); }catch(_e){ return new Set(); } }
+function pairesDoublons(){
+  const actifs = (DB.eleves || []).filter(e => e.statut !== 'Inactif'), ignores = doublonsIgnores(), paires = [], parNom = new Map();
+  actifs.forEach(e => { const k = cleNom(e); if(!k) return; if(!parNom.has(k)) parNom.set(k, []); parNom.get(k).push(e); });
+  parNom.forEach(l => { for(let i = 0; i < l.length; i++) for(let j = i + 1; j < l.length; j++){
+    const a = l[i], b = l[j];
+    if(a.classeId === b.classeId || (a.dateNaissance && a.dateNaissance === b.dateNaissance)){
+      const id = [a.id, b.id].sort().join('|'); if(!ignores.has(id)) paires.push({ id, a, b });
+    } } });
+  return paires;
+}
+function renderDoublonsEleves(){
+  if(!est_perso_admin_client()) return '';
+  const paires = pairesDoublons(); if(!paires.length) return '';
+  const compte = e => { const p = (DB.presencesEleves || []).filter(x => x.eleveId === e.id).length, v = (DB.paiementsScolarite || []).filter(x => x.eleveId === e.id).length, n = (DB.notes || []).filter(x => x.eleveId === e.id).length;
+    return [p ? `${p} appel(s)` : '', v ? `${v} versement(s)` : '', n ? `${n} note(s)` : ''].filter(Boolean).join(' · ') || 'aucun appel, versement ni note'; };
+  const fiche = e => `<div class="dbl-fiche"><strong>${escapeHtml(e.matricule || '')}</strong><small>${escapeHtml(classeName(e.classeId))}${e.dateNaissance ? ' · né(e) le ' + fmtDate(e.dateNaissance) : ''}${e.parentTel ? ' · ' + escapeHtml(e.parentTel) : ''}</small><small>${compte(e)}</small>
+    <span class="dbl-actions"><button type="button" class="btn secondary sm" onclick="ui.eleveProfileId='${e.id}'; renderView('eleves')">Voir la fiche</button>
+    <button type="button" class="btn sm" onclick="desactiverDoublon('${e.id}')">Passer ${escapeHtml(e.matricule || 'cette fiche')} en Inactif</button></span></div>`;
+  return `<div class="panel panneau-doublons">
+    <div class="panel-head"><div><h2>${icone('users')} Élèves en double probable (${paires.length})</h2>
+      <div class="sub">Même nom et prénoms, avec la même classe ou la même date de naissance. Vérifiez, puis passez la fiche en trop en « Inactif » (réversible) : gardez celle qui a des appels, versements ou notes.</div></div></div>
+    <ul class="dbl-liste">${paires.map(p => `<li class="dbl-paire"><div class="dbl-nom">${escapeHtml(eleveFullName(p.a))}</div>
+      <div class="dbl-deux">${fiche(p.a)}${fiche(p.b)}</div>
+      <button type="button" class="lien-discret" onclick="ignorerDoublon('${p.id}')">Ce sont bien deux élèves différents</button></li>`).join('')}</ul>
+  </div>`;
+}
+function est_perso_admin_client(){ return ['secretariat', 'direction', 'fondation'].includes(ui.role); }
+async function desactiverDoublon(id){
+  const e = eleveById(id); if(!e) return;
+  if(!confirm(`Passer ${eleveFullName(e)} (${e.matricule || ''}) en « Inactif » ?\n\nLa fiche n’est pas supprimée : elle reste consultable et peut être réactivée (modifier la fiche → statut Actif).`)) return;
+  try{ await dbUpdate('eleves', id, { statut: 'Inactif' }); e.statut = 'Inactif'; toast(`${e.matricule || 'Fiche'} passée en Inactif`); renderView('eleves'); }
+  catch(err){ alert('Erreur : ' + err.message); }
+}
+function ignorerDoublon(cle){
+  try{ const s = doublonsIgnores(); s.add(cle); localStorage.setItem('ecomaz_doublons_ok', JSON.stringify([...s])); }catch(_e){}
+  renderView('eleves');
 }
 
 /* ---------------------------------------------------------------------
@@ -8010,6 +8058,7 @@ function renderEleveListe(){
     ${renderDemandesDocuments()}
     ${renderCorrectionsParents()}
     ${renderFichesAVerifier()}
+    ${renderDoublonsEleves()}
     <div class="panel">
       <div class="panel-head">
         <div><h2>Liste des élèves</h2><div class="sub">${DB.eleves.length} élève(s) au total</div></div>
