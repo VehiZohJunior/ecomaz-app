@@ -2319,3 +2319,10 @@ body.theme-portier .gate-classe strong{ overflow-wrap:anywhere; }
 .dbl-fiche small{ color:var(--text-dim); font-size:var(--fs-xs); overflow-wrap:anywhere; }
 .dbl-actions{ display:flex; flex-wrap:wrap; gap:6px; margin-top:4px; }
 .dbl-paire .lien-discret{ align-self:flex-start; }
+
+/* ===== Échéancier : points à vérifier (2026-11-14) ===== */
+.panneau-echeancier{ border-left:4px solid var(--warning, #b54708); }
+.ech-anomalies{ list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:8px; }
+.ech-anomalies li{ display:flex; flex-wrap:wrap; gap:8px 12px; align-items:center; justify-content:space-between; padding:10px; border:1px solid var(--border); border-radius:12px; }
+.ech-anomalies li > div{ display:flex; flex-direction:column; gap:3px; min-width:0; flex:1 1 240px; }
+.ech-anomalies small{ color:var(--text-dim); font-size:var(--fs-xs); overflow-wrap:anywhere; }

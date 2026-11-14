@@ -2880,6 +2880,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.11.14-8', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Comptabilité → Scolarité : « Échéancier : points à vérifier » signale une tranche datée dans le désordre ou hors de l’année scolaire (bouton « Corriger la date », appliqué à toutes les classes concernées) et une grille commune inutilisée (bouton pour la supprimer).' ],
+  } },
   { version: '2026.11.14-7', nouveautes: {
     commun: [],
     parent: [],
@@ -11741,6 +11747,7 @@ function renderComptaScolarite(){
 
   return `
     <div class="form-actions no-print" style="justify-content:flex-end;margin:0 0 8px;"><button type="button" class="btn secondary sm" onclick="ouvrirSouchesRecus()">${icone('receipt')} Souches des reçus</button></div>
+    ${renderEcheancierAVerifier()}
     <div class="panel">
       <div class="panel-head">
         <div><h2>État de la scolarité par classe</h2><div class="sub">${grilleActive ? `Recouvré : ${tauxClasse}% (${fmtFCFA(totalPaye)} / ${fmtFCFA(totalDu)})` : `Frais annuel : ${fmtFCFA(du)} · Recouvré : ${tauxClasse}% (${fmtFCFA(totalPaye)} / ${fmtFCFA(totalDu)})`}</div></div>
@@ -14035,6 +14042,84 @@ async function copierGrille(){
       await synchroniserFraisClasse(cid);
     }
     closeModal(); toast(`Tranches copiées vers ${cibles.length} classe(s)`); renderView('parametres');
+  }catch(e){ alert('Erreur : ' + e.message); }
+}
+/* ---------- Échéancier : points à vérifier (dates incohérentes, grille commune inutilisée) ----------
+   Rien n'est corrigé automatiquement : l'école décide, avec un bouton vers la bonne fiche. */
+function bornesAnneeScolaire(){
+  const m = String(DB.meta?.anneeScolaire || '').match(/(\d{4})\s*-\s*(\d{4})/);
+  return m ? { debut: `${m[1]}-08-01`, fin: `${m[2]}-07-31` } : null;
+}
+function anomaliesEcheancier(){
+  const toutes = DB.echeancesScolarite || [], bornes = bornesAnneeScolaire(), sortie = [];
+  const parClasse = new Map();
+  toutes.filter(e => e.classeId).forEach(e => { if(!parClasse.has(e.classeId)) parClasse.set(e.classeId, []); parClasse.get(e.classeId).push(e); });
+  // 1) Une tranche datée APRÈS une tranche qui vient plus tard dans l'ordre (ex. frais d'inscription au 10/03/2027, après le 4e versement)
+  const dejaVu = new Set();
+  parClasse.forEach(liste => {
+    const tri = liste.slice().sort((a, b) => (a.ordre - b.ordre));
+    tri.forEach((e, i) => {
+      if(!e.dateEcheance) return;
+      const apres = tri.slice(i + 1).filter(x => x.dateEcheance && x.dateEcheance < e.dateEcheance);
+      if(apres.length){ const k = `ordre|${e.label}|${e.dateEcheance}`; if(!dejaVu.has(k)){ dejaVu.add(k); sortie.push({ type:'ordre', id:e.id, label:e.label, date:e.dateEcheance, suivante: apres[apres.length - 1], classes:[e.classeId] }); } else sortie.find(x => x.type === 'ordre' && `ordre|${x.label}|${x.date}` === k).classes.push(e.classeId); }
+    });
+  });
+  // 2) Une tranche datée hors de l'année scolaire
+  if(bornes) toutes.filter(e => e.classeId && e.dateEcheance && (e.dateEcheance < bornes.debut || e.dateEcheance > bornes.fin)).forEach(e => {
+    const k = `hors|${e.label}|${e.dateEcheance}`; const x = sortie.find(y => y.type === 'hors' && `hors|${y.label}|${y.date}` === k);
+    if(x) x.classes.push(e.classeId); else sortie.push({ type:'hors', id:e.id, label:e.label, date:e.dateEcheance, classes:[e.classeId] });
+  });
+  // 3) Grille commune (sans classe) alors que toutes les classes ont leur propre grille : inutilisée
+  const commune = toutes.filter(e => !e.classeId);
+  if(commune.length && DB.classes.every(c => parClasse.has(c.id))) sortie.push({ type:'commune', n: commune.length, sansDate: commune.filter(e => !e.dateEcheance).length });
+  return sortie;
+}
+function renderEcheancierAVerifier(){
+  if(!['direction', 'fondation', 'secretariat'].includes(ui.role)) return '';
+  const a = anomaliesEcheancier(); if(!a.length) return '';
+  const nomsClasses = l => { const u = [...new Set(l)]; return u.length === DB.classes.length ? 'toutes les classes' : u.map(id => escapeHtml(classeName(id))).join(', '); };
+  return `<div class="panel panneau-echeancier">
+    <div class="panel-head"><div><h2>${icone('triangle-alert')} Échéancier : ${a.length} point(s) à vérifier</h2>
+      <div class="sub">Les rappels aux parents et les montants « reste à payer » suivent ces dates : une date fausse envoie des rappels au mauvais moment.</div></div></div>
+    <ul class="ech-anomalies">${a.map(x => x.type === 'commune'
+      ? `<li><div><strong>Grille commune inutilisée</strong><small>${x.n} tranche(s) sans classe${x.sansDate ? `, dont ${x.sansDate} sans date` : ''}. Toutes les classes ont leur propre grille : cette grille commune ne sert à rien.</small></div>
+          <button type="button" class="btn secondary sm" onclick="supprimerGrilleCommune()">Supprimer la grille commune</button></li>`
+      : `<li><div><strong>« ${escapeHtml(x.label)} » au ${fmtDate(x.date)}</strong><small>${x.type === 'ordre' ? `Datée après « ${escapeHtml(x.suivante.label)} » (${fmtDate(x.suivante.dateEcheance)}) alors qu’elle vient avant dans l’ordre.` : `En dehors de l’année scolaire ${escapeHtml(DB.meta?.anneeScolaire || '')}.`} Concerne ${nomsClasses(x.classes)}.</small></div>
+          <button type="button" class="btn secondary sm" onclick="corrigerDateTranche('${escapeHtml(x.label)}','${x.date}')">Corriger la date</button></li>`).join('')}</ul>
+  </div>`;
+}
+// Corrige la même tranche (même libellé, même date) dans toutes les classes concernées, en une fois
+function corrigerDateTranche(label, date){
+  const cibles = (DB.echeancesScolarite || []).filter(e => e.classeId && e.label === label && e.dateEcheance === date);
+  openModal('Corriger la date de la tranche', `
+    <form onsubmit="return enregistrerDateTranche(event)">
+      <input type="hidden" name="label" value="${escapeHtml(label)}"><input type="hidden" name="ancienne" value="${date}">
+      <p style="margin-top:0;">« <strong>${escapeHtml(label)}</strong> » est datée du <strong>${fmtDate(date)}</strong> dans ${cibles.length} classe(s). Indiquez la bonne date : elle sera appliquée à toutes ces classes.</p>
+      <div class="field"><label for="nvDate">Nouvelle date</label><input id="nvDate" type="date" name="date" required value="${date}"></div>
+      <div class="form-actions"><button type="button" class="btn secondary" onclick="closeModal()">Annuler</button><button class="btn" type="submit">Enregistrer</button></div>
+    </form>`);
+}
+async function enregistrerDateTranche(ev){
+  ev.preventDefault();
+  const fd = new FormData(ev.target), label = fd.get('label'), ancienne = fd.get('ancienne'), date = fd.get('date');
+  if(!date || date === ancienne){ closeModal(); return false; }
+  const cibles = (DB.echeancesScolarite || []).filter(e => e.classeId && e.label === label && e.dateEcheance === ancienne);
+  try{
+    const { error } = await sb.from('echeances_scolarite').update({ date_echeance: date }).eq('ecole_id', session.ecoleId).eq('label', label).eq('date_echeance', ancienne).not('classe_id', 'is', null);
+    if(error) throw error;
+    cibles.forEach(e => { e.dateEcheance = date; });
+    closeModal(); toast(`Date corrigée dans ${cibles.length} classe(s)`); renderView('comptabilite');
+  }catch(e){ alert('Erreur : ' + e.message); }
+  return false;
+}
+async function supprimerGrilleCommune(){
+  const n = (DB.echeancesScolarite || []).filter(e => !e.classeId).length;
+  if(!confirm(`Supprimer la grille commune (${n} tranche(s) sans classe) ? Les grilles propres à chaque classe ne changent pas.`)) return;
+  try{
+    const { error } = await sb.from('echeances_scolarite').delete().eq('ecole_id', session.ecoleId).is('classe_id', null);
+    if(error) throw error;
+    DB.echeancesScolarite = DB.echeancesScolarite.filter(e => e.classeId);
+    toast('Grille commune supprimée'); renderView('comptabilite');
   }catch(e){ alert('Erreur : ' + e.message); }
 }
 async function supprimerGrilleClasse(classeId){
