@@ -2382,3 +2382,6 @@ tbody td input.champ-a-verifier, tbody td select.champ-a-verifier, .nt-note.cham
   .recus-lot .sign-box .sign-role{ margin-bottom:9mm; }
   .recus-lot .sign-box .sign-line{ padding-top:1mm; }
 }
+
+/* Comptabilité → Cantine (2026-11-15) */
+.cantine-choix{ display:flex; flex-wrap:wrap; gap:6px; margin:8px 0; max-height:50vh; overflow:auto; }

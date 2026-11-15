@@ -4636,3 +4636,16 @@ returns jsonb language sql stable security definer set search_path = public as $
 $$;
 revoke all on function usage_remplissage_mois() from public, anon;
 grant execute on function usage_remplissage_mois() to authenticated;
+
+-- =====================================================================
+-- 120. CANTINE DANS LA COMPTABILITÉ (2026-11-15)
+-- =====================================================================
+-- La cantine devient un module de la comptabilité : un tarif (par mois,
+-- trimestre ou année), les élèves inscrits, leurs paiements et ce qui
+-- reste dû depuis leur inscription. Elle réutilise les tables des
+-- activités (mêmes règles d'accès, mêmes reçus), marquée type = 'cantine'.
+alter table activites add column if not exists type text not null default 'activite';
+alter table activites drop constraint if exists activites_type_check;
+alter table activites add constraint activites_type_check check (type in ('activite', 'cantine'));
+-- Une seule cantine par école
+create unique index if not exists activites_une_cantine on activites (ecole_id) where type = 'cantine';

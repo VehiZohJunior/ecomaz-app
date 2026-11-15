@@ -221,6 +221,7 @@ const FRAIS_SCOLARITE_DEFAUT = {
 const COMPTA_TABS = [
   {id:'apercu', label:'Aperçu', icon:'📊'},
   {id:'scolarite', label:'Scolarité', icon:'🎓'},
+  {id:'cantine', label:'Cantine', icon:'🍽️'},
   {id:'activites', label:'Activités extra-scolaires', icon:'🎨'},
   {id:'ventes', label:'Boutique scolaire', icon:'🛍️'},
   {id:'salaires', label:'Salaires', icon:'💵'},
@@ -2880,6 +2881,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.11.15-9', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Comptabilité → Cantine : tarif (par mois, trimestre ou année), inscription des élèves classe par classe, paiements avec reçu et remplissage assisté, reste dû calculé depuis l’inscription, encaissé du mois, dépenses de restauration et solde de la cantine.' ],
+  } },
   { version: '2026.11.15-8', nouveautes: {
     commun: [],
     parent: [],
@@ -11157,7 +11164,7 @@ function renderComptabilite(){
   const tab = ui.filters.comptaTab || 'apercu';
   ui.filters.comptaTab = tab;
   const renderers = {
-    apercu: renderComptaApercu, scolarite: renderComptaScolarite, activites: renderComptaActivites,
+    apercu: renderComptaApercu, scolarite: renderComptaScolarite, cantine: renderComptaCantine, activites: renderComptaActivites,
     ventes: renderComptaVentes, salaires: renderComptaSalaires, depenses: renderComptaDepenses,
     journal: renderComptaJournal, annees: renderComptaAnnees, budget: renderComptaBudget, fne: renderComptaFne,
     syscohada: renderComptaSyscohada, rapprochement: renderComptaRapprochement,
@@ -12377,10 +12384,12 @@ async function handleSaveFraisScolarite(ev){
 
 /* --- 12.3 Activités extra-scolaires --- */
 function renderComptaActivites(){
-  const actId = ui.filters.comptaActivite || (DB.activites[0] && DB.activites[0].id) || '';
+  const activitesHC = (DB.activites || []).filter(a => a.type !== 'cantine');
+  if(ui.filters.comptaActivite && !activitesHC.some(a => a.id === ui.filters.comptaActivite)) ui.filters.comptaActivite = '';
+  const actId = ui.filters.comptaActivite || (activitesHC[0] && activitesHC[0].id) || '';
   ui.filters.comptaActivite = actId;
 
-  const catalogRows = DB.activites.map(a=>{
+  const catalogRows = activitesHC.map(a=>{
     const nb = DB.inscriptionsActivites.filter(i=>i.activiteId===a.id).length;
     return `<tr><td>${escapeHtml(a.nom)}</td><td>${fmtFCFA(a.montantCotisation)}</td><td>${a.periode}</td><td>${nb}</td>
       <td><button class="icon-btn" onclick="openActiviteForm('${a.id}')">✏️</button><button class="icon-btn danger" onclick="deleteActivite('${a.id}')">🗑️</button></td></tr>`;
@@ -12388,7 +12397,7 @@ function renderComptaActivites(){
 
   let inscritsPanel = '';
   if(actId){
-    const act = DB.activites.find(a=>a.id===actId);
+    const act = activitesHC.find(a=>a.id===actId);
     const inscriptions = DB.inscriptionsActivites.filter(i=>i.activiteId===actId);
     const eleveIdsInscrits = inscriptions.map(i=>i.eleveId);
     const rows = inscriptions.map(insc=>{
@@ -12423,12 +12432,12 @@ function renderComptaActivites(){
 
   return `
     <div class="panel">
-      <div class="panel-head"><div><h2>Catalogue des activités extra-scolaires</h2><div class="sub">${DB.activites.length} activité(s)</div></div><button class="btn" onclick="openActiviteForm()">+ Nouvelle activité</button></div>
-      ${DB.activites.length===0 ? `<div class="empty-state"><div class="em-ic">🎨</div>Aucune activité créée.</div>` : `
+      <div class="panel-head"><div><h2>Catalogue des activités extra-scolaires</h2><div class="sub">${activitesHC.length} activité(s)</div></div><button class="btn" onclick="openActiviteForm()">+ Nouvelle activité</button></div>
+      ${activitesHC.length===0 ? `<div class="empty-state"><div class="em-ic">🎨</div>Aucune activité créée.</div>` : `
       <div class="table-wrap"><table><thead><tr><th>Activité</th><th>Cotisation</th><th>Périodicité</th><th>Inscrits</th><th>Actions</th></tr></thead><tbody>${catalogRows}</tbody></table></div>`}
     </div>
-    ${DB.activites.length>0 ? `
-    <div class="filters"><select onchange="ui.filters.comptaActivite=this.value; renderView('comptabilite')">${DB.activites.map(a=>`<option value="${a.id}" ${actId===a.id?'selected':''}>${a.nom}</option>`).join('')}</select></div>
+    ${activitesHC.length>0 ? `
+    <div class="filters"><select onchange="ui.filters.comptaActivite=this.value; renderView('comptabilite')">${activitesHC.map(a=>`<option value="${a.id}" ${actId===a.id?'selected':''}>${a.nom}</option>`).join('')}</select></div>
     ${inscritsPanel}` : ''}`;
 }
 
@@ -12456,7 +12465,7 @@ async function handleSaveActivite(ev, id){
     if(id){
       await dbUpdate('activites', id, patch);
       const idx = DB.activites.findIndex(a=>a.id===id);
-      DB.activites[idx] = {id, ...patch};
+      DB.activites[idx] = { ...DB.activites[idx], id, ...patch };
     } else {
       const rec = await dbInsert('activites', patch);
       DB.activites.push(rec);
@@ -12521,7 +12530,7 @@ function openPaiementCotisationForm(eleveId, activiteId){
   const e = eleveById(eleveId);
   const act = DB.activites.find(a=>a.id===activiteId);
   const paye = DB.paiementsCotisations.filter(p=>p.eleveId===eleveId && p.activiteId===activiteId).reduce((s,p)=>s+p.montant,0);
-  const solde = Math.max(0, act.montantCotisation-paye);
+  const solde = act.type === 'cantine' ? situationCantine(eleveId, act).reste : Math.max(0, act.montantCotisation-paye);
   openModal(`Paiement — ${act.nom}`, `
     <div class="section-note">${eleveFullName(e)} · Solde restant dû : <strong>${fmtFCFA(solde)}</strong></div>
 ${boutonRemplissage('cotisation', "SCHEMA_COTISATION", 'formCotisation')}
@@ -12546,6 +12555,131 @@ async function handleSavePaiementCotisation(ev, eleveId, activiteId){
     const e = eleveById(eleveId);
     const act = DB.activites.find(a=>a.id===activiteId);
     openRecu({type:'entree', refId:rec.id, montant:rec.montant, date:rec.date, modePaiement:rec.modePaiement, objet:`Cotisation — ${act?act.nom:''}`, personne: eleveFullName(e), sousInfo: classeName(e.classeId)});
+  }catch(e){ alert('Erreur : ' + e.message); }
+  return false;
+}
+
+/* --- Cantine (schema.sql section 120) : tarif, inscrits, paiements, reste dû, dépenses de restauration ---
+   Réutilise les activités (type 'cantine') : mêmes droits, mêmes reçus, même remplissage assisté.
+   Reste dû = périodes écoulées depuis l'inscription × tarif − total payé (jamais d'invention : tout vient des saisies). */
+function cantine(){ return (DB.activites || []).find(a => a.type === 'cantine') || null; }
+function periodesCantine(dateInscription, periode){
+  const debut = String(dateInscription || todayISO()).slice(0, 7), fin = thisMonthISO();
+  const [a1, m1] = debut.split('-').map(Number), [a2, m2] = fin.split('-').map(Number);
+  const mois = Math.max(1, (a2 - a1) * 12 + (m2 - m1) + 1);
+  return periode === 'Annuel' ? 1 : periode === 'Trimestriel' ? Math.ceil(mois / 3) : mois;
+}
+function situationCantine(eleveId, act){
+  act = act || cantine(); if(!act) return { du: 0, paye: 0, reste: 0, payeMois: 0 };
+  const insc = (DB.inscriptionsActivites || []).find(i => i.activiteId === act.id && i.eleveId === eleveId);
+  const paiements = (DB.paiementsCotisations || []).filter(x => x.activiteId === act.id && x.eleveId === eleveId);
+  const paye = paiements.reduce((t, x) => t + Number(x.montant || 0), 0);
+  const payeMois = paiements.filter(x => String(x.date || '').slice(0, 7) === thisMonthISO()).reduce((t, x) => t + Number(x.montant || 0), 0);
+  const du = insc ? periodesCantine(insc.dateInscription, act.periode) * Number(act.montantCotisation || 0) : 0;
+  return { du, paye, reste: Math.max(0, du - paye), payeMois, periodes: insc ? periodesCantine(insc.dateInscription, act.periode) : 0 };
+}
+const SCHEMA_CANTINE_TARIF = [
+  {name:'montantCotisation', label:'Tarif de la cantine par élève (francs CFA)', type:'number', format:'nombre entier'},
+  {name:'periode', label:'Le tarif est payé par (mois, trimestre ou année)', type:'select'},
+];
+function renderComptaCantine(){
+  const act = cantine();
+  if(!act) return `<div class="panel cantine-config">
+      <div class="panel-head"><div><h2>🍽️ Cantine</h2><div class="sub">Indiquez le tarif : vous pourrez ensuite inscrire les élèves, encaisser et suivre ce qui reste dû.</div></div></div>
+      ${formulaireTarifCantine(null)}
+    </div>`;
+  const inscriptions = (DB.inscriptionsActivites || []).filter(i => i.activiteId === act.id);
+  const lignes = inscriptions.map(i => ({ i, e: eleveById(i.eleveId) })).filter(x => x.e && x.e.statut === 'Actif')
+    .map(x => ({ ...x, s: situationCantine(x.e.id, act) }))
+    .sort((a, b) => classeName(a.e.classeId).localeCompare(classeName(b.e.classeId)) || a.e.nom.localeCompare(b.e.nom));
+  const f = ui.filters.cantineClasse || '';
+  const visibles = lignes.filter(x => !f || x.e.classeId === f);
+  const mois = thisMonthISO();
+  const encMois = (DB.paiementsCotisations || []).filter(x => x.activiteId === act.id && String(x.date || '').slice(0, 7) === mois).reduce((t, x) => t + Number(x.montant || 0), 0);
+  const resteTotal = lignes.reduce((t, x) => t + x.s.reste, 0);
+  const depMois = (DB.depenses || []).filter(d => d.categorie === 'Restauration' && String(d.date || '').slice(0, 7) === mois).reduce((t, d) => t + Number(d.montant || 0), 0);
+  const solde = encMois - depMois;
+  const parPeriode = { Mensuel: 'mois', Trimestriel: 'trimestre', Annuel: 'an' }[act.periode] || act.periode;
+  const classes = [...new Set(lignes.map(x => x.e.classeId))].map(id => ({ id, nom: classeName(id) })).sort((a, b) => a.nom.localeCompare(b.nom));
+  return `
+    <div class="cards">
+      <div class="card"><div class="num">${lignes.length}</div><div class="label">Élève(s) inscrit(s) à la cantine</div></div>
+      <div class="card"><div class="num amount in">${fmtFCFA(encMois)}</div><div class="label">Encaissé — ${moisLabel(mois)}</div></div>
+      <div class="card"><div class="num amount ${resteTotal ? 'out' : ''}">${fmtFCFA(resteTotal)}</div><div class="label">Reste à encaisser (depuis les inscriptions)</div></div>
+      <div class="card"><div class="num amount out">${fmtFCFA(depMois)}</div><div class="label">Dépenses de restauration — ${moisLabel(mois)}</div></div>
+      <div class="card"><div class="num amount ${solde >= 0 ? 'in' : 'out'}">${fmtFCFA(solde)}</div><div class="label">Solde cantine du mois</div></div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><div><h2>🍽️ Cantine</h2><div class="sub">Tarif : <strong>${fmtFCFA(act.montantCotisation)}</strong> par ${escapeHtml(parPeriode)} et par élève</div></div>
+        <span style="display:flex;gap:6px;flex-wrap:wrap;"><button class="btn secondary sm" onclick="openTarifCantine()">Modifier le tarif</button>
+        <button class="btn secondary sm" onclick="go('cantine')">Menu de la semaine</button>
+        <button class="btn secondary sm" onclick="ui.filters.comptaTab='depenses'; renderView('comptabilite'); setTimeout(() => openDepenseForm(), 50)">+ Dépense de restauration</button>
+        <button class="btn sm" onclick="ouvrirInscriptionCantine()">+ Inscrire des élèves</button></span></div>
+      ${lignes.length ? `
+      <div class="filters">${classes.length > 1 ? `<select aria-label="Classe" onchange="ui.filters.cantineClasse=this.value; renderView('comptabilite')"><option value="">Toutes les classes</option>${classes.map(c => `<option value="${c.id}" ${f === c.id ? 'selected' : ''}>${escapeHtml(c.nom)}</option>`).join('')}</select>` : ''}</div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Élève</th><th>Classe</th><th>Inscrit le</th><th>Dû à ce jour</th><th>Payé</th><th>Reste</th><th>Statut</th><th>Actions</th></tr></thead>
+        <tbody>${visibles.map(x => { const st = x.s.reste <= 0 ? ['À jour', 'green'] : x.s.paye > 0 ? ['Partiel', 'amber'] : ['Impayé', 'red'];
+          return `<tr><td><div class="row-name"><span class="avatar">${initials(x.e.prenom, x.e.nom)}</span>${escapeHtml(eleveFullName(x.e))}</div></td>
+            <td><span class="badge blue">${escapeHtml(classeName(x.e.classeId))}</span></td>
+            <td>${x.i.dateInscription ? fmtDate(x.i.dateInscription) : '—'}</td>
+            <td class="amount">${fmtFCFA(x.s.du)}<small class="hint" style="display:block;margin:0;">${x.s.periodes} ${escapeHtml(parPeriode)}${x.s.periodes > 1 && parPeriode !== 'mois' ? 's' : ''}</small></td>
+            <td class="amount in">${fmtFCFA(x.s.paye)}</td>
+            <td class="amount ${x.s.reste ? 'out' : ''}">${fmtFCFA(x.s.reste)}</td>
+            <td><span class="badge ${st[1]}">${st[0]}</span></td>
+            <td style="white-space:nowrap;"><button class="btn sm" onclick="openPaiementCotisationForm('${x.e.id}','${act.id}')">+ Paiement</button> <button class="icon-btn danger" title="Retirer de la cantine" aria-label="Retirer ${escapeHtml(eleveFullName(x.e))} de la cantine" onclick="desinscrireActivite('${x.i.id}')">🗑️</button></td></tr>`; }).join('')}</tbody>
+      </table></div>` : `<div class="empty-state"><div class="em-ic">🍽️</div>Aucun élève inscrit à la cantine. Touchez « + Inscrire des élèves » : vous pouvez inscrire une classe entière d’un coup.</div>`}
+    </div>`;
+}
+function formulaireTarifCantine(act){
+  return `${boutonRemplissage('cantine-tarif', "SCHEMA_CANTINE_TARIF", 'formCantineTarif')}
+    <form id="formCantineTarif" onsubmit="return enregistrerTarifCantine(event)">
+      <div class="form-grid">
+        <div class="field"><label>Tarif par élève (${DEVISE})</label><input type="number" name="montantCotisation" min="0" step="500" required value="${act ? act.montantCotisation : ''}" placeholder="Ex : 15000"></div>
+        <div class="field"><label>Payé par</label><select name="periode">${[['Mensuel', 'mois'], ['Trimestriel', 'trimestre'], ['Annuel', 'année']].map(([v, l]) => `<option value="${v}" ${(act ? act.periode : 'Mensuel') === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+      </div>
+      <div class="form-actions">${act ? '<button type="button" class="btn secondary" onclick="closeModal()">Annuler</button>' : ''}<button type="submit" class="btn">Enregistrer le tarif</button></div>
+    </form>`;
+}
+function openTarifCantine(){ openModal('Tarif de la cantine', formulaireTarifCantine(cantine())); }
+async function enregistrerTarifCantine(ev){
+  ev.preventDefault();
+  const fd = new FormData(ev.target), act = cantine();
+  const patch = { nom: 'Cantine', type: 'cantine', montantCotisation: Math.max(0, parseInt(fd.get('montantCotisation')) || 0), periode: fd.get('periode') };
+  try{
+    if(act){ await dbUpdate('activites', act.id, patch); Object.assign(act, patch); }
+    else DB.activites.push(await dbInsert('activites', patch));
+    closeModal(); toast('Tarif de la cantine enregistré'); renderView('comptabilite');
+  }catch(e){ alert('Erreur : ' + e.message); }
+  return false;
+}
+// Inscription par classe : tous les élèves de la classe cochés d'office, on décoche les exceptions
+function ouvrirInscriptionCantine(classeId){
+  const act = cantine(); if(!act) return;
+  const deja = new Set((DB.inscriptionsActivites || []).filter(i => i.activiteId === act.id).map(i => i.eleveId));
+  classeId = classeId || ui.filters.cantineClasse || (DB.classes[0] || {}).id;
+  const eleves = DB.eleves.filter(e => e.statut === 'Actif' && e.classeId === classeId && !deja.has(e.id)).sort((a, b) => a.nom.localeCompare(b.nom));
+  openModal('Inscrire des élèves à la cantine', `
+    <form onsubmit="return enregistrerInscriptionCantine(event)">
+      <div class="form-grid">
+        <div class="field"><label>Classe</label><select onchange="ouvrirInscriptionCantine(this.value)">${DB.classes.map(c => `<option value="${c.id}" ${c.id === classeId ? 'selected' : ''}>${escapeHtml(c.nom)}</option>`).join('')}</select></div>
+        <div class="field"><label>Inscrits à partir du</label><input type="date" name="date" required value="${todayISO()}"></div>
+      </div>
+      ${eleves.length ? `<div class="hint">Tous les élèves non encore inscrits sont cochés : décochez ceux qui ne mangent pas à la cantine.</div>
+      <div class="cantine-choix">${eleves.map(e => `<label class="enrol-choix"><input type="checkbox" name="eleve" value="${e.id}" checked> ${escapeHtml(eleveFullName(e))}</label>`).join('')}</div>`
+      : '<div class="hint">Tous les élèves actifs de cette classe sont déjà inscrits à la cantine.</div>'}
+      <div class="form-actions"><button type="button" class="btn secondary" onclick="closeModal()">Annuler</button>${eleves.length ? '<button type="submit" class="btn">Inscrire les élèves cochés</button>' : ''}</div>
+    </form>`);
+}
+async function enregistrerInscriptionCantine(ev){
+  ev.preventDefault();
+  const act = cantine(); if(!act) return false;
+  const fd = new FormData(ev.target), ids = fd.getAll('eleve'), date = fd.get('date') || todayISO();
+  if(!ids.length){ toast('Cochez au moins un élève'); return false; }
+  try{
+    const crees = await dbInsertMany('inscriptions_activites', ids.map(eleveId => ({ eleveId, activiteId: act.id, dateInscription: date })));
+    DB.inscriptionsActivites.push(...crees);
+    closeModal(); toast(`${crees.length} élève(s) inscrit(s) à la cantine`); renderView('comptabilite');
   }catch(e){ alert('Erreur : ' + e.message); }
   return false;
 }
