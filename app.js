@@ -2880,6 +2880,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.11.15-4', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Notes (Camps de base et Compositions) : « Remplissage intelligent » depuis une photo de la fiche de notes, un PDF ou un fichier Excel. Chaque note va sur la ligne de l’élève ; une note hors barème est écartée ; une note déjà saisie n’est jamais écrasée (elle est signalée). Vous relisez avant d’enregistrer.' ],
+  } },
   { version: '2026.11.15-3', nouveautes: {
     commun: [],
     parent: [],
@@ -6424,6 +6430,7 @@ function trimestreCourant(){
 function renderSaisieEvaluation(ev, eleves, noteDe){
   return `<div class="panel-head" style="margin-top:8px;"><div><h2>${ICONES_EVAL[ev.type] || ''} ${escapeHtml(ev.type)}${ev.titre ? ' — ' + escapeHtml(ev.titre) : ''}</h2><div class="sub">${fmtDate(ev.date)} · noté sur ${Number(ev.noteSur)} · ${escapeHtml(ev.matiere)} · ${escapeHtml(ev.trimestre)}</div></div>
       <button class="btn secondary sm" onclick="ui.filters.campsEval=null; renderView('camps-de-base')">← Retour au tableau</button></div>
+    ${blocRemplissageNotes('camps', eleves.map(e => e.id), Number(ev.noteSur))}
     <form onsubmit="return enregistrerNotesEvaluation(event, '${ev.id}')" oninput="majCompteurNotes(this)">
       <div class="camps-compteur" aria-live="polite"><span id="campsCompteur">${eleves.filter(el => { const n = noteDe(ev, el); return n && n.note != null; }).length}</span> note(s) sur ${eleves.length} élève(s) · Tapez une note puis « Entrée » (ou ↵) pour passer à l’élève suivant.</div>
       <div class="table-wrap"><table>
@@ -6436,6 +6443,52 @@ function renderSaisieEvaluation(ev, eleves, noteDe){
         <button type="button" class="btn danger" onclick="supprimerEvaluation('${ev.id}')">Supprimer l’évaluation</button>
         <button class="btn" type="submit">Enregistrer les notes</button></div>
     </form>`;
+}
+/* ---------- Notes : remplissage intelligent depuis la fiche de notes (photo, PDF, Excel) ----------
+   Un champ par élève : « note obtenue par NOM Prénom (sur X) ». Garde-fous : note entre 0 et X (sinon
+   écartée), une case DÉJÀ remplie n'est jamais écrasée (elle est signalée), absent = case laissée vide. */
+const champNote = (mode, id) => mode === 'camps' ? document.querySelector(`[name="n_${id}"]`) : document.querySelector(`#tableNotes .nt-note[data-eleve="${id}"]`);
+function schemaNotes(ids, sur){
+  return ids.map(eleveById).filter(Boolean).slice(0, 60).map(e => ({ name: 'note_' + e.id, label: `Note obtenue par l’élève ${String(e.nom || '').toUpperCase()} ${e.prenom || ''} (sur ${sur}) — seulement si son nom figure dans le document ; absent ou non noté = null`, type: 'note', max: sur, format: `nombre entre 0 et ${sur}, décimales possibles (ex. 12,5)` }));
+}
+function blocRemplissageNotes(mode, ids, sur){
+  if(!ids.length || !(['secretariat', 'direction', 'fondation'].includes(ui.role) || (ui.role === 'enseignant' && session.enseignantId))) return '';
+  window.__notesSf = { mode, ids, sur };
+  return `<div class="choix-remplissage" role="group" aria-label="Comment saisir les notes" onclick="if(this.classList.contains('cr-replie')) this.classList.remove('cr-replie')">
+    <span class="cr-question">Comment voulez-vous saisir les notes ?</span>
+    <div class="cr-modes">
+      <button type="button" class="cr-mode cr-intelligent btn-sf" onclick="ouvrirRemplissageIntelligent('notes-${mode}', schemaNotes(window.__notesSf.ids, window.__notesSf.sur), (r) => appliquerNotesLues(r))">
+        <span class="cr-ic">${icone('sparkles') || '✨'}</span><strong>Remplissage intelligent</strong><small>Photo de votre fiche de notes ou de la liste de la classe (ou fichier Excel, PDF) : chaque note va sur la ligne de l’élève.</small></button>
+      <button type="button" class="cr-mode cr-manuel" onclick="this.closest('.choix-remplissage').classList.add('cr-replie'); const c = champNote(window.__notesSf.mode, window.__notesSf.ids[0]); if(c) c.focus()">
+        <span class="cr-ic">${icone('pencil') || '✍️'}</span><strong>Remplissage manuel</strong><small>Vous tapez la note de chaque élève.</small></button>
+    </div>
+  </div>`;
+}
+function appliquerNotesLues(resultat){
+  const { mode, sur } = window.__notesSf || {}; if(!mode) return;
+  let poses = 0, aVerifier = 0; const dejaLa = [], horsBareme = [];
+  Object.keys(resultat || {}).forEach(cle => {
+    if(!cle.startsWith('note_')) return;
+    const { valeur, confiance } = resultat[cle] || {};
+    if(valeur == null || valeur === '') return;
+    const id = cle.slice(5), champ = champNote(mode, id), e = eleveById(id), nom = e ? eleveFullName(e) : 'Un élève';
+    if(!champ) return;
+    const n = Number(String(valeur).replace(',', '.'));
+    if(!Number.isFinite(n) || n < 0 || n > sur){ horsBareme.push(`${nom} : ${valeur}`); return; }
+    if(String(champ.value).trim() !== ''){ if(Number(String(champ.value).replace(',', '.')) !== n) dejaLa.push(`${nom} : ${champ.value} déjà saisi, ${String(n).replace('.', ',')} lu`); return; }
+    champ.value = mode === 'compo' ? String(n).replace('.', ',') : n;
+    champ.dispatchEvent(new Event('input', { bubbles: true })); // compteurs, AVANT la couleur (une saisie à la main l'efface ensuite)
+    champ.classList.remove('champ-pre-rempli', 'champ-a-verifier');
+    champ.classList.add('champ-pre-rempli'); if(confiance !== 'élevé'){ champ.classList.add('champ-a-verifier'); aVerifier++; }
+    champ.addEventListener('input', () => champ.classList.remove('champ-pre-rempli', 'champ-a-verifier'), { once: true });
+    poses++;
+  });
+  const bloc = document.querySelector('.choix-remplissage'); if(bloc) bloc.classList.add('cr-replie');
+  const avis = [];
+  if(dejaLa.length) avis.push(`Notes déjà saisies, NON modifiées (corrigez à la main si besoin) :\n${dejaLa.join('\n')}`);
+  if(horsBareme.length) avis.push(`Écartées, en dehors du barème (0 à ${sur}) :\n${horsBareme.join('\n')}`);
+  if(avis.length) alert(avis.join('\n\n'));
+  toast(poses ? `${poses} note(s) pré-remplie(s)${aVerifier ? `, dont ${aVerifier} à vérifier (en orange)` : ''} — relisez puis « Enregistrer les notes »` : 'Aucune nouvelle note trouvée pour les élèves de cette liste');
 }
 function ouvrirNouvelleEvaluation(){
   const f = ui.filters.camps;
@@ -9079,6 +9132,7 @@ function renderNotes(){
         <div class="hint" style="margin:6px 0 10px;">${compos.length > 1 ? `${compos.length} compositions ce trimestre (agenda de l’école) : la moyenne de composition est la moyenne de toutes. ` : ''}Moyenne de la matière = (moyenne de classe + 2 × composition) ÷ 3.</div>` : ''}
       ${eleves.length===0 ? `<div class="empty-state"><div class="em-ic">📝</div>Aucun élève actif dans cette classe.</div>` : `
       <div class="camps-compteur" aria-live="polite"><span id="compteurCompo">${eleves.filter(e => DB.notes.some(n => n.eleveId === e.id && n.matiere === f.matiere && n.trimestre === f.trimestre && n.type === 'Composition' && (!compoChoisie || n.date === compoChoisie.dateDebut) && n.note != null)).length}</span> note(s) sur ${eleves.length} élève(s) — ${compoChoisie ? `${escapeHtml(compoChoisie.titre)} du ${fmtDate(compoChoisie.dateDebut)}` : 'composition'}, sur 20. « Entrée » passe à l’élève suivant ; laissez vide si l’élève était absent.</div>
+      ${blocRemplissageNotes('compo', eleves.map(e => e.id), 20)}
       <ul class="nt-liste" id="tableNotes">${rows}</ul>
       <div class="form-actions"><button class="btn" id="btnNotesCompo" onclick="saveNotesTable()">Enregistrer les notes</button></div>`}
     </div>

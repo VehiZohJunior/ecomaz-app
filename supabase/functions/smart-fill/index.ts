@@ -32,7 +32,7 @@ const CORS_HEADERS = {
 };
 const json = (corps: unknown, status = 200) => new Response(JSON.stringify(corps), { status, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } });
 
-interface ChampSchema { name: string; label: string; type: string; format?: string; long?: boolean; futur?: boolean }
+interface ChampSchema { name: string; label: string; type: string; format?: string; long?: boolean; futur?: boolean; max?: number }
 type Resultat = Record<string, { valeur: string | null; confiance: string }>;
 
 const MODELES_VISION = ['meta-llama/llama-4-scout-17b-16e-instruct', 'meta-llama/llama-4-maverick-17b-128e-instruct'];
@@ -50,6 +50,7 @@ const CONSIGNE =
   "Heures au format HH:MM (24 h). Quantités : nombre entier. " +
   "Pour un champ de texte long (travail à faire, contenu, menu, texte), recopie FIDÈLEMENT ce qui est écrit, sans résumer ni reformuler. " +
   "Un champ par jour (menus) : mets dans chaque champ seulement ce qui concerne ce jour-là. " +
+  "Notes d'élèves : la note telle qu'écrite (ex. 12,5 ou 14/20 → 14) ; absent, « abs », vide ou illisible = null. " +
   "Un champ par élève (liste de paiements) : ne remplis le champ d'un élève QUE si son nom figure clairement dans le document ; additionne ses versements s'il en a plusieurs ; un autre élève au nom proche ne compte pas.";
 
 function descriptionChamps(schema: ChampSchema[]) {
@@ -98,6 +99,7 @@ function normaliser(schema: ChampSchema[], brut: Resultat): Resultat {
     if (valeur) {
       if (c.type === 'date') valeur = normaliserDate(valeur, !!c.futur);
       else if (c.type === 'time') valeur = normaliserHeure(valeur);
+      else if (c.type === 'note') { const m = String(valeur).replace(',', '.').match(/^\s*(\d{1,3}(?:\.\d{1,2})?)\s*(?:\/\s*\d{1,3})?\s*$/); const n = m ? Number(m[1]) : NaN; const max = Number(c.max) > 0 ? Number(c.max) : 20; valeur = Number.isFinite(n) && n >= 0 && n <= max ? String(n) : null; }
       else if (c.type === 'tel') valeur = normaliserTelephoneCI(valeur);
       else if (c.name === 'sexe') valeur = normaliserSexe(valeur);
       else if (c.name === 'nom') valeur = valeur.toUpperCase();

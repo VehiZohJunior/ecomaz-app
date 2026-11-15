@@ -2350,3 +2350,10 @@ body.theme-portier .gate-classe strong{ overflow-wrap:anywhere; }
 /* Grille « Versements déjà reçus » : montants pré-remplis visibles (vert = sûr, orange = à vérifier) */
 .rv-montant.champ-pre-rempli{ background:var(--success-soft); border-color:var(--success); }
 .rv-montant.champ-a-verifier{ background:var(--warning-soft); border-color:var(--warning); }
+
+/* Notes pré-remplies par le remplissage intelligent (vert = sûr, orange = à vérifier) */
+.camps-note.champ-pre-rempli, .nt-note.champ-pre-rempli{ background:var(--success-soft); border-color:var(--success); }
+.camps-note.champ-a-verifier, .nt-note.champ-a-verifier{ background:var(--warning-soft); border-color:var(--warning); }
+/* Champs pré-remplis dans un tableau (notes, grilles) : la couleur l'emporte sur le style des tableaux */
+tbody td input.champ-pre-rempli, tbody td select.champ-pre-rempli, .nt-note.champ-pre-rempli, .rv-montant.champ-pre-rempli{ background:var(--success-soft) !important; border-color:var(--success) !important; }
+tbody td input.champ-a-verifier, tbody td select.champ-a-verifier, .nt-note.champ-a-verifier, .rv-montant.champ-a-verifier{ background:var(--warning-soft) !important; border-color:var(--warning) !important; }
