@@ -2880,6 +2880,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.11.15-6', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Tableau de bord, « Mise en route » : trois contrôles de plus, avec leur bouton — horaires de cours des enseignants, élèves en double, échéancier cohérent.' ],
+  } },
   { version: '2026.11.15-5', nouveautes: {
     commun: [],
     parent: [],
@@ -5272,6 +5278,17 @@ function etapesMiseEnRoute(){
     { ok: !!m.logo, titre: 'Logo de l’école', detail: m.logo ? 'ajouté' : 'non ajouté (apparaît sur les reçus et les applications)', vue: 'parametres', bouton: 'Paramètres' },
     { ok: !!(m.directeurNom && m.telephone), titre: 'Nom du directeur et téléphone de l’école', detail: !m.directeurNom ? 'nom du directeur manquant (signature des certificats et des reçus)' : !m.telephone ? 'téléphone manquant (bouton « Appeler » des parents)' : 'renseignés', vue: 'parametres', bouton: 'Paramètres' },
     { ok: (DB.echeancesScolarite || []).length > 0, titre: 'Scolarité et tranches paramétrées', detail: (DB.echeancesScolarite || []).length ? `${DB.echeancesScolarite.length} tranche(s)` : 'aucune tranche : pas de reste à payer ni de relances', vue: 'parametres', bouton: 'Paramètres' },
+    // Contrôles ajoutés le 15/11/2026 : horaires des enseignants (rappels d'appel), élèves en double, échéancier cohérent
+    ...(() => { const avecClasses = (DB.enseignants || []).filter(t => t.statut === 'Actif' && (t.classesAssignees || []).length); if(!avecClasses.length) return [];
+      const sans = avecClasses.filter(t => !creneauxEnseignant(t).length);
+      return [{ ok: !sans.length, titre: 'Horaires de cours des enseignants', detail: sans.length ? `${avecClasses.length - sans.length} / ${avecClasses.length} — sans horaire, un enseignant ne reçoit aucun rappel d’appel` : `${avecClasses.length} / ${avecClasses.length} : rappels d’appel pendant les cours`,
+        vue: 'enseignants', bouton: 'Remplir les horaires', action: sans.length ? "go('enseignants'); setTimeout(() => { if(typeof ouvrirRemplissageHoraires === 'function') ouvrirRemplissageHoraires(); }, 200)" : null }]; })(),
+    ...(() => { if(!actifs.length) return []; const n = pairesDoublons().length;
+      return [{ ok: !n, titre: 'Pas d’élève en double', detail: n ? `${n} paire(s) d’élèves en double probable : un doublon fausse l’effectif, la scolarité et les relances` : 'aucun doublon repéré',
+        vue: 'eleves', bouton: 'Vérifier les doublons', action: n ? "go('eleves'); setTimeout(() => document.querySelector('.panneau-doublons')?.scrollIntoView({ behavior:'smooth', block:'start' }), 200)" : null }]; })(),
+    ...(() => { if(!(DB.echeancesScolarite || []).length) return []; const n = anomaliesEcheancier().length;
+      return [{ ok: !n, titre: 'Échéancier cohérent', detail: n ? `${n} point(s) à vérifier (date dans le désordre, hors année, grille inutilisée) : les rappels aux parents suivent ces dates` : 'dates dans l’ordre, dans l’année scolaire',
+        vue: 'comptabilite', bouton: 'Voir les points', action: n ? "ui.filters.comptaTab='scolarite'; go('comptabilite'); setTimeout(() => document.querySelector('.panneau-echeancier')?.scrollIntoView({ behavior:'smooth', block:'start' }), 200)" : null }]; })(),
     { ok: ensActifs > 0 && comptesEnseignants >= ensActifs, titre: 'Enseignants inscrits dans leur application', detail: `${comptesEnseignants} / ${Math.max(ensActifs, comptesEnseignants)} enseignant(s) avec leur compte — appel, devoirs, « Ma journée »`, vue: 'enseignants',
       bouton: ensActifs > comptesEnseignants ? 'Relancer les non-inscrits' : '📲 Envoyer le lien par WhatsApp',
       action: ensActifs > comptesEnseignants ? "go('enseignants'); setTimeout(ouvrirRelanceEnseignants, 200)" : "window.open('https://wa.me/?text=' + encodeURIComponent(messagePartageApplication('enseignant.html')), '_blank')" },
