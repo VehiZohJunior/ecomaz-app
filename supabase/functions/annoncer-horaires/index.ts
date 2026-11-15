@@ -240,6 +240,11 @@ async function resumeDirection(admin: any, aujourdhui: string, minuteActuelle: n
       const { count } = await admin.from('bulletins_commentaires').select('eleve_id', { count: 'exact', head: true }).eq('ecole_id', ec.id).eq('trimestre', trim);
       lignes.push(`Bulletins du ${fins[0].n === 1 ? '1er' : fins[0].n + 'e'} trimestre (fin le ${fins[0].d.split('-').reverse().slice(0, 2).join('/')}) : ${count || 0}/${(eleves || []).length} appréciation(s)`);
     }
+    // Évaluations validées par les enseignants cette semaine (Boîte à évaluations, section 116)
+    const { count: nbSujets } = await admin.from('sujets_evaluation').select('id', { count: 'exact', head: true }).eq('ecole_id', ec.id).eq('statut', 'validee').gte('valide_le', lundi + 'T00:00:00Z');
+    if (nbSujets) lignes.push(`Évaluations à imprimer reçues : ${nbSujets}`);
+    // Points encore à régler (mêmes contrôles que la « Mise en route » du tableau de bord)
+    try { const a = await pointsARegler(admin, ec.id); if (a.length) lignes.push(`À régler : ${a.join(' · ')}`); } catch (_e) { /* le bilan part quand même */ }
     const { error: deja } = await admin.from('rappels_envoyes').insert({ ecole_id: ec.id, type: 'resume-direction', date: aujourdhui });
     if (deja) continue;
     await envoyerPush(admin, dirigeants, { title: `📊 Bilan de la semaine — ${ec.nom_ecole}`, body: lignes.join('\n').slice(0, 480), url: './index.html', tag: 'resume-direction' });
@@ -309,6 +314,32 @@ async function rappelAgenda(admin: any, aujourdhui: string, minuteActuelle: numb
     n++;
   }
   return n;
+}
+
+// Points à régler (bilan du vendredi) : horaires des enseignants, élèves en double, échéancier dans le désordre.
+// deno-lint-ignore no-explicit-any
+async function pointsARegler(admin: any, ecoleId: string): Promise<string[]> {
+  const [{ data: ens }, { data: el }, { data: ech }] = await Promise.all([
+    admin.from('enseignants').select('classes_assignees, creneaux').eq('ecole_id', ecoleId).eq('statut', 'Actif'),
+    admin.from('eleves').select('nom, prenom, classe_id, date_naissance').eq('ecole_id', ecoleId).eq('statut', 'Actif'),
+    admin.from('echeances_scolarite').select('classe_id, label, ordre, date_echeance').eq('ecole_id', ecoleId).not('classe_id', 'is', null),
+  ]);
+  const sortie: string[] = [];
+  const avec = ((ens || []) as { classes_assignees: string[] | null; creneaux: unknown[] | null }[]).filter((t) => (t.classes_assignees || []).length);
+  const sansH = avec.filter((t) => !Array.isArray(t.creneaux) || !t.creneaux.length).length;
+  if (sansH) sortie.push(`horaires ${avec.length - sansH}/${avec.length} enseignant(s)`);
+  const cle = (e: { nom: string; prenom: string }) => `${e.nom || ''} ${e.prenom || ''}`.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  const parNom = new Map<string, { classe_id: string; date_naissance: string | null }[]>();
+  ((el || []) as { nom: string; prenom: string; classe_id: string; date_naissance: string | null }[]).forEach((e) => { const k = cle(e); if (!k) return; if (!parNom.has(k)) parNom.set(k, []); parNom.get(k)!.push(e); });
+  let paires = 0;
+  parNom.forEach((l) => { for (let i = 0; i < l.length; i++) for (let j = i + 1; j < l.length; j++) if (l[i].classe_id === l[j].classe_id || (l[i].date_naissance && l[i].date_naissance === l[j].date_naissance)) paires++; });
+  if (paires) sortie.push(`${paires} élève(s) en double probable`);
+  const parClasse = new Map<string, { label: string; ordre: number; date_echeance: string | null }[]>();
+  ((ech || []) as { classe_id: string; label: string; ordre: number; date_echeance: string | null }[]).forEach((x) => { if (!parClasse.has(x.classe_id)) parClasse.set(x.classe_id, []); parClasse.get(x.classe_id)!.push(x); });
+  const desordre = new Set<string>();
+  parClasse.forEach((l) => { const t = l.slice().sort((a, b) => a.ordre - b.ordre); t.forEach((x, i) => { if (x.date_echeance && t.slice(i + 1).some((y) => y.date_echeance && y.date_echeance < x.date_echeance!)) desordre.add(x.label); }); });
+  if (desordre.size) sortie.push(`échéancier à vérifier (${[...desordre].slice(0, 2).join(', ')})`);
+  return sortie;
 }
 
 // Rappel d'appel personnel (schema.sql section 115). Fenêtre : 10 minutes après le début du
