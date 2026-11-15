@@ -30,10 +30,11 @@ const MODELES_TEXTE = ['llama-3.3-70b-versatile', 'meta-llama/llama-4-scout-17b-
 const CONSIGNE =
   "Tu recopies FIDÈLEMENT un sujet d'évaluation scolaire (école ivoirienne, en français) pour en faire un document modifiable. " +
   "Recopie TOUT le texte, mot pour mot, dans l'ordre, sans rien résumer, corriger, inventer ni ajouter (pas de réponses, pas de corrigé). " +
+  "Garde la numérotation EXACTE du sujet telle qu'elle est écrite (a), b), 1., 2., I., II., 1°, A.) : recopie-la dans le texte, n'utilise jamais de liste numérotée automatique (ol) qui la changerait ; ul seulement pour des puces sans numéro. " +
   "Garde la structure : titres et en-têtes, consignes, exercices et questions numérotés, barème, lignes à compléter (écris-les ainsi : ……………………), tableaux. " +
   "Un dessin ou une figure : écris [Figure : courte description] à sa place. Un mot illisible : [illisible]. " +
   "Réponds en JSON : {\"titre\": \"titre court du sujet ou null\", \"html\": \"le sujet en HTML\"}. " +
-  "HTML autorisé UNIQUEMENT : h2, h3, p, strong, em, u, br, ol, ul, li, table, thead, tbody, tr, th, td. Aucun style, aucune classe, aucun script.";
+  "HTML autorisé UNIQUEMENT : h2, h3, p, strong, em, u, br, ul, li, table, thead, tbody, tr, th, td. Aucun style, aucune classe, aucun script.";
 
 let catalogueGroq: string[] | null = null;
 async function choisirModeles(cle: string, preferes: string[], vision: boolean): Promise<string[]> {

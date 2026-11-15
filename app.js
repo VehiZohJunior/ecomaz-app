@@ -2880,6 +2880,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.11.15-7', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Échéancier : points à vérifier — signale aussi une tranche au montant anormalement faible (faute de frappe probable) et une tranche payée au-delà de son montant (grille modifiée après les versements, ou versement trop élevé), avec les élèves concernés.' ],
+  } },
   { version: '2026.11.15-6', nouveautes: {
     commun: [],
     parent: [],
@@ -5287,7 +5293,7 @@ function etapesMiseEnRoute(){
       return [{ ok: !n, titre: 'Pas d’élève en double', detail: n ? `${n} paire(s) d’élèves en double probable : un doublon fausse l’effectif, la scolarité et les relances` : 'aucun doublon repéré',
         vue: 'eleves', bouton: 'Vérifier les doublons', action: n ? "go('eleves'); setTimeout(() => document.querySelector('.panneau-doublons')?.scrollIntoView({ behavior:'smooth', block:'start' }), 200)" : null }]; })(),
     ...(() => { if(!(DB.echeancesScolarite || []).length) return []; const n = anomaliesEcheancier().length;
-      return [{ ok: !n, titre: 'Échéancier cohérent', detail: n ? `${n} point(s) à vérifier (date dans le désordre, hors année, grille inutilisée) : les rappels aux parents suivent ces dates` : 'dates dans l’ordre, dans l’année scolaire',
+      return [{ ok: !n, titre: 'Échéancier cohérent', detail: n ? `${n} point(s) à vérifier (date, montant ou versement incohérent) : les rappels aux parents en dépendent` : 'dates et montants cohérents',
         vue: 'comptabilite', bouton: 'Voir les points', action: n ? "ui.filters.comptaTab='scolarite'; go('comptabilite'); setTimeout(() => document.querySelector('.panneau-echeancier')?.scrollIntoView({ behavior:'smooth', block:'start' }), 200)" : null }]; })(),
     { ok: ensActifs > 0 && comptesEnseignants >= ensActifs, titre: 'Enseignants inscrits dans leur application', detail: `${comptesEnseignants} / ${Math.max(ensActifs, comptesEnseignants)} enseignant(s) avec leur compte — appel, devoirs, « Ma journée »`, vue: 'enseignants',
       bouton: ensActifs > comptesEnseignants ? 'Relancer les non-inscrits' : '📲 Envoyer le lien par WhatsApp',
@@ -14360,6 +14366,18 @@ function anomaliesEcheancier(){
   // 3) Grille commune (sans classe) alors que toutes les classes ont leur propre grille : inutilisée
   const commune = toutes.filter(e => !e.classeId);
   if(commune.length && DB.classes.every(c => parClasse.has(c.id))) sortie.push({ type:'commune', n: commune.length, sansDate: commune.filter(e => !e.dateEcheance).length });
+  // 4) Montant anormalement faible (moins de 1 000 F) : très probablement une faute de frappe (500 au lieu de 50 000)
+  toutes.filter(e => e.classeId && Number(e.montant) > 0 && Number(e.montant) < 1000)
+    .forEach(e => sortie.push({ type:'faible', id:e.id, label:e.label, montant:Number(e.montant), classes:[e.classeId] }));
+  // 5) Tranche payée au-delà de son montant (grille modifiée APRÈS les versements, ou versement trop élevé)
+  const payes = new Map();
+  (DB.paiementsScolarite || []).forEach(v => { const k = `${v.eleveId}|${v.tranche}`; payes.set(k, (payes.get(k) || 0) + Number(v.montant || 0)); });
+  const trop = new Map();
+  (DB.eleves || []).filter(el => el.statut === 'Actif').forEach(el => echeancesDeClasse(el.classeId).forEach(ech => {
+    const paye = payes.get(`${el.id}|${ech.label}`) || 0;
+    if(paye > Number(ech.montant || 0)){ const k = `${el.classeId}|${ech.label}`; if(!trop.has(k)) trop.set(k, { type:'trop', classe: el.classeId, label: ech.label, du: Number(ech.montant || 0), eleves: [] }); trop.get(k).eleves.push({ el, paye }); }
+  }));
+  trop.forEach(x => sortie.push(x));
   return sortie;
 }
 function renderEcheancierAVerifier(){
@@ -14368,8 +14386,15 @@ function renderEcheancierAVerifier(){
   const nomsClasses = l => { const u = [...new Set(l)]; return u.length === DB.classes.length ? 'toutes les classes' : u.map(id => escapeHtml(classeName(id))).join(', '); };
   return `<div class="panel panneau-echeancier">
     <div class="panel-head"><div><h2>${icone('triangle-alert')} Échéancier : ${a.length} point(s) à vérifier</h2>
-      <div class="sub">Les rappels aux parents et les montants « reste à payer » suivent ces dates : une date fausse envoie des rappels au mauvais moment.</div></div></div>
-    <ul class="ech-anomalies">${a.map(x => x.type === 'commune'
+      <div class="sub">Les rappels aux parents et les montants « reste à payer » suivent ces dates et ces montants : une erreur envoie des rappels faux ou au mauvais moment.</div></div></div>
+    <ul class="ech-anomalies">${a.map(x => x.type === 'faible'
+      ? `<li><div><strong>« ${escapeHtml(x.label)} » à ${fmtFCFA(x.montant)} — ${escapeHtml(classeName(x.classes[0]))}</strong><small>Montant anormalement faible pour une tranche : probablement une faute de frappe (un ou deux zéros oubliés ?). Les « reste à payer » et les rappels aux parents en dépendent.</small></div>
+          <button type="button" class="btn secondary sm" onclick="openEcheanceForm('${x.id}')">Corriger le montant</button></li>`
+      : x.type === 'trop'
+      ? `<li><div><strong>« ${escapeHtml(x.label)} » payée au-delà du montant — ${escapeHtml(classeName(x.classe))}</strong><small>Montant de la tranche : ${fmtFCFA(x.du)}. ${x.eleves.length} élève(s) ont versé plus : ${x.eleves.slice(0, 4).map(v => `${escapeHtml(eleveFullName(v.el))} (${fmtFCFA(v.paye)})`).join(', ')}${x.eleves.length > 4 ? '…' : ''}. Soit la grille a été modifiée après les versements, soit un versement est trop élevé : corrigez l’un ou l’autre.</small></div>
+          <span style="display:flex;gap:6px;flex-wrap:wrap;"><button type="button" class="btn secondary sm" onclick="openEcheanceForm('${(echeancesDeClasse(x.classe).find(e => e.label === x.label) || {}).id || ''}')">Voir la tranche</button>
+          <button type="button" class="btn secondary sm" onclick="ui.filters.comptaClasse='${x.classe}'; renderView('comptabilite'); setTimeout(() => document.querySelector('.panneau-echeancier + .panel')?.scrollIntoView({ behavior:'smooth', block:'start' }), 100)">Voir les versements</button></span></li>`
+      : x.type === 'commune'
       ? `<li><div><strong>Grille commune inutilisée</strong><small>${x.n} tranche(s) sans classe${x.sansDate ? `, dont ${x.sansDate} sans date` : ''}. Toutes les classes ont leur propre grille : cette grille commune ne sert à rien.</small></div>
           <button type="button" class="btn secondary sm" onclick="supprimerGrilleCommune()">Supprimer la grille commune</button></li>`
       : `<li><div><strong>« ${escapeHtml(x.label)} » au ${fmtDate(x.date)}</strong><small>${x.type === 'ordre' ? `Datée après « ${escapeHtml(x.suivante.label)} » (${fmtDate(x.suivante.dateEcheance)}) alors qu’elle vient avant dans l’ordre.` : `En dehors de l’année scolaire ${escapeHtml(DB.meta?.anneeScolaire || '')}.`} Concerne ${nomsClasses(x.classes)}.</small></div>
