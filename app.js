@@ -2880,6 +2880,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.11.15-1', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Remplissage assisté partout : bouton « ✨ Remplir automatiquement » dans tous les modules de la comptabilité (paiement, modification de paiement, cotisation, activité, article, vente, salaire, loyer, tranche, assistant de grille, frais par classe, dépense, FNE) et dans la pédagogie et l’école (devoir, séance, programme, publication, menu de la cantine, personne autorisée, santé, fiche de l’école). Photo, PDF, Word, Excel, image ou message vocal : seules les informations réellement présentes sont proposées, chacune avec son niveau de certitude ; rien n’est enregistré sans votre relecture.', 'Les enseignants disposent aussi du remplissage assisté (devoirs, séances, programmes, publications).' ],
+  } },
   { version: '2026.11.14-9', nouveautes: {
     commun: [],
     parent: [],
@@ -6113,7 +6119,8 @@ function renderVieEcole(){
   return `<div class="view active">
     ${estGestionnaireFil() ? `<div class="panel">
       <div class="panel-head"><div><h2>Publier un événement</h2><div class="sub">Visible uniquement par les parents et le personnel de l’école</div></div></div>
-      <form onsubmit="return publierEvenement(event)" class="form-sections">
+${boutonRemplissage('publication', "SCHEMA_PUBLICATION", 'formPublication')}
+      <form id="formPublication" onsubmit="return publierEvenement(event)" class="form-sections">
         <fieldset class="form-section"><legend><span class="fs-num">1</span>Titre et date</legend>
           <div class="form-grid">
             <div class="field"><label for="pubTitre">Titre</label><input id="pubTitre" name="titre" required minlength="2" maxlength="150" placeholder="Ex : Fête de fin d’année"></div>
@@ -6925,7 +6932,7 @@ function renderCantine(){
         <button class="btn secondary sm" onclick="ui.filters.cantineSemaine=${dec - 1}; renderView('cantine')">← Semaine précédente</button>
         ${dec !== 0 ? `<button class="btn secondary sm" onclick="ui.filters.cantineSemaine=0; renderView('cantine')">Cette semaine</button>` : ''}
         <button class="btn secondary sm" onclick="ui.filters.cantineSemaine=${dec + 1}; renderView('cantine')">Semaine suivante →</button></div></div>
-    ${menus === null ? '<div class="hint">Chargement…</div>' : `<form onsubmit="return enregistrerMenusCantine(event, '${cle}')">
+    ${menus === null ? '<div class="hint">Chargement…</div>' : `${gestion ? boutonRemplissage('cantine', "schemaCantine('formCantine')", 'formCantine') : ''}<form id="formCantine" onsubmit="return enregistrerMenusCantine(event, '${cle}')">
       <div class="table-wrap"><table>
         <thead><tr><th>Jour</th><th>Repas</th><th>Goûter</th></tr></thead>
         <tbody>${jours.map(iso => { const m = menus.find(x => x.date === iso) || {}; return `<tr>
@@ -7159,7 +7166,8 @@ function afficherSecuriteEleve(e){
     <p class="hint" style="margin-top:0;">Le portier voit leur nom et leur lien quand il signale l’arrivée d’un parent (jamais leur téléphone).</p>
     ${pers.length ? pers.map(p => `<div class="actu-carte" style="justify-content:space-between;margin-bottom:6px;"><div class="actu-corps"><div class="actu-titre">${escapeHtml(p.nom)}${p.lien ? ` <span class="hint">(${escapeHtml(p.lien)})</span>` : ''}</div>${p.telephone ? `<div class="actu-meta">${escapeHtml(p.telephone)}</div>` : ''}</div>
       <button class="icon-btn danger" title="Retirer" onclick="supprimerPersonneAutorisee('${p.id}', '${e.id}')">🗑️</button></div>`).join('') : '<div class="hint">Aucune personne indiquée pour l’instant.</div>'}
-    <form onsubmit="return ajouterPersonneAutorisee(event, '${e.id}')" style="margin-top:8px;">
+${boutonRemplissage('personne-autorisee', "SCHEMA_PERSONNE_AUTORISEE", 'formPersonneAutorisee')}
+    <form id="formPersonneAutorisee" onsubmit="return ajouterPersonneAutorisee(event, '${e.id}')" style="margin-top:8px;">
       <div class="form-grid">
         <div class="field"><label>Nom et prénom</label><input name="nom" required minlength="2" maxlength="120" placeholder="Ex : KOUASSI Marie"></div>
         <div class="field"><label>Lien avec l’enfant</label><input name="lien" maxlength="60" list="listeLiensAutorises" placeholder="Ex : Tante"><datalist id="listeLiensAutorises">${LIENS_AUTORISES.map(l => `<option value="${l}">`).join('')}</datalist></div>
@@ -7169,7 +7177,8 @@ function afficherSecuriteEleve(e){
     </form>
     <h4 style="margin:var(--sp-4) 0 6px;">⚕️ Santé</h4>
     <p class="hint" style="margin-top:0;">Visible seulement par vous, l’administration de l’école et l’enseignant de la classe.</p>
-    <form onsubmit="return enregistrerSanteEleve(event, '${e.id}')">
+${boutonRemplissage('sante', "SCHEMA_SANTE", 'formSante')}
+    <form id="formSante" onsubmit="return enregistrerSanteEleve(event, '${e.id}')">
       <div class="field"><label>Allergies</label><input name="allergies" maxlength="300" value="${escapeHtml(sante.allergies || '')}" placeholder="Ex : arachides, pénicilline — ou laissez vide"></div>
       <div class="field"><label>Autres informations utiles</label><textarea name="infos" maxlength="1000" rows="3" placeholder="Ex : asthme (ventoline dans le sac), lunettes, médecin traitant…">${escapeHtml(sante.infos || '')}</textarea></div>
       <div class="form-actions"><button class="btn" type="submit">Enregistrer la santé</button></div>
@@ -7322,7 +7331,8 @@ function renderDevoirs(){
   return `<div class="view active">
     <div class="panel">
       <div class="panel-head"><div><h2>📒 Noter un devoir</h2><div class="sub">Les parents de la classe le voient aussitôt dans leur application, avec une notification s’ils le souhaitent.</div></div></div>
-      <form onsubmit="return ajouterDevoir(event)">
+${boutonRemplissage('devoir', "SCHEMA_DEVOIR", 'formDevoir')}
+      <form id="formDevoir" onsubmit="return ajouterDevoir(event)">
         <div class="form-grid">
           <div class="field"><label>Classe</label>${classes.length === 1 ? `<input type="hidden" name="classeId" value="${classes[0].id}"><span class="classe-unique">${icone('school')} ${escapeHtml(classes[0].nom)}</span>` : `<select name="classeId" required>${classes.map(c => `<option value="${c.id}"${c.id === choix ? ' selected' : ''}>${escapeHtml(c.nom)}</option>`).join('')}</select>`}</div>
           <div class="field span2"><label>Matière <span class="hint" style="margin:0;font-weight:400;">— touchez-en une (ou écrivez)</span></label>
@@ -8146,6 +8156,95 @@ const SCHEMA_FNE = [
   {name:'fneNumero', label:'Numéro de la facture normalisée électronique (FNE) de la DGI', type:'text'},
   {name:'fneLien', label:'Lien de vérification de la facture (commence par https://)', type:'url'},
 ];
+// ---- Comptabilité (2026-11-15) : chaque module a son remplissage assisté
+const SCHEMA_COTISATION = [
+  {name:'montant', label:'Montant payé pour l’activité (francs CFA)', type:'number', format:'nombre entier'},
+  {name:'date', label:'Date du paiement', type:'date', format:'AAAA-MM-JJ'},
+  {name:'modePaiement', label:'Mode de paiement', type:'select'},
+];
+const SCHEMA_ACTIVITE = [
+  {name:'nom', label:'Nom de l’activité extra-scolaire (ex. cantine, transport, informatique)', type:'text'},
+  {name:'montantCotisation', label:'Montant de la cotisation par élève (francs CFA)', type:'number', format:'nombre entier'},
+  {name:'periode', label:'Périodicité de la cotisation', type:'select'},
+];
+const SCHEMA_GADGET = [
+  {name:'nom', label:'Nom de l’article (fourniture, tenue, livre…)', type:'text'},
+  {name:'prixUnitaire', label:'Prix de vente unitaire (francs CFA)', type:'number', format:'nombre entier'},
+  {name:'stock', label:'Quantité en stock', type:'number', format:'nombre entier'},
+];
+const SCHEMA_VENTE = [
+  {name:'gadgetId', label:'Article vendu', type:'select'},
+  {name:'quantite', label:'Quantité vendue', type:'number', format:'nombre entier'},
+  {name:'eleveId', label:'Élève acheteur (nom et prénoms)', type:'select'},
+  {name:'modePaiement', label:'Mode de paiement', type:'select'},
+];
+const SCHEMA_SALAIRE = [
+  {name:'montant', label:'Montant du salaire versé (francs CFA)', type:'number', format:'nombre entier'},
+  {name:'datePaiement', label:'Date du versement du salaire', type:'date', format:'AAAA-MM-JJ'},
+  {name:'modePaiement', label:'Mode de paiement', type:'select'},
+];
+const SCHEMA_LOYER = [ {name:'loyerMensuel', label:'Loyer mensuel des locaux (francs CFA)', type:'number', format:'nombre entier'} ];
+const SCHEMA_ECHEANCE = [
+  {name:'label', label:'Libellé de la tranche (ex. Frais d’inscription, 1er versement)', type:'text'},
+  {name:'montant', label:'Montant de la tranche (francs CFA)', type:'number', format:'nombre entier'},
+  {name:'dateEcheance', label:'Date limite de paiement de la tranche', type:'date', format:'AAAA-MM-JJ', futur:true},
+];
+const SCHEMA_GRILLE = [
+  {name:'inscription', label:'Frais d’inscription (francs CFA)', type:'number', format:'nombre entier'},
+  {name:'dateInscription', label:'Date limite de paiement de l’inscription', type:'date', format:'AAAA-MM-JJ', futur:true},
+  {name:'scolarite', label:'Scolarité annuelle hors inscription (francs CFA) : total de l’année', type:'number', format:'nombre entier'},
+  {name:'nb', label:'Nombre de versements de la scolarité', type:'select'},
+];
+// Frais annuel par classe : un champ par classe (document « tarifs de l'école »)
+function schemaFrais(){ return DB.classes.slice(0, 24).map(c => ({ name:'frais_' + c.id, label:`Frais annuel de scolarité de la classe ${c.nom} (francs CFA)`, type:'number', format:'nombre entier' })); }
+// Menu de la cantine : un champ par jour (photo du menu affiché ou document)
+function schemaCantine(formId){
+  const f = document.getElementById(formId); if(!f) return [];
+  const jour = iso => new Date(iso + 'T12:00:00').toLocaleDateString('fr-FR', { weekday:'long', day:'numeric', month:'long' });
+  return [...f.elements].filter(el => /^(repas|gouter)_\d{4}-\d{2}-\d{2}$/.test(el.name)).slice(0, 24)
+    .map(el => ({ name: el.name, label: `${el.name.startsWith('repas') ? 'Repas de midi' : 'Goûter'} du ${jour(el.name.slice(-10))}`, type:'text' }));
+}
+// ---- Pédagogie et école
+const SCHEMA_DEVOIR = [
+  {name:'classeId', label:'Classe', type:'select'},
+  {name:'matiere', label:'Matière', type:'text'},
+  {name:'pourLe', label:'Date pour laquelle le travail est à faire', type:'date', format:'AAAA-MM-JJ', futur:true},
+  {name:'travail', label:'Travail à faire à la maison (recopier fidèlement, sans résumer)', type:'text', long:true},
+];
+const SCHEMA_SEANCE = [
+  {name:'debut', label:'Heure de début de la séance', type:'time', format:'HH:MM'},
+  {name:'fin', label:'Heure de fin de la séance', type:'time', format:'HH:MM'},
+  {name:'matiere', label:'Matière ou activité', type:'text'},
+  {name:'enseignantId', label:'Enseignant', type:'select'},
+];
+const SCHEMA_PROGRAMME = [
+  {name:'classeId', label:'Classe', type:'select'},
+  {name:'matiere', label:'Matière', type:'select'},
+  {name:'trimestre', label:'Trimestre', type:'select'},
+  {name:'contenu', label:'Contenu du programme (leçons, chapitres — recopier fidèlement)', type:'text', long:true},
+];
+const SCHEMA_PUBLICATION = [
+  {name:'titre', label:'Titre de l’événement ou de la nouvelle', type:'text'},
+  {name:'dateEvenement', label:'Date de l’événement', type:'date', format:'AAAA-MM-JJ', futur:true},
+  {name:'texte', label:'Texte de la publication (recopier fidèlement)', type:'text', long:true},
+];
+const SCHEMA_PERSONNE_AUTORISEE = [
+  {name:'nom', label:'Nom et prénom de la personne autorisée', type:'text'},
+  {name:'lien', label:'Lien avec l’enfant (mère, père, tante, oncle, chauffeur…)', type:'text'},
+  {name:'telephone', label:'Téléphone', type:'tel', format:"10 chiffres, Côte d'Ivoire"},
+];
+const SCHEMA_SANTE = [
+  {name:'allergies', label:'Allergies de l’enfant (aliments, médicaments)', type:'text'},
+  {name:'infos', label:'Autres informations de santé utiles (maladie, traitement, médecin, lunettes…)', type:'text', long:true},
+];
+const SCHEMA_ECOLE = [
+  {name:'nomEcole', label:'Nom officiel de l’école', type:'text'},
+  {name:'adresse', label:'Adresse de l’école', type:'text'},
+  {name:'telephone', label:'Téléphone de l’école', type:'tel', format:"10 chiffres, Côte d'Ivoire"},
+  {name:'anneeScolaire', label:'Année scolaire', type:'text', format:'AAAA-AAAA, ex. 2026-2027'},
+  {name:'directeurNom', label:'Nom du directeur ou de la directrice', type:'text'},
+  {name:'fondateurNom', label:'Nom du fondateur ou de la fondatrice', type:'text'},
+];
 // Pour chaque liste déroulante du formulaire, on donne au moteur les valeurs permises :
 // parmi toutes les informations du document, il choisit celle qui convient.
 function schemaAvecOptions(schema, formId){
@@ -8153,14 +8252,14 @@ function schemaAvecOptions(schema, formId){
   return schema.map(c => {
     const el = form && form.elements[c.name];
     if(el && el.tagName === 'SELECT'){
-      const opts = [...el.options].map(o => o.textContent.trim()).filter(Boolean).slice(0, 25);
+      const opts = [...el.options].map(o => o.textContent.trim()).filter(Boolean).slice(0, 150);
       return { ...c, type: 'text', format: 'une valeur parmi : ' + opts.join(' | ') };
     }
     return c;
   });
 }
 function boutonRemplissage(formulaire, schemaNom, formId){
-  if(!['secretariat','direction','fondation'].includes(ui.role)) return '';
+  if(!(['secretariat','direction','fondation'].includes(ui.role) || (ui.role === 'enseignant' && session.enseignantId))) return '';
   return `<button type="button" class="btn secondary sm btn-sf" onclick="ouvrirRemplissageIntelligent('${formulaire}', schemaAvecOptions(${schemaNom}, '${formId}'), (r)=>appliquerRemplissage('${formId}', r))">✨ Remplir automatiquement <small>(photo, PDF, Word, Excel, vocal, texte)</small></button>`;
 }
 
@@ -8192,7 +8291,7 @@ function renderSmartFillModal(etat, message){
     </div>`;
   }
   return `
-    <div class="hint" style="margin-bottom:14px;">Quatre façons de remplir la fiche sans tout taper : une <strong>photo</strong> de document (acte de naissance, fiche de renseignements — recto et verso possibles), un <strong>message vocal</strong>, ou un <strong>texte collé</strong> (par exemple un message WhatsApp du parent). Vous relisez tout avant de l’appliquer.</div>
+    <div class="hint" style="margin-bottom:14px;">Quatre façons de remplir la fiche sans tout taper : une <strong>photo</strong> de document (facture, reçu, cahier, menu, acte de naissance… — recto et verso possibles), un <strong>message vocal</strong>, ou un <strong>texte collé</strong> (par exemple un message WhatsApp du parent). Vous relisez tout avant de l’appliquer.</div>
     ${message ? `<div class="pin-error" style="margin-bottom:12px;" role="alert">${escapeHtml(message)}</div>` : ''}
     <div class="sf-sources">
       <div class="sf-source">
@@ -8432,7 +8531,7 @@ function appliquerRemplissage(formId, resultat){
       if(!opt) continue;
       input.value = opt.value;
       input.dispatchEvent(new Event('change', { bubbles: true }));
-    } else input.value = valeur;
+    } else { input.value = valeur; input.dispatchEvent(new Event('input', { bubbles: true })); }
     input.classList.remove('champ-a-verifier');
     input.classList.add('champ-pre-rempli');
     input.addEventListener('input', () => input.classList.remove('champ-pre-rempli', 'champ-a-verifier'), { once: true });
@@ -10299,7 +10398,8 @@ function openSeanceForm(classeId, jour, id){
   const ens = DB.enseignants.filter(t => t.statut === 'Actif').sort((a, b) => Number((b.classesAssignees || []).includes(classeId)) - Number((a.classesAssignees || []).includes(classeId)) || (a.nom || '').localeCompare(b.nom || ''));
   const parDefaut = e ? e.enseignantId : titulaireClasse(classeId)?.id;
   openModal(`${e ? 'Séance' : 'Nouvelle séance'} — ${c.nom}, ${jour}`, `
-    <form onsubmit="return enregistrerSeance(event,'${classeId}','${jour}','${e ? e.id : ''}')">
+${boutonRemplissage('seance', "SCHEMA_SEANCE", 'formSeance')}
+    <form id="formSeance" onsubmit="return enregistrerSeance(event,'${classeId}','${jour}','${e ? e.id : ''}')">
       <div class="form-grid">
         <div class="field"><label>Début</label><input type="time" name="debut" required value="${e ? hhmmEdt(e.heureDebut) : ''}"></div>
         <div class="field"><label>Fin</label><input type="time" name="fin" required value="${e ? hhmmEdt(e.heureFin) : ''}"></div>
@@ -10533,6 +10633,7 @@ function openProgrammeForm(id){
   const ens = ui.role === 'enseignant' && session.enseignantId;
   const trimDefaut = p ? p.trimestre : trimestreCourant();
   openModal(p ? 'Modifier le programme' : (ens ? 'Ajouter une matière à mon programme' : 'Nouveau programme'), `
+    ${boutonRemplissage('programme', "SCHEMA_PROGRAMME", 'formProg')}
     <form id="formProg" onsubmit="return handleSaveProgramme(event)">
       <input type="hidden" name="id" value="${p?p.id:''}">
       <div class="form-grid">
@@ -12004,7 +12105,8 @@ function openModifierPaiementScolariteForm(paiementId){
   if(!p) return;
   openModal('Modifier le paiement', `
     <div class="section-note">✏️ La correction sera enregistrée dans le Journal d'audit, avec le montant avant/après.</div>
-    <form onsubmit="return handleModifierPaiementScolarite(event,'${paiementId}')">
+${boutonRemplissage('paiement', "SCHEMA_PAIEMENT", 'formPaiementModif')}
+    <form id="formPaiementModif" onsubmit="return handleModifierPaiementScolarite(event,'${paiementId}')">
       <div class="form-grid">
         <div class="field"><label>Montant (${DEVISE})</label><input type="number" name="montant" min="500" step="500" required value="${p.montant}"></div>
         <div class="field"><label>Échéance / Tranche</label><select name="tranche">${optionsEcheancesScolarite(p.tranche, eleveById(p.eleveId)?.classeId)}</select></div>
@@ -12046,7 +12148,8 @@ async function deletePaiementScolarite(id, eleveId){
 }
 function openFraisScolariteForm(){
   openModal('Configurer les frais de scolarité', `
-    <form onsubmit="return handleSaveFraisScolarite(event)">
+${boutonRemplissage('frais', "schemaFrais()", 'formFrais')}
+    <form id="formFrais" onsubmit="return handleSaveFraisScolarite(event)">
       <div class="form-grid">
         ${DB.classes.map(c=>`<div class="field"><label>${c.nom}</label><input type="number" name="frais_${c.id}" min="0" step="1000" value="${DB.fraisScolarite[c.id]||0}"></div>`).join('')}
       </div>
@@ -12129,7 +12232,8 @@ function renderComptaActivites(){
 function openActiviteForm(id){
   const a = id ? DB.activites.find(x=>x.id===id) : null;
   openModal(a ? "Modifier l'activité" : 'Nouvelle activité', `
-    <form onsubmit="return handleSaveActivite(event,'${id||''}')">
+${boutonRemplissage('activite', "SCHEMA_ACTIVITE", 'formActivite')}
+    <form id="formActivite" onsubmit="return handleSaveActivite(event,'${id||''}')">
       <div class="form-grid">
         <div class="field span2"><label>Nom de l'activité</label><input name="nom" required value="${a?escapeHtml(a.nom):''}"></div>
         <div class="field"><label>Cotisation (${DEVISE})</label><input type="number" name="montantCotisation" min="0" step="500" required value="${a?a.montantCotisation:10000}"></div>
@@ -12217,7 +12321,8 @@ function openPaiementCotisationForm(eleveId, activiteId){
   const solde = Math.max(0, act.montantCotisation-paye);
   openModal(`Paiement — ${act.nom}`, `
     <div class="section-note">${eleveFullName(e)} · Solde restant dû : <strong>${fmtFCFA(solde)}</strong></div>
-    <form onsubmit="return handleSavePaiementCotisation(event,'${eleveId}','${activiteId}')">
+${boutonRemplissage('cotisation', "SCHEMA_COTISATION", 'formCotisation')}
+    <form id="formCotisation" onsubmit="return handleSavePaiementCotisation(event,'${eleveId}','${activiteId}')">
       <div class="form-grid">
         <div class="field"><label>Montant (${DEVISE})</label><input type="number" name="montant" min="500" step="500" required value="${solde||act.montantCotisation}"></div>
         <div class="field"><label>Date</label><input type="date" name="date" value="${todayISO()}"></div>
@@ -12274,7 +12379,8 @@ function renderComptaVentes(){
       <div class="panel">
         <div class="panel-head"><div><h2>Nouvelle vente</h2></div></div>
         ${DB.gadgets.length===0 ? `<div class="hint">Ajoutez un article au catalogue pour enregistrer une vente.</div>` : `
-        <form onsubmit="return handleSaveVente(event)">
+${boutonRemplissage('vente', "SCHEMA_VENTE", 'formVente')}
+        <form id="formVente" onsubmit="return handleSaveVente(event)">
           <div class="form-grid single">
             <div class="field"><label>Article</label><select name="gadgetId" required>${DB.gadgets.map(g=>`<option value="${g.id}">${escapeHtml(g.nom)} — ${fmtFCFA(g.prixUnitaire)} (stock: ${g.stock})</option>`).join('')}</select></div>
             <div class="field"><label>Quantité</label><input type="number" name="quantite" min="1" value="1" required></div>
@@ -12296,7 +12402,8 @@ function renderComptaVentes(){
 function openGadgetForm(id){
   const g = id ? DB.gadgets.find(x=>x.id===id) : null;
   openModal(g ? "Modifier l'article" : 'Nouvel article', `
-    <form onsubmit="return handleSaveGadget(event,'${id||''}')">
+${boutonRemplissage('article', "SCHEMA_GADGET", 'formGadget')}
+    <form id="formGadget" onsubmit="return handleSaveGadget(event,'${id||''}')">
       <div class="form-grid">
         <div class="field span2"><label>Nom de l'article</label><input name="nom" required value="${g?escapeHtml(g.nom):''}"></div>
         <div class="field"><label>Prix unitaire (${DEVISE})</label><input type="number" name="prixUnitaire" min="0" step="100" required value="${g?g.prixUnitaire:1000}"></div>
@@ -12477,7 +12584,8 @@ function openModifierPaiementSalaireForm(paiementId){
   if(!p) return;
   openModal('Modifier le paiement de salaire', `
     <div class="section-note">✏️ La correction sera enregistrée dans le Journal d'audit, avec le montant avant/après.</div>
-    <form onsubmit="return handleModifierPaiementSalaire(event,'${paiementId}')">
+${boutonRemplissage('salaire', "SCHEMA_SALAIRE", 'formSalaireModif')}
+    <form id="formSalaireModif" onsubmit="return handleModifierPaiementSalaire(event,'${paiementId}')">
       <div class="form-grid">
         <div class="field"><label>Montant (${DEVISE})</label><input type="number" name="montant" min="0" step="1000" required value="${p.montant}"></div>
         <div class="field"><label>Date de paiement</label><input type="date" name="datePaiement" value="${p.datePaiement}"></div>
@@ -12629,7 +12737,8 @@ async function payerLoyerDuMois(){
 }
 function openLoyerConfigForm(){
   openModal('Configurer le loyer mensuel', `
-    <form onsubmit="return handleSaveLoyerConfig(event)">
+${boutonRemplissage('loyer', "SCHEMA_LOYER", 'formLoyer')}
+    <form id="formLoyer" onsubmit="return handleSaveLoyerConfig(event)">
       <div class="form-grid single"><div class="field"><label>Loyer mensuel (${DEVISE})</label><input type="number" name="loyerMensuel" min="0" step="1000" required value="${DB.meta.loyerMensuel}"></div></div>
       <div class="form-actions"><button type="button" class="btn secondary" onclick="closeModal()">Annuler</button><button type="submit" class="btn">Enregistrer</button></div>
     </form>`);
@@ -13448,7 +13557,8 @@ function renderParametres(){
 
     <div class="panel">
       <div class="panel-head"><div><h2>Identité de l'établissement</h2></div></div>
-      <form onsubmit="return handleSaveMeta(event)">
+${boutonRemplissage('ecole', "SCHEMA_ECOLE", 'formEcole')}
+      <form id="formEcole" onsubmit="return handleSaveMeta(event)">
         <div class="form-grid">
           <div class="field span2"><label>Nom de l'école</label><input name="nomEcole" required value="${escapeHtml(m.nomEcole)}"></div>
           <div class="field span2"><label>Adresse</label><input name="adresse" value="${escapeHtml(m.adresse)}"></div>
@@ -13928,7 +14038,8 @@ function lignesDatesAssistant(n){
 function ouvrirAssistantScolarite(){
   const lignesDates = lignesDatesAssistant;
   openModal('⚡ Inscription et scolarité par classe', `
-    <form onsubmit="return appliquerAssistantScolarite(event)">
+${boutonRemplissage('grille', "SCHEMA_GRILLE", 'formAssistant')}
+    <form id="formAssistant" onsubmit="return appliquerAssistantScolarite(event)">
       <div class="field"><label>Classe(s) concernée(s) — même montant</label>
         <div style="display:flex;flex-wrap:wrap;gap:10px;">${DB.classes.map(c => `<label style="display:flex;align-items:center;gap:6px;"><input type="checkbox" name="classe" value="${c.id}"> ${escapeHtml(c.nom)}</label>`).join('')}</div></div>
       <div class="form-grid">
@@ -13970,7 +14081,8 @@ function openEcheanceForm(id){
   const e = id ? (DB.echeancesScolarite||[]).find(x=>x.id===id) : null;
   const portee = e ? (e.classeId || '') : (ui.filters.grillePortee || '');
   openModal(e ? 'Modifier la tranche' : 'Nouvelle tranche', `
-    <form onsubmit="return handleSaveEcheance(event,'${id||''}')">
+${boutonRemplissage('echeance', "SCHEMA_ECHEANCE", 'formEcheance')}
+    <form id="formEcheance" onsubmit="return handleSaveEcheance(event,'${id||''}')">
       <div class="hint" style="margin-top:0;">Pour : <strong>${escapeHtml(portee ? classeName(portee) : 'grille commune')}</strong></div>
       <input type="hidden" name="classeId" value="${portee}">
       <div class="form-grid">

@@ -443,6 +443,21 @@ async function requete(accessToken, chemin, options = {}){
   const convAnon = await fetch(`${URL_BASE}/functions/v1/convertir-evaluation`, { method:'POST', headers:{ Authorization:`Bearer ${ANON_KEY}`, 'Content-Type':'application/json' }, body: JSON.stringify({ typeSource:'document', texte:'Exercice 1 : calculez.' }) });
   verifier('Sans connexion, aucune conversion de sujet', !convAnon.ok, `statut ${convAnon.status}`);
 
+  section('7quinvicies. Remplissage assisté (15/11/2026) — qui peut l’utiliser (sans aucune analyse ni écriture)');
+  {
+    const corpsCourt = JSON.stringify({ formulaire: 'test', schema: [{ name: 'x', label: 'x', type: 'text' }], typeSource: 'texte', texte: 'ab' });
+    const appel = async (jeton) => { const r = await fetch(`${URL_BASE}/functions/v1/smart-fill`, { method:'POST', headers:{ Authorization:`Bearer ${jeton}`, 'Content-Type':'application/json' }, body: corpsCourt }); let c = {}; try{ c = await r.json(); }catch(_e){} return { ok: r.ok, status: r.status, error: c.error || '' }; };
+    const ens = await appel(tokenEnseignant);
+    verifier('Un enseignant inscrit passe le contrôle d’accès (refus seulement pour texte trop court)', !ens.ok && /5 à 4000/.test(ens.error), `statut ${ens.status} ${ens.error}`);
+    const sec = await appel(tokenSecretariat);
+    verifier('Le secrétariat passe le contrôle d’accès', !sec.ok && /5 à 4000/.test(sec.error), `statut ${sec.status} ${sec.error}`);
+    const tokenParent2 = (await connecter(ENV.PARENT_EMAIL, ENV.PARENT_PASSWORD)).accessToken;
+    const par = await appel(tokenParent2);
+    verifier('Un parent ne peut pas utiliser le remplissage assisté', !par.ok && /Réservé/i.test(par.error), `statut ${par.status} ${par.error}`);
+    const anon = await appel(ANON_KEY);
+    verifier('Sans connexion : refusé', !anon.ok, `statut ${anon.status}`);
+  }
+
   section('8. Visiteur non connecté — ne lit que les affichages publics prévus');
   for(const table of ['eleves','enseignants_lecture','profiles','paiements_scolarite','messages','parents_eleves','presences_eleves','eleves_portier_lecture','objets_perdus','push_abonnements','absences_signalees','evenements_agenda','devoirs','personnes_autorisees','sante_eleves','reponses_agenda','corrections_fiches','menus_cantine','preinscriptions','demandes_documents','evaluations','coefficients_matieres','bulletins_resultats','sujets_evaluation']){
     const r = await requete(ANON_KEY, `/rest/v1/${table}?select=*&limit=1`);

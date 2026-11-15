@@ -159,7 +159,7 @@ for(const theme of THEMES){
       // « ecran:onglet » : ouvre un sous-onglet (ex. comptabilite:scolarite)
       const [ecranOnglet, extra] = ecranBrut.split('+');
       const [ecran, onglet] = ecranOnglet.split(':');
-      await page.evaluate(([v, o, r]) => { closeModal && closeModal();
+      await page.evaluate(([v, o, r]) => { closeModal && closeModal(); if(typeof closeSmartFillModal === 'function') closeSmartFillModal();
         if(r === 'parent'){ navParent(v); window.scrollTo(0, 0); return; }
         if(r === 'portier'){ ui.filters.portierClasse = null; refreshPortierDashboard(); window.scrollTo(0, 0); return; }
         if(o){ ui.filters.comptaTab = o; ui.filters.cahierOnglet = o; ui.filters.presEnsOnglet = o; } go(v); window.scrollTo(0, 0); }, [ecran, onglet, role]);
@@ -239,9 +239,26 @@ for(const theme of THEMES){
         tachenotes: () => { const f = enseignantById(session.enseignantId); const c = f.classesAssignees[0]; DB.sujets = [{ id: 's1', enseignantId: f.id, classeId: c, matiere: 'Langage', type: 'Devoir', titre: 'Les fractions', statut: 'validee', valideLe: new Date().toISOString(), datePrevue: todayISO(), contenuHtml: '<p>x</p>' }, { id: 's2', enseignantId: f.id, classeId: c, matiere: 'Langage', type: 'Composition', titre: 'Composition du 1er trimestre', statut: 'validee', valideLe: new Date().toISOString(), datePrevue: isoDansJours(-2), contenuHtml: '<p>x</p>' }]; DB.evaluations = []; DB.notes = []; DB.devoirs = DB.devoirs || []; renderView('dashboard'); const t = [...document.querySelectorAll('.tache')].find(x => /Saisir les notes/.test(x.textContent)); if(t) t.scrollIntoView({ block: 'start' }); window.scrollBy(0, -60); },
         doublons: () => { const e = DB.eleves[0]; DB.eleves.push({ ...e, id: 'dbl-1', matricule: 'EL-0999' }); try{ localStorage.removeItem('ecomaz_doublons_ok'); }catch(_e){} renderView('eleves'); window.scrollTo(0, 0); document.querySelector('.panneau-doublons')?.scrollIntoView({ block: 'start' }); window.scrollBy(0, -70); },
         echeancier: () => { const an = (DB.meta.anneeScolaire || '2026-2027').split('-'); DB.echeancesScolarite = DB.classes.flatMap(c => [{ id: 'e0' + c.id, classeId: c.id, label: 'Frais d’inscription', montant: 80000, dateEcheance: an[1] + '-03-10', ordre: 0 }, { id: 'e1' + c.id, classeId: c.id, label: '1er versement', montant: 100000, dateEcheance: an[0] + '-10-05', ordre: 1 }, { id: 'e2' + c.id, classeId: c.id, label: '2e versement', montant: 100000, dateEcheance: an[1] + '-09-05', ordre: 2 }]).concat([{ id: 'g1', classeId: null, label: '1er Versement', montant: 100000, dateEcheance: null, ordre: 1 }]); ui.filters.comptaTab = 'scolarite'; renderView('comptabilite'); window.scrollTo(0, 0); },
+        sfouvrir: () => { const b = document.querySelector('.modal-backdrop.open .btn-sf, #viewContainer .btn-sf'); if(!b){ console.error('SF AUCUN BOUTON'); return; } b.click(); const sc = window.__smartFillSchema || []; console.error('SF ' + window.__smartFillFormulaire + ' ' + sc.length + ' champs : ' + sc.map(c => c.name + (c.format && c.format.startsWith('une valeur') ? '[' + (c.format.split('|').length) + ' options]' : '')).join(', ')); },
+        sfvente: () => { if(!DB.gadgets.length) DB.gadgets.push({ id: 'g-essai', nom: 'Cahier 200 pages', prixUnitaire: 500, stock: 40 }); ui.filters.comptaTab = 'ventes'; renderView('comptabilite'); GESTES_EXTRA.sfouvrir(); },
+        sfventevue: () => { if(!DB.gadgets.length) DB.gadgets.push({ id: 'g-essai', nom: 'Cahier 200 pages', prixUnitaire: 500, stock: 40 }); ui.filters.comptaTab = 'ventes'; renderView('comptabilite'); document.querySelector('#formVente')?.scrollIntoView({ block: 'center' }); },
+        sfdevoirvue: () => { go('devoirs'); document.querySelector('#formDevoir')?.scrollIntoView({ block: 'start' }); window.scrollBy(0, -70); },
+        sfcantinevue: async () => { go('cantine'); await new Promise(r => setTimeout(r, 900)); document.querySelector('.btn-sf')?.scrollIntoView({ block: 'center' }); },
+        sfcantine: async () => { go('cantine'); await new Promise(r => setTimeout(r, 900)); GESTES_EXTRA.sfouvrir(); },
+        sfdevoir: () => { go('devoirs'); GESTES_EXTRA.sfouvrir(); },
+        sfecheance: () => { openEcheanceForm(); GESTES_EXTRA.sfouvrir(); },
+        sfassistant: () => { ouvrirAssistantScolarite(); GESTES_EXTRA.sfouvrir(); },
+        sfpersonne: () => { afficherSecuriteEleve(DB.eleves[0]); GESTES_EXTRA.sfouvrir(); },
+        sfecole: () => { go('parametres'); GESTES_EXTRA.sfouvrir(); },
+        sfprog: () => { openProgrammeForm(); GESTES_EXTRA.sfouvrir(); },
+        sfseance: () => { openSeanceForm(DB.classes[0].id, 'Lundi'); GESTES_EXTRA.sfouvrir(); },
+        sfpaiement: () => { const pid = (DB.paiementsScolarite || [])[0]?.id; if(pid) openModifierPaiementScolariteForm(pid); else openPaiementScolariteForm(DB.eleves[0].id, ''); GESTES_EXTRA.sfouvrir(); },
+        sfgadget: () => { openGadgetForm(); GESTES_EXTRA.sfouvrir(); },
+        sfpublication: () => { go('vie-ecole'); GESTES_EXTRA.sfouvrir(); },
+        sfboutons: () => { ui.filters.comptaTab = 'ventes'; renderView('comptabilite'); document.querySelector('#viewContainer .btn-sf')?.scrollIntoView({ block: 'center' }); },
         relies: () => { document.querySelector('.seg[data-etat="relie"]').click(); },
       };
-      if(GESTES[extra]){ await page.evaluate(`window.GESTES_EXTRA = { edtfictif: ${GESTES.edtfictif.toString()} }`); await page.evaluate(GESTES[extra]); await page.waitForTimeout(900); }
+      if(GESTES[extra]){ await page.evaluate(`window.GESTES_EXTRA = { edtfictif: ${GESTES.edtfictif.toString()}, sfouvrir: ${GESTES.sfouvrir.toString()} }`); await page.evaluate(GESTES[extra]); await page.waitForTimeout(900); }
       if(extra === 'centre') await page.waitForTimeout(400);
       const mesure = await page.evaluate(() => { const t = document.querySelector('.topbar'); return t ? Math.round(t.getBoundingClientRect().height) : 0; });
       console.log(`${ecranBrut} ${largeur}px ${theme} : en-tête ${mesure}px`);

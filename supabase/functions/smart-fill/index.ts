@@ -32,7 +32,7 @@ const CORS_HEADERS = {
 };
 const json = (corps: unknown, status = 200) => new Response(JSON.stringify(corps), { status, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } });
 
-interface ChampSchema { name: string; label: string; type: string; format?: string }
+interface ChampSchema { name: string; label: string; type: string; format?: string; long?: boolean; futur?: boolean }
 type Resultat = Record<string, { valeur: string | null; confiance: string }>;
 
 const MODELES_VISION = ['meta-llama/llama-4-scout-17b-16e-instruct', 'meta-llama/llama-4-maverick-17b-128e-instruct'];
@@ -46,7 +46,10 @@ const CONSIGNE =
   "Téléphone : les 10 chiffres ivoiriens, sans indicatif. " +
   "Le document peut contenir beaucoup d'autres informations : ne retiens QUE celles qui correspondent exactement à chaque champ demandé (ex. le montant payé, pas un total ou un solde ; la date du paiement, pas une date d'impression). " +
   "Pour un champ avec une liste de valeurs permises, réponds par EXACTEMENT l'une d'elles (ou null). " +
-  "Montants : nombre entier en francs CFA, sans espace ni devise (ex. 25000).";
+  "Montants : nombre entier en francs CFA, sans espace ni devise (ex. 25000) ; s'il y a plusieurs montants, prends celui que le champ décrit (ex. le total payé, pas un sous-total). " +
+  "Heures au format HH:MM (24 h). Quantités : nombre entier. " +
+  "Pour un champ de texte long (travail à faire, contenu, menu, texte), recopie FIDÈLEMENT ce qui est écrit, sans résumer ni reformuler. " +
+  "Un champ par jour (menus) : mets dans chaque champ seulement ce qui concerne ce jour-là.";
 
 function descriptionChamps(schema: ChampSchema[]) {
   return schema.map((c) => `- "${c.name}" : ${c.label}${c.format ? ' (format : ' + c.format + ')' : ''}`).join('\n');
@@ -54,7 +57,14 @@ function descriptionChamps(schema: ChampSchema[]) {
 
 // ---------- Normalisation (filet de sécurité côté serveur) ----------
 const MOIS: Record<string, number> = { janvier: 1, fevrier: 2, février: 2, mars: 3, avril: 4, mai: 5, juin: 6, juillet: 7, aout: 8, août: 8, septembre: 9, octobre: 10, novembre: 11, decembre: 12, décembre: 12 };
-function normaliserDate(v: string): string | null {
+function normaliserHeure(v: string): string | null {
+  const r = v.trim().toLowerCase().match(/^(\d{1,2})\s*[:h]\s*(\d{2})?$/);
+  if (!r) return null;
+  const h = +r[1], m = +(r[2] || '0');
+  if (h > 23 || m > 59) return null;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+function normaliserDate(v: string, futur = false): string | null {
   const s = v.trim().toLowerCase();
   let a = 0, m = 0, j = 0;
   let r = s.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/);
@@ -64,7 +74,8 @@ function normaliserDate(v: string): string | null {
   else return null;
   const d = new Date(Date.UTC(a, m - 1, j));
   if (!m || d.getUTCFullYear() !== a || d.getUTCMonth() !== m - 1 || d.getUTCDate() !== j) return null;
-  if (a < 1940 || d.getTime() > Date.now()) return null;
+  // Date passée seulement (naissance, paiement), sauf champ « futur » (échéance, devoir, événement) : jusqu'à 3 ans
+  if (a < 1940 || d.getTime() > Date.now() + (futur ? 3 * 366 : 1) * 86400000) return null;
   return `${a}-${String(m).padStart(2, '0')}-${String(j).padStart(2, '0')}`;
 }
 function normaliserTelephoneCI(tel: string): string | null {
@@ -81,10 +92,11 @@ function normaliser(schema: ChampSchema[], brut: Resultat): Resultat {
   const res: Resultat = {};
   for (const c of schema) {
     const r = brut?.[c.name] || { valeur: null, confiance: 'faible' };
-    let valeur: string | null = r.valeur == null ? null : String(r.valeur).trim().slice(0, 200) || null;
+    let valeur: string | null = r.valeur == null ? null : String(r.valeur).trim().slice(0, c.long ? 4000 : 200) || null;
     let confiance = ['élevé', 'moyen', 'faible'].includes(r.confiance) ? r.confiance : 'moyen';
     if (valeur) {
-      if (c.type === 'date') valeur = normaliserDate(valeur);
+      if (c.type === 'date') valeur = normaliserDate(valeur, !!c.futur);
+      else if (c.type === 'time') valeur = normaliserHeure(valeur);
       else if (c.type === 'tel') valeur = normaliserTelephoneCI(valeur);
       else if (c.name === 'sexe') valeur = normaliserSexe(valeur);
       else if (c.name === 'nom') valeur = valeur.toUpperCase();
@@ -134,7 +146,7 @@ async function groqChat(modelesPreferes: string[], messages: unknown[], vision =
     const resp = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: { Authorization: `Bearer ${cle}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: modele, temperature: 0, max_tokens: 1200, response_format: { type: 'json_object' }, messages }),
+      body: JSON.stringify({ model: modele, temperature: 0, max_tokens: 3000, response_format: { type: 'json_object' }, messages }),
     });
     if (resp.ok) {
       const data = await resp.json();
@@ -172,7 +184,7 @@ async function claudeSecours(schema: ChampSchema[], contenu: unknown[]): Promise
   const resp = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: { 'x-api-key': cle, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-    body: JSON.stringify({ model: 'claude-sonnet-5-5', max_tokens: 1200, system: CONSIGNE + '\nChamps :\n' + descriptionChamps(schema), messages: [{ role: 'user', content: contenu }] }),
+    body: JSON.stringify({ model: 'claude-sonnet-5-5', max_tokens: 3000, system: CONSIGNE + '\nChamps :\n' + descriptionChamps(schema), messages: [{ role: 'user', content: contenu }] }),
   });
   if (!resp.ok) throw new Error(`secours ${resp.status}`);
   const data = await resp.json();
@@ -191,11 +203,12 @@ Deno.serve(async (req) => {
     const appelant = createClient(url, Deno.env.get('SUPABASE_ANON_KEY')!, { global: { headers: { Authorization: authHeader } } });
     const { data: { user } } = await appelant.auth.getUser();
     if (!user) throw new Error('Non authentifié');
-    const { data: profil } = await appelant.from('profiles').select('role, ecole_id').eq('id', user.id).single();
-    if (!profil?.ecole_id || !['secretariat', 'direction', 'fondation'].includes(profil.role)) throw new Error('Réservé au personnel administratif');
+    const { data: profil } = await appelant.from('profiles').select('role, ecole_id, enseignant_id').eq('id', user.id).single();
+    const autorise = profil?.ecole_id && (['secretariat', 'direction', 'fondation'].includes(profil.role) || (profil.role === 'enseignant' && profil.enseignant_id));
+    if (!autorise) throw new Error('Réservé au personnel de l’école');
 
     const { formulaire, schema, typeSource, fichierBase64, fichiersBase64, mimeType, texte } = await req.json();
-    if (!formulaire || !Array.isArray(schema) || !schema.length || schema.length > 20) throw new Error('Paramètres manquants');
+    if (!formulaire || !Array.isArray(schema) || !schema.length || schema.length > 24) throw new Error('Paramètres manquants');
     if (!['photo', 'audio', 'texte', 'document'].includes(typeSource)) throw new Error('Type de source invalide');
     const photos: string[] = (Array.isArray(fichiersBase64) ? fichiersBase64 : fichierBase64 ? [fichierBase64] : []).slice(0, 2);
     if (typeSource === 'photo' && (!photos.length || photos.some((p) => typeof p !== 'string' || p.length > 5_500_000))) throw new Error('Photo absente ou trop lourde (4 Mo maximum).');
