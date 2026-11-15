@@ -2880,6 +2880,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.11.15-2', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'En tête de chaque fiche à remplir (élève, enseignant, personnel, toute la comptabilité, devoirs, programme, cantine, publication, école…), deux grands boutons : « Remplissage intelligent » (photo, fichier, vocal) ou « Remplissage manuel ». Vous choisissez à chaque fois.' ],
+  } },
   { version: '2026.11.15-1', nouveautes: {
     commun: [],
     parent: [],
@@ -8260,7 +8266,21 @@ function schemaAvecOptions(schema, formId){
 }
 function boutonRemplissage(formulaire, schemaNom, formId){
   if(!(['secretariat','direction','fondation'].includes(ui.role) || (ui.role === 'enseignant' && session.enseignantId))) return '';
-  return `<button type="button" class="btn secondary sm btn-sf" onclick="ouvrirRemplissageIntelligent('${formulaire}', schemaAvecOptions(${schemaNom}, '${formId}'), (r)=>appliquerRemplissage('${formId}', r))">✨ Remplir automatiquement <small>(photo, PDF, Word, Excel, vocal, texte)</small></button>`;
+  return `<div class="choix-remplissage" role="group" aria-label="Comment remplir cette fiche" onclick="if(this.classList.contains('cr-replie')) this.classList.remove('cr-replie')">
+    <span class="cr-question">Comment voulez-vous remplir ?</span>
+    <div class="cr-modes">
+      <button type="button" class="cr-mode cr-intelligent btn-sf" onclick="ouvrirRemplissageIntelligent('${formulaire}', schemaAvecOptions(${schemaNom}, '${formId}'), (r)=>appliquerRemplissage('${formId}', r))">
+        <span class="cr-ic">${icone('sparkles') || '✨'}</span><strong>Remplissage intelligent</strong><small>Photo, PDF, Word, Excel, image ou message vocal : l’appli lit le document et pré-remplit. Vous relisez.</small></button>
+      <button type="button" class="cr-mode cr-manuel" onclick="choisirRemplissageManuel(this, '${formId}')">
+        <span class="cr-ic">${icone('pencil') || '✍️'}</span><strong>Remplissage manuel</strong><small>Vous tapez vous-même chaque champ.</small></button>
+    </div>
+  </div>`;
+}
+function choisirRemplissageManuel(bouton, formId){
+  const bloc = bouton.closest('.choix-remplissage'); if(bloc) bloc.classList.add('cr-replie');
+  const form = document.getElementById(formId); if(!form) return;
+  const champ = [...form.elements].find(el => !el.disabled && el.type !== 'hidden' && el.offsetParent !== null && ['INPUT', 'SELECT', 'TEXTAREA'].includes(el.tagName));
+  if(champ){ champ.focus(); try{ champ.scrollIntoView({ block: 'center', behavior: 'smooth' }); }catch(_e){} }
 }
 
 let smartFillRecorder = null;
@@ -8547,7 +8567,7 @@ function openEleveForm(id){
   openModal(e ? "Modifier l'élève" : 'Nouvel élève', `
     <form id="formEleve" onsubmit="return handleSaveEleve(event)">
       <input type="hidden" name="id" value="${e?e.id:''}">
-      <button type="button" class="btn secondary sm" style="margin-bottom:14px;" onclick="ouvrirRemplissageIntelligent('eleve', SCHEMA_ELEVE, (r)=>appliquerRemplissage('formEleve', r))">✨ Remplir automatiquement</button>
+      ${boutonRemplissage('eleve', 'SCHEMA_ELEVE', 'formEleve')}
       ${e ? `<button type="button" class="btn secondary sm" style="margin-bottom:14px;" onclick="ouvrirSecuriteEleve('${e.id}')">🛡️ Sécurité & santé</button>
       <button type="button" class="btn secondary sm" style="margin-bottom:14px;" onclick="ouvrirCertificatScolarite('${e.id}')">📄 Certificat de scolarité</button>` : ''}
       <div class="form-grid">
@@ -9634,7 +9654,7 @@ function openEnseignantForm(id){
     <div class="hint" style="margin-top:0;">Si vous cochez des <strong>matières</strong>, l’enseignant ne verra et ne saisira que ces matières dans ses classes. Sans matière cochée : toutes les matières de ses classes.</div>
     <form id="formEns" onsubmit="return handleSaveEnseignant(event)">
       <input type="hidden" name="id" value="${t?t.id:''}">
-      <button type="button" class="btn secondary sm" style="margin-bottom:14px;" onclick="ouvrirRemplissageIntelligent('enseignant', SCHEMA_ENSEIGNANT, (r)=>appliquerRemplissage('formEns', r))">✨ Remplir automatiquement</button>
+      ${boutonRemplissage('enseignant', 'SCHEMA_ENSEIGNANT', 'formEns')}
       <div class="form-grid">
         <div class="field"><label>Prénom</label><input name="prenom" required value="${t?escapeHtml(t.prenom):''}"></div>
         <div class="field"><label>Nom</label><input name="nom" required value="${t?escapeHtml(t.nom):''}"></div>
@@ -12508,7 +12528,7 @@ function openPersonnelForm(id){
   const p = id ? DB.personnelAutre.find(x=>x.id===id) : null;
   openModal(p ? 'Modifier le personnel' : 'Nouveau membre du personnel', `
     <form id="formPersonnel" onsubmit="return handleSavePersonnel(event,'${id||''}')">
-      <button type="button" class="btn secondary sm" style="margin-bottom:14px;" onclick="ouvrirRemplissageIntelligent('personnel', SCHEMA_PERSONNEL, (r)=>appliquerRemplissage('formPersonnel', r))">✨ Remplir automatiquement</button>
+      ${boutonRemplissage('personnel', 'SCHEMA_PERSONNEL', 'formPersonnel')}
       <div class="form-grid">
         <div class="field"><label>Prénom</label><input name="prenom" required value="${p?escapeHtml(p.prenom):''}"></div>
         <div class="field"><label>Nom</label><input name="nom" required value="${p?escapeHtml(p.nom):''}"></div>

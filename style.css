@@ -2326,3 +2326,23 @@ body.theme-portier .gate-classe strong{ overflow-wrap:anywhere; }
 .ech-anomalies li{ display:flex; flex-wrap:wrap; gap:8px 12px; align-items:center; justify-content:space-between; padding:10px; border:1px solid var(--border); border-radius:12px; }
 .ech-anomalies li > div{ display:flex; flex-direction:column; gap:3px; min-width:0; flex:1 1 240px; }
 .ech-anomalies small{ color:var(--text-dim); font-size:var(--fs-xs); overflow-wrap:anywhere; }
+
+/* ===== Choix du mode de remplissage : intelligent ou manuel (2026-11-15) ===== */
+.choix-remplissage{ margin:0 0 14px; padding:10px; border-radius:14px; background:var(--surface-2); border:1px solid var(--border); }
+.cr-question{ display:block; font-weight:800; font-size:var(--fs-xs); text-transform:uppercase; letter-spacing:.03em; color:var(--text-dim); margin:0 0 8px; }
+.cr-modes{ display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:8px; }
+.cr-mode{ display:flex; flex-direction:column; align-items:flex-start; gap:4px; text-align:left; padding:10px 12px; min-height:44px; border-radius:12px; border:2px solid var(--border); background:var(--surface); color:var(--text); font:inherit; cursor:pointer; }
+.cr-mode strong{ font-size:var(--fs-sm, 1rem); line-height:1.25; }
+.cr-mode small{ color:var(--text-dim); font-size:var(--fs-xs); line-height:1.35; }
+.cr-mode .cr-ic{ display:inline-flex; width:28px; height:28px; align-items:center; justify-content:center; border-radius:8px; background:var(--surface-2); }
+.cr-mode .cr-ic svg{ width:18px; height:18px; }
+.cr-intelligent{ border-color:color-mix(in srgb, var(--primary) 55%, var(--border)); }
+.cr-intelligent .cr-ic{ background:color-mix(in srgb, var(--primary) 14%, transparent); color:var(--primary); }
+.cr-mode:hover, .cr-mode:focus-visible{ border-color:var(--primary); outline:none; }
+.cr-mode:focus-visible{ box-shadow:0 0 0 3px color-mix(in srgb, var(--primary) 30%, transparent); }
+.choix-remplissage.cr-replie .cr-modes{ display:none; }
+.choix-remplissage.cr-replie{ padding:6px 10px; }
+.choix-remplissage.cr-replie .cr-question{ margin:0; }
+.choix-remplissage.cr-replie .cr-question::after{ content:" — manuel (touchez pour changer)"; text-transform:none; font-weight:600; }
+.choix-remplissage.cr-replie{ cursor:pointer; }
+@media (max-width:420px){ .cr-modes{ grid-template-columns:1fr; } }

@@ -256,6 +256,9 @@ for(const theme of THEMES){
         sfgadget: () => { openGadgetForm(); GESTES_EXTRA.sfouvrir(); },
         sfpublication: () => { go('vie-ecole'); GESTES_EXTRA.sfouvrir(); },
         sfboutons: () => { ui.filters.comptaTab = 'ventes'; renderView('comptabilite'); document.querySelector('#viewContainer .btn-sf')?.scrollIntoView({ block: 'center' }); },
+        modeeleve: () => { openEleveForm(); },
+        modedepense: () => { openDepenseForm(); },
+        modemanuel: () => { openDepenseForm(); document.querySelector('.cr-manuel').click(); },
         relies: () => { document.querySelector('.seg[data-etat="relie"]').click(); },
       };
       if(GESTES[extra]){ await page.evaluate(`window.GESTES_EXTRA = { edtfictif: ${GESTES.edtfictif.toString()}, sfouvrir: ${GESTES.sfouvrir.toString()} }`); await page.evaluate(GESTES[extra]); await page.waitForTimeout(900); }
