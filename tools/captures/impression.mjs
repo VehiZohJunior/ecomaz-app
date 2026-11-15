@@ -19,6 +19,7 @@ const installer = src.slice(src.indexOf('function installerDemo'), src.indexOf('
 const DOCS = [
   ['bulletins', "imprimerBulletinsClasse(DB.classes[0].id, 'Trimestre 1')"],
   ['recu', "(() => { const p = DB.paiementsScolarite[0], e = eleveById(p.eleveId); openRecu({type:'entree', refId:p.id, montant:p.montant, date:p.date, modePaiement:p.modePaiement, objet:'Scolarité — ' + p.tranche, personne: eleveFullName(e), sousInfo: classeName(e.classeId) + ' · Matricule ' + e.matricule}); })()"],
+  ['recus-lot', "(() => { const m = thisMonthISO(); DB.recus = DB.eleves.slice(0, 5).map((e, k) => ({ id: 'r' + k, numero: 'R2026-0000' + (k + 1), enregistrementId: 'p' + k, eleveId: e.id, montant: 50000 + k * 10000, objet: 'Scolarité — 1er versement', modePaiement: 'Espèces', datePaiement: m + '-15', emisLe: m + '-15T10:00:00Z', enLigne: false })); ui.filters.soucheClasse = ''; imprimerRecusGroupes(m); })()"],
   ['certificat', "ouvrirCertificatScolarite(DB.eleves[0].id)"],
   ['coupons', "ouvrirCouponsInvitation(false)"],
   ['coupons-perso', "(async () => { window.__codesInvitation = {}; famillesARelancer(null).forEach((f, i) => { if(f.tel) window.__codesInvitation[f.tel] = 'CODEESSAI' + i + 'abcdef'; }); await imprimerInvitationsPapier(''); })()"],
@@ -30,7 +31,7 @@ const DOCS = [
   ['guide-enseignant', "imprimerGuideEnseignant()"],
 ];
 const b = await chromium.launch({ channel: 'msedge', headless: true });
-for(const [doc, geste] of DOCS){
+for(const [doc, geste] of DOCS.filter(([d]) => !process.env.SEUL || process.env.SEUL.split(',').includes(d))){
   const p = await b.newPage();
   // Bibliothèques du CDN via curl (Edge sans interface reste parfois bloqué sur cdn.jsdelivr.net depuis ce PC)
   await p.route('https://cdn.jsdelivr.net/**', async route => { try{ const u = route.request().url(); if(!CACHE_CDN.has(u)) CACHE_CDN.set(u, execFileSync('curl', ['-sL', '-4', '-m', '30', u])); await route.fulfill({ status: 200, body: CACHE_CDN.get(u), headers: { 'content-type': 'application/javascript; charset=utf-8' } }); }catch(_e){ await route.continue(); } });

@@ -2880,6 +2880,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.11.15-8', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Souches des reçus : filtre par classe et bouton « Imprimer les reçus » — tous les reçus du mois (ou d’une classe) d’un coup, 2 par page A4, rangés par élève, à remettre aux familles.' ],
+  } },
   { version: '2026.11.15-7', nouveautes: {
     commun: [],
     parent: [],
@@ -11104,14 +11110,19 @@ function ouvrirRecuParent(paiementId){
 // École : souches des reçus du mois (numéro, élève, objet, mode, montant) — consultation et réimpression
 function ouvrirSouchesRecus(mois){
   mois = mois || thisMonthISO();
-  const liste = (DB.recus || []).filter(x => String(x.datePaiement || x.emisLe || '').slice(0, 7) === mois).sort((a, b) => String(b.numero).localeCompare(String(a.numero)));
+  const classeF = ui.filters.soucheClasse || '';
+  const duMois = (DB.recus || []).filter(x => String(x.datePaiement || x.emisLe || '').slice(0, 7) === mois);
+  const liste = duMois.filter(x => !classeF || eleveById(x.eleveId)?.classeId === classeF).sort((a, b) => String(b.numero).localeCompare(String(a.numero)));
+  const classesDuMois = [...new Set(duMois.map(x => eleveById(x.eleveId)?.classeId).filter(Boolean))].map(id => ({ id, nom: classeName(id) })).sort((a, b) => a.nom.localeCompare(b.nom));
   const total = liste.reduce((t, x) => t + Number(x.montant || 0), 0);
   const decale = n => { const [a, m] = mois.split('-').map(Number); const d = new Date(a, m - 1 + n, 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; };
   const nomMois = (t => t.charAt(0).toUpperCase() + t.slice(1))(new Date(mois + '-15T12:00:00').toLocaleDateString('fr-FR', { month:'long', year:'numeric' }));
   openModal(`Souches des reçus — ${nomMois}`, `
     <div class="form-actions no-print" style="margin-top:0;justify-content:space-between;">
       <span style="display:flex;gap:6px;"><button type="button" class="btn secondary sm" onclick="ouvrirSouchesRecus('${decale(-1)}')">‹ Mois précédent</button>${mois < thisMonthISO() ? `<button type="button" class="btn secondary sm" onclick="ouvrirSouchesRecus('${decale(1)}')">Mois suivant ›</button>` : ''}</span>
-      <button type="button" class="btn sm" onclick="window.print()">${icone('printer')} Imprimer</button></div>
+      <span style="display:flex;gap:6px;flex-wrap:wrap;">${classesDuMois.length > 1 ? `<select class="puce-select petit" aria-label="Classe" onchange="ui.filters.soucheClasse=this.value; ouvrirSouchesRecus('${mois}')"><option value="">Toutes les classes</option>${classesDuMois.map(c => `<option value="${c.id}" ${classeF === c.id ? 'selected' : ''}>${escapeHtml(c.nom)}</option>`).join('')}</select>` : ''}
+      <button type="button" class="btn secondary sm" onclick="window.print()">${icone('printer')} Imprimer la liste</button>
+      ${liste.length ? `<button type="button" class="btn sm" onclick="imprimerRecusGroupes('${mois}')">${icone('receipt')} Imprimer les ${liste.length} reçu(s)</button>` : ''}</span></div>
     <p class="hint">Un numéro par versement, attribué par la base (impossible à modifier ou effacer). <strong>${liste.length}</strong> reçu(s) · total <strong>${fmtFCFA(total)}</strong>.</p>
     ${liste.length ? `<ul class="souches">${liste.map(x => { const e = eleveById(x.eleveId); return `<li class="souche">
       <span class="souche-num">${escapeHtml(x.numero)}</span>
@@ -11119,6 +11130,22 @@ function ouvrirSouchesRecus(mois){
       <span class="souche-montant">${fmtFCFA(x.montant)}</span>
       <button type="button" class="icon-btn no-print" title="Réimprimer le reçu" aria-label="Réimprimer le reçu ${escapeHtml(x.numero)}" onclick="reimprimerSouche('${x.id}')">🧾</button></li>`; }).join('')}</ul>`
       : '<div class="etat-vide"><span>Aucun reçu ce mois-ci.</span></div>'}`);
+}
+// Tous les reçus du mois (et de la classe choisie), 2 par page A4, rangés par élève : à remettre aux familles
+function imprimerRecusGroupes(mois){
+  const classeF = ui.filters.soucheClasse || '';
+  const liste = (DB.recus || []).filter(x => String(x.datePaiement || x.emisLe || '').slice(0, 7) === mois && (!classeF || eleveById(x.eleveId)?.classeId === classeF))
+    .map(x => ({ x, e: eleveById(x.eleveId) }))
+    .sort((a, b) => (a.e ? classeName(a.e.classeId) : '').localeCompare(b.e ? classeName(b.e.classeId) : '') || (a.e ? eleveFullName(a.e) : '').localeCompare(b.e ? eleveFullName(b.e) : '') || String(a.x.numero).localeCompare(String(b.x.numero)));
+  if(!liste.length) return;
+  const recus = liste.map(({ x, e }) => buildRecuHtml({ type:'entree', refId: x.enregistrementId, montant: x.montant, date: x.datePaiement, modePaiement: x.modePaiement, objet: x.objet, personne: e ? eleveFullName(e) : '', sousInfo: e ? classeName(e.classeId) : '' }));
+  const nomMois = (t => t.charAt(0).toUpperCase() + t.slice(1))(new Date(mois + '-15T12:00:00').toLocaleDateString('fr-FR', { month:'long', year:'numeric' }));
+  openModal(`${liste.length} reçu(s) — ${nomMois}${classeF ? ' — ' + classeName(classeF) : ''}`, `
+    <div class="form-actions no-print" style="margin-top:0;justify-content:space-between;align-items:center;">
+      <span class="hint" style="margin:0;">2 reçus par page A4, rangés par classe puis par élève. ${Math.ceil(liste.length / 2)} page(s).</span>
+      <span style="display:flex;gap:6px;"><button type="button" class="btn secondary sm" onclick="ouvrirSouchesRecus('${mois}')">‹ Souches</button>
+      <button type="button" class="btn sm" onclick="window.print()">${icone('printer')} Imprimer / PDF</button></span></div>
+    <div class="recus-lot">${recus.join('')}</div>`);
 }
 function reimprimerSouche(id){
   const x = (DB.recus || []).find(r => r.id === id); if(!x) return;

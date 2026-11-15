@@ -2363,3 +2363,22 @@ tbody td input.champ-a-verifier, tbody td select.champ-a-verifier, .nt-note.cham
 .sf-quota:empty{ display:none; }
 .sf-quota .sf-quota-bas{ color:var(--warning-ink, var(--warning)); font-weight:700; }
 .sf-quota .sf-quota-fini{ display:block; padding:8px 10px; border-radius:10px; background:var(--warning-soft); color:var(--text); font-weight:700; }
+
+/* Impression groupée des reçus : 2 par page A4 (2026-11-15) */
+.recus-lot{ display:flex; flex-direction:column; gap:18px; }
+.recus-lot .recu{ border:1px dashed var(--border-strong); border-radius:10px; padding:12px; }
+@media print{
+  /* 2 reçus par page A4 : chaque reçu tient dans une demi-page (≈ 135 mm) */
+  .recus-lot{ display:block; gap:0; }
+  .recus-lot .recu{ break-inside:avoid; page-break-inside:avoid; border:1px dashed #999; border-radius:0; padding:5mm 7mm; margin:0 0 5mm; font-size:9.5pt; max-height:132mm; overflow:hidden; }
+  .recus-lot .recu:nth-child(2n){ break-after:page; page-break-after:always; margin-bottom:0; }
+  .recus-lot .recu-head{ padding-bottom:2mm; margin-bottom:2.5mm; }
+  .recus-lot .recu-head img, .recus-lot .recu-logo-ph{ width:30px; height:30px; }
+  .recus-lot .recu-title{ font-size:11pt; padding:1.5mm; margin-bottom:2.5mm; }
+  .recus-lot .recu-row{ padding:1mm 0; font-size:9.5pt; }
+  .recus-lot .recu-montant{ font-size:15pt; margin:2.5mm 0 1mm; }
+  .recus-lot .recu-lettres{ padding-bottom:2mm; }
+  .recus-lot .signatures{ margin-top:2.5mm; gap:6mm; }
+  .recus-lot .sign-box .sign-role{ margin-bottom:9mm; }
+  .recus-lot .sign-box .sign-line{ padding-top:1mm; }
+}
