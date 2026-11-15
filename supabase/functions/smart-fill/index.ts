@@ -49,7 +49,8 @@ const CONSIGNE =
   "Montants : nombre entier en francs CFA, sans espace ni devise (ex. 25000) ; s'il y a plusieurs montants, prends celui que le champ décrit (ex. le total payé, pas un sous-total). " +
   "Heures au format HH:MM (24 h). Quantités : nombre entier. " +
   "Pour un champ de texte long (travail à faire, contenu, menu, texte), recopie FIDÈLEMENT ce qui est écrit, sans résumer ni reformuler. " +
-  "Un champ par jour (menus) : mets dans chaque champ seulement ce qui concerne ce jour-là.";
+  "Un champ par jour (menus) : mets dans chaque champ seulement ce qui concerne ce jour-là. " +
+  "Un champ par élève (liste de paiements) : ne remplis le champ d'un élève QUE si son nom figure clairement dans le document ; additionne ses versements s'il en a plusieurs ; un autre élève au nom proche ne compte pas.";
 
 function descriptionChamps(schema: ChampSchema[]) {
   return schema.map((c) => `- "${c.name}" : ${c.label}${c.format ? ' (format : ' + c.format + ')' : ''}`).join('\n');
@@ -208,7 +209,7 @@ Deno.serve(async (req) => {
     if (!autorise) throw new Error('Réservé au personnel de l’école');
 
     const { formulaire, schema, typeSource, fichierBase64, fichiersBase64, mimeType, texte } = await req.json();
-    if (!formulaire || !Array.isArray(schema) || !schema.length || schema.length > 24) throw new Error('Paramètres manquants');
+    if (!formulaire || !Array.isArray(schema) || !schema.length || schema.length > 60) throw new Error('Paramètres manquants');
     if (!['photo', 'audio', 'texte', 'document'].includes(typeSource)) throw new Error('Type de source invalide');
     const photos: string[] = (Array.isArray(fichiersBase64) ? fichiersBase64 : fichierBase64 ? [fichierBase64] : []).slice(0, 2);
     if (typeSource === 'photo' && (!photos.length || photos.some((p) => typeof p !== 'string' || p.length > 5_500_000))) throw new Error('Photo absente ou trop lourde (4 Mo maximum).');

@@ -2346,3 +2346,7 @@ body.theme-portier .gate-classe strong{ overflow-wrap:anywhere; }
 .choix-remplissage.cr-replie .cr-question::after{ content:" — manuel (touchez pour changer)"; text-transform:none; font-weight:600; }
 .choix-remplissage.cr-replie{ cursor:pointer; }
 @media (max-width:420px){ .cr-modes{ grid-template-columns:1fr; } }
+
+/* Grille « Versements déjà reçus » : montants pré-remplis visibles (vert = sûr, orange = à vérifier) */
+.rv-montant.champ-pre-rempli{ background:var(--success-soft); border-color:var(--success); }
+.rv-montant.champ-a-verifier{ background:var(--warning-soft); border-color:var(--warning); }

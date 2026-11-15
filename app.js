@@ -2880,6 +2880,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.11.15-3', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Versements déjà reçus (Comptabilité → Scolarité) : « Remplissage intelligent » depuis une photo du cahier de caisse de la classe, un PDF ou un fichier Excel. Le total versé par chaque élève est réparti sur ses tranches dans l’ordre de l’échéancier ; un montant supérieur à ce qui est dû est signalé et jamais appliqué. Vous relisez avant d’enregistrer.' ],
+  } },
   { version: '2026.11.15-2', nouveautes: {
     commun: [],
     parent: [],
@@ -11928,6 +11934,7 @@ function ouvrirRepriseVersements(classeId){
   }).join('');
   openModal(`Versements déjà reçus — ${c.nom}`, `
     <p class="hint" style="margin-top:0;">Pour reprendre ce que les parents ont <strong>déjà payé</strong> (cahier, reçus papier). Touchez « Payée » si la tranche est réglée en entier, ou écrivez le montant versé. Laissez vide si rien n’a été payé.</p>
+    ${boutonRemplissageReprise(classeId)}
     <div class="form-grid">
       <div class="field"><label for="rvDate">Date des versements</label><input type="date" id="rvDate" value="${todayISO()}" max="${todayISO()}"></div>
       <div class="field"><label for="rvMode">Mode de paiement</label><select id="rvMode">${MODES_PAIEMENT.map(m => `<option>${m}</option>`).join('')}</select></div>
@@ -11939,6 +11946,54 @@ function ouvrirRepriseVersements(classeId){
     <div class="rv-pied"><span id="rvTotal">Rien de saisi pour le moment</span>
       <span style="display:flex;gap:8px;"><button type="button" class="btn secondary" onclick="closeModal()">Annuler</button>
       <button type="button" class="btn" id="rvBouton" onclick="enregistrerReprise('${classeId}')" disabled>Enregistrer</button></span></div>`);
+}
+/* ---------- Versements déjà reçus : remplissage intelligent depuis le cahier de caisse de la classe ----------
+   Un champ par élève qui doit encore quelque chose : « total déjà versé ». Le total lu est réparti sur ses
+   tranches dans l'ordre de l'échéancier (inscription d'abord), sans jamais dépasser le reste de chaque tranche.
+   Un montant qui dépasse ce qui est dû n'est pas appliqué : il est signalé. Rien n'est enregistré sans vous. */
+function schemaReprise(classeId){
+  return DB.eleves.filter(e => e.classeId === classeId && e.statut === 'Actif')
+    .filter(e => scolariteEleveParEcheance(e.id).detail.some(d => d.montant > d.paye))
+    .sort((a, b) => (a.nom || '').localeCompare(b.nom || '') || (a.prenom || '').localeCompare(b.prenom || ''))
+    .slice(0, 60)
+    .map(e => ({ name: 'total_' + e.id, label: `Total déjà versé (inscription et scolarité) par l’élève ${String(e.nom || '').toUpperCase()} ${e.prenom || ''}${e.matricule ? ' (' + e.matricule + ')' : ''} — seulement si son nom figure dans le document`, type: 'number', format: 'nombre entier en francs CFA' }));
+}
+function boutonRemplissageReprise(classeId){
+  if(!['secretariat', 'direction', 'fondation'].includes(ui.role) || !schemaReprise(classeId).length) return '';
+  return `<div class="choix-remplissage" role="group" aria-label="Comment remplir cette grille" onclick="if(this.classList.contains('cr-replie')) this.classList.remove('cr-replie')">
+    <span class="cr-question">Comment voulez-vous remplir ?</span>
+    <div class="cr-modes">
+      <button type="button" class="cr-mode cr-intelligent btn-sf" onclick="ouvrirRemplissageIntelligent('reprise-versements', schemaReprise('${classeId}'), (r) => appliquerReprise(r))">
+        <span class="cr-ic">${icone('sparkles') || '✨'}</span><strong>Remplissage intelligent</strong><small>Photo du cahier de caisse ou de la liste des paiements de la classe (ou fichier Excel, PDF) : le total de chaque élève est réparti sur ses tranches.</small></button>
+      <button type="button" class="cr-mode cr-manuel" onclick="this.closest('.choix-remplissage').classList.add('cr-replie'); document.querySelector('.rv-montant')?.focus()">
+        <span class="cr-ic">${icone('pencil') || '✍️'}</span><strong>Remplissage manuel</strong><small>Vous tapez les montants, ou « Payée », élève par élève.</small></button>
+    </div>
+  </div>`;
+}
+function appliquerReprise(resultat){
+  let eleves = 0, aVerifier = 0; const trop = [];
+  const tous = [...document.querySelectorAll('.rv-montant')];
+  Object.keys(resultat || {}).forEach(cle => {
+    const { valeur, confiance } = resultat[cle] || {}; const total = Math.round(Number(valeur) || 0);
+    if(!cle.startsWith('total_') || total <= 0) return;
+    const id = cle.slice(6), champs = tous.filter(i => i.dataset.eleve === id);
+    if(!champs.length) return;
+    const du = champs.reduce((t, i) => t + Number(i.dataset.reste), 0);
+    if(total > du){ const e = eleveById(id); trop.push(`${e ? eleveFullName(e) : 'Un élève'} : ${fmtFCFA(total)} lu, ${fmtFCFA(du)} restant dû`); return; }
+    let reste = total;
+    champs.forEach(i => {
+      const m = Math.min(reste, Number(i.dataset.reste)); reste -= m;
+      i.value = m > 0 ? m : '';
+      i.classList.remove('champ-pre-rempli', 'champ-a-verifier');
+      if(m > 0){ i.classList.add('champ-pre-rempli'); if(confiance !== 'élevé') i.classList.add('champ-a-verifier'); }
+      i.addEventListener('input', () => i.classList.remove('champ-pre-rempli', 'champ-a-verifier'), { once: true });
+    });
+    eleves++; if(confiance !== 'élevé') aVerifier++;
+  });
+  totalReprise();
+  const bloc = document.querySelector('.choix-remplissage'); if(bloc) bloc.classList.add('cr-replie');
+  if(trop.length) alert(`Non appliqué — montant lu supérieur à ce qui reste dû (vérifiez le document ou l’échéancier) :\n\n${trop.join('\n')}`);
+  toast(eleves ? `${eleves} élève(s) pré-rempli(s)${aVerifier ? `, dont ${aVerifier} à vérifier (en orange)` : ''} — relisez la date, le mode, puis « Enregistrer »` : 'Aucun montant d’élève de cette classe n’a été trouvé dans le document');
 }
 // Remplit (ou vide, si c'est déjà fait) la tranche choisie pour tous les élèves de la classe
 function repriseToutLaClasse(btn){

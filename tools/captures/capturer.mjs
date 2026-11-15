@@ -259,6 +259,8 @@ for(const theme of THEMES){
         modeeleve: () => { openEleveForm(); },
         modedepense: () => { openDepenseForm(); },
         modemanuel: () => { openDepenseForm(); document.querySelector('.cr-manuel').click(); },
+        sfreprise: () => { const c = DB.classes[0].id; ouvrirRepriseVersements(c); const sc = schemaReprise(c); const r = {}; sc.slice(0, 3).forEach((f, k) => { r[f.name] = { valeur: String([30000, 999999999, 180000][k]), confiance: k === 2 ? 'moyen' : 'élevé' }; }); window.alert = m => console.error('ALERTE ' + m.replace(/\n/g, ' | ')); appliquerReprise(r); console.error('SF reprise ' + sc.length + ' champs ; remplis : ' + [...document.querySelectorAll('.rv-montant')].filter(i => i.value).map(i => i.dataset.tranche + '=' + i.value).join(', ')); document.querySelector('.rv-montant.champ-pre-rempli')?.scrollIntoView({ block: 'center' }); },
+        sfreprisevue: () => { ouvrirRepriseVersements(DB.classes[0].id); },
         relies: () => { document.querySelector('.seg[data-etat="relie"]').click(); },
       };
       if(GESTES[extra]){ await page.evaluate(`window.GESTES_EXTRA = { edtfictif: ${GESTES.edtfictif.toString()}, sfouvrir: ${GESTES.sfouvrir.toString()} }`); await page.evaluate(GESTES[extra]); await page.waitForTimeout(900); }

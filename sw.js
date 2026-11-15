@@ -1,12 +1,12 @@
-/* =========================================================================
-   EcoMaZ — Service Worker
-   Rend l'application installable ("Ajouter à l'écran d'accueil") et lui
-   permet de s'ouvrir même sans connexion. Les données elles-mêmes sont
-   mises en cache et synchronisées séparément, via IndexedDB et la file
-   d'attente hors ligne (voir supabase-client.js) — pas ce fichier, qui ne
-   s'occupe que des fichiers de l'application (HTML/CSS/JS/icônes).
+﻿/* =========================================================================
+   EcoMaZ â€” Service Worker
+   Rend l'application installable ("Ajouter Ã  l'Ã©cran d'accueil") et lui
+   permet de s'ouvrir mÃªme sans connexion. Les donnÃ©es elles-mÃªmes sont
+   mises en cache et synchronisÃ©es sÃ©parÃ©ment, via IndexedDB et la file
+   d'attente hors ligne (voir supabase-client.js) â€” pas ce fichier, qui ne
+   s'occupe que des fichiers de l'application (HTML/CSS/JS/icÃ´nes).
    ========================================================================= */
-const CACHE_NAME = 'ecomaz-shell-v185';
+const CACHE_NAME = 'ecomaz-shell-v186';
 const SHELL_FILES = [
   './',
   './index.html',
@@ -45,14 +45,14 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
-// Réseau d'abord — toujours la version la plus fraîche dès qu'il y a une
-// connexion (aucun risque de rester bloqué sur une vieille version après
-// une mise à jour). Le cache ne sert que de repli si le réseau échoue.
+// RÃ©seau d'abord â€” toujours la version la plus fraÃ®che dÃ¨s qu'il y a une
+// connexion (aucun risque de rester bloquÃ© sur une vieille version aprÃ¨s
+// une mise Ã  jour). Le cache ne sert que de repli si le rÃ©seau Ã©choue.
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
-  // Seuls les fichiers de l'application sont gardés en copie : pas les données
-  // du serveur ni les photos / vidéos de « Vie de l'école » (qui rempliraient
-  // le téléphone), ni les lectures partielles de vidéo.
+  // Seuls les fichiers de l'application sont gardÃ©s en copie : pas les donnÃ©es
+  // du serveur ni les photos / vidÃ©os de Â« Vie de l'Ã©cole Â» (qui rempliraient
+  // le tÃ©lÃ©phone), ni les lectures partielles de vidÃ©o.
   if (new URL(event.request.url).origin !== self.location.origin || event.request.headers.has('range')) return;
   event.respondWith(
     fetch(event.request)
@@ -65,14 +65,14 @@ self.addEventListener('fetch', (event) => {
   );
 });
 
-// Toucher une notification d'annonce : ramène l'application au premier plan
+// Toucher une notification d'annonce : ramÃ¨ne l'application au premier plan
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  // Ouvre l'application concernée (parents : parent.html ; enseignants : index.html)
+  // Ouvre l'application concernÃ©e (parents : parent.html ; enseignants : index.html)
   const cible = (event.notification.data && event.notification.data.url) || './parent.html';
   const page = cible.replace('./', '/');
   event.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((fenetres) => {
-    // Application de l'école : toute fenêtre qui n'est ni l'application parents ni portier
+    // Application de l'Ã©cole : toute fenÃªtre qui n'est ni l'application parents ni portier
     const estEcole = (u) => !u.includes('/parent.html') && !u.includes('/portier.html');
     const ouverte = fenetres.find((f) => (page === '/index.html' ? estEcole(f.url) : f.url.includes(page)));
     if (ouverte) return ouverte.focus();
@@ -80,12 +80,12 @@ self.addEventListener('notificationclick', (event) => {
   }));
 });
 
-// Notification push reçue (même application fermée) : on l'affiche
+// Notification push reÃ§ue (mÃªme application fermÃ©e) : on l'affiche
 self.addEventListener('push', (event) => {
   let d = {};
   try { d = event.data ? event.data.json() : {}; } catch (_e) { d = { body: event.data ? event.data.text() : '' }; }
-  // Rappel insistant (appel non fait) : reste à l'écran jusqu'à ce qu'on le touche, longue vibration, son du téléphone ;
-  // si l'application est ouverte, elle affiche aussi son écran « Appel non fait » avec un bip.
+  // Rappel insistant (appel non fait) : reste Ã  l'Ã©cran jusqu'Ã  ce qu'on le touche, longue vibration, son du tÃ©lÃ©phone ;
+  // si l'application est ouverte, elle affiche aussi son Ã©cran Â« Appel non fait Â» avec un bip.
   const insistant = !!d.insistant;
   event.waitUntil(Promise.all([
     self.registration.showNotification(d.title || 'EcoMaZ', {
