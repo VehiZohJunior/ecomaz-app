@@ -2357,3 +2357,9 @@ body.theme-portier .gate-classe strong{ overflow-wrap:anywhere; }
 /* Champs pré-remplis dans un tableau (notes, grilles) : la couleur l'emporte sur le style des tableaux */
 tbody td input.champ-pre-rempli, tbody td select.champ-pre-rempli, .nt-note.champ-pre-rempli, .rv-montant.champ-pre-rempli{ background:var(--success-soft) !important; border-color:var(--success) !important; }
 tbody td input.champ-a-verifier, tbody td select.champ-a-verifier, .nt-note.champ-a-verifier, .rv-montant.champ-a-verifier{ background:var(--warning-soft) !important; border-color:var(--warning) !important; }
+
+/* Compteur du remplissage intelligent (2026-11-15) */
+.sf-quota{ font-size:var(--fs-xs); color:var(--text-dim); margin:0 0 12px; }
+.sf-quota:empty{ display:none; }
+.sf-quota .sf-quota-bas{ color:var(--warning-ink, var(--warning)); font-weight:700; }
+.sf-quota .sf-quota-fini{ display:block; padding:8px 10px; border-radius:10px; background:var(--warning-soft); color:var(--text); font-weight:700; }

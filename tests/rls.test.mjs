@@ -458,6 +458,17 @@ async function requete(accessToken, chemin, options = {}){
     verifier('Sans connexion : refusé', !anon.ok, `statut ${anon.status}`);
   }
 
+  section('7sexvicies. Compteur du remplissage intelligent (15/11/2026) — chiffres seulement');
+  {
+    const qEns = await requete(tokenEnseignant, `/rest/v1/rpc/usage_remplissage_mois`, { method:'POST', body:'{}' });
+    verifier('Enseignant : reçoit seulement { utilise, limite }', qEns.ok && qEns.data && Object.keys(qEns.data).sort().join(',') === 'limite,utilise', `reçu ${JSON.stringify(qEns.data)}`);
+    const tokenParent3 = (await connecter(ENV.PARENT_EMAIL, ENV.PARENT_PASSWORD)).accessToken;
+    const qPar = await requete(tokenParent3, `/rest/v1/rpc/usage_remplissage_mois`, { method:'POST', body:'{}' });
+    verifier('Parent : rien', qPar.ok && qPar.data === null, `reçu ${JSON.stringify(qPar.data)}`);
+    const qAnon = await requete(ANON_KEY, `/rest/v1/rpc/usage_remplissage_mois`, { method:'POST', body:'{}' });
+    verifier('Sans connexion : refusé', !qAnon.ok || qAnon.data === null, `statut ${qAnon.status}`);
+  }
+
   section('8. Visiteur non connecté — ne lit que les affichages publics prévus');
   for(const table of ['eleves','enseignants_lecture','profiles','paiements_scolarite','messages','parents_eleves','presences_eleves','eleves_portier_lecture','objets_perdus','push_abonnements','absences_signalees','evenements_agenda','devoirs','personnes_autorisees','sante_eleves','reponses_agenda','corrections_fiches','menus_cantine','preinscriptions','demandes_documents','evaluations','coefficients_matieres','bulletins_resultats','sujets_evaluation']){
     const r = await requete(ANON_KEY, `/rest/v1/${table}?select=*&limit=1`);

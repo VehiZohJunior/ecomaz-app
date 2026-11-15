@@ -2880,6 +2880,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.11.15-5', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Remplissage intelligent : la fenêtre indique combien d’analyses gratuites l’école a utilisées ce mois-ci et combien il en reste (avertissement à 80 %, message clair si le quota est atteint ; le remplissage manuel reste toujours possible).' ],
+  } },
   { version: '2026.11.15-4', nouveautes: {
     commun: [],
     parent: [],
@@ -8347,7 +8353,23 @@ let smartFillChunks = [];
 let smartFillMinuteur = null;
 const SMARTFILL_DUREE_MAX = 120; // secondes d'enregistrement vocal au maximum
 
+// Compteur du mois (schema.sql section 119) : analyses utilisées / quota de l'école, relu à chaque ouverture
+let quotaRemplissage = null;
+function texteQuotaRemplissage(){
+  const q = quotaRemplissage; if(!q || !q.limite) return '';
+  const reste = Math.max(0, q.limite - q.utilise), pct = q.utilise / q.limite;
+  const cls = reste === 0 ? 'sf-quota-fini' : pct >= 0.8 ? 'sf-quota-bas' : '';
+  return `<span class="${cls}">${reste === 0 ? `Quota du mois atteint (${q.utilise} / ${q.limite} analyses) : le remplissage intelligent reprend le 1er du mois prochain. Le remplissage manuel reste disponible.`
+    : `Ce mois-ci : <strong>${q.utilise}</strong> analyse(s) utilisée(s) sur ${q.limite} (gratuit) · il en reste <strong>${reste}</strong>.`}</span>`;
+}
+function majQuotaRemplissage(){
+  sb.rpc('usage_remplissage_mois').then(({ data }) => {
+    if(!data) return; quotaRemplissage = data;
+    const z = document.getElementById('sfQuota'); if(z) z.innerHTML = texteQuotaRemplissage();
+  }, () => {});
+}
 function ouvrirRemplissageIntelligent(formulaire, schema, onResultat){
+  majQuotaRemplissage();
   window.__smartFillOnResultat = onResultat;
   window.__smartFillFormulaire = formulaire;
   window.__smartFillSchema = schema;
@@ -8372,6 +8394,7 @@ function renderSmartFillModal(etat, message){
   return `
     <div class="hint" style="margin-bottom:14px;">Quatre façons de remplir la fiche sans tout taper : une <strong>photo</strong> de document (facture, reçu, cahier, menu, acte de naissance… — recto et verso possibles), un <strong>message vocal</strong>, ou un <strong>texte collé</strong> (par exemple un message WhatsApp du parent). Vous relisez tout avant de l’appliquer.</div>
     ${message ? `<div class="pin-error" style="margin-bottom:12px;" role="alert">${escapeHtml(message)}</div>` : ''}
+    <div id="sfQuota" class="sf-quota" aria-live="polite">${texteQuotaRemplissage()}</div>
     <div class="sf-sources">
       <div class="sf-source">
         <div class="sf-ic">📷</div><strong>Photo</strong>
@@ -8572,6 +8595,7 @@ async function smartFillEnvoyer(source){
     if(error) throw new Error(await messageErreurFonction(error));
     if(!data?.ok) throw new Error(data?.error || 'Échec du remplissage automatique');
     window.__smartFillResultat = data.resultat;
+    if(quotaRemplissage) quotaRemplissage.utilise++;
     $('#smartFillBody').innerHTML = renderSmartFillApercu(data.resultat);
   }catch(e){ $('#smartFillBody').innerHTML = renderSmartFillModal(null, e.message); }
 }

@@ -4619,3 +4619,20 @@ do $$ declare t record; f record; begin
     execute format('revoke all on function public.%I(%s) from public, anon, authenticated', f.proname, f.args);
   end loop;
 end $$;
+
+-- =====================================================================
+-- 119. REMPLISSAGE INTELLIGENT : COMPTEUR DU MOIS VISIBLE (2026-11-15)
+-- =====================================================================
+-- Le personnel voit, avant d'analyser un document, combien d'analyses
+-- l'école a utilisées ce mois-ci sur son quota (aucun détail : ni qui,
+-- ni quel formulaire). Le détail reste réservé à la direction.
+create or replace function usage_remplissage_mois()
+returns jsonb language sql stable security definer set search_path = public as $$
+  select case when mon_ecole_id() is null or mon_role() not in ('secretariat', 'direction', 'fondation', 'enseignant') then null
+    else jsonb_build_object(
+      'utilise', (select count(*) from usage_remplissage_intelligent u where u.ecole_id = mon_ecole_id() and u.created_at >= date_trunc('month', now())),
+      'limite', (select coalesce(limite_remplissage_mensuelle, 100) from ecoles where id = mon_ecole_id()))
+  end
+$$;
+revoke all on function usage_remplissage_mois() from public, anon;
+grant execute on function usage_remplissage_mois() to authenticated;
