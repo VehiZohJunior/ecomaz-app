@@ -4739,3 +4739,25 @@ begin
       )
     order by e.nom, e.prenom limit 5;
 end $$;
+
+-- =====================================================================
+-- 124. INSCRIPTION PUBLIQUE PAR E-MAIL FERMÉE (2026-11-17, accord du fondateur)
+-- =====================================================================
+-- Seule l'inscription par Google reste ouverte au public (puis validation
+-- par l'école). Les comptes créés PAR L'APPLICATION (parents, enseignants
+-- activés par l'école, direction d'une nouvelle école) passent par
+-- l'API d'administration avec email_confirm = true : ils arrivent déjà
+-- confirmés et ne sont pas concernés. Une inscription publique par e-mail
+-- arrive, elle, NON confirmée : elle est refusée.
+create or replace function public.refuser_inscription_email_publique()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if coalesce(new.raw_app_meta_data->>'provider', 'email') = 'email' and new.email_confirmed_at is null and coalesce(new.is_anonymous, false) = false then
+    raise exception 'Inscription par e-mail fermée : utilisez « Continuer avec Google », puis attendez la validation de l''école.';
+  end if;
+  return new;
+end $$;
+revoke all on function public.refuser_inscription_email_publique() from public, anon, authenticated;
+drop trigger if exists refuser_inscription_email_publique on auth.users;
+create trigger refuser_inscription_email_publique before insert on auth.users
+  for each row execute function public.refuser_inscription_email_publique();
