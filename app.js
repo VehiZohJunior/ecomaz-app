@@ -2881,6 +2881,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.11.17-1', nouveautes: {
+    commun: [ 'Sécurité renforcée : bibliothèques verrouillées (empreinte vérifiée), politique de sécurité du navigateur, protection contre l’affichage dans un autre site, limitation des demandes répétées et messages d’erreur sans détail technique.' ],
+    parent: [],
+    portier: [],
+    personnel: [],
+  } },
   { version: '2026.11.15-9', nouveautes: {
     commun: [],
     parent: [],
@@ -7765,8 +7771,7 @@ let importEleves = null;   // { lignes:[{patch, erreurs, avertissements}], nomFi
 function chargerXLSX(){
   if(window.XLSX) return Promise.resolve(window.XLSX);
   return new Promise((ok, ko) => {
-    const sc = document.createElement('script');
-    sc.src = XLSX_URL; sc.onload = () => ok(window.XLSX);
+    const sc = scriptSur(XLSX_URL); sc.onload = () => ok(window.XLSX);
     sc.onerror = () => ko(new Error('Connexion internet nécessaire pour lire un fichier Excel.'));
     document.head.appendChild(sc);
   });
@@ -8524,17 +8529,24 @@ async function handleSmartFillAudioFichier(ev){
   }catch(e){ $('#smartFillBody').innerHTML = renderSmartFillModal(null, e.message); }
 }
 // Documents : le texte est extrait SUR LE TÉLÉPHONE (rien n'est stocké), puis seul ce texte est analysé.
+// Empreintes d'intégrité (SRI) : le navigateur refuse une bibliothèque modifiée sur le CDN
+const SRI_BIBLIOTHEQUES = {
+  'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js': 'sha384-/1qUCSGwTur9vjf/z9lmu/eCUYbpOTgSjmpbMQZ1/CtX2v/WcAIKqRv+U1DUCG6e',
+  'https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js': 'sha384-/cXAMbzovUIKbBERjPmR3SnPTh8siWr5lsvFYj1Uq4XP0yaJUZJmsh0YXyGv5P0y',
+  'https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js': 'sha384-EnyY0/GSHQGSxSgMwaIPzSESbqoOLSexfnSMN2AP+39Ckmn92stwABZynq1JyzdT',
+};
+function scriptSur(url){ const sc = document.createElement('script'); sc.src = url; if(SRI_BIBLIOTHEQUES[url]){ sc.integrity = SRI_BIBLIOTHEQUES[url]; sc.crossOrigin = 'anonymous'; } return sc; }
 const PDFJS_URL = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js';
 const PDFJS_WORKER = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
 const MAMMOTH_URL = 'https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js';
 function chargerScript(url, global){
   if(window[global]) return Promise.resolve(window[global]);
-  return new Promise((ok, ko) => { const sc = document.createElement('script'); sc.src = url; sc.onload = () => ok(window[global]); sc.onerror = () => ko(new Error('Connexion internet nécessaire pour lire ce type de document.')); document.head.appendChild(sc); });
+  return new Promise((ok, ko) => { const sc = scriptSur(url); sc.onload = () => ok(window[global]); sc.onerror = () => ko(new Error('Connexion internet nécessaire pour lire ce type de document.')); document.head.appendChild(sc); });
 }
 async function texteDuPdf(fichier){
   const pdfjs = await chargerScript(PDFJS_URL, 'pdfjsLib');
   pdfjs.GlobalWorkerOptions.workerSrc = PDFJS_WORKER;
-  const doc = await pdfjs.getDocument({ data: await fichier.arrayBuffer() }).promise;
+  const doc = await pdfjs.getDocument({ data: await fichier.arrayBuffer(), isEvalSupported: false }).promise; // CVE-2024-4367
   let texte = '';
   for(let i = 1; i <= Math.min(doc.numPages, 6); i++){
     const page = await doc.getPage(i), c = await page.getTextContent();

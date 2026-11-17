@@ -17,10 +17,12 @@
 // déjà utilisée par un autre profil est refusée.
 // =====================================================================
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.119.0';
+import { ORIGINE_APPLI, ENTETES_SECURITE, messagePublic, limiter } from '../_shared/securite.ts';
 
 const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': '*',
+  ...ENTETES_SECURITE,
+  'Access-Control-Allow-Origin': ORIGINE_APPLI,
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 const json = (corps: unknown, status = 200) => new Response(JSON.stringify(corps), { status, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } });
@@ -34,6 +36,7 @@ Deno.serve(async (req) => {
     const appelant = createClient(url, Deno.env.get('SUPABASE_ANON_KEY')!, { global: { headers: { Authorization: authHeader } } });
     const { data: { user } } = await appelant.auth.getUser();
     if (!user) throw new Error('Non authentifié');
+    await limiter(createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!), user.id, 'activer-acces-enseignant', 20, 60);
     const { data: profil } = await appelant.from('profiles').select('role, ecole_id').eq('id', user.id).single();
     if (!profil || !['secretariat', 'direction', 'fondation'].includes(profil.role)) throw new Error('Réservé au personnel administratif');
 
@@ -84,6 +87,6 @@ Deno.serve(async (req) => {
 
     return json({ ok: true, profilId: compteId, nouveau });
   } catch (e) {
-    return json({ ok: false, error: (e as Error).message }, 400);
+    return json({ ok: false, error: messagePublic(e) }, 400);
   }
 });

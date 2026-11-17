@@ -24,10 +24,12 @@
 //   contenu est journalisée (qui, quel formulaire, quand).
 // =====================================================================
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.119.0';
+import { ORIGINE_APPLI, ENTETES_SECURITE, messagePublic, limiter } from '../_shared/securite.ts';
 
 const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': '*',
+  ...ENTETES_SECURITE,
+  'Access-Control-Allow-Origin': ORIGINE_APPLI,
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 const json = (corps: unknown, status = 200) => new Response(JSON.stringify(corps), { status, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } });
@@ -118,6 +120,9 @@ function normaliser(schema: ChampSchema[], brut: Resultat): Resultat {
 // Le catalogue de Groq change souvent : on demande la liste des modèles
 // disponibles et on choisit soi-même (vision pour les photos, grand modèle
 // pour le texte), les noms connus restant prioritaires s'ils existent.
+// Moteur payant (Anthropic) : au plus 30 analyses par mois pour TOUTE la plateforme (plafond de dépense)
+const PLAFOND_SECOURS_MENSUEL = 30;
+let secoursPermis = false;
 let catalogueGroq: string[] | null = null;
 async function modelesDisponibles(cle: string): Promise<string[]> {
   if (catalogueGroq) return catalogueGroq;
@@ -182,6 +187,7 @@ async function transcrireAudio(fichierBase64: string, mimeType: string): Promise
 
 // ---------- Anthropic (secours facultatif) ----------
 async function claudeSecours(schema: ChampSchema[], contenu: unknown[]): Promise<Resultat> {
+  if (!secoursPermis) throw new Error('secours plafonné');
   const cle = Deno.env.get('ANTHROPIC_API_KEY');
   if (!cle) throw new Error('aucun secours configuré');
   const resp = await fetch('https://api.anthropic.com/v1/messages', {
@@ -206,6 +212,7 @@ Deno.serve(async (req) => {
     const appelant = createClient(url, Deno.env.get('SUPABASE_ANON_KEY')!, { global: { headers: { Authorization: authHeader } } });
     const { data: { user } } = await appelant.auth.getUser();
     if (!user) throw new Error('Non authentifié');
+    await limiter(createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!), user.id, 'smart-fill', 40, 60);
     const { data: profil } = await appelant.from('profiles').select('role, ecole_id, enseignant_id').eq('id', user.id).single();
     const autorise = profil?.ecole_id && (['secretariat', 'direction', 'fondation'].includes(profil.role) || (profil.role === 'enseignant' && profil.enseignant_id));
     if (!autorise) throw new Error('Réservé au personnel de l’école');
@@ -226,6 +233,7 @@ Deno.serve(async (req) => {
     const { count } = await admin.from('usage_remplissage_intelligent').select('id', { count: 'exact', head: true })
       .eq('ecole_id', profil.ecole_id).gte('created_at', debutMois.toISOString());
     if ((count ?? 0) >= limite) throw new Error(`Limite mensuelle de remplissages automatiques atteinte (${limite}). Contactez EcoMaZ pour l'augmenter.`);
+    { const { count: nbSecours } = await admin.from('usage_remplissage_intelligent').select('id', { count: 'exact', head: true }).eq('moteur', 'secours').gte('created_at', debutMois.toISOString()); secoursPermis = (nbSecours ?? 0) < PLAFOND_SECOURS_MENSUEL; }
 
     const consigne = CONSIGNE + `\nFormulaire « ${formulaire} ». Champs à remplir (clés JSON exactes) :\n` + descriptionChamps(schema);
     let brut: Resultat; let source = ''; let motifSecours = '';
@@ -249,9 +257,9 @@ Deno.serve(async (req) => {
     }
 
     const resultat = normaliser(schema as ChampSchema[], brut);
-    await admin.from('usage_remplissage_intelligent').insert({ ecole_id: profil.ecole_id, utilisateur_id: user.id, formulaire, type_source: typeSource });
-    return json({ ok: true, resultat, moteur: source, ...(motifSecours ? { motifSecours } : {}) });
+    await admin.from('usage_remplissage_intelligent').insert({ ecole_id: profil.ecole_id, utilisateur_id: user.id, formulaire, type_source: typeSource, moteur: source || null });
+    return json({ ok: true, resultat, moteur: source });
   } catch (e) {
-    return json({ ok: false, error: (e as Error).message }, 400);
+    return json({ ok: false, error: messagePublic(e) }, 400);
   }
 });

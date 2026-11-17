@@ -34,7 +34,7 @@ const b = await chromium.launch({ channel: 'msedge', headless: true });
 for(const [doc, geste] of DOCS.filter(([d]) => !process.env.SEUL || process.env.SEUL.split(',').includes(d))){
   const p = await b.newPage();
   // Bibliothèques du CDN via curl (Edge sans interface reste parfois bloqué sur cdn.jsdelivr.net depuis ce PC)
-  await p.route('https://cdn.jsdelivr.net/**', async route => { try{ const u = route.request().url(); if(!CACHE_CDN.has(u)) CACHE_CDN.set(u, execFileSync('curl', ['-sL', '-4', '-m', '30', u])); await route.fulfill({ status: 200, body: CACHE_CDN.get(u), headers: { 'content-type': 'application/javascript; charset=utf-8' } }); }catch(_e){ await route.continue(); } });
+  await p.route('https://cdn.jsdelivr.net/**', async route => { try{ const u = route.request().url(); if(!CACHE_CDN.has(u)) CACHE_CDN.set(u, execFileSync('curl', ['-sL', '-4', '-m', '30', u])); await route.fulfill({ status: 200, body: CACHE_CDN.get(u), headers: { 'content-type': 'application/javascript; charset=utf-8', 'access-control-allow-origin': '*' } }); }catch(_e){ await route.continue(); } });
   const erreurs = []; p.on('pageerror', e => erreurs.push(e.message));
   await p.goto('http://localhost:5190/', { waitUntil: 'networkidle' }); await p.waitForTimeout(400);
   await p.addScriptTag({ content: installer });

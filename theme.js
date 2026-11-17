@@ -6,6 +6,8 @@
    - tableaux : libellés de colonnes pour l'affichage en cartes sur téléphone
    Aucune logique métier ici : ce fichier ne lit ni n'écrit aucune donnée.
    ========================================================================= */
+// Sécurité : EcoMaZ ne s'affiche jamais dans le cadre (iframe) d'un autre site
+if(window.top !== window.self){ try{ window.top.location = window.self.location.href; }catch(_e){ document.documentElement.style.display = 'none'; } }
 (function(){
   const KEY = 'ecomaz_theme';
   const root = document.documentElement;

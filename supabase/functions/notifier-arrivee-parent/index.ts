@@ -9,11 +9,13 @@
 // toutes les classes. Le portier n'apprend rien de plus que ce qu'il sait.
 // =====================================================================
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.119.0';
+import { ORIGINE_APPLI, ENTETES_SECURITE, messagePublic, limiter } from '../_shared/securite.ts';
 import { envoyerPush } from '../_shared/push.ts';
 
 const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': '*',
+  ...ENTETES_SECURITE,
+  'Access-Control-Allow-Origin': ORIGINE_APPLI,
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 const json = (corps: unknown, status = 200) => new Response(JSON.stringify(corps), { status, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } });
@@ -57,6 +59,6 @@ Deno.serve(async (req) => {
     });
     return json({ ok: true, enseignants: cibles.length, ...r });
   } catch (e) {
-    return json({ ok: false, error: (e as Error).message }, 400);
+    return json({ ok: false, error: messagePublic(e) }, 400);
   }
 });

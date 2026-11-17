@@ -15,10 +15,12 @@
 // de l'appelant, avant toute opération avec la clé service_role).
 // =====================================================================
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.119.0';
+import { ORIGINE_APPLI, ENTETES_SECURITE, messagePublic, limiter } from '../_shared/securite.ts';
 
 const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': '*',
+  ...ENTETES_SECURITE,
+  'Access-Control-Allow-Origin': ORIGINE_APPLI,
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
@@ -38,6 +40,7 @@ Deno.serve(async (req) => {
     });
     const { data: { user } } = await supabaseCaller.auth.getUser();
     if (!user) throw new Error('Non authentifié');
+    await limiter(createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!), user.id, 'creer-compte-parent', 30, 60);
 
     const { data: profil } = await supabaseCaller
       .from('profiles').select('role, ecole_id, nom_complet').eq('id', user.id).single();
@@ -117,7 +120,7 @@ Deno.serve(async (req) => {
       { headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } }
     );
   } catch (e) {
-    return new Response(JSON.stringify({ ok: false, error: (e as Error).message }), {
+    return new Response(JSON.stringify({ ok: false, error: messagePublic(e) }), {
       status: 400,
       headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
     });

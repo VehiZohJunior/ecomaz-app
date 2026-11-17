@@ -11,11 +11,13 @@
 // fait par l'appelant (moins de 5 minutes) et compose le message.
 // =====================================================================
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.119.0';
+import { ORIGINE_APPLI, ENTETES_SECURITE, messagePublic, limiter } from '../_shared/securite.ts';
 import { envoyerPush } from '../_shared/push.ts';
 
 const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': '*',
+  ...ENTETES_SECURITE,
+  'Access-Control-Allow-Origin': ORIGINE_APPLI,
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 const json = (corps: unknown, status = 200) => new Response(JSON.stringify(corps), { status, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } });
@@ -29,6 +31,7 @@ Deno.serve(async (req) => {
     const appelant = createClient(url, Deno.env.get('SUPABASE_ANON_KEY')!, { global: { headers: { Authorization: authHeader } } });
     const { data: { user } } = await appelant.auth.getUser();
     if (!user) throw new Error('Non authentifié');
+    await limiter(createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!), user.id, 'notifier-personnel', 30, 60);
     const { type } = await req.json();
     const admin = createClient(url, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
     const depuis = new Date(Date.now() - 5 * 60 * 1000).toISOString();
@@ -113,6 +116,6 @@ Deno.serve(async (req) => {
     const r = await envoyerPush(admin, cibles, { title: titre, body: texte, url: page, tag: `${type}-${Date.now()}` });
     return json({ ok: true, destinataires: cibles.length, ...r });
   } catch (e) {
-    return json({ ok: false, error: (e as Error).message }, 400);
+    return json({ ok: false, error: messagePublic(e) }, 400);
   }
 });

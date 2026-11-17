@@ -4649,3 +4649,23 @@ alter table activites drop constraint if exists activites_type_check;
 alter table activites add constraint activites_type_check check (type in ('activite', 'cantine'));
 -- Une seule cantine par école
 create unique index if not exists activites_une_cantine on activites (ecole_id) where type = 'cantine';
+
+-- =====================================================================
+-- 121. LIMITATION DES APPELS RÉPÉTÉS + PLAFOND DU MOTEUR PAYANT (2026-11-17)
+-- =====================================================================
+-- Trace minimale (qui, quelle action, quand ; aucun contenu) pour limiter
+-- les appels répétés aux fonctions serveur. Lisible et modifiable par le
+-- seul service (aucune règle d'accès pour les utilisateurs).
+create table if not exists limites_appels (
+  id bigint generated always as identity primary key,
+  user_id uuid not null,
+  action text not null check (char_length(action) <= 60),
+  created_at timestamptz not null default now()
+);
+create index if not exists limites_appels_idx on limites_appels (user_id, action, created_at desc);
+alter table limites_appels enable row level security;
+revoke all on limites_appels from anon, authenticated;
+
+-- Moteur d'IA utilisé à chaque analyse (groq = gratuit ; secours = Anthropic, payant) :
+-- permet de plafonner le moteur payant pour toute la plateforme.
+alter table usage_remplissage_intelligent add column if not exists moteur text;
