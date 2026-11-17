@@ -18,7 +18,7 @@
 // =====================================================================
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.119.0';
-import { ORIGINE_APPLI, ENTETES_SECURITE, messagePublic, limiter } from '../_shared/securite.ts';
+import { ORIGINE_APPLI, ENTETES_SECURITE, messagePublic, limiter, tropVolumineux } from '../_shared/securite.ts';
 
 const CORS_HEADERS = {
   ...ENTETES_SECURITE,
@@ -108,6 +108,7 @@ function nettoyer(html: string): string {
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS_HEADERS });
+  { const refus = tropVolumineux(req, 26000000); if (refus) return refus; }
   try {
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) throw new Error('Non authentifié');

@@ -80,6 +80,7 @@ async function chargerProfilCourant(){
 async function connexion(email, motDePasse){
   const { data, error } = await sb.auth.signInWithPassword({ email, password: motDePasse });
   if(error) return { ok:false, message: traduireErreurAuth(error) };
+  try{ localStorage.setItem('ecomaz_derniere_activite', String(Date.now())); }catch(_e){}
   const profil = await chargerProfilCourant();
   if(!profil) return { ok:false, message: "Ce compte n'est associé à aucune école. Contactez votre administrateur." };
   return { ok:true, profil };
@@ -87,6 +88,7 @@ async function connexion(email, motDePasse){
 // Connexion par réseau social (Google). Le compte créé n'a AUCUN accès tant
 // que l'école n'a pas approuvé sa demande (voir demandes_acces).
 async function connexionGoogle(){
+  try{ localStorage.setItem('ecomaz_derniere_activite', String(Date.now())); }catch(_e){}
   const { error } = await sb.auth.signInWithOAuth({
     provider: 'google',
     options: { redirectTo: window.location.origin + window.location.pathname + window.location.search },
@@ -100,6 +102,9 @@ async function utilisateurAuthCourant(){
 }
 async function deconnexion(){
   await sb.auth.signOut();
+  // Téléphone partagé : rien de la personne ne reste sur l'appareil (la file d'envois hors ligne est conservée)
+  try{ const copies = await idbGetAll('snapshot'); for(const c of copies) await idbDelete('snapshot', c.ecoleId); }catch(_e){}
+  try{ ['ecomaz_profil_cache', 'ecomaz_derniere_activite'].forEach(k => localStorage.removeItem(k)); }catch(_e){}
   session.userId = null; session.ecoleId = null; session.role = null; session.nomComplet = '';
 }
 function traduireErreurAuth(error){

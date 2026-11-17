@@ -4669,3 +4669,73 @@ revoke all on limites_appels from anon, authenticated;
 -- Moteur d'IA utilisé à chaque analyse (groq = gratuit ; secours = Anthropic, payant) :
 -- permet de plafonner le moteur payant pour toute la plateforme.
 alter table usage_remplissage_intelligent add column if not exists moteur text;
+
+-- =====================================================================
+-- 122. VISITEUR NON CONNECTÉ : PLUS AUCUN DROIT DE LECTURE (2026-11-17)
+-- =====================================================================
+-- Rapport d'attaque « API » : seule push_abonnements répondait 200 (0 ligne)
+-- à un visiteur anonyme. Les pages publiques (affichage, préinscription,
+-- pointage GPS) passent UNIQUEMENT par des fonctions contrôlées : le rôle
+-- anon n'a besoin d'aucun droit sur les tables et vues. Deuxième couche,
+-- en plus des règles RLS (qui protégeaient déjà tout).
+do $$ declare t record; begin
+  for t in select c.relname from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'public' and c.relkind in ('r', 'v', 'm') loop
+    execute format('revoke select on public.%I from anon', t.relname);
+  end loop;
+end $$;
+-- Tables créées plus tard : pas de droit automatique pour anon
+alter default privileges in schema public revoke select, insert, update, delete, truncate, references, trigger on tables from anon;
+
+-- =====================================================================
+-- 123. RECHERCHE D'ENFANT AVANT VALIDATION : PLUS DE « 3 LETTRES » (2026-11-17)
+-- =====================================================================
+-- Rapport d'attaque « navigateur » : un compte Google non encore validé
+-- pouvait, en tapant 3 lettres, lister des enfants (prénom, nom, classe).
+-- Désormais, par le nom, il faut connaître le NOM DE FAMILLE COMPLET de
+-- l'enfant + le début de son prénom (2 lettres au moins), ou ses prénoms
+-- et nom complets. La recherche par le numéro du parent (10 chiffres déjà
+-- enregistrés) reste la voie principale. 10 recherches par heure, 5 réponses.
+create or replace function norm_nom(t text) returns text
+language sql immutable set search_path = public as $$
+  select regexp_replace(lower(translate(coalesce(t, ''), 'àâäáãéèêëíìîïóòôöõúùûüçñÀÂÄÁÃÉÈÊËÍÌÎÏÓÒÔÖÕÚÙÛÜÇÑ''’-', 'aaaaaeeeeiiiiooooouuuucnaaaaaeeeeiiiiooooouuuucn   ')), '\s+', ' ', 'g')
+$$;
+
+create or replace function rechercher_eleves_demande(p_ecole uuid, p_texte text, p_tel text default null)
+returns table (id uuid, prenom text, nom text, classe text)
+language plpgsql volatile security definer set search_path = public as $$
+declare
+  t text := trim(norm_nom(p_texte));
+  v_tel text := right(regexp_replace(regexp_replace(coalesce(p_tel, ''), '\D', '', 'g'), '^225', ''), 10);
+  n int;
+begin
+  if auth.uid() is null then raise exception 'Non authentifié'; end if;
+  if not est_perso_admin() then
+    select count(*) into n from recherches_demande r where r.user_id = auth.uid() and r.created_at > now() - interval '1 hour';
+    if n >= 10 then raise exception 'Trop de recherches : réessayez dans une heure, ou demandez l’aide de l’école.'; end if;
+    insert into recherches_demande (user_id, ecole_id) values (auth.uid(), p_ecole);
+  end if;
+  delete from recherches_demande r where r.created_at < now() - interval '7 days';
+  if char_length(v_tel) = 10 then
+    return query
+      select e.id, e.prenom, e.nom, c.nom
+      from eleves e join ecoles ec on ec.id = e.ecole_id and ec.actif
+      left join classes c on c.id = e.classe_id
+      where e.ecole_id = p_ecole and e.statut = 'Actif'
+        and regexp_replace(coalesce(e.parent_tel, ''), '\D', '', 'g') like '%' || v_tel || '%'
+      order by e.nom, e.prenom limit 5;
+    if found then return; end if;
+  end if;
+  if char_length(t) < 5 then return; end if;
+  return query
+    select e.id, e.prenom, e.nom, c.nom
+    from eleves e join ecoles ec on ec.id = e.ecole_id and ec.actif
+    left join classes c on c.id = e.classe_id
+    where e.ecole_id = p_ecole and e.statut = 'Actif'
+      and (
+        -- NOM complet + au moins 2 lettres du prénom
+        (norm_nom(e.nom || ' ' || e.prenom) like t || '%' and char_length(t) >= char_length(norm_nom(e.nom)) + 3)
+        -- ou prénoms complets + NOM complet
+        or norm_nom(e.prenom || ' ' || e.nom) = t
+      )
+    order by e.nom, e.prenom limit 5;
+end $$;

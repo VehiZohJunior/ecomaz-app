@@ -80,17 +80,19 @@ function appliquerFiltreNiveaux(db){
   db.eleves = db.eleves.filter(e => idsActifs.has(e.classeId));
   return db;
 }
+// Copie hors ligne propre à CHAQUE utilisateur : sur un téléphone partagé, personne ne voit la copie d'un autre
+function cleCopieHorsLigne(){ return `${session.ecoleId}|${session.userId}`; }
 async function chargerDB(){
   try{
     const db = appliquerFiltreNiveaux(await loadAllFromSupabase());
     db.meta.horsLigne = false;
-    try{ await idbPut('snapshot', { ecoleId: session.ecoleId, donnees: db, horodatage: Date.now() }); }catch(_e){ /* cache best-effort */ }
+    try{ await idbPut('snapshot', { ecoleId: cleCopieHorsLigne(), donnees: db, horodatage: Date.now() }); }catch(_e){ /* cache best-effort */ }
     return db;
   }catch(e){
     if(!erreurReseau(e)) throw e;
     // Hors ligne : on retombe sur la dernière copie connue des données de
     // cette école, enregistrée localement lors du dernier chargement réussi.
-    const cache = await idbGet('snapshot', session.ecoleId).catch(()=>null);
+    const cache = await idbGet('snapshot', cleCopieHorsLigne()).catch(()=>null);
     if(!cache) throw e; // jamais chargé avec succès sur cet appareil : rien à afficher
     const db = cache.donnees;
     db.meta.horsLigne = true;
@@ -305,6 +307,9 @@ function ageFromISO(iso){
   if(md<0 || (md===0 && n.getDate()<b.getDate())) age--;
   return age;
 }
+// Valeur insérée dans un gestionnaire onclick="…" : JSON (guillemets, antislash) puis HTML.
+// escapeHtml seul ne suffit pas : le navigateur redécode &#39; en ' avant d'exécuter le code.
+function jsArg(v){ return escapeHtml(JSON.stringify(v == null ? '' : String(v))); }
 function escapeHtml(str){
   return String(str ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
@@ -1304,7 +1309,7 @@ async function showDemandeAcces(){
         <div class="field" style="text-align:left;"><label>Cochez la ou les classes dont vous êtes l’enseignant(e)</label><div class="enrol-liste">${classesHtml}</div></div>` : ''}
       ${parent ? `<div class="field" style="text-align:left;margin-bottom:10px;"><label>Votre numéro WhatsApp</label><input type="tel" id="demTel" required placeholder="07 00 00 00 00" oninput="if(this.value.replace(/\D/g, '').length >= 10) rechercherEnfantDemande(document.getElementById('demRecherche')?.value || '')"><div class="hint" style="margin:4px 0 0;">Celui que vous avez donné à l’école : vos enfants apparaissent tout seuls et votre demande est validée plus vite.</div></div>
         <div class="field" style="text-align:left;"><label>Cochez votre enfant (ou vos enfants)</label>
-          <input type="search" id="demRecherche" placeholder="Sinon, tapez le début de son nom ou de son prénom" oninput="rechercherEnfantDemande(this.value)" autocomplete="off">
+          <input type="search" id="demRecherche" placeholder="Sinon : son NOM complet puis le début de son prénom (ex : KOUASSI Am)" oninput="rechercherEnfantDemande(this.value)" autocomplete="off">
           <div class="enrol-liste" id="demResultats"></div>
           <div id="demChoisis" class="enrol-choisis"></div></div>` : ''}
       ${!parent && !enseignant ? `<div class="field" style="text-align:left;"><label>Message pour la direction (facultatif)</label><input type="text" id="demMsg"></div>` : ''}
@@ -1320,7 +1325,7 @@ function rechercherEnfantDemande(texte){
   __minuteurRechercheEnfant = setTimeout(async () => {
     const zone = document.getElementById('demResultats'); if(!zone) return;
     const tel = (document.getElementById('demTel')?.value || '').replace(/\D/g, '');
-    if(texte.trim().length < 3 && tel.length < 10){ zone.innerHTML = ''; return; }
+    if(texte.trim().length < 5 && tel.length < 10){ zone.innerHTML = ''; return; }
     const { data, error } = await sb.rpc('rechercher_eleves_demande', { p_ecole: window.ECOLE_VITRINE.id, p_texte: texte, p_tel: tel.length >= 10 ? tel : null });
     if(error){ zone.innerHTML = `<div class="hint" style="color:var(--accent-ink);">${escapeHtml(/Trop de recherches/.test(error.message) ? error.message : 'Recherche impossible pour le moment : vérifiez la connexion internet.')}</div>`; return; }
     zone.innerHTML = (data || []).map(e => `<label class="enrol-choix"><input type="checkbox" ${window.__enfantsChoisis.has(e.id) ? 'checked' : ''}
@@ -1918,7 +1923,7 @@ function ouvrirBulletinImprimable(eleveId, trimestre){
   const m = DB.meta || {};
   openModal('📒 Bulletin', `
     <div class="recu certif">
-      <div class="recu-head">${m.logo ? `<img src="${m.logo}" alt="">` : `<div class="recu-logo-ph">🎓</div>`}
+      <div class="recu-head">${m.logo ? `<img src="${escapeHtml(m.logo)}" alt="">` : `<div class="recu-logo-ph">🎓</div>`}
         <div><strong>${escapeHtml(m.nomEcole || '')}</strong><div class="hint">${escapeHtml(m.adresse || '')}${m.telephone ? ' · ' + escapeHtml(m.telephone) : ''}</div></div></div>
       <div class="recu-title">BULLETIN — ${escapeHtml(String(trimestre).toUpperCase())}</div>
       <div class="recu-row"><span>Élève</span><strong>${escapeHtml(eleveFullName(e))}</strong></div>
@@ -2190,6 +2195,7 @@ async function payerEnLigneParent(eleveId, tranche, reste){
     if(error) throw new Error(await messageErreurFonction(error));
     if(!data?.ok || !data.url) throw new Error(data?.error || 'Le paiement n’a pas pu être préparé');
     try{ sessionStorage.setItem('ecomaz_paiement_en_cours', JSON.stringify({ eleveId, tranche, montant: data.montant || reste })); }catch(_e){}
+    if(!adressePaiementSure(data.url)) throw new Error('Adresse de paiement inattendue : paiement annulé par sécurité.');
     window.location.href = data.url;
   }catch(err){ alert('Paiement impossible pour le moment : ' + err.message + '\nVous pouvez aussi payer au secrétariat.'); }
 }
@@ -2881,6 +2887,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.11.17-2', nouveautes: {
+    commun: [ 'Sécurité : noms avec apostrophe (N’Guessan…) corrigés sur les boutons Reçu et Encaisser ; données gardées pour le mode hors ligne effacées à la déconnexion (téléphone partagé) ; verrouillage après 10 minutes d’inactivité même si l’application a été fermée.' ],
+    parent: [ 'Demande d’accès : pour retrouver votre enfant par son nom, écrivez son NOM de famille complet puis le début de son prénom (ou utilisez votre numéro de téléphone enregistré à l’école).' ],
+    portier: [],
+    personnel: [],
+  } },
   { version: '2026.11.17-1', nouveautes: {
     commun: [ 'Sécurité renforcée : bibliothèques verrouillées (empreinte vérifiée), politique de sécurité du navigateur, protection contre l’affichage dans un autre site, limitation des demandes répétées et messages d’erreur sans détail technique.' ],
     parent: [],
@@ -4264,7 +4276,14 @@ $('#btnSwitchRole').addEventListener('click', logoutRole);
 
 /* --- Auto-verrouillage par inactivité --- */
 let idleTimer = null;
+const CLE_ACTIVITE = 'ecomaz_derniere_activite';
+let derniereEcritureActivite = 0;
+function noterActivite(force){ const t = Date.now(); if(force || t - derniereEcritureActivite > 15000){ derniereEcritureActivite = t; try{ localStorage.setItem(CLE_ACTIVITE, String(t)); }catch(_e){} } }
+function inactifTropLongtemps(){ let t = 0; try{ t = Number(localStorage.getItem(CLE_ACTIVITE)) || 0; }catch(_e){} return t > 0 && Date.now() - t > IDLE_TIMEOUT_MS; }
+function verifierInactivite(){ if(ui.role && inactifTropLongtemps()){ toast('Session verrouillée pour inactivité'); logoutRole(); return true; } return false; }
+document.addEventListener('visibilitychange', () => { if(!document.hidden && idleTimer) verifierInactivite(); });
 function resetIdleTimer(){
+  noterActivite();
   clearTimeout(idleTimer);
   idleTimer = setTimeout(()=>{
     toast('Session verrouillée pour inactivité');
@@ -4272,9 +4291,13 @@ function resetIdleTimer(){
   }, IDLE_TIMEOUT_MS);
 }
 function startIdleWatcher(){
+  // Appli rouverte après plus de 10 minutes sans activité : on reverrouille
+  if(verifierInactivite()) return;
   ['mousemove','mousedown','keydown','touchstart','scroll'].forEach(ev=>document.addEventListener(ev, resetIdleTimer));
+  noterActivite(true);
   resetIdleTimer();
 }
+function adressePaiementSure(url){ try{ const u = new URL(url); return u.protocol === 'https:' && /(^|\.)paydunya\.com$/.test(u.hostname); }catch(_e){ return false; } }
 function stopIdleWatcher(){
   clearTimeout(idleTimer);
   ['mousemove','mousedown','keydown','touchstart','scroll'].forEach(ev=>document.removeEventListener(ev, resetIdleTimer));
@@ -5746,7 +5769,7 @@ async function ouvrirRelanceParents(classeId){
       <span class="relance-txt"><strong>${f.enfants.map(e => escapeHtml(eleveFullName(e))).join(' · ')}</strong>
         <small>${[...new Set(f.enfants.map(e => classeName(e.classeId)))].map(escapeHtml).join(', ')}${f.parentNom ? ' · parent : ' + escapeHtml(f.parentNom) : ''}</small></span>
       <span class="relance-actions">${f.tel
-        ? `<a class="btn sm" href="https://wa.me/225${f.tel}?text=${encodeURIComponent(messageInvitationFamille(f, window.__codesInvitation[f.tel]))}" target="_blank" rel="noopener" onclick="marquerRelanceParent('${f.tel}')">WhatsApp · ${telLisible(f.tel)}</a>${envoye ? `<span class="badge-etat ok">Envoyé le ${fmtDate(envoye)}</span>` : ''}`
+        ? `<a class="btn sm" href="https://wa.me/225${f.tel}?text=${encodeURIComponent(messageInvitationFamille(f, window.__codesInvitation[f.tel]))}" target="_blank" rel="noopener" onclick="marquerRelanceParent(${jsArg(f.tel)})">WhatsApp · ${telLisible(f.tel)}</a>${envoye ? `<span class="badge-etat ok">Envoyé le ${fmtDate(envoye)}</span>` : ''}`
         : `<button type="button" class="btn secondary sm" onclick="closeModal(); ui.eleveProfileId='${f.enfants[0].id}'; go('eleves')">Numéro à corriger</button>`}</span>
     </li>`;
   };
@@ -6717,7 +6740,7 @@ function bulletinOfficielHtml(l, r, trimestre){
   const app = (DB.bulletinsComments || {})[`${e.id}_${trimestre}`] || '';
   const totalCoef = l.details.filter(d => d.moy !== null).reduce((s, d) => s + d.coef, 0);
   return `<section class="bulletin-page">
-    <div class="recu-head">${m.logo ? `<img src="${m.logo}" alt="">` : `<div class="recu-logo-ph">🎓</div>`}
+    <div class="recu-head">${m.logo ? `<img src="${escapeHtml(m.logo)}" alt="">` : `<div class="recu-logo-ph">🎓</div>`}
       <div><strong>${escapeHtml(m.nomEcole || '')}</strong><div class="hint">${escapeHtml(m.adresse || '')}${m.telephone ? ' · ' + escapeHtml(m.telephone) : ''}</div></div>
       <div style="margin-left:auto;text-align:right;"><strong>BULLETIN DE NOTES</strong><div class="hint">${escapeHtml(trimestre)} · ${escapeHtml(m.anneeScolaire || '')}</div></div></div>
     <div class="bo-identite"><div><span>Élève</span><strong>${escapeHtml(eleveFullName(e))}</strong></div><div><span>Matricule</span><strong>${escapeHtml(e.matricule || '—')}</strong></div>
@@ -6927,7 +6950,7 @@ function ouvrirCertificatScolarite(eleveId){
   openModal('📄 Certificat de scolarité', `
     <div class="recu certif">
       <div class="recu-head">
-        ${m.logo ? `<img src="${m.logo}" alt="">` : `<div class="recu-logo-ph">🎓</div>`}
+        ${m.logo ? `<img src="${escapeHtml(m.logo)}" alt="">` : `<div class="recu-logo-ph">🎓</div>`}
         <div><strong>${escapeHtml(m.nomEcole || '')}</strong>
           <div class="hint">${escapeHtml(m.adresse || '')}${m.telephone ? ' · ' + escapeHtml(m.telephone) : ''}</div></div>
       </div>
@@ -6960,7 +6983,7 @@ function partagerPreinscription(){
     <p>Partagez ce lien sur WhatsApp, Facebook ou par SMS. Les familles remplissent le formulaire sans créer de compte ; les demandes arrivent ici, dans Élèves & Inscriptions.</p>
     <div class="hint" style="word-break:break-all;user-select:all;">${escapeHtml(lien)}</div>
     <div class="form-actions" style="flex-wrap:wrap;">
-      <button class="btn secondary" onclick="navigator.clipboard && navigator.clipboard.writeText('${lien}').then(() => toast('Lien copié'))">📋 Copier le lien</button>
+      <button class="btn secondary" onclick="navigator.clipboard && navigator.clipboard.writeText(${jsArg(lien)}).then(() => toast('Lien copié'))">📋 Copier le lien</button>
       <a class="btn" href="https://wa.me/?text=${encodeURIComponent(message)}" target="_blank" rel="noopener">📲 Partager sur WhatsApp</a>
       <a class="btn secondary" href="${lien}" target="_blank" rel="noopener">👁️ Voir le formulaire</a>
       <button class="btn secondary" onclick="imprimerAffiche('preinscription.html')">🖨️ Affiche A4</button>
@@ -7455,7 +7478,7 @@ ${boutonRemplissage('devoir', "SCHEMA_DEVOIR", 'formDevoir')}
             <div class="dv-puces" role="group" aria-label="Pour quel jour">${joursDevoir.map((j, i) => `<button type="button" class="dv-puce${i === 0 ? ' actif' : ''}" data-val="${j}" onclick="choisirPuceDevoir(this,'pourLe')">${escapeHtml(libelleJourDevoir(j))}</button>`).join('')}</div>
             <input type="date" name="pourLe" required min="${todayISO()}" value="${joursDevoir[0]}" aria-label="Autre date" oninput="majPucesDevoir('pourLe', this.value)"></div>
           <div class="field span2"><label>Travail à faire</label>
-            <div class="dv-puces dv-phrases" role="group" aria-label="Phrases toutes prêtes">${['Apprendre la leçon', 'Faire les exercices', 'Réviser', 'Lire le texte', 'Recopier', 'Apporter'].map(p => `<button type="button" class="dv-puce" onclick="ajouterPhraseDevoir('${p}')">+ ${p}</button>`).join('')}</div>
+            <div class="dv-puces dv-phrases" role="group" aria-label="Phrases toutes prêtes">${['Apprendre la leçon', 'Faire les exercices', 'Réviser', 'Lire le texte', 'Recopier', 'Apporter'].map(p => `<button type="button" class="dv-puce" onclick="ajouterPhraseDevoir(${jsArg(p)})">+ ${p}</button>`).join('')}</div>
             <textarea name="travail" required minlength="2" maxlength="1000" rows="3" placeholder="Ex : Apprendre la leçon 4, faire les exercices 2 et 3 page 18"></textarea></div>
         </div>
         <label style="display:flex;align-items:center;gap:8px;margin-top:8px;"><input type="checkbox" name="prevenir" checked> Prévenir les parents de la classe par une notification</label>
@@ -8709,7 +8732,7 @@ function openEleveForm(id){
         </div>
         <div class="field"><label>Date de naissance</label><input type="date" name="dateNaissance" required value="${e?e.dateNaissance:''}"></div>
         <div class="field"><label>Classe</label>
-          <select name="classeId">${DB.classes.map(c=>`<option value="${c.id}" ${e?.classeId===c.id?'selected':''}>${c.nom}</option>`).join('')}</select>
+          <select name="classeId">${DB.classes.map(c=>`<option value="${c.id}" ${e?.classeId===c.id?'selected':''}>${escapeHtml(c.nom)}</option>`).join('')}</select>
         </div>
         <div class="field"><label>Statut</label>
           <select name="statut">
@@ -9004,7 +9027,7 @@ function renderEleveProfile(id){
     ${onglet === 'bulletin' ? `
       <div class="panel">
         <div class="letterhead">
-          ${DB.meta.logo ? `<img src="${DB.meta.logo}" alt="Logo">` : `<div class="lh-ph">🎓</div>`}
+          ${DB.meta.logo ? `<img src="${escapeHtml(DB.meta.logo)}" alt="Logo">` : `<div class="lh-ph">🎓</div>`}
           <div class="lh-text">
             <strong>${escapeHtml(DB.meta.nomEcole)}</strong>
             <span>${escapeHtml(DB.meta.adresse)}${DB.meta.telephone ? ' · '+escapeHtml(DB.meta.telephone) : ''}</span>
@@ -10791,7 +10814,7 @@ function openProgrammeForm(id){
       <div class="form-grid">
         <div class="field"><label>Classe</label>
           <select name="classeId" id="progClasse" onchange="updateProgMatieres()">
-            ${mesClasses.map(c=>`<option value="${c.id}" ${classeId===c.id?'selected':''}>${c.nom}</option>`).join('')}
+            ${mesClasses.map(c=>`<option value="${c.id}" ${classeId===c.id?'selected':''}>${escapeHtml(c.nom)}</option>`).join('')}
           </select>
         </div>
         <div class="field"><label>Matière</label>
@@ -11088,7 +11111,7 @@ function buildRecuHtml(r){
   return `
     <div class="recu">
       <div class="recu-head">
-        ${m.logo ? `<img src="${m.logo}">` : `<div class="recu-logo-ph">🎓</div>`}
+        ${m.logo ? `<img src="${escapeHtml(m.logo)}">` : `<div class="recu-logo-ph">🎓</div>`}
         <div>
           <strong>${escapeHtml(m.nomEcole)}</strong>
           <div class="hint">${escapeHtml(m.adresse||'')}${m.telephone?' · '+escapeHtml(m.telephone):''}</div>
@@ -11935,7 +11958,7 @@ function carteScolarite(e, info){
     return `<li class="sc-ligne">
       <span class="sc-lib"><span>${escapeHtml(d.label)}</span>${sous ? `<small>${sous}</small>` : ''}</span>
       <span class="sc-mt">${fmtFCFA(d.montant)}</span>
-      <span class="sc-etat">${badge}${d.statut !== 'paye' ? `<button type="button" class="btn sm" onclick="openPaiementScolariteForm('${e.id}','${escapeHtml(d.label).replace(/'/g, "\\'")}')">Encaisser</button>` : ''}</span>
+      <span class="sc-etat">${badge}${d.statut !== 'paye' ? `<button type="button" class="btn sm" onclick="openPaiementScolariteForm('${e.id}',${jsArg(d.label)})">Encaisser</button>` : ''}</span>
     </li>`;
   }).join('');
   return `<article class="scol-carte" data-nom="${escapeHtml(eleveFullName(e).toLowerCase())}" data-etat="${etatScolarite(e, info)}">
@@ -11988,8 +12011,8 @@ function renderComptaScolarite(){
         const contenu = d.statut==='paye'
           ? `<span class="badge ${cls}">✓ ${fmtFCFA(d.paye)}</span>`
           : d.statut==='partiel'
-            ? `<span class="badge ${cls}" style="cursor:pointer;" onclick="openPaiementScolariteForm('${e.id}','${escapeHtml(d.label).replace(/'/g,"\\'")}')">${fmtFCFA(d.paye)} / ${fmtFCFA(d.montant)}</span>`
-            : `<button class="btn secondary sm" onclick="openPaiementScolariteForm('${e.id}','${escapeHtml(d.label).replace(/'/g,"\\'")}')">Encaisser</button>`;
+            ? `<span class="badge ${cls}" style="cursor:pointer;" onclick="openPaiementScolariteForm('${e.id}',${jsArg(d.label)})">${fmtFCFA(d.paye)} / ${fmtFCFA(d.montant)}</span>`
+            : `<button class="btn secondary sm" onclick="openPaiementScolariteForm('${e.id}',${jsArg(d.label)})">Encaisser</button>`;
         return `<td style="text-align:center;">${contenu}</td>`;
       }).join('');
       cartesScol.push(carteScolarite(e, info));
@@ -12033,7 +12056,7 @@ function renderComptaScolarite(){
         <div><h2>État de la scolarité par classe</h2><div class="sub">${grilleActive ? `Recouvré : ${tauxClasse}% (${fmtFCFA(totalPaye)} / ${fmtFCFA(totalDu)})` : `Frais annuel : ${fmtFCFA(du)} · Recouvré : ${tauxClasse}% (${fmtFCFA(totalPaye)} / ${fmtFCFA(totalDu)})`}</div></div>
         <div style="display:flex;gap:10px;flex-wrap:wrap;">
           <select onchange="ui.filters.comptaClasse=this.value; renderView('comptabilite')">
-            ${DB.classes.map(c=>`<option value="${c.id}" ${classeId===c.id?'selected':''}>${c.nom}</option>`).join('')}
+            ${DB.classes.map(c=>`<option value="${c.id}" ${classeId===c.id?'selected':''}>${escapeHtml(c.nom)}</option>`).join('')}
           </select>
           ${['direction','fondation'].includes(ui.role) ? `<button class="btn secondary" onclick="go('parametres')" title="Gérer les échéances (Frais d'inscription, versements...) depuis Paramètres">🎓 Échéances</button>` : ''}
           ${grilleActive && eleves.length ? `<button class="btn" onclick="ouvrirRepriseVersements('${classeId}')">📥 Saisir les versements déjà reçus</button>` : ''}
@@ -12225,7 +12248,7 @@ function ouvrirRelanceImpayes(classeId){
       <span class="relance-txt"><strong>${f.enfants.map(x => escapeHtml(eleveFullName(x.e))).join(' · ')}</strong>
         <small>${f.enfants.map(x => `${escapeHtml(classeName(x.e.classeId))} : ${x.r.map(r => escapeHtml(r.label)).join(', ')}`).join(' · ')} — <strong>${fmtFCFA(f.total)}</strong></small></span>
       <span class="relance-actions">${f.tel
-        ? `<a class="btn sm" href="https://wa.me/225${f.tel}?text=${encodeURIComponent(messageRelanceImpayes(f))}" target="_blank" rel="noopener" onclick="marquerRelanceImpayes('${f.tel}')">WhatsApp · ${telLisible(f.tel)}</a>${envoye ? `<span class="badge-etat ok">Relancé le ${fmtDate(envoye)}</span>` : ''}`
+        ? `<a class="btn sm" href="https://wa.me/225${f.tel}?text=${encodeURIComponent(messageRelanceImpayes(f))}" target="_blank" rel="noopener" onclick="marquerRelanceImpayes(${jsArg(f.tel)})">WhatsApp · ${telLisible(f.tel)}</a>${envoye ? `<span class="badge-etat ok">Relancé le ${fmtDate(envoye)}</span>` : ''}`
         : `<span class="hint" style="margin:0;">Numéro à corriger sur la fiche</span>`}</span>
     </li>`;
   };
@@ -12314,7 +12337,7 @@ function voirHistoriqueScolarite(eleveId){
   const paiements = DB.paiementsScolarite.filter(p=>p.eleveId===eleveId).sort((a,b)=>b.date.localeCompare(a.date));
   const admin = ['direction','fondation'].includes(ui.role);   // modifier / supprimer : direction et fondation (section 97)
   const rows = paiements.map(p=>`<tr><td>${fmtDate(p.date)}</td><td>${p.tranche}</td><td class="amount in">${fmtFCFA(p.montant)}</td><td>${p.modePaiement}</td>
-    <td style="white-space:nowrap;"><button class="icon-btn" title="Reçu" onclick="openRecu({type:'entree', refId:'${p.id}', montant:${p.montant}, date:'${p.date}', modePaiement:'${p.modePaiement}', objet:'Scolarité — ${p.tranche}', personne:'${escapeHtml(eleveFullName(e))}', sousInfo:'${escapeHtml(classeName(e.classeId))}'})">🧾</button>
+    <td style="white-space:nowrap;"><button class="icon-btn" title="Reçu" onclick="openRecu({type:'entree', refId:'${p.id}', montant:${p.montant}, date:'${p.date}', modePaiement:${jsArg(p.modePaiement)}, objet:${jsArg('Scolarité — ' + (p.tranche || ''))}, personne:${jsArg(eleveFullName(e))}, sousInfo:${jsArg(classeName(e.classeId))}})">🧾</button>
     ${admin ? `<button class="icon-btn" title="Modifier" onclick="openModifierPaiementScolariteForm('${p.id}')">✏️</button>
     <button class="icon-btn danger" title="Supprimer" onclick="deletePaiementScolarite('${p.id}','${eleveId}')">🗑️</button>` : ''}</td></tr>`).join('');
   openModal(`Historique scolarité — ${eleveFullName(e)}`, `
@@ -12449,7 +12472,7 @@ function renderComptaActivites(){
       <div class="table-wrap"><table><thead><tr><th>Activité</th><th>Cotisation</th><th>Périodicité</th><th>Inscrits</th><th>Actions</th></tr></thead><tbody>${catalogRows}</tbody></table></div>`}
     </div>
     ${activitesHC.length>0 ? `
-    <div class="filters"><select onchange="ui.filters.comptaActivite=this.value; renderView('comptabilite')">${activitesHC.map(a=>`<option value="${a.id}" ${actId===a.id?'selected':''}>${a.nom}</option>`).join('')}</select></div>
+    <div class="filters"><select onchange="ui.filters.comptaActivite=this.value; renderView('comptabilite')">${activitesHC.map(a=>`<option value="${a.id}" ${actId===a.id?'selected':''}>${escapeHtml(a.nom)}</option>`).join('')}</select></div>
     ${inscritsPanel}` : ''}`;
 }
 
@@ -12710,7 +12733,7 @@ function renderComptaVentes(){
     const g = DB.gadgets.find(x=>x.id===v.gadgetId);
     const e = v.eleveId ? eleveById(v.eleveId) : null;
     return `<tr><td>${fmtDate(v.date)}</td><td>${escapeHtml(g?g.nom:'—')}</td><td>${v.quantite}</td><td>${e?escapeHtml(eleveFullName(e)):'<span class="hint">Vente comptoir</span>'}</td><td class="amount in">${fmtFCFA(v.montantTotal)}</td><td>${v.modePaiement}</td>
-      <td><button class="icon-btn" title="Reçu" onclick="openRecu({type:'entree', refId:'${v.id}', montant:${v.montantTotal}, date:'${v.date}', modePaiement:'${v.modePaiement}', objet:'Boutique — ${g?escapeHtml(g.nom):''} ×${v.quantite}', personne:'${e?escapeHtml(eleveFullName(e)):'Vente comptoir'}', sousInfo:''})">🧾</button></td></tr>`;
+      <td><button class="icon-btn" title="Reçu" onclick="openRecu({type:'entree', refId:'${v.id}', montant:${v.montantTotal}, date:'${v.date}', modePaiement:${jsArg(v.modePaiement)}, objet:${jsArg('Boutique — ' + (g ? g.nom : '') + ' ×' + v.quantite)}, personne:${jsArg(e ? eleveFullName(e) : 'Vente comptoir')}, sousInfo:''})">🧾</button></td></tr>`;
   }).join('');
 
   return `
@@ -13286,7 +13309,7 @@ function renderTableauAffichage(){
     <div class="panel">
       <div class="panel-head">
         <div><h2>Écran du hall</h2><div class="sub">À ouvrir sur la télévision ou la tablette de l’entrée — aucune connexion nécessaire</div></div>
-        <button class="btn secondary sm" onclick="copierLienAffichage('${lienPublic}')">${icone('link')} Copier le lien</button>
+        <button class="btn secondary sm" onclick="copierLienAffichage(${jsArg(lienPublic)})">${icone('link')} Copier le lien</button>
       </div>
       <div class="ta-lien">${escapeHtml(lienPublic)}</div>
     </div>
@@ -13752,7 +13775,7 @@ function imprimerAffiche(page){
   const m = DB.meta || {};
   openModal('🖨️ Affiche à imprimer', `
     <div class="affiche-a4">
-      <div class="affiche-tete">${m.logo ? `<img src="${m.logo}" alt="">` : ''}<div><div class="affiche-ecole">${escapeHtml(m.nomEcole || '')}</div><div class="affiche-sous">${escapeHtml(a.sous)}</div></div></div>
+      <div class="affiche-tete">${m.logo ? `<img src="${escapeHtml(m.logo)}" alt="">` : ''}<div><div class="affiche-ecole">${escapeHtml(m.nomEcole || '')}</div><div class="affiche-sous">${escapeHtml(a.sous)}</div></div></div>
       <h1 class="affiche-titre">${escapeHtml(a.titre)}</h1>
       <div class="affiche-qr">${qr}</div>
       <ol class="affiche-etapes">${a.etapes.map(e => `<li>${escapeHtml(e)}</li>`).join('')}</ol>
@@ -13893,7 +13916,7 @@ function renderParametres(){
       <div class="panel-head"><div><h2>Logo de l'école</h2><div class="sub">Format PNG ou JPG recommandé, fond transparent de préférence</div></div></div>
       <div class="logo-uploader">
         <div class="logo-preview">
-          ${m.logo ? `<img src="${m.logo}" alt="Logo">` : `<span class="ph">🎓</span>`}
+          ${m.logo ? `<img src="${escapeHtml(m.logo)}" alt="Logo">` : `<span class="ph">🎓</span>`}
         </div>
         <div class="logo-actions">
           <label class="btn secondary" style="cursor:pointer;">⬆️ ${m.logo ? 'Changer le logo' : 'Importer un logo'}
@@ -14290,7 +14313,7 @@ async function genererLienPaiement(eleveId, trancheLabel, montant){
       <div class="hint">Copiez ce lien et envoyez-le au parent par WhatsApp, SMS ou autre : il paiera directement sur la page sécurisée PayDunya (Orange Money, MTN, Moov, Wave, carte).</div>
       <div class="form-actions">
         <button type="button" class="btn secondary" onclick="closeModal()">Fermer</button>
-        <button type="button" class="btn" onclick="copierLienPaiement('${data.url}')">📋 Copier le lien</button>
+        <button type="button" class="btn" onclick="copierLienPaiement(${jsArg(data.url)})">📋 Copier le lien</button>
       </div>`);
   }catch(e){ alert('Erreur : ' + e.message); }
 }
@@ -14571,7 +14594,7 @@ function renderEcheancierAVerifier(){
       ? `<li><div><strong>Grille commune inutilisée</strong><small>${x.n} tranche(s) sans classe${x.sansDate ? `, dont ${x.sansDate} sans date` : ''}. Toutes les classes ont leur propre grille : cette grille commune ne sert à rien.</small></div>
           <button type="button" class="btn secondary sm" onclick="supprimerGrilleCommune()">Supprimer la grille commune</button></li>`
       : `<li><div><strong>« ${escapeHtml(x.label)} » au ${fmtDate(x.date)}</strong><small>${x.type === 'ordre' ? `Datée après « ${escapeHtml(x.suivante.label)} » (${fmtDate(x.suivante.dateEcheance)}) alors qu’elle vient avant dans l’ordre.` : `En dehors de l’année scolaire ${escapeHtml(DB.meta?.anneeScolaire || '')}.`} Concerne ${nomsClasses(x.classes)}.</small></div>
-          <button type="button" class="btn secondary sm" onclick="corrigerDateTranche('${escapeHtml(x.label)}','${x.date}')">Corriger la date</button></li>`).join('')}</ul>
+          <button type="button" class="btn secondary sm" onclick="corrigerDateTranche(${jsArg(x.label)},'${x.date}')">Corriger la date</button></li>`).join('')}</ul>
   </div>`;
 }
 // Corrige la même tranche (même libellé, même date) dans toutes les classes concernées, en une fois

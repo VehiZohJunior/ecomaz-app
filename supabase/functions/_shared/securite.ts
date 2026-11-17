@@ -40,3 +40,12 @@ export async function limiter(admin: any, userId: string, action: string, max: n
   // Ménage : les traces de plus d'un jour de cet utilisateur
   if (Math.random() < 0.05) await admin.from('limites_appels').delete().eq('user_id', userId).lt('created_at', new Date(Date.now() - 86_400_000).toISOString());
 }
+
+// Taille maximale d'une requête, vérifiée AVANT toute lecture du contenu (un gros envoi ne bloque plus la fonction)
+export function tropVolumineux(req: Request, maxOctets: number): Response | null {
+  const n = Number(req.headers.get('content-length') || '0');
+  // On abandonne la lecture du contenu : sinon la connexion reste bloquée jusqu'au délai maximal du serveur
+  if (n > maxOctets) { try { req.body?.cancel(); } catch (_e) { /* déjà fermé */ } }
+  if (n > maxOctets) return new Response(JSON.stringify({ ok: false, error: 'Envoi trop volumineux.' }), { status: 413, headers: { ...ENTETES_SECURITE, 'Access-Control-Allow-Origin': ORIGINE_APPLI, 'Content-Type': 'application/json' } });
+  return null;
+}
