@@ -274,6 +274,7 @@ for(const theme of THEMES){
         cantineinscr: () => { GESTES_EXTRA.cantinepleine(); ouvrirInscriptionCantine(DB.classes[1].id); },
         choixfonction: () => { afficherChoixFonction([{ role: 'direction', active: true }, { role: 'secretariat' }, { role: 'enseignant', enseignantId: DB.enseignants[0].id }]); },
         fonctionspanel: () => { const p = (DB.profiles || []).find(x => x.role === 'direction') || { id: 'pdir', role: 'direction', nomComplet: 'Directeur Essai' }; if(!(DB.profiles || []).includes(p)) DB.profiles = (DB.profiles || []).concat([p]); DB.fonctionsCompte = [{ userId: p.id, role: 'direction', enseignantId: null }, { userId: p.id, role: 'enseignant', enseignantId: DB.enseignants[1].id }]; window.__fonctions = [{ role: 'direction', active: true }, { role: 'enseignant' }]; renderView('enseignants'); applyRoleVisibility(); document.querySelector('.panneau-fonctions')?.scrollIntoView({ block: 'start' }); window.scrollBy(0, -70); console.error('BOUTON ' + !document.getElementById('btnChangerFonction').hidden + ' | ACCES ' + (document.body.innerText.match(/Accès actif/g) || []).length); },
+        pservices: async () => { navParent('services'); await new Promise(r => setTimeout(r, 500)); console.error('PSVC ' + document.querySelectorAll('.svc-carte').length + ' cartes'); },
         relies: () => { document.querySelector('.seg[data-etat="relie"]').click(); },
       };
       if(GESTES[extra]){ await page.evaluate(`window.GESTES_EXTRA = { edtfictif: ${GESTES.edtfictif.toString()}, sfouvrir: ${GESTES.sfouvrir.toString()}, recusfictifs: ${GESTES.recusfictifs.toString()}, cantinepleine: ${GESTES.cantinepleine.toString()} }`); await page.evaluate(GESTES[extra]); await page.waitForTimeout(900); }
@@ -331,7 +332,7 @@ for(const theme of THEMES){
             if(el.closest('[hidden], .modal-backdrop:not(.open), .sidebar, svg, .skip-link, .sr-only, select, option, input, textarea, .ta-bandeau')) return; // champs (texte qui défile dedans) et bandeau défilant : voulus
             const r = el.getBoundingClientRect(); if(!r.width || !r.height) return;
             if((r.right > W + 1 || r.left < -1) && !defile(el) && ![...vus].some(v => v.contains(el))){ vus.add(el); sortis.push(nomEl(el) + ' +' + Math.round(Math.max(r.right - W, -r.left)) + 'px'); }
-            if(['hidden', 'clip'].includes(cs.overflowX) && cs.textOverflow !== 'ellipsis' && el.scrollWidth > el.clientWidth + 2 && !el.querySelector('img,canvas,video') && !el.matches('.enfant-carte') /* carte enfant : cercle décoratif (::after) volontairement rogné */) coupes.push(nomEl(el) + ' ' + (el.scrollWidth - el.clientWidth) + 'px');
+            if(['hidden', 'clip'].includes(cs.overflowX) && cs.textOverflow !== 'ellipsis' && el.scrollWidth > el.clientWidth + 2 && !el.querySelector('img,canvas,video') && !el.matches('.enfant-carte, .app-hero') /* carte enfant, bandeau d'accueil : cercle décoratif (::after) volontairement rogné */) coupes.push(nomEl(el) + ' ' + (el.scrollWidth - el.clientWidth) + 'px');
           });
           return { page: document.documentElement.scrollWidth - W, sortis: sortis.slice(0, 8), coupes: coupes.slice(0, 8) };
         });

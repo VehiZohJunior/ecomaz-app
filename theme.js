@@ -206,7 +206,8 @@ if(window.top !== window.self){ try{ window.top.location = window.self.location.
     const L = LIBELLES_COURTS[langue];
     const active = visibles.find(b => b.classList.contains('active'));
     barre.innerHTML = '';
-    choix.forEach(src => {
+    choix.forEach((src, rang) => {
+      if(rang === 2) barre.appendChild(boutonServices(L));
       const b = document.createElement('button');
       b.type = 'button';
       b.className = 'bn-item' + (src === active ? ' active' : '');
@@ -229,6 +230,19 @@ if(window.top !== window.self){ try{ window.top.location = window.self.location.
     menu.addEventListener('click', () => { const bg = document.getElementById('burger'); if(bg) bg.click(); });
     barre.appendChild(menu);
     document.body.classList.add('has-bottom-nav');
+  }
+  // Bouton central surélevé « Services » (grille de tous les services)
+  function boutonServices(L){
+    const b = document.createElement('button');
+    b.type = 'button';
+    let actif = false; try{ actif = ui.currentView === 'services'; }catch(_e){}
+    b.className = 'bn-item bn-fab' + (actif ? ' active' : '');
+    b.innerHTML = '<span class="bn-ic bn-fab-rond" aria-hidden="true"></span><span class="bn-label"></span>';
+    b.querySelector('.bn-fab-rond').innerHTML = window.EmIcones ? EmIcones.svg('sparkles') : '✦';
+    b.querySelector('.bn-label').textContent = (L === LIBELLES_COURTS.en) ? 'Services' : 'Services';
+    b.setAttribute('aria-label', 'Tous les services');
+    b.addEventListener('click', () => { try{ go('services'); }catch(_e){} });
+    return b;
   }
   function installerBarreBas(){
     const nav = document.getElementById('nav');
