@@ -2920,6 +2920,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.11.20-8', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Les chiffres du jour se déplient d’un toucher : élèves inscrits (par classe, garçons/filles), enseignants ayant pointé (heure d’arrivée, retard, départ), enseignants sans pointage, présence des élèves par classe (présents, retards, absents) et résumé de la présence des enseignants.' ],
+  } },
   { version: '2026.11.20-7', nouveautes: {
     commun: [ 'Accueil rangé partout comme « Nos services » : après la salutation, chaque rubrique est une tuile (icône ronde colorée, titre, petite description) sur une seule ligne ; un toucher l’ouvre juste en dessous.' ],
     parent: [ 'Votre accueil : deux lignes de tuiles — vos informations privées (Aujourd’hui, Mes enfants, Devoirs, Absence) et les informations publiques (Menu, Agenda, Nouvelles, Honneur, Photos, Contacter).' ],
@@ -5084,6 +5090,86 @@ function copierRelanceEnseignant(i){
 /* Panneau principal : toutes les rubriques sur UNE ligne horizontale d'onglets (20/11/2026).
    Un toucher sur un onglet ouvre son contenu juste en dessous ; un second le referme.
    La rubrique ouverte est mémorisée sur l'appareil. */
+/* Chiffres du jour dépliables (20/11/2026) : élèves inscrits, enseignants ayant pointé / pas encore,
+   présence des élèves par classe, présence des enseignants. Lecture seule. */
+function initialesNom(n){ return String(n || '').trim().split(/\s+/).map(x => x.charAt(0)).join('').slice(0, 2).toUpperCase() || '?'; }
+function heureCourte(h){ return h ? String(h).slice(0, 5) : ''; }
+function classesEnseignantTexte(t){ return (t.classesAssignees || []).map(classeName).filter(x => x !== '—').join(', '); }
+function chiffresDuJour(){
+  const auj = todayISO();
+  const actifs = (DB.eleves || []).filter(e => e.statut === 'Actif');
+  const ens = (DB.enseignants || []).filter(e => e.statut === 'Actif');
+  const recsEns = (DB.presencesEnseignants || []).filter(p => p.date === auj);
+  const recDe = id => recsEns.find(p => p.enseignantId === id);
+  const pointes = ens.filter(t => { const r = recDe(t.id); return r && (r.heureArrivee || r.statut === 'Présent' || r.statut === 'Retard'); })
+    .sort((a, b) => (heureCourte(recDe(a.id).heureArrivee) || '99').localeCompare(heureCourte(recDe(b.id).heureArrivee) || '99'));
+  const nonPointes = ens.filter(t => !pointes.includes(t)).sort((a, b) => ensFullName(a).localeCompare(ensFullName(b)));
+  const presEl = (DB.presencesEleves || []).filter(p => p.date === auj);
+  const presents = presEl.filter(p => p.statut === 'Présent' || p.statut === 'Retard').length;
+  const tauxEl = presEl.length ? Math.round(100 * presents / presEl.length) : null;
+  const classes = (DB.classes || []).filter(c => actifs.some(e => e.classeId === c.id));
+  const triEl = (a, b) => (a.nom || '').localeCompare(b.nom || '') || (a.prenom || '').localeCompare(b.prenom || '');
+  const puces = (liste, cls) => liste.length ? `<div class="kp-puces">${liste.map(e => `<span class="kp-puce${cls ? ' ' + cls : ''}">${escapeHtml(eleveFullName(e))}</span>`).join('')}</div>` : '';
+  const ligneEns = (t, droite) => `<div class="kp-ligne"><span class="kp-avatar" aria-hidden="true">${escapeHtml(initialesNom(ensFullName(t)))}</span>
+    <div class="kp-qui"><strong>${escapeHtml(ensFullName(t))}</strong>${classesEnseignantTexte(t) ? `<small>${escapeHtml(classesEnseignantTexte(t))}</small>` : ''}</div>${droite}</div>`;
+  const pied = (lib, action) => hasAccess(action[0]) ? `<div class="kp-pied"><button type="button" class="btn secondary sm" onclick="go('${action[0]}')">${escapeHtml(lib)}</button></div>` : '';
+
+  // 1. Élèves inscrits, par classe
+  const inscrits = classes.map(c => {
+    const l = actifs.filter(e => e.classeId === c.id).sort(triEl);
+    const g = l.filter(e => e.sexe === 'M').length, f = l.filter(e => e.sexe === 'F').length;
+    return `<div class="kp-classe"><div class="kp-classe-tete"><strong>${escapeHtml(c.nom)}</strong><span>${l.length} élève${l.length > 1 ? 's' : ''}${g || f ? ` · ${g} G · ${f} F` : ''}</span></div>${puces(l)}</div>`;
+  }).join('');
+
+  // 2. Enseignants ayant pointé (heure d'arrivée, retard éventuel, départ)
+  const htmlPointes = pointes.length ? pointes.map(t => { const r = recDe(t.id);
+    const etat = r.statut === 'Retard' ? `<span class="kp-badge kp-retard">Retard${r.minutesRetard ? ` · ${r.minutesRetard} min` : ''}</span>` : `<span class="kp-badge kp-ok">À l’heure</span>`;
+    return ligneEns(t, `<div class="kp-droite"><span class="kp-heure">${icone('log-in')}${escapeHtml(heureCourte(r.heureArrivee) || '—')}</span>${r.heureDepart ? `<span class="kp-heure kp-depart">Départ ${escapeHtml(heureCourte(r.heureDepart))}</span>` : ''}${etat}</div>`); }).join('')
+    : `<div class="kp-vide">${icone('hourglass')}Aucun enseignant n’a encore pointé aujourd’hui.</div>`;
+
+  // 3. Enseignants qui n'ont pas encore pointé
+  const htmlNon = nonPointes.length ? nonPointes.map(t => { const r = recDe(t.id);
+    return ligneEns(t, `<div class="kp-droite">${r && r.statut === 'Absent' ? '<span class="kp-badge kp-absent">Absent</span>' : '<span class="kp-badge kp-attente">Pas encore pointé</span>'}</div>`); }).join('')
+    : `<div class="kp-vide kp-vide-ok">${icone('circle-check')}Tous les enseignants ont pointé aujourd’hui.</div>`;
+
+  // 4. Présence des élèves aujourd'hui, par classe
+  const htmlPresence = classes.map(c => {
+    const l = actifs.filter(e => e.classeId === c.id).sort(triEl);
+    const recs = presEl.filter(p => p.classeId === c.id || l.some(e => e.id === p.eleveId));
+    if(!recs.length) return `<div class="kp-classe kp-classe-attente"><div class="kp-classe-tete"><strong>${escapeHtml(c.nom)}</strong><span class="kp-badge kp-attente">Appel pas encore fait</span></div></div>`;
+    const st = e => (recs.find(p => p.eleveId === e.id) || {}).statut;
+    const pres = l.filter(e => st(e) === 'Présent'), ret = l.filter(e => st(e) === 'Retard'), abs = l.filter(e => st(e) === 'Absent');
+    const pct = l.length ? Math.round(100 * (pres.length + ret.length) / l.length) : 0;
+    return `<div class="kp-classe"><div class="kp-classe-tete"><strong>${escapeHtml(c.nom)}</strong><span>${pres.length + ret.length} / ${l.length} présents</span></div>
+      <div class="kp-jauge" role="img" aria-label="${pct} % de présents"><div style="width:${pct}%"></div></div>
+      ${pres.length ? `<div class="kp-sous-titre">Présents</div>${puces(pres)}` : ''}
+      ${ret.length ? `<div class="kp-sous-titre">En retard</div>${puces(ret, 'kp-puce-retard')}` : ''}
+      ${abs.length ? `<div class="kp-sous-titre">Absents</div>${puces(abs, 'kp-puce-absent')}` : ''}</div>`;
+  }).join('');
+
+  // 5. Présence des enseignants : le résumé du jour
+  const nbRet = pointes.filter(t => recDe(t.id).statut === 'Retard').length, nbAbs = nonPointes.filter(t => (recDe(t.id) || {}).statut === 'Absent').length;
+  const tauxEns = ens.length && recsEns.length ? Math.round(100 * pointes.length / ens.length) : null;
+  const htmlEns = `<div class="kp-resume">
+      <div class="kp-stat"><strong>${pointes.length - nbRet}</strong><span>À l’heure</span></div>
+      <div class="kp-stat kp-stat-retard"><strong>${nbRet}</strong><span>En retard</span></div>
+      <div class="kp-stat kp-stat-absent"><strong>${nbAbs}</strong><span>Absents</span></div>
+      <div class="kp-stat kp-stat-attente"><strong>${nonPointes.length - nbAbs}</strong><span>Pas encore pointé</span></div></div>
+    <div class="kp-jauge kp-jauge-large" role="img" aria-label="${tauxEns ?? 0} % des enseignants ont pointé"><div style="width:${tauxEns ?? 0}%"></div></div>`;
+
+  return [
+    { id: 'k-inscrits', court: 'Élèves inscrits', titre: `Élèves inscrits — ${actifs.length}`, ic: 'graduation-cap', fam: 'nuit', valeur: actifs.length,
+      html: `<div class="kp-grille">${inscrits || '<div class="kp-vide">Aucun élève inscrit.</div>'}</div>${pied('Ouvrir Élèves & Inscriptions', ['eleves'])}` },
+    { id: 'k-pointes', court: 'Enseignants ayant pointé', titre: `Enseignants ayant pointé aujourd’hui — ${pointes.length} / ${ens.length}`, ic: 'log-in', fam: 'menthe', valeur: pointes.length,
+      html: `<div class="kp-liste">${htmlPointes}</div>${pied('Voir le journal de pointage', ['presences-enseignants'])}` },
+    { id: 'k-nonpointes', court: 'Pointage non fait', titre: `Enseignants sans pointage aujourd’hui — ${nonPointes.length} / ${ens.length}`, ic: 'hourglass', fam: 'indigo', valeur: nonPointes.length,
+      html: `<div class="kp-liste">${htmlNon}</div>${pied('Scanner un badge', ['pointage-scan'])}` },
+    { id: 'k-presents', court: tauxEl === null ? 'Appel non effectué' : 'Présence élèves', titre: tauxEl === null ? 'Présence des élèves — appel pas encore fait' : `Présence des élèves aujourd’hui — ${presents} présents (${tauxEl} %)`, ic: 'circle-check', fam: 'ocean', valeur: tauxEl === null ? '—' : tauxEl + ' %',
+      html: `<div class="kp-grille">${htmlPresence || '<div class="kp-vide">Aucune classe.</div>'}</div>${pied('Faire ou voir l’appel', ['presences-eleves'])}` },
+    { id: 'k-presence-ens', court: tauxEns === null ? 'Aucun pointage' : 'Présence enseignants', titre: 'Présence des enseignants aujourd’hui', ic: 'clock', fam: 'nuit', valeur: tauxEns === null ? '—' : tauxEns + ' %',
+      html: htmlEns + pied('Voir le journal', ['presences-enseignants']) },
+  ];
+}
 function tuileChiffre(ic, fam, valeur, libelle, action){
   return `<button type="button" class="dbr-onglet dbr-chiffre" onclick="${action}">${iconeService(ic, fam)}<span class="dbr-valeur">${escapeHtml(String(valeur))}</span><small class="dbr-sous">${escapeHtml(libelle)}</small></button>`;
 }
@@ -5108,10 +5194,12 @@ function barreRubriques(liste, opts){
   liste = liste.filter(Boolean); if(!liste.length) return '';
   const voulu = opts.ouvrir || rubriqueActive();
   const act = liste.some(r => r.id === voulu && !r.action) ? voulu : '';
-  const onglet = r => `<button type="button" class="dbr-onglet${r.id === act ? ' actif' : ''}" title="${escapeHtml(r.titre)}" ${r.action
+  const onglet = r => `<button type="button" class="dbr-onglet${r.valeur != null ? ' dbr-chiffre' : ''}${r.id === act ? ' actif' : ''}" title="${escapeHtml(r.titre)}" ${r.action
       ? `onclick="${r.action}"`
       : `role="tab" id="ong-${r.id}" aria-selected="${r.id === act}" aria-controls="rub-${r.id}" onclick="basculerRubrique('${r.id}')"`}>
-      ${iconeService(r.ic, (STYLE_RUBRIQUES[r.id] || [])[0] || 'nuit')}<span class="dbr-titre">${escapeHtml(r.court)}</span><small class="dbr-sous">${escapeHtml((STYLE_RUBRIQUES[r.id] || [])[1] || '')}</small>${r.info ? `<span class="dbr-indic">${escapeHtml(r.info)}</span>` : ''}</button>`;
+      ${iconeService(r.ic, r.fam || (STYLE_RUBRIQUES[r.id] || [])[0] || 'nuit')}${r.valeur != null
+        ? `<span class="dbr-valeur">${escapeHtml(String(r.valeur))}</span><small class="dbr-sous dbr-libelle">${escapeHtml(r.court)}</small>`
+        : `<span class="dbr-titre">${escapeHtml(r.court)}</span><small class="dbr-sous">${escapeHtml((STYLE_RUBRIQUES[r.id] || [])[1] || '')}</small>`}${r.info ? `<span class="dbr-indic">${escapeHtml(r.info)}</span>` : ''}</button>`;
   return `<section class="db-rubriques" aria-label="${escapeHtml(opts.titre || 'Rubriques')}">
     ${opts.titre ? `<div class="dbr-ligne-tete">${opts.ic ? icone(opts.ic) : ''}<div><h2>${escapeHtml(opts.titre)}</h2>${opts.sous ? `<span>${escapeHtml(opts.sous)}</span>` : ''}</div></div>` : ''}
     <div class="dbr-barre" role="tablist">${liste.map(onglet).join('')}</div>
@@ -5223,12 +5311,7 @@ function renderDashboard(){
       rubrique('repartition', 'Répartition', 'Répartition des élèves par classe', 'chart-column', `<div class="panel"><div class="panel-head"><div><h2>Répartition des élèves par classe</h2></div></div>${barsHtml}</div>`, () => String(totalEleves)),
       rubrique('ensemble', 'Par classe', 'Vue d’ensemble par classe', 'school', `<div class="panel"><div class="panel-head"><div><h2>Vue d’ensemble par classe</h2></div></div><div class="lignes-classes">${renderLignesClasses()}</div></div>`),
     ])}
-    <section class="db-chiffres" aria-label="Les chiffres du jour"><div class="dbr-barre dbr-chiffres">
-      ${tuileChiffre('graduation-cap', 'nuit', totalEleves, 'Élèves inscrits', "go('eleves')")}
-      ${tuileChiffre('presentation', 'indigo', presEnsToday.length ? `${ensPresents}/${totalEns}` : totalEns, presEnsToday.length ? 'Enseignants présents' : 'Enseignants (pointage non fait)', "go('presences-enseignants')")}
-      ${tuileChiffre('circle-check', 'menthe', tauxEleves === null ? '—' : tauxEleves + '%', tauxEleves === null ? 'Appel non effectué' : 'Présence élèves', "go('presences-eleves')")}
-      ${tuileChiffre('clock', 'ocean', tauxEns === null ? '—' : tauxEns + '%', tauxEns === null ? 'Aucun pointage aujourd’hui' : 'Présence enseignants', "go('presences-enseignants')")}
-    </div></section>
+    ${barreRubriques(chiffresDuJour(), { titre: 'Les chiffres du jour', ic: 'chart-column', sous: 'Touchez un chiffre pour voir le détail.' })}
     ${animer ? `${(setTimeout(animerCompteursKpi, 0), '')}` : ''}
     ${renderBanniereNotifications()}
     ${ui.role==='enseignant' ? renderActualitesParent() + renderTableauHonneurParent() : ''}
