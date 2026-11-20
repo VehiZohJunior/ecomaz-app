@@ -2893,6 +2893,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.11.20-4', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Tableau de bord aéré : chaque rubrique (À faire aujourd’hui, Suivi des enseignants, Dans les 3 prochaines semaines, Trésorerie, Mise en route, Élèves à surveiller, Anniversaires, Répartition des élèves…) est repliée sous son titre, avec un petit indicateur. Un toucher sur le titre la déroule ; l’appli se souvient de celles que vous gardez ouvertes.' ],
+  } },
   { version: '2026.11.20-3', nouveautes: {
     commun: [ 'Nouvel accueil : un bandeau bleu nuit avec votre chiffre clé et vos 2 actions principales, une grande barre de recherche, « Nos services » en 4 tuiles et « Voir tout » pour tous les services en grille. Rien n’a disparu : ce sont de nouveaux accès plus rapides.' ],
     parent: [ 'En bas, le bouton central « Services » ouvre tous les services : payer, signaler une absence, messages, devoirs, menu, agenda, objets perdus, suggestions, profil.' ],
@@ -5030,6 +5036,23 @@ function copierRelanceEnseignant(i){
     .catch(() => openModal('Message de relance', `<textarea rows="8" style="width:100%;">${escapeHtml(txt)}</textarea>`));
 }
 
+/* Panneau principal « ventilé » : chaque rubrique est repliée sous son titre (2026-11-20).
+   L'état ouvert/fermé de chaque rubrique est mémorisé sur l'appareil. */
+function rubriquesOuvertes(){ try{ return new Set(JSON.parse(localStorage.getItem('ecomaz_rubriques_ouvertes') || '[]')); }catch(_e){ return new Set(); } }
+function noterRubrique(id, ouvert){ try{ const s = rubriquesOuvertes(); ouvert ? s.add(id) : s.delete(id); localStorage.setItem('ecomaz_rubriques_ouvertes', JSON.stringify([...s])); }catch(_e){} }
+function replier(id, titre, ic, html, indic){
+  if(!html || !String(html).trim()) return '';
+  const info = typeof indic === 'function' ? indic(html) : (indic || '');
+  return `<details class="db-replie" id="rub-${id}"${rubriquesOuvertes().has(id) ? ' open' : ''} ontoggle="noterRubrique('${id}', this.open)">
+    <summary><span class="dbr-ic" aria-hidden="true">${icone(ic) || ''}</span><span class="dbr-titre">${escapeHtml(titre)}</span>${info ? `<span class="dbr-indic">${escapeHtml(info)}</span>` : ''}<span class="dbr-fleche" aria-hidden="true"></span></summary>
+    <div class="dbr-corps">${html}</div></details>`;
+}
+// Un bouton qui renvoie à une rubrique la déroule d'abord
+function ouvrirSection(idElement){
+  const el = document.getElementById(idElement); if(!el) return;
+  const d = el.closest('details'); if(d && !d.open) d.open = true;
+  (d || el).scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
 function renderDashboard(){
   if(ui.role === 'enseignant') return renderAccueilEnseignant();
   const today = todayISO();
@@ -5106,35 +5129,33 @@ function renderDashboard(){
     <div class="db-bonjour"><div><h2>${escapeHtml(salutation())}</h2><div class="db-date">${dateLongue}</div>${renderQuestionAppel()}</div>
       ${['direction','fondation'].includes(ui.role) ? `<button type="button" class="btn secondary sm" onclick="ouvrirRapportMois()">${icone('file-text')} Rapport du mois</button>` : ''}</div>
     ${ui.role === 'enseignant' && !session.enseignantId ? renderJeMEnrole() : ''}
-    ${renderAFaireAujourdhui()}
-    ${renderSuiviEnseignants()}
-    ${renderProchainesDatesEcole()}
+    <div class="db-replis">
+    ${replier('afaire', 'À faire aujourd’hui', 'circle-dot', renderAFaireAujourdhui(), h => (h.match(/afaire-compte">(\d+)/) || [])[1] ? `${h.match(/afaire-compte">(\d+)/)[1]} à faire` : '')}
+    ${replier('suivi', 'Suivi des enseignants', 'users', renderSuiviEnseignants(), h => (h.match(/(\d+) enseignant\(s\) à relancer/) || [])[1] ? `${h.match(/(\d+) enseignant\(s\) à relancer/)[1]} à relancer` : '')}
+    ${replier('dates', 'Dans les 3 prochaines semaines', 'calendar', renderProchainesDatesEcole())}
+    </div>
     <div class="cards cards-2x2">
       ${kpi(0, icone('graduation-cap'), 'var(--primary-dim)', totalEleves, 'Élèves inscrits')}
       ${kpi(1, icone('presentation'), 'var(--purple-bg)', presEnsToday.length ? `${ensPresents}/${totalEns}` : totalEns, presEnsToday.length ? 'Enseignants présents aujourd’hui' : 'Enseignants (pointage non fait)')}
       ${kpi(2, icone('circle-check'), 'var(--green-bg)', tauxEleves===null ? null : tauxEleves+'%', 'Présence élèves aujourd’hui', ['Appel non effectué', lien('presences-eleves', 'Faire l’appel')])}
       ${kpi(3, icone('clock'), 'var(--blue-bg)', tauxEns===null ? null : tauxEns+'%', 'Présence enseignants aujourd’hui', ['Aucun pointage aujourd’hui', lien('presences-enseignants', 'Voir le journal')])}
     </div>
-    ${finance ? renderTresorerie() : ''}
+    <div class="db-replis">
+    ${finance ? replier('treso', 'Trésorerie', 'wallet', renderTresorerie()) : ''}
     ${animer ? `${(setTimeout(animerCompteursKpi, 0), '')}` : ''}
-    ${renderMiseEnRoute()}
-    ${renderMaJournee()}
-    ${renderElevesASurveiller()}
-    ${renderAnniversaires()}
+    ${replier('miseenroute', 'Mise en route de l’école', 'target', renderMiseEnRoute(), h => (h.match(/mer-score">([^<]+)</) || [])[1] || '')}
+    ${replier('journee', 'Ma journée', 'clock', renderMaJournee())}
+    ${replier('surveiller', 'Élèves à surveiller', 'triangle-alert', renderElevesASurveiller(), h => (h.match(/mer-score">([^<]+)</) || [])[1] || '')}
+    ${replier('anniv', 'Anniversaires de la semaine', 'party-popper', renderAnniversaires(), h => { const n = (h.match(/class="mj-classe"/g) || []).length; return n ? String(n) : ''; })}
+    </div>
     ${(ui.role==='direction' || ui.role==='fondation') ? `<div class="form-actions no-print" style="justify-content:flex-start;margin:0 0 var(--sp-4);"><button class="btn secondary" onclick="ouvrirBilanHebdo()">📊 Bilan de la semaine</button></div>` : ''}
 
     ${renderBanniereNotifications()}
     ${ui.role==='enseignant' ? renderActualitesParent() + renderTableauHonneurParent() : ''}
 
-    <div class="grid-2">
-      <div class="panel">
-        <div class="panel-head"><div><h2>Répartition des élèves par classe</h2></div></div>
-        ${barsHtml}
-      </div>
-      <div class="panel">
-        <div class="panel-head"><div><h2>Vue d’ensemble par classe</h2></div></div>
-        <div class="lignes-classes">${renderLignesClasses()}</div>
-      </div>
+    <div class="db-replis">
+    ${replier('repartition', 'Répartition des élèves par classe', 'chart-column', `<div class="panel"><div class="panel-head"><div><h2>Répartition des élèves par classe</h2></div></div>${barsHtml}</div>`, () => `${totalEleves} élèves`)}
+    ${replier('ensemble', 'Vue d’ensemble par classe', 'school', `<div class="panel"><div class="panel-head"><div><h2>Vue d’ensemble par classe</h2></div></div><div class="lignes-classes">${renderLignesClasses()}</div></div>`)}
     </div>
   </div>`;
 }
@@ -5396,12 +5417,12 @@ function etapesMiseEnRoute(){
     { ok: actifs.length > 0 && relies / actifs.length >= 0.8, titre: 'Parents reliés à leur enfant', detail: `${relies} / ${actifs.length} — sans lien, le parent ne reçoit ni annonces ni alertes`, vue: 'liens-parents', bouton: 'Inviter les familles', action: "go('liens-parents'); setTimeout(() => ouvrirRelanceParents(), 200)" },
     { ok: classesAvecEleves.length > 0 && !classesSansAppel.length, titre: 'Appel fait dans chaque classe cette semaine', detail: !appelsRecents ? 'Aucun appel depuis 7 jours : les parents ne sont pas prévenus des absences'
         : classesSansAppel.length ? `${classesAvecEleves.length - classesSansAppel.length} / ${classesAvecEleves.length} classe(s) — sans appel : ${classesSansAppel.slice(0, 5).map(c => c.nom).join(', ')}${classesSansAppel.length > 5 ? '…' : ''}` : `${classesAvecEleves.length} / ${classesAvecEleves.length} classe(s)`,
-      vue: 'dashboard', bouton: 'Voir le suivi des enseignants', action: "document.getElementById('titreSuiviEns')?.scrollIntoView({ behavior:'smooth', block:'start' })" },
+      vue: 'dashboard', bouton: 'Voir le suivi des enseignants', action: "ouvrirSection('titreSuiviEns')" },
     ...(Array.isArray(DB.alertesPersonnel) && DB.alertesPersonnel.length ? [{ ok: !rolesSansAlertes.length, titre: 'Alertes sur les téléphones du personnel',
       detail: rolesSansAlertes.length ? `Sans alertes : ${rolesSansAlertes.join(', ')} — pas de bilan du vendredi, ni d’alerte « appel non fait », d’absence signalée ou de demande` : 'direction, fondation, secrétariat et portier sont prévenus',
       vue: 'dashboard', bouton: 'Comment faire', action: 'ouvrirAideAlertesPersonnel()' }] : []),
     ...(DB.etatComptes && ensAvecCompte.length ? [{ ok: ensAlertes.length >= ensAvecCompte.length, titre: 'Rappel de l’appel sur le téléphone des enseignants', detail: `${ensAlertes.length} / ${ensAvecCompte.length} enseignant(s) ont activé les alertes — sans elles, le rappel de l’appel n’arrive pas`,
-      vue: 'dashboard', bouton: 'Voir qui relancer', action: "document.getElementById('titreSuiviEns')?.scrollIntoView({ behavior:'smooth', block:'start' })" }] : []),
+      vue: 'dashboard', bouton: 'Voir qui relancer', action: "ouvrirSection('titreSuiviEns')" }] : []),
     { ok: (DB.paiementsScolarite || []).length > 0, titre: 'Paiements de scolarité enregistrés', detail: (DB.paiementsScolarite || []).length ? `${DB.paiementsScolarite.length} paiement(s)` : 'Aucun paiement saisi : reprenez le cahier de caisse classe par classe (« Versements déjà reçus »)', vue: 'comptabilite', bouton: 'Saisir les versements reçus',
       action: (DB.echeancesScolarite || []).length && (DB.classes || []).length ? `ui.filters.comptaTab='scolarite'; ui.filters.comptaClasse='${(DB.classes[0] || {}).id}'; go('comptabilite'); setTimeout(() => ouvrirRepriseVersements('${(DB.classes[0] || {}).id}'), 200)` : null },
     { ok: (DB.classes || []).length > 0 && !classeSansEdt, titre: 'Emploi du temps de chaque classe', detail: `${classesAvecEdt.length} / ${(DB.classes || []).length} classe(s) remplie(s)${classeSansEdt ? ' — sans lui, la « Ma journée » des enseignants reste vide' : ''}`, vue: 'emploi-temps', bouton: 'Remplir rapidement',
@@ -9192,7 +9213,7 @@ function confirmerPublicationBulletins(trimestre, lecture){
         <span class="pb-puces"><span class="pb-puce ${x.avecMoyenne >= x.eleves ? 'pb-ok' : 'pb-ko'}">Moyennes ${x.avecMoyenne}/${x.eleves}</span><span class="pb-puce ${x.saisies >= x.attendues ? 'pb-ok' : 'pb-ko'}">Compositions ${x.saisies}/${x.attendues}</span><span class="pb-puce ${x.appr >= x.eleves ? 'pb-ok' : 'pb-ko'}">Appréciations ${x.appr}/${x.eleves}</span></span></li>`).join('')}</ul>
       <p class="hint">Après publication : chaque parent voit le bulletin de SES enfants et reçoit une notification ; les notes sont verrouillées (seule la direction peut encore corriger, avec historique).</p>
       <div class="form-actions">${lecture
-        ? `${incomplets.length ? `<button type="button" class="btn secondary" onclick="__publication(false); setTimeout(() => { go('dashboard'); setTimeout(() => document.getElementById('titreSuiviEns')?.scrollIntoView({ behavior:'smooth', block:'start' }), 300); }, 50)">Relancer les enseignants</button>` : ''}<button type="button" class="btn" onclick="__publication(false)">Fermer</button>`
+        ? `${incomplets.length ? `<button type="button" class="btn secondary" onclick="__publication(false); setTimeout(() => { go('dashboard'); setTimeout(() => ouvrirSection('titreSuiviEns'), 300); }, 50)">Relancer les enseignants</button>` : ''}<button type="button" class="btn" onclick="__publication(false)">Fermer</button>`
         : incomplets.length
         ? `<button type="button" class="btn" onclick="__publication(false)">Compléter d’abord</button><button type="button" class="btn danger" onclick="__publication(true)">Publier quand même</button>`
         : `<button type="button" class="btn secondary" onclick="__publication(false)">Annuler</button><button type="button" class="btn" onclick="__publication(true)">Publier aux parents</button>`}</div>`);
