@@ -2547,3 +2547,21 @@ tbody td input.champ-a-verifier, tbody td select.champ-a-verifier, .nt-note.cham
 .dbr-onglet.actif{ background:var(--primary-soft); border-color:var(--em-gold-400); color:var(--text); box-shadow:0 0 0 2px var(--em-gold-400) inset; }
 .dbr-onglet.actif .dbr-sous{ color:var(--text-dim); }
 @media (max-width:480px){ .dbr-sous{ display:none; } }
+
+/* ===== Accueil rangé comme « Nos services », pour tous les comptes (2026-11-20) ===== */
+.dbr-onglet{ border:0; background:var(--surface-2); box-shadow:none; }
+.dbr-onglet:hover{ background:var(--surface-1); box-shadow:0 0 0 1.5px var(--em-gold-400) inset; }
+.dbr-onglet.actif{ border:0; }
+.db-chiffres{ margin:0 0 22px; }
+.dbr-chiffre{ cursor:pointer; }
+.dbr-valeur{ font-size:var(--fs-xl); font-weight:900; line-height:1.1; font-variant-numeric:tabular-nums; }
+.dbr-ligne-tete{ display:flex; align-items:center; gap:10px; margin:6px 2px 0; }
+.dbr-ligne-tete > .ico{ width:20px; height:20px; color:var(--text-dim); flex:0 0 20px; }
+.dbr-ligne-tete h2{ margin:0; font-size:var(--fs-md); font-weight:900; }
+.dbr-ligne-tete span{ font-size:var(--fs-xs); color:var(--text-dim); }
+.dbr-corps .acc-annexe > summary{ display:none; }
+.dbr-corps .acc-annexe{ border:0; box-shadow:none; padding:0; margin:0; background:transparent; }
+.dbr-corps .taches-bloc{ border:0; box-shadow:none; margin:0; padding:4px 0 0; background:transparent; }
+.dbr-corps .taches-bloc .taches-titres h2{ display:none; }
+.gate-classe.dbr-onglet{ min-height:120px; }
+@media (max-width:480px){ .gate-classe .dbr-sous{ display:-webkit-box; } }

@@ -2170,30 +2170,27 @@ function renderParentDashboard(){
       <p class="parent-greeting-sub">Voici la semaine de ${plusieurs ? 'vos enfants' : 'votre enfant'}.</p>
       ${renderQuestionAppel()}
     </div>
-    <section class="groupe-parent groupe-prive" aria-labelledby="titreGroupePrive">
-      <header class="groupe-tete">${icone('lock')}<div><h2 id="titreGroupePrive">C’est vous seul qui voyez ces informations</h2>
-        <span>Vos enfants, leurs absences, devoirs, notes, bulletins, scolarité et vos messages avec l’école. Aucun autre parent n’y a accès.</span></div></header>
     ${renderAlerteAbsence(mesEnfants)}<div class="abs-justif-zone">${renderAbsencesAJustifier(mesEnfants)}</div>
     ${renderRappelScolariteParent(mesEnfants)}
     ${renderBienvenueParent(mesEnfants)}
-    ${renderAujourdhuiParent(mesEnfants)}
-    <div class="enfants${plusieurs ? ' enfants--carrousel' : ''} em-rise" style="--i:2">
-      ${mesEnfants.map(renderFicheEnfant).join('')}
-    </div>
-    <div class="form-actions actions-parent" style="justify-content:flex-start;margin:0 0 var(--sp-4);"><button type="button" class="btn secondary" onclick="ouvrirSignalerAbsence()">📝 Signaler une absence à l’avance</button><button type="button" class="btn secondary" onclick="ouvrirDemandeDocument()">📄 Demander un document</button></div>
-    <div id="secDevoirs">${renderDevoirsParent(mesEnfants)}</div>
-    </section>
-    <section class="groupe-parent groupe-public" aria-labelledby="titreGroupePublic">
-      <header class="groupe-tete">${icone('school')}<div><h2 id="titreGroupePublic">Informations publiques de l’école</h2>
-        <span>Les mêmes pour tous les parents : activités, menu de la cantine, agenda, nouvelles, tableau d’honneur, photos.</span></div></header>
+    ${barreRubriques([
+      rubrique('p-jour', 'Aujourd’hui', 'Aujourd’hui', 'sun', renderAujourdhuiParent(mesEnfants)),
+      rubrique('p-enfants', plusieurs ? 'Mes enfants' : 'Mon enfant', plusieurs ? 'Mes enfants' : 'Mon enfant', 'users', `<div class="enfants${plusieurs ? ' enfants--carrousel' : ''}">${mesEnfants.map(renderFicheEnfant).join('')}</div>`, () => plusieurs ? String(mesEnfants.length) : ''),
+      rubrique('p-devoirs', 'Devoirs', 'Devoirs', 'book', `<div id="secDevoirs">${renderDevoirsParent(mesEnfants)}</div>`),
+      { id: 'p-absence', court: 'Absence', titre: 'Signaler une absence à l’avance', ic: 'calendar', action: 'ouvrirSignalerAbsence()' },
+      { id: 'p-document', court: 'Document', titre: 'Demander un document', ic: 'file-text', action: 'ouvrirDemandeDocument()' },
+    ], { titre: 'C’est vous seul qui voyez ces informations', sous: 'Aucun autre parent n’y a accès.', ic: 'lock' })}
     ${renderBandeDefilanteParent()}
-    <div id="secMenu">${renderMenuParent()}</div>
-    <div id="secAgenda">${renderAgendaParent()}</div>
-    ${renderInformationsPassees()}
-    ${renderTableauHonneurParent()}
-    <div class="form-actions" style="justify-content:flex-start;margin:0 0 var(--sp-4);"><button type="button" class="btn secondary" onclick="navParent('vie')">${icone('camera')} Voir les photos et nouvelles de l’école</button></div>
-    ${renderContactEcole()}
-    </section>
+    ${barreRubriques([
+      rubrique('p-menu', 'Menu cantine', 'Menu de la cantine', 'shopping-bag', `<div id="secMenu">${renderMenuParent()}</div>`),
+      rubrique('p-agenda', 'Agenda', 'Agenda de l’école', 'calendar-days', `<div id="secAgenda">${renderAgendaParent()}</div>`),
+      rubrique('p-nouvelles', 'Nouvelles', 'Informations de l’école', 'bell', renderInformationsPassees()),
+      rubrique('p-honneur', 'Honneur', 'Tableau d’honneur', 'trophy', renderTableauHonneurParent()),
+      { id: 'p-photos', court: 'Photos', titre: 'Photos et nouvelles de l’école', ic: 'camera', action: "navParent('vie')" },
+      rubrique('p-contact', 'Contacter', 'Contacter l’école', 'mail', renderContactEcole()),
+    ], { titre: 'Informations publiques de l’école', sous: 'Les mêmes pour tous les parents.', ic: 'school' })}
+    <div hidden>
+    </div>
   </div>`;
 }
 /* ---------- Parent : rappel de scolarité (dès le 25 pour le mois suivant), avec bip une fois par jour ----------
@@ -2852,11 +2849,11 @@ function renderPortierDashboard(){
       ${renderPortierBarreRecherche()}
       ${cycles.map(cycle=>`
         <div class="hint" style="font-weight:700;margin:14px 0 8px;">${escapeHtml(cycle)}</div>
-        <div class="grid-3">
-          ${DB.classes.filter(c=>c.cycle===cycle).map(c=>{
+        <div class="dbr-barre">
+          ${DB.classes.filter(c=>c.cycle===cycle).map((c, k)=>{
             const effectif = DB.eleves.filter(e=>e.classeId===c.id).length;
-            return `<button class="gate-classe em-press" onclick="ui.filters.portierClasse='${c.id}'; refreshPortierDashboard()">
-              <strong>${escapeHtml(c.nom)}</strong><span class="gate-eleve-classe">${effectif} élève(s)</span>
+            return `<button type="button" class="dbr-onglet gate-classe" onclick="ui.filters.portierClasse='${c.id}'; refreshPortierDashboard()">
+              ${iconeService('school', ['nuit', 'indigo', 'ocean', 'menthe'][k % 4])}<span class="dbr-titre">${escapeHtml(c.nom)}</span><small class="dbr-sous">${effectif} élève(s)</small>
             </button>`;
           }).join('')}
         </div>`).join('') || `<div class="empty">Aucune classe active.</div>`}
@@ -2923,6 +2920,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.11.20-7', nouveautes: {
+    commun: [ 'Accueil rangé partout comme « Nos services » : après la salutation, chaque rubrique est une tuile (icône ronde colorée, titre, petite description) sur une seule ligne ; un toucher l’ouvre juste en dessous.' ],
+    parent: [ 'Votre accueil : deux lignes de tuiles — vos informations privées (Aujourd’hui, Mes enfants, Devoirs, Absence) et les informations publiques (Menu, Agenda, Nouvelles, Honneur, Photos, Contacter).' ],
+    portier: [ 'Les classes s’affichent en tuiles, sur une ligne par cycle.' ],
+    personnel: [ 'Les 4 chiffres du jour passent aussi en tuiles sur une ligne ; l’accueil enseignant (Mes cours, Aujourd’hui, Cette semaine, Ce mois-ci, Ce trimestre, Mes outils, Mon inscription) suit le même rangement.' ],
+  } },
   { version: '2026.11.20-6', nouveautes: {
     commun: [],
     parent: [],
@@ -4755,7 +4758,7 @@ function renderAccueilEnseignant(){
   const mes = classesVisibles();
   const entete = `<div class="db-bonjour"><div><h2>${escapeHtml(salutation())}</h2><div class="db-date">${dateLongue}</div>
     ${mes.length ? `<div class="mes-classes">${icone('school')} ${mes.length > 1 ? 'Mes classes' : 'Ma classe'} : <strong>${mes.map(c => escapeHtml(c.nom)).join(', ')}</strong></div>` : ''}${renderQuestionAppel()}</div></div>`;
-  const annexe = `<details class="panel acc-annexe" ${ui.filters.enroleOuvert ? 'open' : ''}><summary>${icone('users')} Mon inscription et la liste des enseignants</summary>${renderJeMEnrole()}${renderListeCollegues()}</details>`;
+  const annexe = `<details class="panel acc-annexe" open><summary>${icone('users')} Mon inscription et la liste des enseignants</summary>${renderJeMEnrole()}${renderListeCollegues()}</details>`;
   if(!fiche) return `<div class="view active">${entete}${renderJeMEnrole()}${renderListeCollegues()}</div>`;
   if(!(fiche.classesAssignees || []).length) return `<div class="view active">${entete}
     <div class="panel acc-attente"><h2>${icone('hourglass')} Vos classes sont en attente de validation</h2>
@@ -4927,15 +4930,15 @@ function renderAccueilEnseignant(){
     ${entete}
     ${bandeau}
     ${chargement}
-    ${coursAuj ? `<div class="panel acc-cours"><div class="panel-head"><div><h2>${icone('calendar-days')} Mes cours aujourd’hui</h2></div></div>${renderFriseDuJour(classes)}</div>` : ''}
-    ${htmlBlocTaches(1, 'Aujourd’hui', coursAuj ? 'À faire chaque jour de classe' : 'Pas de classe aujourd’hui : préparez le prochain jour', jour, 'Rien à faire aujourd’hui.')}
-    ${htmlBlocTaches(2, 'Cette semaine', `Semaine du ${dateLongueFr(lundi)}`, semaine, 'Rien en retard cette semaine.')}
-    ${htmlBlocTaches(3, 'Ce mois-ci', (d => d.charAt(0).toUpperCase() + d.slice(1))(new Date(auj + 'T12:00:00').toLocaleDateString('fr-FR', { month:'long', year:'numeric' })), mois, 'Rien à faire ce mois-ci.')}
-    ${htmlBlocTaches(4, 'Ce trimestre', `${libelleTrimestre(trim)}${finTrim ? ` · se termine le ${dateLongueFr(finTrim)}` : ''}`, trimestre, 'Rien à préparer pour le moment.')}
-    <section class="panel acc-outils-panel" aria-labelledby="titreOutils"><div class="panel-head"><div><h2 id="titreOutils">Mes outils</h2><div class="sub">Touchez un bouton pour ouvrir la page.</div></div></div>
-      <div class="acc-outils">${outils.map(([v, ic, t, d]) => `<button type="button" class="acc-outil" onclick="go('${v}')"><span class="acc-outil-ic" aria-hidden="true">${ic}</span><strong>${t}</strong><small>${d}</small></button>`).join('')}</div>
-    </section>
-    ${annexe}
+    ${(() => { const nb = l => String(l.filter(t => t.etat === 'afaire').length || ''); return barreRubriques([
+      coursAuj ? rubrique('cours', 'Mes cours', 'Mes cours aujourd’hui', 'calendar-days', `<div class="panel acc-cours">${renderFriseDuJour(classes)}</div>`) : null,
+      rubrique('jour', 'Aujourd’hui', 'Aujourd’hui', 'circle-dot', htmlBlocTaches(1, 'Aujourd’hui', coursAuj ? 'À faire chaque jour de classe' : 'Pas de classe aujourd’hui : préparez le prochain jour', jour, 'Rien à faire aujourd’hui.'), () => nb(jour)),
+      rubrique('semaine', 'Cette semaine', 'Cette semaine', 'calendar-range', htmlBlocTaches(2, 'Cette semaine', `Semaine du ${dateLongueFr(lundi)}`, semaine, 'Rien en retard cette semaine.'), () => nb(semaine)),
+      rubrique('mois', 'Ce mois-ci', 'Ce mois-ci', 'calendar', htmlBlocTaches(3, 'Ce mois-ci', (d => d.charAt(0).toUpperCase() + d.slice(1))(new Date(auj + 'T12:00:00').toLocaleDateString('fr-FR', { month:'long', year:'numeric' })), mois, 'Rien à faire ce mois-ci.'), () => nb(mois)),
+      rubrique('trimestre', 'Ce trimestre', 'Ce trimestre', 'book-open-check', htmlBlocTaches(4, 'Ce trimestre', `${libelleTrimestre(trim)}${finTrim ? ` · se termine le ${dateLongueFr(finTrim)}` : ''}`, trimestre, 'Rien à préparer pour le moment.'), () => nb(trimestre)),
+      rubrique('outils', 'Mes outils', 'Mes outils', 'briefcase', `<div class="svc-grille">${outils.map(([v]) => { const c = CATALOGUE_SERVICES[v]; return c ? carteService(v, c[0], c[1], c[2], c[3], `go('${v}')`, false) : ''; }).join('')}</div>`),
+      rubrique('inscription', 'Mon inscription', 'Mon inscription et la liste des enseignants', 'users', annexe),
+    ], { ouvrir: ui.filters.enroleOuvert ? 'inscription' : '' }); })()}
   </div>`;
 }
 function tacheAlertesTelephone(){
@@ -5081,6 +5084,9 @@ function copierRelanceEnseignant(i){
 /* Panneau principal : toutes les rubriques sur UNE ligne horizontale d'onglets (20/11/2026).
    Un toucher sur un onglet ouvre son contenu juste en dessous ; un second le referme.
    La rubrique ouverte est mémorisée sur l'appareil. */
+function tuileChiffre(ic, fam, valeur, libelle, action){
+  return `<button type="button" class="dbr-onglet dbr-chiffre" onclick="${action}">${iconeService(ic, fam)}<span class="dbr-valeur">${escapeHtml(String(valeur))}</span><small class="dbr-sous">${escapeHtml(libelle)}</small></button>`;
+}
 function rubriqueActive(){ try{ return localStorage.getItem('ecomaz_rubrique_active') || ''; }catch(_e){ return ''; } }
 function rubrique(id, court, titre, ic, html, indic){
   if(!html || !String(html).trim()) return null;
@@ -5089,15 +5095,25 @@ function rubrique(id, court, titre, ic, html, indic){
 // Couleur (mêmes familles que « Nos services ») et petite description de chaque onglet
 const STYLE_RUBRIQUES = { afaire: ['menthe', 'Aujourd’hui'], suivi: ['indigo', 'Appels, relances'], dates: ['ocean', 'Agenda à venir'], treso: ['menthe', 'Entrées, sorties'],
   miseenroute: ['nuit', 'Étapes de départ'], journee: ['ocean', 'Mes cours'], surveiller: ['indigo', 'Absences répétées'], anniv: ['menthe', 'Cette semaine'],
-  bilan: ['nuit', 'Résumé à partager'], repartition: ['ocean', 'Effectifs'], ensemble: ['indigo', 'Classe par classe'] };
-function barreRubriques(liste){
+  bilan: ['nuit', 'Résumé à partager'], repartition: ['ocean', 'Effectifs'], ensemble: ['indigo', 'Classe par classe'],
+  // Enseignant
+  cours: ['ocean', 'Ma frise du jour'], jour: ['menthe', 'Chaque jour de classe'], semaine: ['indigo', 'Rattrapages, devoirs'], mois: ['ocean', 'Régularité, programme'],
+  trimestre: ['nuit', 'Compositions, bulletins'], outils: ['menthe', 'Toutes mes pages'], inscription: ['indigo', 'Classes, horaires, collègues'],
+  // Parent
+  'p-jour': ['menthe', 'Présence du jour'], 'p-enfants': ['nuit', 'Fiches, scolarité, notes'], 'p-devoirs': ['ocean', 'Travail à la maison'], 'p-absence': ['indigo', 'Prévenir l’école'], 'p-document': ['nuit', 'Certificat de scolarité…'],
+  'p-menu': ['menthe', 'Repas de la semaine'], 'p-agenda': ['indigo', 'Compositions, congés'], 'p-nouvelles': ['ocean', 'Informations passées'], 'p-honneur': ['nuit', 'Élèves à l’honneur'],
+  'p-photos': ['menthe', 'Photos et nouvelles'], 'p-contact': ['indigo', 'Téléphone, adresse'] };
+function barreRubriques(liste, opts){
+  opts = opts || {};
   liste = liste.filter(Boolean); if(!liste.length) return '';
-  const act = liste.some(r => r.id === rubriqueActive() && !r.action) ? rubriqueActive() : '';
+  const voulu = opts.ouvrir || rubriqueActive();
+  const act = liste.some(r => r.id === voulu && !r.action) ? voulu : '';
   const onglet = r => `<button type="button" class="dbr-onglet${r.id === act ? ' actif' : ''}" title="${escapeHtml(r.titre)}" ${r.action
       ? `onclick="${r.action}"`
       : `role="tab" id="ong-${r.id}" aria-selected="${r.id === act}" aria-controls="rub-${r.id}" onclick="basculerRubrique('${r.id}')"`}>
       ${iconeService(r.ic, (STYLE_RUBRIQUES[r.id] || [])[0] || 'nuit')}<span class="dbr-titre">${escapeHtml(r.court)}</span><small class="dbr-sous">${escapeHtml((STYLE_RUBRIQUES[r.id] || [])[1] || '')}</small>${r.info ? `<span class="dbr-indic">${escapeHtml(r.info)}</span>` : ''}</button>`;
-  return `<section class="db-rubriques" aria-label="Rubriques du tableau de bord">
+  return `<section class="db-rubriques" aria-label="${escapeHtml(opts.titre || 'Rubriques')}">
+    ${opts.titre ? `<div class="dbr-ligne-tete">${opts.ic ? icone(opts.ic) : ''}<div><h2>${escapeHtml(opts.titre)}</h2>${opts.sous ? `<span>${escapeHtml(opts.sous)}</span>` : ''}</div></div>` : ''}
     <div class="dbr-barre" role="tablist">${liste.map(onglet).join('')}</div>
     ${liste.filter(r => !r.action).map(r => `<div class="dbr-panneau" id="rub-${r.id}" role="tabpanel" aria-labelledby="ong-${r.id}"${r.id === act ? '' : ' hidden'}>
       <div class="dbr-panneau-tete"><h2><span class="dbr-ic" aria-hidden="true">${icone(r.ic) || ''}</span>${escapeHtml(r.titre)}</h2><button type="button" class="dbr-fermer" aria-label="Replier" onclick="basculerRubrique('${r.id}', false)">×</button></div>
@@ -5207,12 +5223,12 @@ function renderDashboard(){
       rubrique('repartition', 'Répartition', 'Répartition des élèves par classe', 'chart-column', `<div class="panel"><div class="panel-head"><div><h2>Répartition des élèves par classe</h2></div></div>${barsHtml}</div>`, () => String(totalEleves)),
       rubrique('ensemble', 'Par classe', 'Vue d’ensemble par classe', 'school', `<div class="panel"><div class="panel-head"><div><h2>Vue d’ensemble par classe</h2></div></div><div class="lignes-classes">${renderLignesClasses()}</div></div>`),
     ])}
-    <div class="cards cards-2x2">
-      ${kpi(0, icone('graduation-cap'), 'var(--primary-dim)', totalEleves, 'Élèves inscrits')}
-      ${kpi(1, icone('presentation'), 'var(--purple-bg)', presEnsToday.length ? `${ensPresents}/${totalEns}` : totalEns, presEnsToday.length ? 'Enseignants présents aujourd’hui' : 'Enseignants (pointage non fait)')}
-      ${kpi(2, icone('circle-check'), 'var(--green-bg)', tauxEleves===null ? null : tauxEleves+'%', 'Présence élèves aujourd’hui', ['Appel non effectué', lien('presences-eleves', 'Faire l’appel')])}
-      ${kpi(3, icone('clock'), 'var(--blue-bg)', tauxEns===null ? null : tauxEns+'%', 'Présence enseignants aujourd’hui', ['Aucun pointage aujourd’hui', lien('presences-enseignants', 'Voir le journal')])}
-    </div>
+    <section class="db-chiffres" aria-label="Les chiffres du jour"><div class="dbr-barre dbr-chiffres">
+      ${tuileChiffre('graduation-cap', 'nuit', totalEleves, 'Élèves inscrits', "go('eleves')")}
+      ${tuileChiffre('presentation', 'indigo', presEnsToday.length ? `${ensPresents}/${totalEns}` : totalEns, presEnsToday.length ? 'Enseignants présents' : 'Enseignants (pointage non fait)', "go('presences-enseignants')")}
+      ${tuileChiffre('circle-check', 'menthe', tauxEleves === null ? '—' : tauxEleves + '%', tauxEleves === null ? 'Appel non effectué' : 'Présence élèves', "go('presences-eleves')")}
+      ${tuileChiffre('clock', 'ocean', tauxEns === null ? '—' : tauxEns + '%', tauxEns === null ? 'Aucun pointage aujourd’hui' : 'Présence enseignants', "go('presences-enseignants')")}
+    </div></section>
     ${animer ? `${(setTimeout(animerCompteursKpi, 0), '')}` : ''}
     ${renderBanniereNotifications()}
     ${ui.role==='enseignant' ? renderActualitesParent() + renderTableauHonneurParent() : ''}
@@ -15560,6 +15576,7 @@ const SERVICES_PARENT = [
 function allerSectionParent(sel){
   if(ui.vueParent && ui.vueParent !== 'accueil'){ ui.vueParent = 'accueil'; $('#viewContainer').innerHTML = renderParentDashboard(); }
   const el = document.querySelector(sel);
+  const pan = el?.closest('.dbr-panneau'); if(pan) basculerRubrique(pan.id.slice(4), true);
   if(el){ el.scrollIntoView({ behavior: 'smooth', block: 'start' }); el.classList.add('svc-repere'); setTimeout(() => el.classList.remove('svc-repere'), 1600); }
   else toast('Cette rubrique n’a pas encore d’information pour vous');
 }
@@ -15573,8 +15590,8 @@ function renderAccueilParentApp(mesEnfants){
         actions: [{ lib: 'Payer', ic: 'wallet', action: "allerSectionParent('.enfant-scolarite')" }, { lib: 'Signaler une absence', ic: 'calendar', action: 'ouvrirSignalerAbsence()' }] }
     : { etiquette: 'À l’école aujourd’hui', chiffre: `${presents} / ${mesEnfants.length} enfant${mesEnfants.length > 1 ? 's' : ''}`, ligne: 'Présence enregistrée par l’appel de la classe.',
         actions: [{ lib: 'Signaler une absence', ic: 'calendar', action: 'ouvrirSignalerAbsence()' }, { lib: 'Messages', ic: 'mail', action: "navParent('msg')" }] });
-  const tuiles = SERVICES_PARENT.slice(0, 4).map(([id, t, s, ic, fam, act]) => `<button type="button" class="svc-tuile" onclick="${act}">${iconeService(ic, fam)}<strong>${escapeHtml(t)}</strong><small>${escapeHtml(s)}</small></button>`).join('');
-  return hero + blocServices(tuiles, "navParent('services')");
+  // 20/11/2026 : « Nos services » quitte le panneau principal (le bouton central du bas l'ouvre)
+  return hero;
 }
 function renderServicesParent(){
   return `<div class="view active"><div class="svc-retour"><button type="button" class="btn secondary sm" onclick="navParent('accueil')">‹ Accueil</button></div>
