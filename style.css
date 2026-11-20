@@ -2501,3 +2501,28 @@ tbody td input.champ-a-verifier, tbody td select.champ-a-verifier, .nt-note.cham
 .dbr-corps > .panel > .panel-head > div:first-child > h2, .dbr-corps > section > .afaire-tete > h2, .dbr-corps > .panel > .afaire-tete{ display:none; }
 .dbr-corps > .panel > .panel-head{ margin-top:0; }
 @media (max-width:480px){ .db-replie > summary{ padding:14px; gap:10px; } .dbr-titre{ font-size:var(--fs-sm); } }
+
+/* ===== Menu de gauche en tuiles (2026-11-20) ===== */
+@media (min-width:901px){ .sidebar:has(.nav-tuiles){ width:312px; } }
+.sidebar:has(.nav-tuiles){ width:min(312px, 88vw); }
+.nav.nav-tuiles{ display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:8px; align-content:start; flex:0 0 auto; }
+.nav-tuiles .nav-group{ grid-column:1 / -1; margin:10px 4px 0; }
+.nav-tuiles .nav-tuile{ position:relative; display:flex; flex-direction:column; align-items:flex-start; justify-content:flex-start; text-align:left; gap:4px;
+  padding:10px; min-height:112px; border-radius:16px; border:1px solid var(--border); background:var(--surface-1); color:var(--text);
+  box-shadow:var(--shadow-1); font-weight:400; transition:transform var(--dur) var(--ease), border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease); }
+.nav-tuiles .nav-tuile:hover{ background:var(--surface-1); border-color:var(--em-gold-400); transform:translateY(-2px); box-shadow:var(--shadow-2, 0 8px 20px rgba(11,22,64,.12)); }
+.nav-tuiles .nav-tuile:active{ transform:scale(.97); }
+.nav-tuiles .nav-tuile.active{ background:var(--primary-soft); border-color:var(--em-gold-400); color:var(--text); font-weight:400; }
+.nav-tuiles .nav-tuile.active::before{ display:none; }
+.nav-tuile .nt-haut{ display:flex; width:100%; align-items:flex-start; justify-content:space-between; gap:4px; margin-bottom:6px; }
+.nav-tuile .svc-ic{ width:40px; height:40px; flex-basis:40px; border-radius:13px; }
+.nav-tuile .svc-ic .ico{ width:20px; height:20px; }
+.nav-tuile .svc-chevron{ font-size:18px; }
+.nav-tuile .svc-nouveau{ font-size:9px; padding:3px 6px; }
+.nav-tuile .nt-titre{ font-size:13px; font-weight:900; line-height:1.2; overflow-wrap:anywhere; }
+.nav-tuile small{ font-size:11px; color:var(--text-dim); line-height:1.3; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+/* Tableau de bord : une tuile large en tête */
+.nav-tuiles .nt-large{ grid-column:1 / -1; min-height:0; display:grid; grid-template-columns:auto 1fr; column-gap:12px; align-items:center; }
+.nav-tuiles .nt-large .nt-haut{ grid-row:1 / span 2; width:auto; margin:0; }
+.nav-tuiles .nt-large .nt-haut .svc-chevron{ display:none; }
+@media (prefers-reduced-motion:reduce){ .nav-tuiles .nav-tuile{ transition:none; } .nav-tuiles .nav-tuile:hover{ transform:none; } }

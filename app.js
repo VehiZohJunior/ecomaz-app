@@ -1019,7 +1019,37 @@ $('#sidebarBackdrop').addEventListener('click', () => {
 /* ---------------------------------------------------------------------
    3.1 ACCÈS / INTERFACES PAR RÔLE — authentification réelle (Supabase Auth)
    --------------------------------------------------------------------- */
+/* Menu de gauche en tuiles (20/11/2026) : chaque entrée garde son écran, ses droits
+   (data-roles) et son libellé ; elle reçoit l'icône colorée et le sous-titre de « Tous nos services ». */
+function habillerMenuTuiles(){
+  if(!window.EmIcones || typeof CATALOGUE_SERVICES === 'undefined') return;
+  const nav = document.getElementById('nav'); if(!nav || nav.dataset.tuiles === '1') return;
+  nav.dataset.tuiles = '1'; nav.classList.add('nav-tuiles');
+  const habiller = (b, sous, ic, fam, nouveau) => {
+    const lib = b.querySelector('span:not(.ic)') || document.createElement('span');
+    lib.classList.add('nt-titre');
+    b.classList.add('nav-tuile');
+    b.innerHTML = `<span class="nt-haut">${iconeService(ic, fam)}${nouveau ? '<span class="svc-nouveau">Nouveau</span>' : '<span class="svc-chevron" aria-hidden="true">›</span>'}</span>`;
+    b.appendChild(lib);
+    const sm = document.createElement('small'); sm.textContent = sous; b.appendChild(sm);
+  };
+  $$('#nav .nav-item[data-view]').forEach(b => {
+    const v = b.dataset.view;
+    if(v === 'dashboard'){ habiller(b, b.dataset.roles === 'enseignant' ? 'Mes tâches du jour' : 'La journée de l’école', b.dataset.roles === 'enseignant' ? 'house' : 'chart-column', 'nuit', false); b.classList.add('nt-large'); return; }
+    const c = CATALOGUE_SERVICES[v]; if(!c) return;
+    habiller(b, c[1], c[2], c[3], SERVICES_NOUVEAUX.has(v));
+    if(v === 'comptabilite'){
+      // La cantine de la comptabilité a sa propre tuile, comme dans « Tous nos services »
+      const k = CATALOGUE_SERVICES['compta-cantine'];
+      const t = document.createElement('button'); t.type = 'button'; t.className = 'nav-item'; t.dataset.roles = b.dataset.roles; t.dataset.service = 'compta-cantine';
+      t.innerHTML = `<span>${k[0]}</span>`; habiller(t, k[1], k[2], k[3], SERVICES_NOUVEAUX.has('compta-cantine'));
+      t.addEventListener('click', () => { ouvrirService('compta-cantine'); if(window.innerWidth <= 900) document.getElementById('sidebar')?.classList.remove('open'), document.getElementById('sidebarBackdrop')?.classList.remove('open'); });
+      b.after(t);
+    }
+  });
+}
 function applyRoleVisibility(){
+  habillerMenuTuiles();
   $$('#nav [data-roles]').forEach(el=>{
     const allowed = el.dataset.roles.split(' ').includes(ui.role);
     el.style.display = allowed ? '' : 'none';
@@ -2893,6 +2923,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.11.20-5', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Le menu de gauche devient une grille de tuiles (mêmes icônes colorées que « Tous nos services ») : chaque service avec sa petite description. Le panneau du milieu est libéré : le bloc « Nos services » n’y est plus.' ],
+  } },
   { version: '2026.11.20-4', nouveautes: {
     commun: [],
     parent: [],
@@ -15475,8 +15511,8 @@ function renderAccueilApp(){
         ui.role === 'secretariat' ? { lib: 'Inscrire un élève', ic: 'users', action: "go('eleves'); setTimeout(() => openEleveForm(), 80)" }
           : { lib: 'Rapport du mois', ic: 'file-text', action: 'ouvrirRapportMois()' }] });
   }
-  const tuiles = (TUILES_ROLE[ui.role] || []).filter(v => hasAccess(v)).map(v => tuileService(v)).join('');
-  return hero + barreRechercheApp() + blocServices(tuiles, "go('services')");
+  // 20/11/2026 : les services sont désormais en tuiles dans le menu de gauche (panneau du milieu libéré)
+  return hero + barreRechercheApp();
 }
 // --- Écran « Tous nos services » (personnel, enseignants)
 function renderServices(){
