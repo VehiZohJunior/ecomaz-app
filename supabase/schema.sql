@@ -4873,3 +4873,114 @@ language sql stable security definer set search_path = public as $$
 $$;
 revoke all on function etat_comptes_enseignants() from public, anon;
 grant execute on function etat_comptes_enseignants() to authenticated;
+
+-- =====================================================================
+-- 126. POINTAGE DEPUIS L'APPLICATION : GPS DÉTERMINANT (2026-11-20)
+-- =====================================================================
+-- L'enseignant pointe lui-même depuis son accueil, de 3 façons : GPS,
+-- scan de l'affiche QR de l'école, photo prise en direct. Dans les 3 cas,
+-- la fonction Edge « pointer-presence » vérifie la position GPS du
+-- téléphone : hors de la zone de l'établissement, le pointage est REFUSÉ.
+-- Toute tentative refusée est enregistrée (alertes_pointage) et signalée
+-- aussitôt à la direction (notification).
+-- Appel des élèves : un élève ne peut être noté présent / en retard que
+-- par un compte dont la position a été vérifiée DANS l'établissement
+-- depuis moins de 2 heures (déclencheur sur presences_eleves, côté
+-- serveur : impossible à contourner depuis le navigateur).
+-- La direction et la fondation (qui reçoivent les alertes) ne sont pas
+-- soumises à cette vérification. Sans zone configurée, rien ne change.
+-- =====================================================================
+
+-- Alertes : détail de la tentative refusée
+alter table alertes_pointage add column if not exists type text not null default 'enseignant';
+alter table alertes_pointage add column if not exists methode text;
+alter table alertes_pointage add column if not exists latitude double precision;
+alter table alertes_pointage add column if not exists longitude double precision;
+alter table alertes_pointage add column if not exists distance_metres integer;
+alter table alertes_pointage add column if not exists precision_metres numeric;
+alter table alertes_pointage add column if not exists photo_chemin text;
+alter table alertes_pointage add column if not exists classe_id text references classes(id) on delete set null;
+alter table alertes_pointage add column if not exists auteur_id uuid references auth.users(id) on delete set null;
+alter table alertes_pointage add column if not exists auteur_nom text;
+
+-- Pointages : méthode utilisée, photo, motif du refus
+alter table pointages_gps add column if not exists methode text not null default 'lien';
+alter table pointages_gps add column if not exists photo_chemin text;
+alter table pointages_gps add column if not exists motif_refus text;
+
+-- Jeton secret de l'affiche QR de l'école (illisible par les enseignants)
+create table if not exists pointage_jetons (
+  ecole_id uuid primary key references ecoles(id) on delete cascade,
+  jeton text not null default replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', ''),
+  cree_le timestamptz not null default now()
+);
+alter table pointage_jetons enable row level security;  -- aucune policy : seul le serveur y accède
+revoke all on pointage_jetons from anon, authenticated;
+
+create or replace function jeton_qr_pointage() returns text
+language plpgsql security definer set search_path = public as $$
+declare j text;
+begin
+  if not coalesce(est_perso_admin(), false) then raise exception 'Réservé au personnel de l''école'; end if;
+  insert into pointage_jetons(ecole_id) values (mon_ecole_id()) on conflict (ecole_id) do nothing;
+  select jeton into j from pointage_jetons where ecole_id = mon_ecole_id();
+  return j;
+end $$;
+revoke all on function jeton_qr_pointage() from public, anon;
+grant execute on function jeton_qr_pointage() to authenticated;
+
+-- Nouvelle affiche (l'ancienne ne fonctionne plus) : direction / fondation
+create or replace function renouveler_jeton_qr_pointage() returns text
+language plpgsql security definer set search_path = public as $$
+declare j text;
+begin
+  if not coalesce(est_admin(), false) then raise exception 'Réservé à la direction'; end if;
+  insert into pointage_jetons(ecole_id) values (mon_ecole_id())
+    on conflict (ecole_id) do update set jeton = replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', ''), cree_le = now();
+  select jeton into j from pointage_jetons where ecole_id = mon_ecole_id();
+  return j;
+end $$;
+revoke all on function renouveler_jeton_qr_pointage() from public, anon;
+grant execute on function renouveler_jeton_qr_pointage() to authenticated;
+
+-- Positions vérifiées DANS l'établissement par le serveur (écrites par la fonction Edge seulement)
+create table if not exists positions_valides (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  ecole_id uuid not null references ecoles(id) on delete cascade,
+  verifie_le timestamptz not null default now(),
+  distance_metres integer
+);
+create index if not exists positions_valides_recent on positions_valides(user_id, verifie_le desc);
+alter table positions_valides enable row level security;  -- aucune policy : seul le serveur y accède
+revoke all on positions_valides from anon, authenticated;
+
+-- Appel des élèves : « Présent » / « Retard » seulement depuis l'établissement
+create or replace function verifier_position_appel() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare r text; zone boolean;
+begin
+  if auth.uid() is null then return new; end if;                          -- serveur / maintenance
+  if new.statut not in ('Présent', 'Retard') then return new; end if;     -- absent : aucune restriction
+  if tg_op = 'UPDATE' and old.statut in ('Présent', 'Retard') then return new; end if; -- motif, présent↔retard
+  r := mon_role()::text;
+  if r is null or r in ('direction', 'fondation') then return new; end if;
+  select (geofence_latitude is not null and geofence_longitude is not null) into zone from ecoles where id = new.ecole_id;
+  if not coalesce(zone, false) then return new; end if;
+  if not exists (select 1 from positions_valides v where v.user_id = auth.uid() and v.ecole_id = new.ecole_id
+                 and v.verifie_le > now() - interval '2 hours') then
+    raise exception 'Appel refusé : votre position n''a pas été vérifiée dans l''établissement. Activez la localisation du téléphone et refaites l''appel depuis l''école.';
+  end if;
+  return new;
+end $$;
+drop trigger if exists verifier_position_appel on presences_eleves;
+create trigger verifier_position_appel before insert or update on presences_eleves
+  for each row execute function verifier_position_appel();
+
+-- Photos de pointage : stockage privé, dossier = identifiant de l'école ; lecture par le personnel de l'école
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('pointages', 'pointages', false, 2097152, array['image/jpeg'])
+on conflict (id) do update set public = false, file_size_limit = excluded.file_size_limit, allowed_mime_types = excluded.allowed_mime_types;
+drop policy if exists "pointages lecture personnel" on storage.objects;
+create policy "pointages lecture personnel" on storage.objects for select to authenticated
+  using (bucket_id = 'pointages' and (storage.foldername(name))[1] = mon_ecole_id()::text and est_perso_admin());

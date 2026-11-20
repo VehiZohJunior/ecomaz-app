@@ -381,6 +381,7 @@ function openModal(title, bodyHtml){
   $('#modalBackdrop').classList.add('open');
 }
 function closeModal(){
+  if(typeof arreterCameraPointage === 'function') arreterCameraPointage();
   $('#modalBackdrop').classList.remove('open');
   $('#modalBody').innerHTML = '';
 }
@@ -2920,6 +2921,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.11.20-9', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Pointage depuis l’application : sur son accueil, l’enseignant pointe son arrivée et son départ par GPS, en scannant l’affiche QR de l’école ou par photo prise en direct. Le GPS est déterminant : hors de l’établissement, le pointage est refusé.', 'Appel des élèves : « Présent » et « Retard » ne sont acceptés que depuis l’établissement (position vérifiée par le serveur).', 'Direction : chaque tentative refusée (pointage ou appel hors de l’école, position douteuse, QR non reconnu) arrive en notification et dans Tableau de bord → Alertes pointage, avec la carte et la photo.', 'Paramètres : affiche QR de pointage à imprimer.' ],
+  } },
   { version: '2026.11.20-8', nouveautes: {
     commun: [],
     parent: [],
@@ -4820,7 +4827,7 @@ function renderAccueilEnseignant(){
   const moiPointe = (DB.presencesEnseignants || []).find(p => p.enseignantId === fiche.id && p.date === auj);
   if(coursAuj) jour.push(moiPointe
     ? { etat:'info', titre:`Votre arrivée est enregistrée${moiPointe.heureArrivee ? ' à ' + escapeHtml(String(moiPointe.heureArrivee).slice(0, 5)) : ''}`, detail: moiPointe.statut === 'Retard' ? `Noté en retard${moiPointe.minutesRetard ? ` (${moiPointe.minutesRetard} min)` : ''}.` : '' }
-    : { etat:'info', titre:'Votre arrivée n’est pas encore enregistrée', detail:'Faites scanner votre badge à l’accueil (ou utilisez le pointage GPS si l’école l’a mis en place).' });
+    : { etat:'info', titre:'Votre arrivée n’est pas encore enregistrée', detail:'Pointez-la dans « Mon pointage » ci-dessus (GPS, QR de l’école ou photo), depuis l’établissement, ou faites scanner votre badge à l’accueil.' });
   const jourIso = ((new Date().getDay() + 6) % 7) + 1;
   const renfAuj = coursAuj && (DB.horairesAnnonces?.joursRenforcement || [1, 2, 3, 4, 5]).includes(jourIso);
   if(coursAuj) classes.forEach(c => {
@@ -4936,7 +4943,8 @@ function renderAccueilEnseignant(){
     ${entete}
     ${bandeau}
     ${chargement}
-    ${(() => { const nb = l => String(l.filter(t => t.etat === 'afaire').length || ''); return barreRubriques([
+    ${(() => { const nb = l => String(l.filter(t => t.etat === 'afaire').length || ''); const mp = monPointageDuJour(); return barreRubriques([
+      session.enseignantId ? rubrique('pointage', 'Mon pointage', 'Mon pointage du jour', 'map-pin', renderMonPointage(), () => mp?.heureArrivee ? (mp.heureDepart ? '✓' : String(mp.heureArrivee).slice(0, 5)) : '!') : null,
       coursAuj ? rubrique('cours', 'Mes cours', 'Mes cours aujourd’hui', 'calendar-days', `<div class="panel acc-cours">${renderFriseDuJour(classes)}</div>`) : null,
       rubrique('jour', 'Aujourd’hui', 'Aujourd’hui', 'circle-dot', htmlBlocTaches(1, 'Aujourd’hui', coursAuj ? 'À faire chaque jour de classe' : 'Pas de classe aujourd’hui : préparez le prochain jour', jour, 'Rien à faire aujourd’hui.'), () => nb(jour)),
       rubrique('semaine', 'Cette semaine', 'Cette semaine', 'calendar-range', htmlBlocTaches(2, 'Cette semaine', `Semaine du ${dateLongueFr(lundi)}`, semaine, 'Rien en retard cette semaine.'), () => nb(semaine)),
@@ -5173,6 +5181,208 @@ function chiffresDuJour(){
 function tuileChiffre(ic, fam, valeur, libelle, action){
   return `<button type="button" class="dbr-onglet dbr-chiffre" onclick="${action}">${iconeService(ic, fam)}<span class="dbr-valeur">${escapeHtml(String(valeur))}</span><small class="dbr-sous">${escapeHtml(libelle)}</small></button>`;
 }
+/* =====================================================================
+   POINTAGE DEPUIS L'APPLICATION — le GPS est déterminant (20/11/2026)
+   L'enseignant pointe lui-même : GPS, scan de l'affiche QR de l'école,
+   photo en direct. La décision est prise par le SERVEUR (fonction Edge
+   « pointer-presence ») : hors de l'établissement → refus, enregistré et
+   signalé à la direction. Même vérification avant l'appel des élèves.
+   ===================================================================== */
+function monPointageDuJour(){ return (DB.presencesEnseignants || []).find(p => p.enseignantId === session.enseignantId && p.date === todayISO()) || null; }
+function zonePointageConfiguree(){ const m = DB.meta || {}; return m.geofenceLatitude != null && m.geofenceLongitude != null; }
+function renderMonPointage(){
+  const r = monPointageDuJour(), m = DB.meta || {};
+  const action = !r || !r.heureArrivee ? 'arrivee' : !r.heureDepart ? 'depart' : null;
+  const etat = `<div class="pt-etat">
+      <div class="pt-case${r?.heureArrivee ? ' fait' : ''}"><small>Arrivée</small><strong>${r?.heureArrivee ? escapeHtml(String(r.heureArrivee).slice(0, 5)) : '—'}</strong>${r?.heureArrivee ? `<span class="kp-badge ${r.statut === 'Retard' ? 'kp-retard' : 'kp-ok'}">${r.statut === 'Retard' ? `Retard${r.minutesRetard ? ' · ' + r.minutesRetard + ' min' : ''}` : 'À l’heure'}</span>` : ''}</div>
+      <div class="pt-case${r?.heureDepart ? ' fait' : ''}"><small>Départ</small><strong>${r?.heureDepart ? escapeHtml(String(r.heureDepart).slice(0, 5)) : '—'}</strong></div></div>`;
+  if(!zonePointageConfiguree()) return etat + `<div class="kp-vide">${icone('map-pin')}La zone de l’établissement n’est pas encore configurée : le pointage depuis l’application sera possible dès que la direction l’aura enregistrée (Paramètres).</div>`;
+  if(!action) return etat + `<div class="kp-vide kp-vide-ok">${icone('circle-check')}Votre journée est pointée. Bonne fin de journée !</div>`;
+  const carte = (meth, ic, fam, titre, sous) => `<button type="button" class="pt-methode" onclick="pointerPresence('${meth}', '${action}')">${iconeService(ic, fam)}<span class="pt-m-texte"><strong>${titre}</strong><small>${sous}</small></span></button>`;
+  return etat + `<div class="pt-titre">Pointer ${action === 'arrivee' ? 'mon arrivée' : 'mon départ'} :</div>
+    <div class="pt-methodes">
+      ${carte('gps', 'map-pin', 'menthe', 'Par GPS', 'Un toucher, depuis l’école')}
+      ${carte('qr', 'smartphone', 'indigo', 'Scanner le QR de l’école', 'L’affiche de pointage')}
+      ${carte('photo', 'camera', 'ocean', 'Par photo', 'Caméra avant, en direct')}
+    </div>
+    <p class="pt-note">${icone('lock')}<span>Le pointage n’est accepté que <strong>dans l’enceinte de l’établissement</strong> (zone de ${m.geofenceRayonMetres || 100} m), vérifiée par le GPS du téléphone. Toute tentative refusée est signalée automatiquement à la direction.</span></p>`;
+}
+function obtenirPosition(){
+  return new Promise(res => {
+    if(!navigator.geolocation) return res({ erreurGps: 'géolocalisation non disponible' });
+    navigator.geolocation.getCurrentPosition(
+      p => res({ latitude: p.coords.latitude, longitude: p.coords.longitude, precision: p.coords.accuracy }),
+      e => res({ erreurGps: e.code === 1 ? 'autorisation refusée' : e.code === 3 ? 'délai dépassé' : 'position introuvable' }),
+      { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 });
+  });
+}
+async function appelPointage(corps){
+  if(navigator.onLine === false) return { ok: false, error: 'Pas de réseau : le pointage a besoin d’internet. Réessayez dès que le réseau revient.' };
+  const { data, error } = await sb.functions.invoke('pointer-presence', { body: corps });
+  if(error) return { ok: false, error: await messageErreurFonction(error) };
+  return data || { ok: false, error: 'Réponse vide du serveur' };
+}
+// Caméra (QR ou photo) : arrêtée dès que la fenêtre se ferme
+let cameraPointage = null;
+function arreterCameraPointage(){ if(cameraPointage){ cameraPointage.actif = false; cameraPointage.flux?.getTracks().forEach(t => t.stop()); cameraPointage.fin?.(null); cameraPointage = null; } }
+async function ouvrirCameraPointage(titre, consigne, avant){
+  openModal(titre, `<div class="pt-camera"><video id="ptVideo" playsinline muted autoplay></video><div class="pt-viseur${avant ? ' rond' : ''}" aria-hidden="true"></div><div class="pt-compte" id="ptCompte" aria-live="polite"></div></div>
+    <p class="pt-consigne" id="ptConsigne">${consigne}</p><div class="form-actions"><button type="button" class="btn secondary" onclick="closeModal()">Annuler</button></div>`);
+  try{
+    const flux = await navigator.mediaDevices.getUserMedia({ video: { facingMode: avant ? 'user' : 'environment', width: { ideal: 1280 } }, audio: false });
+    const v = document.getElementById('ptVideo'); if(!v){ flux.getTracks().forEach(t => t.stop()); return null; }
+    v.srcObject = flux; await v.play().catch(() => {});
+    return { flux, video: v };
+  }catch(_e){
+    const c = document.getElementById('ptConsigne'); if(c) c.textContent = 'Caméra indisponible : autorisez la caméra pour EcoMaZ dans le navigateur, puis réessayez.';
+    return null;
+  }
+}
+function scannerQrEcole(){
+  return new Promise(async fin => {
+    arreterCameraPointage();
+    const cam = await ouvrirCameraPointage('Scanner le QR de l’école', 'Visez l’affiche « Pointage EcoMaZ » de l’école. Le pointage part tout seul dès que le code est lu.', false);
+    if(!cam){ return fin(null); }
+    cameraPointage = { ...cam, actif: true, fin };
+    const cv = document.createElement('canvas'), ctx = cv.getContext('2d', { willReadFrequently: true });
+    const boucle = () => {
+      if(!cameraPointage?.actif) return;
+      const v = cam.video;
+      if(v.readyState >= 2 && v.videoWidth){
+        cv.width = Math.min(720, v.videoWidth); cv.height = Math.round(cv.width * v.videoHeight / v.videoWidth);
+        ctx.drawImage(v, 0, 0, cv.width, cv.height);
+        const code = window.jsQR ? jsQR(ctx.getImageData(0, 0, cv.width, cv.height).data, cv.width, cv.height, { inversionAttempts: 'dontInvert' }) : null;
+        if(code?.data){
+          if(code.data.startsWith('ECOMAZ-POINTAGE:')){ const j = code.data.slice(16); const f = cameraPointage.fin; cameraPointage.fin = null; arreterCameraPointage(); return f(j); }
+          const c = document.getElementById('ptConsigne'); if(c) c.textContent = 'Ce QR code n’est pas l’affiche de pointage de l’école. Visez l’affiche « Pointage EcoMaZ ».';
+        }
+      }
+      requestAnimationFrame(boucle);
+    };
+    requestAnimationFrame(boucle);
+  });
+}
+function prendrePhotoPointage(){
+  return new Promise(async fin => {
+    arreterCameraPointage();
+    const cam = await ouvrirCameraPointage('Pointage par photo', 'Placez votre visage dans le cercle : la photo est prise automatiquement.', true);
+    if(!cam){ return fin(null); }
+    cameraPointage = { ...cam, actif: true, fin };
+    for(let n = 3; n >= 1; n--){
+      const z = document.getElementById('ptCompte'); if(!z || !cameraPointage?.actif) return;
+      z.textContent = n; await new Promise(r => setTimeout(r, 1000));
+    }
+    if(!cameraPointage?.actif) return;
+    const v = cam.video, cv = document.createElement('canvas');
+    cv.width = Math.min(640, v.videoWidth || 640); cv.height = Math.round(cv.width * (v.videoHeight || 480) / (v.videoWidth || 640));
+    cv.getContext('2d').drawImage(v, 0, 0, cv.width, cv.height);
+    const photo = cv.toDataURL('image/jpeg', 0.72);
+    const f = cameraPointage.fin; cameraPointage.fin = null; arreterCameraPointage(); f(photo);
+  });
+}
+let pointageEnCours = false;
+async function pointerPresence(methode, action){
+  if(pointageEnCours) return; pointageEnCours = true;
+  try{
+    const position = obtenirPosition();  // lue pendant le scan ou la photo
+    const extra = {};
+    if(methode === 'qr'){ const j = await scannerQrEcole(); if(j == null) return; extra.jeton = j; }
+    if(methode === 'photo'){ const ph = await prendrePhotoPointage(); if(ph == null) return; extra.photo = ph; }
+    openModal('Pointage', `<div class="pt-attente">${icone('map-pin')}<strong>Vérification de votre position…</strong><span>Restez dans l’école : le GPS du téléphone est en cours de lecture.</span></div>`);
+    const r = await appelPointage({ methode, action, ...extra, ...(await position) });
+    afficherResultatPointage(r, action);
+  } finally { pointageEnCours = false; }
+}
+function afficherResultatPointage(r, action){
+  const lib = action === 'depart' ? 'Départ' : 'Arrivée';
+  if(r?.ok){
+    if(!r.deja){
+      let rec = monPointageDuJour();
+      if(!rec){ rec = { id: 'local-' + Date.now(), enseignantId: session.enseignantId, date: todayISO(), motif: '' }; DB.presencesEnseignants.push(rec); }
+      if(action === 'depart') rec.heureDepart = r.heure;
+      else { rec.heureArrivee = r.heure; rec.statut = r.statut; rec.minutesRetard = r.minutesRetard; }
+    }
+    const detail = action === 'depart' ? '' : r.statut === 'Retard' ? ` — en retard de ${r.minutesRetard} min` : r.deja ? '' : ' — à l’heure';
+    openModal('Pointage enregistré', `<div class="pt-resultat ok">${icone('circle-check')}<strong>${lib} ${r.deja ? 'déjà enregistrée' : 'enregistrée'} à ${escapeHtml(r.heure || '')}${escapeHtml(detail)}</strong>
+      ${r.distanceMetres != null ? `<span>Position vérifiée dans l’établissement (à ${r.distanceMetres} m du point de l’école).</span>` : ''}</div>
+      <div class="form-actions"><button type="button" class="btn" onclick="closeModal(); renderView('dashboard')">Fermer</button></div>`);
+    if(navigator.vibrate) try{ navigator.vibrate(30); }catch(_e){}
+    return;
+  }
+  if(r?.refuse){
+    openModal('Pointage refusé', `<div class="pt-resultat refuse">${icone('circle-x')}<strong>Pointage refusé</strong><span>${escapeHtml(r.raison || '')}</span>
+      <span class="pt-prevenu">${icone('bell')} La direction a été prévenue automatiquement de cette tentative.</span></div>
+      <ul class="pt-aide"><li>Pointez depuis l’intérieur de l’école (cour, bureau).</li><li>Activez la localisation du téléphone, en « haute précision ».</li><li>À l’intérieur d’un bâtiment, approchez-vous d’une fenêtre ou sortez dans la cour, puis réessayez.</li></ul>
+      <div class="form-actions"><button type="button" class="btn" onclick="closeModal()">Fermer</button></div>`);
+    return;
+  }
+  openModal('Pointage impossible', `<div class="pt-resultat refuse">${icone('triangle-alert')}<strong>Le pointage n’a pas pu être fait</strong><span>${escapeHtml(r?.error || 'Erreur inconnue')}</span></div>
+    <div class="form-actions"><button type="button" class="btn" onclick="closeModal()">Fermer</button></div>`);
+}
+// Appel des élèves : position vérifiée dans l'école (enseignant, secrétariat) — le serveur refuse sinon
+let positionAppelOk = 0;
+async function verifierPositionAvantAppel(classeId){
+  if(!['enseignant', 'secretariat'].includes(ui.role) || !zonePointageConfiguree()) return true;
+  if(Date.now() - positionAppelOk < 20 * 60 * 1000) return true;
+  if(navigator.onLine === false) return true; // l'appel part au retour du réseau ; le serveur le vérifie alors
+  toast('Vérification de votre position dans l’école…');
+  const pos = await obtenirPosition();
+  const r = await appelPointage({ methode: 'appel', classeId, ...pos });
+  if(r?.ok){ positionAppelOk = Date.now(); return true; }
+  openModal('Appel refusé', `<div class="pt-resultat refuse">${icone('circle-x')}<strong>Les élèves ne peuvent être notés présents que depuis l’établissement</strong><span>${escapeHtml(r?.raison || r?.error || '')}</span>
+    ${r?.refuse ? `<span class="pt-prevenu">${icone('bell')} La direction a été prévenue automatiquement de cette tentative.</span>` : ''}</div>
+    <ul class="pt-aide"><li>Faites l’appel depuis la classe ou la cour de l’école.</li><li>Activez la localisation du téléphone, en « haute précision ».</li><li>Vous pouvez toujours noter les absents : seuls « Présent » et « Retard » demandent la vérification.</li></ul>
+    <div class="form-actions"><button type="button" class="btn" onclick="closeModal()">Fermer</button></div>`);
+  return false;
+}
+// Direction : tentatives refusées (7 derniers jours)
+const LIB_METHODE_POINTAGE = { gps: 'GPS', qr: 'QR de l’école', photo: 'Photo', appel: 'Appel des élèves', lien: 'Lien GPS' };
+function alertesPointageRecentes(){
+  const depuis = new Date(Date.now() - 7 * 864e5).toISOString().slice(0, 10);
+  return (DB.alertesPointage || []).filter(a => a.date >= depuis).sort((a, b) => (b.date + (b.heure || '')).localeCompare(a.date + (a.heure || '')));
+}
+function renderAlertesPointageDirection(){
+  const l = alertesPointageRecentes();
+  if(!l.length) return `<div class="kp-vide kp-vide-ok">${icone('circle-check')}Aucune tentative de pointage refusée ces 7 derniers jours.</div>`;
+  return `<p class="pt-note" style="margin:4px 0 10px;">${icone('bell')}<span>Chaque tentative refusée (hors de l’établissement, position douteuse, QR non reconnu, appel fait hors de l’école) arrive ici et en notification sur le téléphone de la direction.</span></p>
+    <div class="kp-liste">${l.map(a => {
+      const nom = a.auteurNom || (a.enseignantId ? ensFullName(enseignantById(a.enseignantId)) : 'Personnel');
+      const carte = a.latitude != null && a.longitude != null ? `<a class="btn secondary sm" href="https://www.google.com/maps?q=${Number(a.latitude)},${Number(a.longitude)}" target="_blank" rel="noopener">${icone('map-pin')} Carte</a>` : '';
+      const photo = a.photoChemin ? `<button type="button" class="btn secondary sm" onclick="voirPhotoPointage(${jsArg(a.photoChemin)})">${icone('camera')} Photo</button>` : '';
+      return `<div class="kp-ligne pt-alerte"><span class="kp-avatar pt-avatar-alerte" aria-hidden="true">${escapeHtml(initialesNom(nom))}</span>
+        <div class="kp-qui"><strong>${escapeHtml(nom)}</strong><small>${a.type === 'appel' ? 'Appel des élèves' : `Pointage enseignant · ${escapeHtml(LIB_METHODE_POINTAGE[a.methode] || 'Badge')}`} · ${escapeHtml(fmtDate(a.date))} à ${escapeHtml(String(a.heure || '').slice(0, 5))}${a.classeId ? ' · ' + escapeHtml(classeName(a.classeId)) : ''}</small>
+          <span class="pt-raison">${escapeHtml(a.raison || '')}</span></div>
+        <div class="kp-droite">${carte}${photo}</div></div>`; }).join('')}</div>`;
+}
+async function voirPhotoPointage(chemin){
+  const { data, error } = await sb.storage.from('pointages').createSignedUrl(chemin, 300);
+  if(error || !data?.signedUrl){ toast('Photo indisponible'); return; }
+  openModal('Photo prise au pointage', `<img src="${escapeHtml(data.signedUrl)}" alt="Photo prise au moment du pointage" style="display:block;max-width:100%;margin:0 auto;border-radius:16px;">`);
+}
+let alertesRelues = 0;
+function rafraichirAlertesPointage(){
+  if(!['direction', 'fondation', 'secretariat'].includes(ui.role) || Date.now() - alertesRelues < 60000 || navigator.onLine === false) return;
+  alertesRelues = Date.now();
+  sb.from('alertes_pointage').select('*').eq('ecole_id', session.ecoleId).order('created_at', { ascending: false }).limit(200).then(({ data, error }) => {
+    if(error || !data) return;
+    const avant = (DB.alertesPointage || []).length;
+    DB.alertesPointage = rowsToCamel(data);
+    if(DB.alertesPointage.length !== avant && ui.currentView === 'dashboard' && !document.querySelector('.modal-backdrop.open')) renderView('dashboard');
+  });
+}
+// Paramètres : l'affiche QR de pointage à imprimer
+async function imprimerAfficheQrPointage(renouveler){
+  if(renouveler && !confirm('Créer une nouvelle affiche ? L’ancienne ne fonctionnera plus : il faudra imprimer et afficher la nouvelle.')) return;
+  const { data: jeton, error } = await sb.rpc(renouveler ? 'renouveler_jeton_qr_pointage' : 'jeton_qr_pointage');
+  if(error || !jeton){ toast('Affiche indisponible : ' + (error?.message || 'réessayez')); return; }
+  let qr = ''; try{ const q = qrcode(0, 'M'); q.addData('ECOMAZ-POINTAGE:' + jeton); q.make(); qr = q.createSvgTag({ cellSize: 8, margin: 2, scalable: true }); }catch(_e){}
+  const m = DB.meta || {};
+  openModal('Affiche de pointage', `<div class="pt-affiche"><div class="pt-affiche-ecole">${escapeHtml(m.nomEcole || 'École')}</div><h2>Pointage EcoMaZ</h2>
+    <div class="pt-affiche-qr">${qr}</div>
+    <p><strong>Enseignants :</strong> ouvrez EcoMaZ → Accueil → <strong>Mon pointage</strong> → « Scanner le QR de l’école », et visez ce code.</p>
+    <p class="pt-affiche-petit">Le pointage n’est accepté que dans l’enceinte de l’établissement (GPS du téléphone). Une photo de cette affiche ne permet pas de pointer depuis l’extérieur.</p></div>
+    <div class="form-actions no-print"><button type="button" class="btn secondary" onclick="closeModal()">Fermer</button><button type="button" class="btn" onclick="window.print()">${icone('printer')} Imprimer l’affiche</button></div>`);
+}
 function rubriqueActive(){ try{ return localStorage.getItem('ecomaz_rubrique_active') || ''; }catch(_e){ return ''; } }
 function rubrique(id, court, titre, ic, html, indic){
   if(!html || !String(html).trim()) return null;
@@ -5182,8 +5392,9 @@ function rubrique(id, court, titre, ic, html, indic){
 const STYLE_RUBRIQUES = { afaire: ['menthe', 'Aujourd’hui'], suivi: ['indigo', 'Appels, relances'], dates: ['ocean', 'Agenda à venir'], treso: ['menthe', 'Entrées, sorties'],
   miseenroute: ['nuit', 'Étapes de départ'], journee: ['ocean', 'Mes cours'], surveiller: ['indigo', 'Absences répétées'], anniv: ['menthe', 'Cette semaine'],
   bilan: ['nuit', 'Résumé à partager'], repartition: ['ocean', 'Effectifs'], ensemble: ['indigo', 'Classe par classe'],
+  alertes: ['indigo', 'Tentatives refusées'],
   // Enseignant
-  cours: ['ocean', 'Ma frise du jour'], jour: ['menthe', 'Chaque jour de classe'], semaine: ['indigo', 'Rattrapages, devoirs'], mois: ['ocean', 'Régularité, programme'],
+  pointage: ['menthe', 'GPS, QR, photo'], cours: ['ocean', 'Ma frise du jour'], jour: ['menthe', 'Chaque jour de classe'], semaine: ['indigo', 'Rattrapages, devoirs'], mois: ['ocean', 'Régularité, programme'],
   trimestre: ['nuit', 'Compositions, bulletins'], outils: ['menthe', 'Toutes mes pages'], inscription: ['indigo', 'Classes, horaires, collègues'],
   // Parent
   'p-jour': ['menthe', 'Présence du jour'], 'p-enfants': ['nuit', 'Fiches, scolarité, notes'], 'p-devoirs': ['ocean', 'Travail à la maison'], 'p-absence': ['indigo', 'Prévenir l’école'], 'p-document': ['nuit', 'Certificat de scolarité…'],
@@ -5299,6 +5510,7 @@ function renderDashboard(){
       ${['direction','fondation'].includes(ui.role) ? `<button type="button" class="btn secondary sm" onclick="ouvrirRapportMois()">${icone('file-text')} Rapport du mois</button>` : ''}</div>
     ${ui.role === 'enseignant' && !session.enseignantId ? renderJeMEnrole() : ''}
     ${barreRubriques([
+      rubrique('alertes', 'Alertes pointage', 'Alertes de pointage — 7 derniers jours', 'triangle-alert', (rafraichirAlertesPointage(), renderAlertesPointageDirection()), () => { const n = alertesPointageRecentes().filter(a => a.date === todayISO()).length; return n ? String(n) : ''; }),
       rubrique('afaire', 'À faire', 'À faire aujourd’hui', 'circle-dot', renderAFaireAujourdhui(), h => (h.match(/afaire-compte">(\d+)/) || [])[1] || ''),
       rubrique('suivi', 'Enseignants', 'Suivi des enseignants', 'users', renderSuiviEnseignants(), h => (h.match(/(\d+) enseignant\(s\) à relancer/) || [])[1] || ''),
       rubrique('dates', '3 semaines', 'Dans les 3 prochaines semaines', 'calendar-range', renderProchainesDatesEcole()),
@@ -7174,6 +7386,7 @@ async function basculerCahierAppel(eleveId, date){
   const e = eleveById(eleveId); if(!e) return;
   const rec = DB.presencesEleves.find(p => p.eleveId === eleveId && p.date === date);
   const suivant = CYCLE_APPEL[(CYCLE_APPEL.indexOf(rec ? rec.statut : '') + 1) % CYCLE_APPEL.length];
+  if((suivant === 'Présent' || suivant === 'Retard') && !(rec && ['Présent', 'Retard'].includes(rec.statut)) && !(await verifierPositionAvantAppel(e.classeId))) return;
   try{
     if(!suivant){
       if(rec){ await dbDelete('presences_eleves', rec.id); DB.presencesEleves = DB.presencesEleves.filter(p => p.id !== rec.id); }
@@ -9733,6 +9946,7 @@ async function savePresencesEleves(){
   if(appelEnCours) return; // un deuxième appui pendant l'enregistrement ne relance rien
   appelEnCours = true;
   const btn = document.getElementById('btnValiderAppel');
+  const texteBtn = btn ? btn.textContent : '';
   if(btn){ btn.disabled = true; btn.textContent = 'Enregistrement…'; }
   let nbNotifs = 0;
   try{
@@ -9748,6 +9962,10 @@ async function savePresencesEleves(){
       if(!rec) nouveaux.push({date:f.date, classeId:f.classeId, eleveId, statut, motif});
       else if(rec.statut !== statut || (rec.motif || '') !== motif) modifs.push({ rec, statut, motif });
       if(statut==='Absent' && !wasAbsent && !absenceSignalee(eleveId, f.date)) aPrevenir.push({ eleveId, motif });
+    }
+    // 1 bis) Présents / retards : seulement depuis l'établissement (GPS vérifié par le serveur)
+    if((nouveaux.some(n => n.statut !== 'Absent') || modifs.some(m => m.statut !== 'Absent' && m.rec.statut === 'Absent')) && !(await verifierPositionAvantAppel(f.classeId))){
+      appelEnCours = false; if(btn){ btn.disabled = false; btn.textContent = texteBtn; } return;
     }
     // 2) Toute la classe en un seul envoi (rapide même avec un réseau faible ; file d'attente si hors ligne)
     if(nouveaux.length){
@@ -14162,6 +14380,12 @@ function renderGeofence(){
       <button type="button" class="btn secondary sm" onclick="utiliserPositionActuelle()">📍 Utiliser ma position actuelle</button>
       <div class="form-actions"><button class="btn" type="submit">Enregistrer la zone</button></div>
     </form>
+    <div class="pt-param">
+      <strong>${icone('smartphone')} Affiche QR de pointage des enseignants</strong>
+      <p class="hint">Imprimez-la et collez-la à l’entrée. Les enseignants la scannent dans « Mon pointage » ; le pointage n’est accepté que si leur téléphone est dans la zone ci-dessus. Les tentatives refusées arrivent dans Tableau de bord → Alertes pointage.</p>
+      <div class="form-actions" style="justify-content:flex-start;"><button type="button" class="btn secondary" onclick="imprimerAfficheQrPointage(false)">${icone('printer')} Afficher / imprimer l’affiche</button>
+      ${['direction', 'fondation'].includes(ui.role) ? `<button type="button" class="btn secondary" onclick="imprimerAfficheQrPointage(true)">${icone('refresh-cw')} Nouvelle affiche</button>` : ''}</div>
+    </div>
   `;
 }
 function utiliserPositionActuelle(){

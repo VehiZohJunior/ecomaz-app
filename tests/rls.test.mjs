@@ -483,8 +483,30 @@ async function requete(accessToken, chemin, options = {}){
     verifier('Aucune écriture directe dans fonctions_compte', !ecr.ok, `statut ${ecr.status}`);
   }
 
+  section('7octovicies. Pointage depuis l’application, GPS déterminant (20/11/2026) — sans aucune écriture');
+  {
+    const anonyme = await fetch(`${URL_BASE}/functions/v1/pointer-presence`, { method:'POST', headers:{ apikey: ANON_KEY, 'Content-Type':'application/json' }, body: JSON.stringify({ methode:'gps', latitude:5.3, longitude:-3.9, precision:10 }) });
+    verifier('Pointage refusé sans connexion', !anonyme.ok, `statut ${anonyme.status}`);
+    const inconnue = await requete(tokenEnseignant, `/functions/v1/pointer-presence`, { method:'POST', body: JSON.stringify({ methode:'tricherie' }) });
+    verifier('Méthode de pointage inconnue refusée', !inconnue.ok && /inconnue/.test(JSON.stringify(inconnue.data)), `statut ${inconnue.status}`);
+    const secr = await requete(tokenSecretariat, `/functions/v1/pointer-presence`, { method:'POST', body: JSON.stringify({ methode:'gps', latitude:5.3, longitude:-3.9, precision:10 }) });
+    verifier('Le secrétariat ne peut pas pointer comme un enseignant', !secr.ok && /réservé aux enseignants/i.test(JSON.stringify(secr.data)), `statut ${secr.status}`);
+    const jeton = await requete(tokenEnseignant, `/rest/v1/rpc/jeton_qr_pointage`, { method:'POST', body:'{}' });
+    verifier('Un enseignant ne peut pas lire le code secret de l’affiche QR', !jeton.ok, `statut ${jeton.status}`);
+    const renouv = await requete(tokenSecretariat, `/rest/v1/rpc/renouveler_jeton_qr_pointage`, { method:'POST', body:'{}' });
+    verifier('Le secrétariat ne peut pas changer l’affiche QR', !renouv.ok && /Réservé à la direction/.test(JSON.stringify(renouv.data)), `statut ${renouv.status}`);
+    for(const t of ['pointage_jetons', 'positions_valides']){
+      const lu = await requete(tokenEnseignant, `/rest/v1/${t}?select=*`);
+      verifier(`Aucune lecture de ${t} par un enseignant`, !lu.ok || (Array.isArray(lu.data) && !lu.data.length), `statut ${lu.status}`);
+    }
+    const faux = await requete(tokenEnseignant, `/rest/v1/positions_valides`, { method:'POST', headers:{ Prefer:'return=minimal' }, body: JSON.stringify({ user_id:'00000000-0000-4000-8000-000000000001', ecole_id:'00000000-0000-4000-8000-000000000001' }) });
+    verifier('Impossible de fabriquer soi-même une « position vérifiée »', !faux.ok, `statut ${faux.status}`);
+    const al = await requete(tokenEnseignant, `/rest/v1/alertes_pointage?select=id&limit=1`);
+    verifier('Un enseignant ne lit pas les alertes de pointage', !al.ok || (Array.isArray(al.data) && !al.data.length), `statut ${al.status}`);
+  }
+
   section('8. Visiteur non connecté — ne lit que les affichages publics prévus');
-  for(const table of ['eleves','enseignants_lecture','profiles','paiements_scolarite','messages','parents_eleves','presences_eleves','eleves_portier_lecture','objets_perdus','push_abonnements','absences_signalees','evenements_agenda','devoirs','personnes_autorisees','sante_eleves','reponses_agenda','corrections_fiches','menus_cantine','preinscriptions','demandes_documents','evaluations','coefficients_matieres','bulletins_resultats','sujets_evaluation','fonctions_compte']){
+  for(const table of ['eleves','enseignants_lecture','profiles','paiements_scolarite','messages','parents_eleves','presences_eleves','eleves_portier_lecture','objets_perdus','push_abonnements','absences_signalees','evenements_agenda','devoirs','personnes_autorisees','sante_eleves','reponses_agenda','corrections_fiches','menus_cantine','preinscriptions','demandes_documents','evaluations','coefficients_matieres','bulletins_resultats','sujets_evaluation','fonctions_compte','pointage_jetons','positions_valides']){
     const r = await requete(ANON_KEY, `/rest/v1/${table}?select=*&limit=1`);
     verifier(`Sans connexion, rien à lire dans ${table}`, !r.ok || (Array.isArray(r.data) && r.data.length === 0), `reçu ${JSON.stringify(r.data)?.slice(0,80)}`);
   }

@@ -10,6 +10,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.119.0';
 import { ORIGINE_APPLI, ENTETES_SECURITE, messagePublic, limiter, tropVolumineux } from '../_shared/securite.ts';
+import { envoyerPush } from '../_shared/push.ts';
 
 const CORS_HEADERS = {
   ...ENTETES_SECURITE,
@@ -99,6 +100,29 @@ Deno.serve(async (req) => {
       latitude, longitude, precision_metres: precisionNum, distance_metres: Math.round(distance),
       adresse_approx: adresseApprox, statut,
     });
+
+    // 20/11/2026 — LE GPS EST DÉTERMINANT : hors de la zone (ou position douteuse),
+    // le pointage n'est PAS pris en compte ; la direction est prévenue aussitôt.
+    if (statut !== 'dans_etablissement') {
+      const raison = statut === 'hors_etablissement'
+        ? `Hors de l’établissement : à ${Math.round(distance)} m de l’école (zone de ${rayon} m)`
+        : `Position douteuse ou trop imprécise (± ${precisionNum ?? '?'} m)`;
+      await supabaseAdmin.from('pointages_gps').update({ motif_refus: raison }).eq('lien_id', lien.id);
+      await supabaseAdmin.from('alertes_pointage').insert({
+        ecole_id: lien.ecole_id, enseignant_id: lien.enseignant_id, date, heure, raison, type: 'enseignant', methode: 'lien',
+        latitude, longitude, distance_metres: Math.round(distance), precision_metres: precisionNum,
+      });
+      const [{ data: f }, { data: dir }] = await Promise.all([
+        supabaseAdmin.from('enseignants').select('nom, prenom').eq('id', lien.enseignant_id).maybeSingle(),
+        supabaseAdmin.from('profiles').select('id').eq('ecole_id', lien.ecole_id).in('role', ['direction', 'fondation']),
+      ]);
+      await envoyerPush(supabaseAdmin, (dir || []).map((d: { id: string }) => d.id), {
+        title: '⚠️ Pointage enseignant refusé',
+        body: `${f ? f.prenom + ' ' + f.nom : 'Un enseignant'} — ${raison} (${heure}, lien GPS). Détail : Tableau de bord → Alertes pointage.`,
+        url: './index.html', tag: `alerte-pointage-${Date.now()}`,
+      }).catch(() => null);
+      throw new Error(`Pointage refusé — ${raison}. Pointez depuis l’intérieur de l’école. La direction a été prévenue.`);
+    }
 
     // Met aussi à jour presences_enseignants, comme le pointage QR, pour
     // que le reste de l'application (journal, ponctualité) reste cohérent.
