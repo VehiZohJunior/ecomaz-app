@@ -2923,6 +2923,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.11.20-6', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Tableau de bord : toutes les rubriques (À faire, Enseignants, 3 semaines, Trésorerie, Mise en route, À surveiller, Anniversaires, Bilan de la semaine, Répartition, Par classe) sont rangées sur une seule ligne d’onglets avec icônes. Un toucher ouvre la rubrique juste en dessous, un second la referme.' ],
+  } },
   { version: '2026.11.20-5', nouveautes: {
     commun: [],
     parent: [],
@@ -5072,22 +5078,45 @@ function copierRelanceEnseignant(i){
     .catch(() => openModal('Message de relance', `<textarea rows="8" style="width:100%;">${escapeHtml(txt)}</textarea>`));
 }
 
-/* Panneau principal « ventilé » : chaque rubrique est repliée sous son titre (2026-11-20).
-   L'état ouvert/fermé de chaque rubrique est mémorisé sur l'appareil. */
-function rubriquesOuvertes(){ try{ return new Set(JSON.parse(localStorage.getItem('ecomaz_rubriques_ouvertes') || '[]')); }catch(_e){ return new Set(); } }
-function noterRubrique(id, ouvert){ try{ const s = rubriquesOuvertes(); ouvert ? s.add(id) : s.delete(id); localStorage.setItem('ecomaz_rubriques_ouvertes', JSON.stringify([...s])); }catch(_e){} }
-function replier(id, titre, ic, html, indic){
-  if(!html || !String(html).trim()) return '';
-  const info = typeof indic === 'function' ? indic(html) : (indic || '');
-  return `<details class="db-replie" id="rub-${id}"${rubriquesOuvertes().has(id) ? ' open' : ''} ontoggle="noterRubrique('${id}', this.open)">
-    <summary><span class="dbr-ic" aria-hidden="true">${icone(ic) || ''}</span><span class="dbr-titre">${escapeHtml(titre)}</span>${info ? `<span class="dbr-indic">${escapeHtml(info)}</span>` : ''}<span class="dbr-fleche" aria-hidden="true"></span></summary>
-    <div class="dbr-corps">${html}</div></details>`;
+/* Panneau principal : toutes les rubriques sur UNE ligne horizontale d'onglets (20/11/2026).
+   Un toucher sur un onglet ouvre son contenu juste en dessous ; un second le referme.
+   La rubrique ouverte est mémorisée sur l'appareil. */
+function rubriqueActive(){ try{ return localStorage.getItem('ecomaz_rubrique_active') || ''; }catch(_e){ return ''; } }
+function rubrique(id, court, titre, ic, html, indic){
+  if(!html || !String(html).trim()) return null;
+  return { id, court, titre, ic, html, info: typeof indic === 'function' ? indic(html) : (indic || '') };
 }
-// Un bouton qui renvoie à une rubrique la déroule d'abord
+// Couleur (mêmes familles que « Nos services ») et petite description de chaque onglet
+const STYLE_RUBRIQUES = { afaire: ['menthe', 'Aujourd’hui'], suivi: ['indigo', 'Appels, relances'], dates: ['ocean', 'Agenda à venir'], treso: ['menthe', 'Entrées, sorties'],
+  miseenroute: ['nuit', 'Étapes de départ'], journee: ['ocean', 'Mes cours'], surveiller: ['indigo', 'Absences répétées'], anniv: ['menthe', 'Cette semaine'],
+  bilan: ['nuit', 'Résumé à partager'], repartition: ['ocean', 'Effectifs'], ensemble: ['indigo', 'Classe par classe'] };
+function barreRubriques(liste){
+  liste = liste.filter(Boolean); if(!liste.length) return '';
+  const act = liste.some(r => r.id === rubriqueActive() && !r.action) ? rubriqueActive() : '';
+  const onglet = r => `<button type="button" class="dbr-onglet${r.id === act ? ' actif' : ''}" title="${escapeHtml(r.titre)}" ${r.action
+      ? `onclick="${r.action}"`
+      : `role="tab" id="ong-${r.id}" aria-selected="${r.id === act}" aria-controls="rub-${r.id}" onclick="basculerRubrique('${r.id}')"`}>
+      ${iconeService(r.ic, (STYLE_RUBRIQUES[r.id] || [])[0] || 'nuit')}<span class="dbr-titre">${escapeHtml(r.court)}</span><small class="dbr-sous">${escapeHtml((STYLE_RUBRIQUES[r.id] || [])[1] || '')}</small>${r.info ? `<span class="dbr-indic">${escapeHtml(r.info)}</span>` : ''}</button>`;
+  return `<section class="db-rubriques" aria-label="Rubriques du tableau de bord">
+    <div class="dbr-barre" role="tablist">${liste.map(onglet).join('')}</div>
+    ${liste.filter(r => !r.action).map(r => `<div class="dbr-panneau" id="rub-${r.id}" role="tabpanel" aria-labelledby="ong-${r.id}"${r.id === act ? '' : ' hidden'}>
+      <div class="dbr-panneau-tete"><h2><span class="dbr-ic" aria-hidden="true">${icone(r.ic) || ''}</span>${escapeHtml(r.titre)}</h2><button type="button" class="dbr-fermer" aria-label="Replier" onclick="basculerRubrique('${r.id}', false)">×</button></div>
+      <div class="dbr-corps">${r.html}</div></div>`).join('')}
+  </section>`;
+}
+function basculerRubrique(id, ouvrir){
+  const p = document.getElementById('rub-' + id); if(!p) return;
+  const ouvre = ouvrir === undefined ? p.hidden : ouvrir;
+  document.querySelectorAll('.db-rubriques .dbr-panneau').forEach(x => { x.hidden = true; });
+  document.querySelectorAll('.db-rubriques .dbr-onglet[role="tab"]').forEach(b => { b.classList.remove('actif'); b.setAttribute('aria-selected', 'false'); });
+  if(ouvre){ p.hidden = false; const b = document.getElementById('ong-' + id); if(b){ b.classList.add('actif'); b.setAttribute('aria-selected', 'true'); b.scrollIntoView({ block: 'nearest', inline: 'nearest' }); } }
+  try{ localStorage.setItem('ecomaz_rubrique_active', ouvre ? id : ''); }catch(_e){}
+}
+// Un bouton qui renvoie à une rubrique l'ouvre d'abord
 function ouvrirSection(idElement){
   const el = document.getElementById(idElement); if(!el) return;
-  const d = el.closest('details'); if(d && !d.open) d.open = true;
-  (d || el).scrollIntoView({ behavior: 'smooth', block: 'start' });
+  const p = el.closest('.dbr-panneau'); if(p) basculerRubrique(p.id.slice(4), true);
+  (p || el).scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 function renderDashboard(){
   if(ui.role === 'enseignant') return renderAccueilEnseignant();
@@ -5165,34 +5194,28 @@ function renderDashboard(){
     <div class="db-bonjour"><div><h2>${escapeHtml(salutation())}</h2><div class="db-date">${dateLongue}</div>${renderQuestionAppel()}</div>
       ${['direction','fondation'].includes(ui.role) ? `<button type="button" class="btn secondary sm" onclick="ouvrirRapportMois()">${icone('file-text')} Rapport du mois</button>` : ''}</div>
     ${ui.role === 'enseignant' && !session.enseignantId ? renderJeMEnrole() : ''}
-    <div class="db-replis">
-    ${replier('afaire', 'À faire aujourd’hui', 'circle-dot', renderAFaireAujourdhui(), h => (h.match(/afaire-compte">(\d+)/) || [])[1] ? `${h.match(/afaire-compte">(\d+)/)[1]} à faire` : '')}
-    ${replier('suivi', 'Suivi des enseignants', 'users', renderSuiviEnseignants(), h => (h.match(/(\d+) enseignant\(s\) à relancer/) || [])[1] ? `${h.match(/(\d+) enseignant\(s\) à relancer/)[1]} à relancer` : '')}
-    ${replier('dates', 'Dans les 3 prochaines semaines', 'calendar', renderProchainesDatesEcole())}
-    </div>
+    ${barreRubriques([
+      rubrique('afaire', 'À faire', 'À faire aujourd’hui', 'circle-dot', renderAFaireAujourdhui(), h => (h.match(/afaire-compte">(\d+)/) || [])[1] || ''),
+      rubrique('suivi', 'Enseignants', 'Suivi des enseignants', 'users', renderSuiviEnseignants(), h => (h.match(/(\d+) enseignant\(s\) à relancer/) || [])[1] || ''),
+      rubrique('dates', '3 semaines', 'Dans les 3 prochaines semaines', 'calendar-range', renderProchainesDatesEcole()),
+      finance ? rubrique('treso', 'Trésorerie', 'Trésorerie', 'wallet', renderTresorerie()) : null,
+      rubrique('miseenroute', 'Mise en route', 'Mise en route de l’école', 'target', renderMiseEnRoute(), h => (h.match(/mer-score">([^<]+)</) || [])[1] || ''),
+      rubrique('journee', 'Ma journée', 'Ma journée', 'clock', renderMaJournee()),
+      rubrique('surveiller', 'À surveiller', 'Élèves à surveiller', 'triangle-alert', renderElevesASurveiller(), h => (h.match(/mer-score">([^<]+)</) || [])[1] || ''),
+      rubrique('anniv', 'Anniversaires', 'Anniversaires de la semaine', 'party-popper', renderAnniversaires(), h => { const n = (h.match(/class="mj-classe"/g) || []).length; return n ? String(n) : ''; }),
+      ['direction', 'fondation'].includes(ui.role) ? { id: 'bilan', court: 'Bilan semaine', titre: 'Bilan de la semaine', ic: 'book-open-check', action: 'ouvrirBilanHebdo()' } : null,
+      rubrique('repartition', 'Répartition', 'Répartition des élèves par classe', 'chart-column', `<div class="panel"><div class="panel-head"><div><h2>Répartition des élèves par classe</h2></div></div>${barsHtml}</div>`, () => String(totalEleves)),
+      rubrique('ensemble', 'Par classe', 'Vue d’ensemble par classe', 'school', `<div class="panel"><div class="panel-head"><div><h2>Vue d’ensemble par classe</h2></div></div><div class="lignes-classes">${renderLignesClasses()}</div></div>`),
+    ])}
     <div class="cards cards-2x2">
       ${kpi(0, icone('graduation-cap'), 'var(--primary-dim)', totalEleves, 'Élèves inscrits')}
       ${kpi(1, icone('presentation'), 'var(--purple-bg)', presEnsToday.length ? `${ensPresents}/${totalEns}` : totalEns, presEnsToday.length ? 'Enseignants présents aujourd’hui' : 'Enseignants (pointage non fait)')}
       ${kpi(2, icone('circle-check'), 'var(--green-bg)', tauxEleves===null ? null : tauxEleves+'%', 'Présence élèves aujourd’hui', ['Appel non effectué', lien('presences-eleves', 'Faire l’appel')])}
       ${kpi(3, icone('clock'), 'var(--blue-bg)', tauxEns===null ? null : tauxEns+'%', 'Présence enseignants aujourd’hui', ['Aucun pointage aujourd’hui', lien('presences-enseignants', 'Voir le journal')])}
     </div>
-    <div class="db-replis">
-    ${finance ? replier('treso', 'Trésorerie', 'wallet', renderTresorerie()) : ''}
     ${animer ? `${(setTimeout(animerCompteursKpi, 0), '')}` : ''}
-    ${replier('miseenroute', 'Mise en route de l’école', 'target', renderMiseEnRoute(), h => (h.match(/mer-score">([^<]+)</) || [])[1] || '')}
-    ${replier('journee', 'Ma journée', 'clock', renderMaJournee())}
-    ${replier('surveiller', 'Élèves à surveiller', 'triangle-alert', renderElevesASurveiller(), h => (h.match(/mer-score">([^<]+)</) || [])[1] || '')}
-    ${replier('anniv', 'Anniversaires de la semaine', 'party-popper', renderAnniversaires(), h => { const n = (h.match(/class="mj-classe"/g) || []).length; return n ? String(n) : ''; })}
-    </div>
-    ${(ui.role==='direction' || ui.role==='fondation') ? `<div class="form-actions no-print" style="justify-content:flex-start;margin:0 0 var(--sp-4);"><button class="btn secondary" onclick="ouvrirBilanHebdo()">📊 Bilan de la semaine</button></div>` : ''}
-
     ${renderBanniereNotifications()}
     ${ui.role==='enseignant' ? renderActualitesParent() + renderTableauHonneurParent() : ''}
-
-    <div class="db-replis">
-    ${replier('repartition', 'Répartition des élèves par classe', 'chart-column', `<div class="panel"><div class="panel-head"><div><h2>Répartition des élèves par classe</h2></div></div>${barsHtml}</div>`, () => `${totalEleves} élèves`)}
-    ${replier('ensemble', 'Vue d’ensemble par classe', 'school', `<div class="panel"><div class="panel-head"><div><h2>Vue d’ensemble par classe</h2></div></div><div class="lignes-classes">${renderLignesClasses()}</div></div>`)}
-    </div>
   </div>`;
 }
 
