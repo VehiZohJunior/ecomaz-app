@@ -1,0 +1,8 @@
+# EcoMaZ — seules les pages publiques sont à indexer ; les applications sont privées.
+User-agent: *
+Allow: /ecomaz-app/landing/
+Allow: /ecomaz-app/confidentialite.html
+Allow: /ecomaz-app/conditions.html
+Disallow: /ecomaz-app/
+
+Sitemap: https://vehizohjunior.github.io/ecomaz-app/sitemap.xml

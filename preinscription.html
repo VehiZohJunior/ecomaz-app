@@ -7,6 +7,12 @@
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <script>if(window.top !== window.self){ try{ window.top.location = window.self.location.href; }catch(_e){ document.documentElement.style.display = 'none'; } }</script>
 <title>Pré-inscription — EcoMaZ</title>
+<meta name="robots" content="noindex, nofollow">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Pré-inscription — EcoMaZ">
+<meta property="og:description" content="Pré-inscrivez votre enfant en ligne : l’école vous rappelle.">
+<meta property="og:image" content="https://vehizohjunior.github.io/ecomaz-app/landing/partage.png">
+<meta name="twitter:card" content="summary_large_image">
 <meta name="description" content="Pré-inscrivez votre enfant en ligne : l'école vous rappelle.">
 <link rel="icon" href="icon-192.png">
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
@@ -44,6 +50,7 @@
     h2{ color:#7cc4a4; }
     .note, footer{ color:#9fb0a7; }
   }
+  .champ-piege{ position:absolute !important; left:-9999px !important; width:1px; height:1px; overflow:hidden; }
 </style>
 </head>
 <body>
@@ -67,6 +74,7 @@
       <label for="classe">Classe souhaitée</label>
       <select id="classe"><option value="">Je ne sais pas encore</option></select>
       <h2>👪 Le parent</h2>
+      <div class="champ-piege" aria-hidden="true"><label for="site_web">Ne pas remplir</label><input id="site_web" name="site_web" tabindex="-1" autocomplete="off"></div>
       <label for="parent">Nom et prénom</label><input id="parent" required maxlength="120" autocomplete="name">
       <label for="tel">Téléphone (WhatsApp de préférence)</label><input id="tel" type="tel" required maxlength="30" autocomplete="tel" placeholder="Ex : 07 00 00 00 00">
       <label for="message">Message (facultatif)</label><textarea id="message" rows="3" maxlength="500" placeholder="Ex : il vient d’une autre école, question sur la cantine…"></textarea>
@@ -102,6 +110,8 @@
     if(champs.parent.length < 2) return erreur('Indiquez votre nom.');
     if(champs.tel.replace(/\D/g, '').length < 8) return erreur('Indiquez un numéro de téléphone valide.');
     $('envoyer').disabled = true; $('envoyer').textContent = 'Envoi…';
+    // Champ piège rempli = robot : on fait comme si tout allait bien, sans rien envoyer
+    if((document.getElementById('site_web') || {}).value){ $('carte').innerHTML = '<div class="merci"><div class="rond">✅</div><h2>Merci !</h2><p>Votre demande a bien été reçue.</p></div>'; return; }
     sb.rpc('preinscrire', {
       p_ecole: ecole, p_enfant_prenom: champs.prenom, p_enfant_nom: champs.nom, p_date_naissance: $('naissance').value || null,
       p_sexe: $('sexe').value, p_classe: $('classe').value, p_parent_nom: champs.parent, p_parent_tel: champs.tel, p_message: $('message').value.trim(),

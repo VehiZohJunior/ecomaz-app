@@ -201,3 +201,7 @@ h1, h2, h3{ line-height:1.1; margin:0; }
 
 /* Sur-titre du hero (fond vert foncé) : toujours en or */
 .hero .sur-titre.pilule{ color:var(--em-gold-400); }
+
+/* Liens légaux du pied de page (2026-11-20) */
+.pied-legal{ margin-top:18px; padding-top:14px; border-top:1px solid rgba(255,255,255,.15); font-size:14px; }
+.pied-legal a{ color:inherit; font-weight:700; text-decoration:underline; text-underline-offset:3px; }

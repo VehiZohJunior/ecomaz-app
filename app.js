@@ -1187,6 +1187,7 @@ function renderLoginGate(step, error, loading){
         <button type="button" class="btn secondary" style="width:100%;" onclick="handleGoogleLogin()">🔵 Continuer avec Google</button>
         <div class="sub" style="margin-top:6px;font-size:var(--fs-xs);">Première fois ? Connectez-vous avec Google : l'école validera votre accès.</div>` : ''}
       ${fixe ? `<button type="button" class="btn btn-install-pwa" style="display:none;width:100%;margin-top:10px;">📲 Installer l'application sur ce téléphone</button>${iosHint}` : ''}
+      <div class="login-legal"><a href="confidentialite.html" target="_blank" rel="noopener">Confidentialité</a> · <a href="conditions.html" target="_blank" rel="noopener">Conditions d’utilisation</a></div>
     </div>`;
 }
 // Démarrage : écran de chargement et écran d'erreur réseau (sans déconnecter)
@@ -2921,6 +2922,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.11.20-10', nouveautes: {
+    commun: [ 'Nouvelles pages : Conditions générales d’utilisation, et politique de confidentialité mise à jour (pointage GPS et photo, paiement PayDunya, cookies). Liens en bas de l’écran de connexion.' ],
+    parent: [],
+    portier: [],
+    personnel: [ 'Paramètres : lien vers les Conditions générales d’utilisation.' ],
+  } },
   { version: '2026.11.20-9', nouveautes: {
     commun: [],
     parent: [],
@@ -11634,7 +11641,7 @@ function buildRecuHtml(r){
   return `
     <div class="recu">
       <div class="recu-head">
-        ${m.logo ? `<img src="${escapeHtml(m.logo)}">` : `<div class="recu-logo-ph">🎓</div>`}
+        ${m.logo ? `<img src="${escapeHtml(m.logo)}" alt="Logo de ${escapeHtml(m.nomEcole || 'l’école')}">` : `<div class="recu-logo-ph">🎓</div>`}
         <div>
           <strong>${escapeHtml(m.nomEcole)}</strong>
           <div class="hint">${escapeHtml(m.adresse||'')}${m.telephone?' · '+escapeHtml(m.telephone):''}</div>
@@ -14585,6 +14592,7 @@ ${boutonRemplissage('ecole', "SCHEMA_ECOLE", 'formEcole')}
       </div>
       <div class="form-actions" style="justify-content:flex-start;border-top:none;padding-top:10px;">
         <a class="btn secondary" href="confidentialite.html" target="_blank" rel="noopener">📄 Politique de confidentialité</a>
+        <a class="btn secondary" href="conditions.html" target="_blank" rel="noopener">📄 Conditions générales d’utilisation</a>
       </div>
     </div>
 

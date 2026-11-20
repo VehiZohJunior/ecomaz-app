@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#0B1640">
+<title>Page introuvable — EcoMaZ</title>
+<link rel="icon" href="/ecomaz-app/icon-192.png">
+<style>
+  :root{ --nuit:#0B1640; --menthe:#3DDC97; --texte:#0E1733; --doux:#545E80; --fond:#F4F6FB; --carte:#FFFFFF; --bord:#E2E6F0; }
+  @media (prefers-color-scheme: dark){ :root{ --texte:#EEF2FF; --doux:#A9B3D6; --fond:#0B1640; --carte:#111E50; --bord:#22326B; } }
+  *{ box-sizing:border-box; }
+  body{ margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px 16px; background:var(--fond); color:var(--texte);
+    font-family:Nunito, "Segoe UI", system-ui, -apple-system, sans-serif; line-height:1.5; }
+  main{ width:100%; max-width:520px; background:var(--carte); border:1px solid var(--bord); border-radius:24px; padding:32px 24px; text-align:center; }
+  .logo{ width:64px; height:64px; margin:0 auto 14px; border-radius:18px; background:var(--nuit); color:var(--menthe); display:flex; align-items:center; justify-content:center; font-weight:900; font-size:32px; }
+  .code{ font-size:56px; font-weight:900; letter-spacing:-.02em; margin:0; color:var(--texte); }
+  h1{ font-size:22px; margin:4px 0 8px; }
+  p{ color:var(--doux); margin:0 0 22px; }
+  .actions{ display:flex; flex-direction:column; gap:10px; }
+  a{ display:block; padding:14px 16px; border-radius:14px; font-weight:800; text-decoration:none; min-height:44px; }
+  .principal{ background:var(--menthe); color:var(--nuit); }
+  .secondaire{ border:1px solid var(--bord); color:var(--texte); }
+  a:focus-visible{ outline:3px solid var(--menthe); outline-offset:2px; }
+</style>
+</head>
+<body>
+<main>
+  <div class="logo" aria-hidden="true">E</div>
+  <p class="code">404</p>
+  <h1>Cette page n’existe pas</h1>
+  <p>Le lien est peut-être incomplet ou ancien. Choisissez votre espace :</p>
+  <div class="actions">
+    <a class="principal" href="/ecomaz-app/">Espace du personnel</a>
+    <a class="secondaire" href="/ecomaz-app/enseignant.html">Espace enseignant</a>
+    <a class="secondaire" href="/ecomaz-app/parent.html">Espace parent</a>
+    <a class="secondaire" href="/ecomaz-app/landing/">Découvrir EcoMaZ</a>
+  </div>
+</main>
+</body>
+</html>

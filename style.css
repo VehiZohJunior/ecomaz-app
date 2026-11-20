@@ -2683,3 +2683,7 @@ tbody td input.champ-a-verifier, tbody td select.champ-a-verifier, .nt-note.cham
 .pt-affiche-petit{ font-size:var(--fs-xs); color:var(--text-dim); }
 .pt-m-texte{ display:flex; flex-direction:column; gap:2px; align-items:inherit; }
 @media (max-width:480px){ .pt-methode{ align-items:center; } .pt-m-texte{ align-items:flex-start; text-align:left; flex:1 1 auto; } }
+
+/* Liens légaux sous la connexion (2026-11-20) */
+.login-legal{ margin-top:16px; font-size:var(--fs-xs); text-align:center; color:var(--text-dim); }
+.login-legal a{ color:var(--text-dim); font-weight:700; text-decoration:underline; text-underline-offset:3px; }

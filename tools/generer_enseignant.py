@@ -17,6 +17,12 @@ def rep(a, b):
     s = s.replace(a, b)
 
 rep('<title id="pageTitle">EcoMaZ — Gestion Scolaire</title>', '<title id="pageTitle">EcoMaZ — Espace Enseignant</title>')
+# Aperçu de partage (WhatsApp…) et description : propres à l'application enseignant
+D_PERSO = 'Connexion à EcoMaZ pour la direction, le secrétariat et la fondation : élèves, présences, notes, comptabilité et familles.'
+D_ENS = 'L’application des enseignants : appel, cahier de textes, notes, emploi du temps et pointage depuis l’école.'
+s = s.replace(f'content="{D_PERSO}"', f'content="{D_ENS}"')
+rep('<meta property="og:title" content="EcoMaZ — Espace du personnel">', '<meta property="og:title" content="EcoMaZ — Espace Enseignant">')
+rep('<meta property="og:url" content="https://vehizohjunior.github.io/ecomaz-app/">', '<meta property="og:url" content="https://vehizohjunior.github.io/ecomaz-app/enseignant.html">')
 rep('<link rel="manifest" href="manifest.json">', """<script>
   // Manifeste d'installation servi par le serveur, au nom de l'école
   (function(){

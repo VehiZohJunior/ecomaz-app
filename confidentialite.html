@@ -6,6 +6,20 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.119.0/ https://cdn.jsdelivr.net/npm/jsqr@1.4.0/ https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/ https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/ https://cdn.jsdelivr.net/npm/mammoth@1.8.0/ https://cdn.sheetjs.com/xlsx-0.20.3/; worker-src 'self' blob: https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/; connect-src 'self' https://hvqtsvpkxffseclsfoun.supabase.co wss://hvqtsvpkxffseclsfoun.supabase.co https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.119.0/ https://cdn.jsdelivr.net/npm/jsqr@1.4.0/ https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/ https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/ https://cdn.jsdelivr.net/npm/mammoth@1.8.0/ https://cdn.sheetjs.com/xlsx-0.20.3/; img-src 'self' data: blob: https://hvqtsvpkxffseclsfoun.supabase.co https://img.youtube.com; media-src 'self' data: blob: https://hvqtsvpkxffseclsfoun.supabase.co; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; frame-src https://www.youtube-nocookie.com; manifest-src 'self' https://hvqtsvpkxffseclsfoun.supabase.co; object-src 'none'; base-uri 'self'; form-action 'self'">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <title>Politique de confidentialité — EcoMaZ</title>
+<meta name="description" content="Comment EcoMaZ protège les données des élèves, des parents et du personnel des écoles clientes en Côte d’Ivoire.">
+<meta name="robots" content="index, follow">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="EcoMaZ">
+<meta property="og:title" content="Politique de confidentialité — EcoMaZ">
+<meta property="og:description" content="Comment EcoMaZ protège les données des élèves, des parents et du personnel des écoles clientes en Côte d’Ivoire.">
+<meta property="og:url" content="https://vehizohjunior.github.io/ecomaz-app/confidentialite.html">
+<meta property="og:image" content="https://vehizohjunior.github.io/ecomaz-app/landing/partage.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="EcoMaZ — gestion scolaire, de la garderie à l’université. Conçu à Abidjan.">
+<meta property="og:locale" content="fr_FR">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="apple-touch-icon" href="icon-192.png">
 <link rel="icon" href="icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -25,13 +39,15 @@
   li{ margin-bottom:6px; }
   p{ margin:10px 0; }
   .contact{ background:var(--primary-soft); color:var(--primary-ink); border-radius:var(--r-card); padding:16px 18px; margin-top:32px; }
+  .liens-legaux{ margin-top:24px; font-size:14px; }
+  .liens-legaux a{ color:var(--primary-ink); font-weight:700; }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <a class="back" href="javascript:history.back()">← Retour</a>
+  <a class="back" href="landing/" onclick="if(history.length > 1){ history.back(); return false; }">← Retour</a>
   <h1>EcoMaZ — Politique de confidentialité</h1>
-  <div class="maj">Dernière mise à jour : 22 septembre 2026</div>
+  <div class="maj">Dernière mise à jour : 20 novembre 2026</div>
 
   <p>EcoMaZ est un service de gestion scolaire édité par <strong>Vehi Zoh Junior</strong>, destiné aux établissements scolaires clients (« l'École ») en Côte d'Ivoire.</p>
 
@@ -42,7 +58,9 @@
   <p><strong>Élèves</strong> : identité (nom, prénom, sexe, date de naissance), classe, notes, présences, bulletins, et contact d'un parent/tuteur (nom, téléphone, adresse).</p>
   <p><strong>Personnel</strong> : identité et contact, matières enseignées, classes assignées, présence/pointage, et — pour la direction uniquement — données de paie.</p>
   <p><strong>Parents et portier</strong> : adresse e-mail et nom, saisis à la création du compte ou reçus de Google lorsque la personne choisit « Continuer avec Google » (nom et adresse e-mail uniquement). Ces informations servent uniquement à identifier la personne ; elle n'a accès à aucune donnée tant que l'École n'a pas validé sa demande et, pour un parent, ne l'a pas reliée à son enfant.</p>
-  <p><strong>Position GPS du personnel</strong> : uniquement lorsqu'un enseignant valide lui-même son arrivée ou son départ depuis un lien reçu par SMS ; la position n'est pas suivie en continu.</p>
+  <p><strong>Position GPS du personnel</strong> : lue uniquement au moment où un membre du personnel pointe lui-même son arrivée ou son départ (depuis l'application ou un lien reçu), et au moment où il enregistre l'appel des élèves, pour vérifier qu'il se trouve dans l'enceinte de l'établissement. La position n'est jamais suivie en continu. Une tentative refusée (position hors de l'établissement ou douteuse) est conservée et signalée à la direction de l'École.</p>
+  <p><strong>Photo de pointage</strong> : uniquement si l'enseignant choisit de pointer « par photo ». La photo est prise en direct, rangée dans un espace privé de l'École et visible seulement par son personnel administratif. Aucune reconnaissance faciale automatique n'est effectuée.</p>
+  <p><strong>Paiements en ligne des familles</strong> : lorsqu'une École active le paiement par Mobile Money, le paiement se fait sur la page sécurisée de PayDunya, avec le compte PayDunya de l'École. EcoMaZ ne reçoit ni ne conserve aucun numéro de carte ni code de paiement.</p>
   <p><strong>Techniques</strong> : journaux de connexion à des fins de sécurité.</p>
 
   <h2>À quoi servent ces données ?</h2>
@@ -56,7 +74,7 @@
 
   <h2>Comment vos données sont-elles protégées ?</h2>
   <ul>
-    <li>Authentification individuelle par email et mot de passe pour chaque membre du personnel</li>
+    <li>Authentification individuelle pour chaque personne (adresse e-mail et mot de passe, ou compte Google)</li>
     <li>Isolement strict des données entre établissements clients</li>
     <li>Accès aux données sensibles (contacts, salaires) restreint selon le rôle de chacun</li>
     <li>Connexion chiffrée (HTTPS) de bout en bout</li>
@@ -75,8 +93,13 @@
     <li><strong>Africa's Talking</strong> — envoi des SMS (reçoit uniquement le numéro et le message au moment de l'envoi)</li>
     <li><strong>Google</strong> — connexion « Continuer avec Google » (facultative) : EcoMaZ ne reçoit que le nom et l'adresse e-mail</li>
     <li><strong>Services d'analyse de documents et de voix</strong> (Anthropic, Groq) — uniquement si le personnel utilise le remplissage automatique par photo ou note vocale : le fichier est analysé au moment de la demande et n'est pas conservé par EcoMaZ</li>
+    <li><strong>PayDunya</strong> — paiement Mobile Money des familles, uniquement pour les Écoles qui l'activent, avec leur propre compte</li>
     <li><strong>GitHub Pages</strong> — hébergement du site, ne reçoit aucune donnée d'élève ou de personnel</li>
+    <li><strong>Google Fonts</strong> — police d'écriture des pages ; Google voit l'adresse IP de l'appareil qui charge la police, sans aucune donnée de l'École</li>
   </ul>
+
+  <h2>Cookies et stockage sur l'appareil</h2>
+  <p>EcoMaZ n'utilise <strong>aucun cookie publicitaire ni outil de pistage</strong>, et ne mesure pas l'audience de l'application. L'application garde seulement, dans la mémoire de l'appareil, ce qui est indispensable à son fonctionnement : la session de connexion, vos préférences d'affichage (thème, taille du texte, rubriques ouvertes) et, pour fonctionner sans réseau, une copie de travail effacée à la déconnexion. Ces éléments strictement nécessaires ne demandent pas de consentement ; ils ne sont jamais transmis à des tiers.</p>
 
   <h2>Élèves mineurs</h2>
   <p>EcoMaZ traite des données concernant des élèves mineurs, saisies et contrôlées exclusivement par l'établissement scolaire. EcoMaZ ne collecte directement aucune donnée auprès des élèves eux-mêmes.</p>
@@ -85,6 +108,7 @@
     <strong>Une question sur cette politique ?</strong><br>
     Contactez-nous : <a href="mailto:zohjunior@gmail.com">zohjunior@gmail.com</a>
   </div>
+  <p class="liens-legaux"><a href="conditions.html">Conditions générales d’utilisation</a> · <a href="landing/">Découvrir EcoMaZ</a></p>
 </div>
 </body>
 </html>
