@@ -15,7 +15,7 @@ import os, shutil, subprocess, tempfile
 RACINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CONSOLE_DEV = os.path.join(os.path.dirname(RACINE), 'EcoMaZ-dev-console')
 EDGE = r'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe'
-VERT, VERT_CLAIR, OR = '#14392d', '#1f5442', '#e8b04b'
+VERT, VERT_CLAIR, OR = '#0B1640', '#16245C', '#3DDC97'  # palette 2026-11-20 : bleu nuit + vert menthe
 
 TOQUE = f'''
   <path d="M21.42 10.922a1 1 0 0 0-.019-1.838L12.83 5.18a2 2 0 0 0-1.66 0L2.6 9.08a1 1 0 0 0 0 1.832l8.57 3.908a2 2 0 0 0 1.66 0z" fill="{OR}"/>

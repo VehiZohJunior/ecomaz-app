@@ -427,7 +427,7 @@ function appliquerManifestePersonnel(titre){
     const base = new URL('./', window.location.href);
     const abs = f => new URL(f, base).href;
     const m = { name: titre, short_name: titre, description: 'Gestion scolaire : élèves, notes, présences, comptabilité',
-      start_url: base.href, scope: base.href, display: 'standalone', background_color: '#ffffff', theme_color: '#245840', orientation: 'portrait-primary',
+      start_url: base.href, scope: base.href, display: 'standalone', background_color: '#ffffff', theme_color: '#0B1640', orientation: 'portrait-primary',
       icons: [
         { src: abs('icon-192.png'), sizes: '192x192', type: 'image/png', purpose: 'any' },
         { src: abs('icon-512.png'), sizes: '512x512', type: 'image/png', purpose: 'any' },
@@ -2888,6 +2888,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.11.20-2', nouveautes: {
+    commun: [ 'Nouvelles couleurs d’EcoMaZ : bleu nuit, blanc et vert menthe — dans toute l’application, en mode clair comme en mode sombre, et sur l’icône du téléphone.' ],
+    parent: [],
+    portier: [],
+    personnel: [],
+  } },
   { version: '2026.11.20-1', nouveautes: {
     commun: [],
     parent: [],

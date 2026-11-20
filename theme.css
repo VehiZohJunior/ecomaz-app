@@ -16,15 +16,15 @@
          (ecomaz-tokens.css, préfixe --em-*), chargé AVANT ce fichier ---- */
   --surface-0:var(--em-bg);       /* fond de page   */
   --surface-1:var(--em-surface);  /* cartes         */
-  --surface-2:#f1f4f2;            /* champs, survol */
+  --surface-2:#EEF1F8;            /* champs, survol */
   --border:var(--em-border);
-  --border-strong:#c9d3cd;
+  --border-strong:#C7CDE0;
   --text:var(--em-text);
   --text-dim:var(--em-text-muted);
-  --text-faint:#7d8a83;
+  --text-faint:#6B7494;
 
   --primary:var(--em-green-700);
-  --primary-hover:var(--em-green-900);
+  --primary-hover:#1D2C6E;
   --primary-soft:var(--em-green-100);     /* fond doux (éléments actifs)  */
   --primary-ink:var(--em-green-900);      /* texte sur fond doux          */
   --on-primary:#ffffff;
@@ -82,7 +82,7 @@
   --purple:var(--accent);   --purple-bg:var(--accent-soft);
   --radius:var(--r-card);
   --shadow:var(--shadow-2);
-  --scrim:rgba(14,34,25,.5);
+  --scrim:rgba(11,22,64,.5);
   font-synthesis:none;
 }
 
@@ -90,35 +90,35 @@
 @media screen and (prefers-color-scheme: dark){
   :root:not([data-theme="light"]){
     color-scheme: dark;
-    --surface-2:#1c2a24; --border-strong:#3a4f44; --text-faint:#7f9487;
-    /* textes et liens primaires éclaircis pour rester lisibles sur fond sombre */
-    --primary:#4c9b73; --primary-hover:#6cb88f; --primary-ink:#9fdcba; --lien:#9fdcba; --pastille:#2f7a55;
-    --on-primary:#07140d;
-    --accent:#ee9f7e; --accent-ink:#f2b39a;
+    --surface-2:#18265E; --border-strong:#34457F; --text-faint:#8D97BE;
+    /* fond bleu nuit : le vert menthe devient la couleur des boutons et des liens (comme la maquette) */
+    --primary:#3DDC97; --primary-hover:#6BE6B0; --primary-ink:#7BE8B9; --lien:#7BE8B9; --pastille:#147350;
+    --on-primary:#0B1640;
+    --accent:#3DDC97; --accent-ink:#7BE8B9;
     --success:#6fd49a; --success-soft:#14301f;
     --warning:#e6b84f; --warning-soft:#33290f;
     --danger:#f28b83;  --danger-soft:#3b1d1b;
     --info:#86b6f0;    --info-soft:#17283d;
     --shadow-1:0 1px 2px rgba(0,0,0,.35);
     --shadow-3:0 22px 44px rgba(0,0,0,.5);
-    --scrim:rgba(0,0,0,.65);
+    --scrim:rgba(3,8,26,.7);
   }
 }
 @media screen{
   :root[data-theme="dark"]{
     color-scheme: dark;
-    --surface-2:#1c2a24; --border-strong:#3a4f44; --text-faint:#7f9487;
-    /* textes et liens primaires éclaircis pour rester lisibles sur fond sombre */
-    --primary:#4c9b73; --primary-hover:#6cb88f; --primary-ink:#9fdcba; --lien:#9fdcba; --pastille:#2f7a55;
-    --on-primary:#07140d;
-    --accent:#ee9f7e; --accent-ink:#f2b39a;
+    --surface-2:#18265E; --border-strong:#34457F; --text-faint:#8D97BE;
+    /* fond bleu nuit : le vert menthe devient la couleur des boutons et des liens (comme la maquette) */
+    --primary:#3DDC97; --primary-hover:#6BE6B0; --primary-ink:#7BE8B9; --lien:#7BE8B9; --pastille:#147350;
+    --on-primary:#0B1640;
+    --accent:#3DDC97; --accent-ink:#7BE8B9;
     --success:#6fd49a; --success-soft:#14301f;
     --warning:#e6b84f; --warning-soft:#33290f;
     --danger:#f28b83;  --danger-soft:#3b1d1b;
     --info:#86b6f0;    --info-soft:#17283d;
     --shadow-1:0 1px 2px rgba(0,0,0,.35);
     --shadow-3:0 22px 44px rgba(0,0,0,.5);
-    --scrim:rgba(0,0,0,.65);
+    --scrim:rgba(3,8,26,.7);
   }
 }
 

@@ -73,7 +73,7 @@ if(window.top !== window.self){ try{ window.top.location = window.self.location.
       b.title = b.getAttribute('aria-label');
     });
     const meta = document.querySelector('meta[name="theme-color"]');
-    if(meta) meta.setAttribute('content', sombre ? '#0f1713' : '#245840');
+    if(meta) meta.setAttribute('content', '#0B1640');
   }
   function basculer(){
     const suivant = themeEffectif() === 'dark' ? 'light' : 'dark';
