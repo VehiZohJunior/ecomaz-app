@@ -469,8 +469,22 @@ async function requete(accessToken, chemin, options = {}){
     verifier('Sans connexion : refusé', !qAnon.ok || qAnon.data === null, `statut ${qAnon.status}`);
   }
 
+  section('7septvicies. Une personne, plusieurs fonctions (20/11/2026) — sans aucune écriture');
+  {
+    const mf = await requete(tokenEnseignant, `/rest/v1/rpc/mes_fonctions`, { method:'POST', body:'{}' });
+    verifier('mes_fonctions répond (liste, éventuellement vide)', mf.ok && Array.isArray(mf.data), `statut ${mf.status}`);
+    const ch = await requete(tokenEnseignant, `/rest/v1/rpc/changer_fonction`, { method:'POST', body: JSON.stringify({ p_role: 'direction' }) });
+    verifier('Impossible de prendre une fonction non attribuée (enseignant → direction)', !ch.ok && /pas été attribuée/.test(JSON.stringify(ch.data)), `statut ${ch.status}`);
+    const at = await requete(tokenEnseignant, `/rest/v1/rpc/attribuer_fonction`, { method:'POST', body: JSON.stringify({ p_user: '00000000-0000-4000-8000-000000000001', p_role: 'direction' }) });
+    verifier('Un enseignant ne peut pas attribuer de fonction', !at.ok && /Réservé à la direction/.test(JSON.stringify(at.data)), `statut ${at.status}`);
+    const as = await requete(tokenSecretariat, `/rest/v1/rpc/attribuer_fonction`, { method:'POST', body: JSON.stringify({ p_user: '00000000-0000-4000-8000-000000000001', p_role: 'enseignant' }) });
+    verifier('Le secrétariat ne peut pas attribuer de fonction', !as.ok && /Réservé à la direction/.test(JSON.stringify(as.data)), `statut ${as.status}`);
+    const ecr = await requete(tokenSecretariat, `/rest/v1/fonctions_compte`, { method:'POST', headers:{ Prefer:'return=minimal' }, body: JSON.stringify({ user_id:'00000000-0000-4000-8000-000000000001', ecole_id:'00000000-0000-4000-8000-000000000001', role:'direction' }) });
+    verifier('Aucune écriture directe dans fonctions_compte', !ecr.ok, `statut ${ecr.status}`);
+  }
+
   section('8. Visiteur non connecté — ne lit que les affichages publics prévus');
-  for(const table of ['eleves','enseignants_lecture','profiles','paiements_scolarite','messages','parents_eleves','presences_eleves','eleves_portier_lecture','objets_perdus','push_abonnements','absences_signalees','evenements_agenda','devoirs','personnes_autorisees','sante_eleves','reponses_agenda','corrections_fiches','menus_cantine','preinscriptions','demandes_documents','evaluations','coefficients_matieres','bulletins_resultats','sujets_evaluation']){
+  for(const table of ['eleves','enseignants_lecture','profiles','paiements_scolarite','messages','parents_eleves','presences_eleves','eleves_portier_lecture','objets_perdus','push_abonnements','absences_signalees','evenements_agenda','devoirs','personnes_autorisees','sante_eleves','reponses_agenda','corrections_fiches','menus_cantine','preinscriptions','demandes_documents','evaluations','coefficients_matieres','bulletins_resultats','sujets_evaluation','fonctions_compte']){
     const r = await requete(ANON_KEY, `/rest/v1/${table}?select=*&limit=1`);
     verifier(`Sans connexion, rien à lire dans ${table}`, !r.ok || (Array.isArray(r.data) && r.data.length === 0), `reçu ${JSON.stringify(r.data)?.slice(0,80)}`);
   }

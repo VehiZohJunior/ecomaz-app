@@ -104,7 +104,8 @@ async function deconnexion(){
   await sb.auth.signOut();
   // Téléphone partagé : rien de la personne ne reste sur l'appareil (la file d'envois hors ligne est conservée)
   try{ const copies = await idbGetAll('snapshot'); for(const c of copies) await idbDelete('snapshot', c.ecoleId); }catch(_e){}
-  try{ ['ecomaz_profil_cache', 'ecomaz_derniere_activite'].forEach(k => localStorage.removeItem(k)); }catch(_e){}
+  try{ ['ecomaz_profil_cache', 'ecomaz_derniere_activite'].forEach(k => localStorage.removeItem(k)); sessionStorage.removeItem('ecomaz_fonction_choisie'); }catch(_e){}
+  window.__fonctions = [];
   session.userId = null; session.ecoleId = null; session.role = null; session.nomComplet = '';
 }
 function traduireErreurAuth(error){
@@ -397,7 +398,7 @@ async function loadAllFromSupabase(){
     gadgets, ventesGadgets, personnelAutre, paiementsSalaires, depenses, messages,
     alertesPointage, echeancesScolarite, profiles, fneConfigRow, tvaCategories, paiementEnLigneRow,
     parentsEleves, tableauHonneur, actualitesAffichage, horairesAnnoncesRow, annoncesHoraires,
-    notificationsPortier, messagesInternes, suggestions, pointagesGps, coefficientsMatieres, bulletinsResultats, certificationsFne, recus
+    notificationsPortier, messagesInternes, suggestions, pointagesGps, coefficientsMatieres, bulletinsResultats, certificationsFne, recus, fonctionsCompte
   ] = await Promise.all([
     sb.from('ecoles').select('*').eq('id', session.ecoleId).single(),
     dbSelectAll('classes'),
@@ -467,6 +468,8 @@ async function loadAllFromSupabase(){
     dbSelectAll('certifications_fne').catch(()=>[]),
     // Souches des reçus (schema.sql section 113)
     dbSelectAll('recus', 'emis_le').catch(()=>[]),
+    // Fonctions multiples d'une même personne (schema.sql section 125)
+    dbSelectAll('fonctions_compte').catch(()=>[]),
   ]);
 
   if(ecoleRow.error) throw ecoleRow.error;
@@ -513,7 +516,7 @@ async function loadAllFromSupabase(){
     echeancesScolarite: echeancesScolarite.slice().sort((a,b)=> (a.ordre-b.ordre) || (a.dateEcheance||'').localeCompare(b.dateEcheance||'')),
     profiles, parentsEleves, tableauHonneur, actualitesAffichage,
     horairesAnnonces: horairesAnnoncesRow, annoncesHoraires, notificationsPortier,
-    messagesInternes, suggestions, pointagesGps, coefficientsMatieres, bulletinsResultats, certificationsFne, recus,
+    messagesInternes, suggestions, pointagesGps, coefficientsMatieres, bulletinsResultats, certificationsFne, recus, fonctionsCompte,
     fneConfig: fneConfigRow || {regime:'recus', prestataire:'', cleConfiguree:false},
   };
 }

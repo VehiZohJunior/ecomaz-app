@@ -1028,6 +1028,7 @@ function applyRoleVisibility(){
   });
   const r = ROLES[ui.role];
   $('#roleBadge').innerHTML = r ? `${r.icon} ${r.label}` : '—';
+  majBoutonFonction();
 }
 
 const ESPACES_DEF = [
@@ -2887,6 +2888,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.11.20-1', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Une même personne, plusieurs fonctions (ex. directeur qui enseigne, secrétaire qui enseigne) : un seul compte, et à la connexion « Se connecter en tant que … ». Chaque fonction a son espace séparé : en Direction ou au Secrétariat, rien de l’espace Enseignant n’apparaît (ni tâches, ni rappels, ni brouillons). Bouton « Changer de fonction » sous le nom de la fonction. La direction attribue les fonctions dans Enseignants → « Une même personne, plusieurs fonctions ».' ],
+  } },
   { version: '2026.11.17-2', nouveautes: {
     commun: [ 'Sécurité : noms avec apostrophe (N’Guessan…) corrigés sur les boutons Reçu et Encaisser ; données gardées pour le mode hors ligne effacées à la déconnexion (téléphone partagé) ; verrouillage après 10 minutes d’inactivité même si l’application a été fermée.' ],
     parent: [ 'Demande d’accès : pour retrouver votre enfant par son nom, écrivez son NOM de famille complet puis le début de son prénom (ou utilisez votre numéro de téléphone enregistré à l’école).' ],
@@ -4187,6 +4194,52 @@ async function desactiverDoubleVerification(factorId){
   await sb.auth.refreshSession().catch(() => {});
   closeModal(); toast('Double vérification désactivée');
 }
+/* ---------- Plusieurs fonctions pour une même personne (schema.sql section 125) ---------- */
+const LIB_FONCTIONS = { direction: ['Direction', 'Pilotage de l’école, validations, finances'], fondation: ['Fondation', 'Vue d’ensemble, finances'], secretariat: ['Secrétariat', 'Élèves, scolarité, comptabilité, accueil'], enseignant: ['Enseignant(e)', 'Mes classes : appel, devoirs, notes, évaluations'] };
+async function mesFonctions(){
+  try{ const { data, error } = await sb.rpc('mes_fonctions'); if(error) throw error; window.__fonctions = rowsToCamel(data || []); }
+  catch(_e){ window.__fonctions = window.__fonctions || []; }
+  return window.__fonctions;
+}
+async function passerFonction(role){
+  const { error } = await sb.rpc('changer_fonction', { p_role: role });
+  if(error) throw new Error(error.message || 'Changement de fonction impossible');
+  try{ sessionStorage.setItem('ecomaz_fonction_choisie', role); }catch(_e){}
+  await chargerProfilCourant();
+  ui.role = session.role;
+  (window.__fonctions || []).forEach(f => { f.active = f.role === role; });
+}
+function afficherChoixFonction(fonctions){
+  $('#appRoot').style.display = 'none';
+  $('#loginGate').classList.add('open');
+  $('#loginGate').innerHTML = `<div class="login-card choix-fonction" role="dialog" aria-labelledby="titreChoixFonction">
+    <h2 id="titreChoixFonction">Se connecter en tant que…</h2>
+    <p class="hint">Vous occupez plusieurs fonctions dans l’école. Chaque fonction a son propre espace : vous ne voyez que ce qui concerne la fonction choisie.</p>
+    <div class="cf-liste">${fonctions.map(f => { const [lib, sous] = LIB_FONCTIONS[f.role] || [f.role, '']; return `<button type="button" class="cf-btn" onclick="choisirFonction('${f.role}')"><strong>${escapeHtml(lib)}</strong><small>${escapeHtml(sous)}</small></button>`; }).join('')}</div>
+    <div class="pin-error" id="cfErreur" role="alert"></div>
+    <button type="button" class="pin-back" onclick="logoutRole()">Se déconnecter</button>
+  </div>`;
+}
+async function choisirFonction(role){
+  const err = document.getElementById('cfErreur'); if(err) err.textContent = '';
+  try{
+    await passerFonction(role);
+    $('#loginGate').innerHTML = '<div class="login-card"><p class="hint">Ouverture…</p></div>';
+    await entrerSelonRole();
+  }catch(e){ if(err) err.textContent = e.message; else alert(e.message); }
+}
+// Changer de fonction en cours de session : on repasse par le choix (l'appli enseignant renvoie vers l'appli du personnel)
+function changerDeFonction(){
+  try{ sessionStorage.removeItem('ecomaz_fonction_choisie'); }catch(_e){}
+  if(window.ESPACE_FIXE === 'enseignant'){ location.href = 'index.html'; return; }
+  location.reload();
+}
+function majBoutonFonction(){
+  const b = document.getElementById('btnChangerFonction'); if(!b) return;
+  const n = (window.__fonctions || []).length;
+  b.hidden = n < 2;
+  if(n >= 2) b.textContent = 'Changer de fonction';
+}
 async function entrerSelonRole(){
   ui.role = session.role;
   // Ce compte est un compte technique de la console développeur — il n'a
@@ -4198,6 +4251,18 @@ async function entrerSelonRole(){
     const err = new Error("Ce compte est un compte technique : connectez-vous sur la console développeur, pas ici.");
     err.suspendu = true;
     throw err;
+  }
+  // Une même personne, plusieurs fonctions (schema.sql section 125) : elle choisit la fonction
+  // avec laquelle elle entre ; le serveur ne lui montre que les données de cette fonction.
+  const fonctions = await mesFonctions();
+  if(fonctions.length > 1){
+    if(window.ESPACE_FIXE === 'enseignant'){
+      if(session.role !== 'enseignant' && fonctions.some(f => f.role === 'enseignant')) await passerFonction('enseignant');
+    } else if(!window.ESPACE_FIXE){
+      let choisie = null; try{ choisie = sessionStorage.getItem('ecomaz_fonction_choisie'); }catch(_e){}
+      if(!choisie || !fonctions.some(f => f.role === choisie)){ afficherChoixFonction(fonctions); return; }
+      if(choisie !== session.role) await passerFonction(choisie);
+    }
   }
   // Parent et Portier ont chacun leur application dédiée (parent.html /
   // portier.html). Page dédiée : seul le bon rôle y entre. Page du personnel :
@@ -9568,6 +9633,42 @@ window.addEventListener('online', () => setTimeout(renvoyerNotifsAbsence, 4000))
    8. ENSEIGNANTS
    --------------------------------------------------------------------- */
 /* ---------- Horaires de cours : qui les a remplis, et remplissage groupé d'après l'emploi du temps ---------- */
+function compteParFonction(enseignantId){ const f = (DB.fonctionsCompte || []).find(x => x.enseignantId === enseignantId); return f ? { id: f.userId, enseignantId } : null; }
+function comptesPersonnel(){ return (DB.profiles || []).filter(p => ['direction','fondation','secretariat','enseignant'].includes(p.role)).sort((a, b) => String(a.nomComplet || '').localeCompare(String(b.nomComplet || ''))); }
+function fonctionsDe(userId){
+  const f = (DB.fonctionsCompte || []).filter(x => x.userId === userId);
+  if(f.length) return f;
+  const p = (DB.profiles || []).find(x => x.id === userId); return p ? [{ userId, role: p.role, enseignantId: p.enseignantId || null }] : [];
+}
+function renderPlusieursFonctions(){
+  if(!['direction','fondation'].includes(ui.role)) return '';
+  const comptes = comptesPersonnel(); if(!comptes.length) return '';
+  const lib = r => (LIB_FONCTIONS[r] || [r])[0];
+  const multiples = comptes.filter(p => fonctionsDe(p.id).length > 1);
+  return `<details class="panel panneau-fonctions"${multiples.length ? ' open' : ''}>
+    <summary><strong>${icone('users')} Une même personne, plusieurs fonctions</strong> <span class="hint" style="margin:0;">${multiples.length ? multiples.length + ' compte(s) à plusieurs fonctions' : 'directeur qui enseigne, secrétaire qui enseigne…'}</span></summary>
+    <p class="hint">Un seul compte, plusieurs fonctions. À la connexion, la personne choisit « Se connecter en tant que … ». Chaque fonction a son espace : en Direction ou au Secrétariat, rien de son espace Enseignant n’apparaît (ni tâches, ni rappels, ni brouillons) ; elle ne le voit qu’en se connectant en tant qu’Enseignant(e).</p>
+    <ul class="fc-liste">${comptes.map(p => { const fs = fonctionsDe(p.id); return `<li class="fc-ligne"><div><strong>${escapeHtml(p.nomComplet || 'Compte')}</strong>
+      <span class="fc-badges">${fs.map(f => `<span class="badge-etat ${f.role === p.role ? 'ok' : ''}">${escapeHtml(lib(f.role))}${f.enseignantId ? ' · ' + escapeHtml((e => e ? ensFullName(e) : '')(enseignantById(f.enseignantId))) : ''}${f.role === p.role ? ' (en cours)' : ''}${fs.length > 1 && f.role !== p.role ? ` <button type="button" class="lien-discret" aria-label="Retirer la fonction ${escapeHtml(lib(f.role))}" onclick="retirerFonction('${p.id}','${f.role}')">✕</button>` : ''}</span>`).join(' ')}</span></div>
+      <span class="fc-ajout"><select aria-label="Fonction à ajouter à ${escapeHtml(p.nomComplet || 'ce compte')}" id="fcAjout_${p.id}" onchange="document.getElementById('fcFiche_${p.id}').hidden = this.value !== 'enseignant'"><option value="">+ Ajouter une fonction…</option>${['direction','secretariat','enseignant'].concat(ui.role === 'fondation' ? ['fondation'] : []).filter(r => !fs.some(f => f.role === r)).map(r => `<option value="${r}">${escapeHtml(lib(r))}</option>`).join('')}</select>
+        <select id="fcFiche_${p.id}" hidden aria-label="Fiche enseignant">${(DB.enseignants || []).filter(t => t.statut === 'Actif' && !(DB.profiles || []).some(x => x.enseignantId === t.id && x.id !== p.id) && !(DB.fonctionsCompte || []).some(x => x.enseignantId === t.id && x.userId !== p.id)).map(t => `<option value="${t.id}">${escapeHtml(ensFullName(t))}</option>`).join('')}</select>
+        <button type="button" class="btn secondary sm" onclick="const r = document.getElementById('fcAjout_${p.id}').value; if(!r) return; attribuerFonction('${p.id}', r, r === 'enseignant' ? document.getElementById('fcFiche_${p.id}').value : null)">Ajouter</button></span></li>`; }).join('')}</ul>
+  </details>`;
+}
+async function attribuerFonction(userId, role, enseignantId){
+  if(role === 'enseignant' && !enseignantId){ alert('Choisissez la fiche enseignant.'); return; }
+  const { error } = await sb.rpc('attribuer_fonction', { p_user: userId, p_role: role, p_enseignant: enseignantId || null });
+  if(error){ alert('Impossible : ' + error.message); return; }
+  DB.fonctionsCompte = await dbSelectAll('fonctions_compte').catch(() => DB.fonctionsCompte || []);
+  closeModal(); toast('Fonction ajoutée ✅ : à sa prochaine connexion, la personne choisira « Se connecter en tant que … »'); renderView(ui.currentView);
+}
+async function retirerFonction(userId, role){
+  if(!confirm(`Retirer la fonction ${(LIB_FONCTIONS[role] || [role])[0]} de ce compte ?`)) return;
+  const { error } = await sb.rpc('retirer_fonction', { p_user: userId, p_role: role });
+  if(error){ alert('Impossible : ' + error.message); return; }
+  DB.fonctionsCompte = await dbSelectAll('fonctions_compte').catch(() => DB.fonctionsCompte || []);
+  toast('Fonction retirée'); renderView(ui.currentView);
+}
 function renderSuiviHoraires(){
   const actifs = (DB.enseignants || []).filter(t => t.statut === 'Actif' && (t.classesAssignees || []).length);
   if(!actifs.length) return '';
@@ -9608,7 +9709,7 @@ function renderEnseignants(){
   const list = DB.enseignants.slice().sort((a,b)=>a.nom.localeCompare(b.nom));
   const sansCompte = list.filter(t => t.statut === 'Actif' && !(DB.profiles || []).some(p => p.enseignantId === t.id)).length;
   const rows = list.map(t=>{
-    const profilLie = (DB.profiles||[]).find(p=>p.enseignantId===t.id);
+    const profilLie = (DB.profiles||[]).find(p=>p.enseignantId===t.id) || compteParFonction(t.id);
     return `
     <tr>
       <td><div class="row-name"><span class="avatar">${initials(t.prenom,t.nom)}</span>${escapeHtml(ensFullName(t))}</div></td>
@@ -9630,6 +9731,7 @@ function renderEnseignants(){
   return `
   <div class="view active">
     ${renderSuiviHoraires()}
+    ${renderPlusieursFonctions()}
     <div class="panel panneau-inscriptions" id="panneauInscriptionsEns">
       <div class="panel-head">
         <div><h2>Inscriptions des enseignants</h2><div class="sub" id="compteurInscriptions">Chargement…</div></div>
@@ -9733,7 +9835,7 @@ function ouvrirListeEnseignants(){
 }
 function ouvrirAccesPersonnel(enseignantId){
   const t = enseignantById(enseignantId); if(!t) return;
-  const profilLie = (DB.profiles||[]).find(p=>p.enseignantId===enseignantId);
+  const profilLie = (DB.profiles||[]).find(p=>p.enseignantId===enseignantId) || compteParFonction(enseignantId);
   const classes = t.classesAssignees.map(cid=>classeName(cid)).join(', ') || 'aucune classe';
   const matieres = (t.matieres || []).length ? t.matieres.join(', ') : 'toutes les matières de ses classes';
   if(profilLie){
@@ -9756,6 +9858,11 @@ function ouvrirAccesPersonnel(enseignantId){
         <div class="pin-error" id="accesErr"></div>
         <div class="form-actions"><button type="button" class="btn secondary" onclick="closeModal()">Annuler</button><button type="submit" class="btn" id="accesBouton">Activer son accès</button></div>
       </form>
+      ${['direction','fondation'].includes(ui.role) && comptesPersonnel().length ? `<details class="acces-autre"><summary>Cette personne a déjà un compte EcoMaZ dans l’école (direction, secrétariat…)</summary>
+        <p class="hint">Une même personne peut avoir plusieurs fonctions avec <strong>un seul compte</strong>. À la connexion, elle choisit « Se connecter en tant que Enseignant(e) » ou sa fonction habituelle : chaque fonction a son espace, séparé.</p>
+        <div class="field"><label for="fcCompte">Son compte</label><select id="fcCompte">${comptesPersonnel().map(p => `<option value="${p.id}">${escapeHtml(p.nomComplet || 'Compte')} — ${escapeHtml((LIB_FONCTIONS[p.role] || [p.role])[0])}</option>`).join('')}</select></div>
+        <div class="form-actions" style="justify-content:flex-start;"><button type="button" class="btn secondary" onclick="attribuerFonction(document.getElementById('fcCompte').value, 'enseignant', '${t.id}')">Lui ajouter la fonction Enseignant(e)</button></div>
+      </details>` : ''}
       <details class="acces-autre"><summary>L’enseignant(e) préfère s’inscrire lui-même ou elle-même</summary>
         <p class="hint">Envoyez-lui le lien : il ou elle touche « Continuer avec Google » et coche ses classes ; sa demande arrive en haut de cet écran, choisissez alors « Relier à la fiche existante : ${escapeHtml(ensFullName(t))} ».</p>
         <div class="form-actions" style="flex-wrap:wrap;justify-content:flex-start;">

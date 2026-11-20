@@ -2385,3 +2385,19 @@ tbody td input.champ-a-verifier, tbody td select.champ-a-verifier, .nt-note.cham
 
 /* Comptabilité → Cantine (2026-11-15) */
 .cantine-choix{ display:flex; flex-wrap:wrap; gap:6px; margin:8px 0; max-height:50vh; overflow:auto; }
+
+/* Plusieurs fonctions pour une même personne (2026-11-20) */
+.choix-fonction .cf-liste{ display:flex; flex-direction:column; gap:10px; margin:14px 0; }
+.cf-btn{ display:flex; flex-direction:column; align-items:flex-start; gap:3px; text-align:left; padding:14px 16px; min-height:56px; border-radius:14px; border:2px solid var(--border); background:var(--surface); color:var(--text); font:inherit; cursor:pointer; }
+.cf-btn strong{ font-size:1.05rem; }
+.cf-btn small{ color:var(--text-dim); font-size:var(--fs-xs); }
+.cf-btn:hover, .cf-btn:focus-visible{ border-color:var(--primary); outline:none; box-shadow:0 0 0 3px color-mix(in srgb, var(--primary) 25%, transparent); }
+.btn-fonction{ width:100%; margin-top:6px; }
+
+.panneau-fonctions summary{ cursor:pointer; display:flex; flex-wrap:wrap; gap:6px 10px; align-items:center; }
+.fc-liste{ list-style:none; margin:10px 0 0; padding:0; display:flex; flex-direction:column; gap:8px; }
+.fc-ligne{ display:flex; flex-wrap:wrap; gap:8px 12px; align-items:center; justify-content:space-between; padding:10px; border:1px solid var(--border); border-radius:12px; }
+.fc-ligne > div{ display:flex; flex-direction:column; gap:4px; min-width:0; flex:1 1 220px; }
+.fc-badges{ display:flex; flex-wrap:wrap; gap:4px; }
+.fc-ajout{ display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
+.fc-ajout select{ max-width:100%; }

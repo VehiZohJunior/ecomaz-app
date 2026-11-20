@@ -4761,3 +4761,115 @@ revoke all on function public.refuser_inscription_email_publique() from public, 
 drop trigger if exists refuser_inscription_email_publique on auth.users;
 create trigger refuser_inscription_email_publique before insert on auth.users
   for each row execute function public.refuser_inscription_email_publique();
+
+-- =====================================================================
+-- 125. UNE PERSONNE, PLUSIEURS FONCTIONS, ESPACES SÉPARÉS (2026-11-20)
+-- =====================================================================
+-- Dans une petite école, la même personne peut être directeur, enseignant,
+-- secrétaire… Un seul compte (une seule connexion Google), plusieurs
+-- FONCTIONS ; la personne choisit « Se connecter en tant que … ».
+-- La fonction ACTIVE est profiles.role : toutes les règles d'accès (RLS)
+-- l'utilisent déjà. En fonction non enseignante, le compte n'est plus relié
+-- à la fiche enseignant (profiles.enseignant_id = null) : AUCUNE donnée ni
+-- tâche ni rappel d'enseignant n'est visible tant qu'il n'a pas choisi
+-- « Enseignant ». La séparation est faite par le serveur, pas par l'écran.
+create table if not exists fonctions_compte (
+  user_id uuid not null references auth.users(id) on delete cascade,
+  ecole_id uuid not null references ecoles(id) on delete cascade,
+  role role_utilisateur not null check (role in ('direction', 'fondation', 'secretariat', 'enseignant')),
+  enseignant_id uuid references enseignants(id) on delete cascade,
+  ajoute_par uuid default auth.uid(),
+  created_at timestamptz not null default now(),
+  primary key (user_id, role),
+  check ((role = 'enseignant') = (enseignant_id is not null))
+);
+create unique index if not exists fonctions_compte_une_fiche on fonctions_compte (enseignant_id) where enseignant_id is not null;
+alter table fonctions_compte enable row level security;
+drop policy if exists "fonctions lecture" on fonctions_compte;
+create policy "fonctions lecture" on fonctions_compte for select using (
+  ecole_id = mon_ecole_id() and (user_id = auth.uid() or est_admin()));
+-- Écritures : uniquement par les fonctions ci-dessous (aucune règle d'écriture directe)
+revoke insert, update, delete on fonctions_compte from anon, authenticated;
+grant select on fonctions_compte to authenticated;
+
+-- Mes fonctions (pour le choix « Se connecter en tant que »)
+create or replace function mes_fonctions() returns table (role text, enseignant_id uuid, active boolean)
+language sql stable security definer set search_path = public as $$
+  select f.role::text, f.enseignant_id, f.role = (select p.role from profiles p where p.id = auth.uid())
+  from fonctions_compte f where f.user_id = auth.uid() and f.ecole_id = mon_ecole_id()
+  order by array_position(array['direction','fondation','secretariat','enseignant'], f.role::text);
+$$;
+revoke all on function mes_fonctions() from public, anon;
+grant execute on function mes_fonctions() to authenticated;
+
+-- Changer de fonction : seulement vers une fonction que l'école lui a donnée
+create or replace function changer_fonction(p_role text)
+returns text language plpgsql security definer set search_path = public as $$
+declare f fonctions_compte;
+begin
+  if auth.uid() is null then raise exception 'Non authentifié'; end if;
+  select * into f from fonctions_compte where user_id = auth.uid() and role::text = p_role and ecole_id = mon_ecole_id();
+  if not found then raise exception 'Cette fonction ne vous a pas été attribuée'; end if;
+  update profiles set role = f.role, enseignant_id = f.enseignant_id where id = auth.uid();
+  return f.role::text;
+end $$;
+revoke all on function changer_fonction(text) from public, anon;
+grant execute on function changer_fonction(text) to authenticated;
+
+-- La direction / la fondation attribue une fonction à un compte du personnel de l'école.
+-- La fonction actuelle du compte est enregistrée aussi (pour pouvoir y revenir).
+create or replace function attribuer_fonction(p_user uuid, p_role text, p_enseignant uuid default null)
+returns void language plpgsql security definer set search_path = public as $$
+declare p profiles;
+begin
+  if not coalesce(est_admin(), false) then raise exception 'Réservé à la direction et à la fondation'; end if;
+  if p_role not in ('direction', 'fondation', 'secretariat', 'enseignant') then raise exception 'Fonction invalide'; end if;
+  if p_role = 'fondation' and mon_role() <> 'fondation' then raise exception 'Seule la fondation peut attribuer la fonction Fondation'; end if;
+  select * into p from profiles where id = p_user and ecole_id = mon_ecole_id();
+  if not found or p.role::text not in ('direction', 'fondation', 'secretariat', 'enseignant') then raise exception 'Compte du personnel introuvable dans votre école'; end if;
+  if p_role = 'enseignant' then
+    if p_enseignant is null or not exists (select 1 from enseignants e where e.id = p_enseignant and e.ecole_id = mon_ecole_id()) then raise exception 'Choisissez la fiche enseignant'; end if;
+    if exists (select 1 from profiles x where x.enseignant_id = p_enseignant and x.id <> p_user)
+       or exists (select 1 from fonctions_compte x where x.enseignant_id = p_enseignant and x.user_id <> p_user) then
+      raise exception 'Cette fiche enseignant est déjà reliée à un autre compte'; end if;
+  end if;
+  -- la fonction actuelle d'abord
+  insert into fonctions_compte (user_id, ecole_id, role, enseignant_id)
+    values (p.id, p.ecole_id, p.role, case when p.role = 'enseignant' then p.enseignant_id end)
+    on conflict (user_id, role) do nothing;
+  insert into fonctions_compte (user_id, ecole_id, role, enseignant_id)
+    values (p.id, p.ecole_id, p_role::role_utilisateur, case when p_role = 'enseignant' then p_enseignant end)
+    on conflict (user_id, role) do update set enseignant_id = excluded.enseignant_id;
+end $$;
+revoke all on function attribuer_fonction(uuid, text, uuid) from public, anon;
+grant execute on function attribuer_fonction(uuid, text, uuid) to authenticated;
+
+create or replace function retirer_fonction(p_user uuid, p_role text)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not coalesce(est_admin(), false) then raise exception 'Réservé à la direction et à la fondation'; end if;
+  if (select role::text from profiles where id = p_user and ecole_id = mon_ecole_id()) = p_role then
+    raise exception 'C''est la fonction en cours de ce compte : il doit d''abord se connecter avec une autre fonction'; end if;
+  delete from fonctions_compte where user_id = p_user and role::text = p_role and ecole_id = mon_ecole_id();
+  -- une seule fonction restante : plus de choix à faire
+  delete from fonctions_compte where user_id = p_user and (select count(*) from fonctions_compte where user_id = p_user) = 1;
+end $$;
+revoke all on function retirer_fonction(uuid, text) from public, anon;
+grant execute on function retirer_fonction(uuid, text) to authenticated;
+
+-- Suivi des comptes enseignants : un enseignant qui a la fonction sur un autre compte A un compte
+create or replace function etat_comptes_enseignants()
+returns table (enseignant_id uuid, a_compte boolean, deja_connecte boolean, alertes_actives boolean)
+language sql stable security definer set search_path = public as $$
+  with lien as (
+    select p.enseignant_id as ens, p.id as uid from profiles p where p.enseignant_id is not null
+    union select f.enseignant_id, f.user_id from fonctions_compte f where f.enseignant_id is not null)
+  select e.id,
+    exists (select 1 from lien l where l.ens = e.id),
+    exists (select 1 from lien l join auth.users u on u.id = l.uid where l.ens = e.id and u.last_sign_in_at is not null),
+    exists (select 1 from lien l join push_abonnements a on a.user_id = l.uid where l.ens = e.id)
+  from enseignants e
+  where e.ecole_id = mon_ecole_id() and coalesce(est_perso_admin(), false);
+$$;
+revoke all on function etat_comptes_enseignants() from public, anon;
+grant execute on function etat_comptes_enseignants() to authenticated;

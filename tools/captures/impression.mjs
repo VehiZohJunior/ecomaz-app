@@ -30,7 +30,7 @@ const DOCS = [
   ['liste-enseignants', "ouvrirListeEnseignants()"],
   ['guide-enseignant', "imprimerGuideEnseignant()"],
 ];
-const b = await chromium.launch({ channel: 'msedge', headless: true });
+const b = await chromium.launch({ channel: 'msedge', headless: true }).catch(() => chromium.launch({ headless: true, executablePath: process.env.LOCALAPPDATA + '/ms-playwright/chromium-1248/chrome-win64/chrome.exe' }));
 for(const [doc, geste] of DOCS.filter(([d]) => !process.env.SEUL || process.env.SEUL.split(',').includes(d))){
   const p = await b.newPage();
   // Bibliothèques du CDN via curl (Edge sans interface reste parfois bloqué sur cdn.jsdelivr.net depuis ce PC)

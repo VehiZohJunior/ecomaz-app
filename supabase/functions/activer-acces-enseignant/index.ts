@@ -51,6 +51,9 @@ Deno.serve(async (req) => {
     if (!fiche) throw new Error('Fiche enseignant introuvable dans votre école');
     const { data: dejaRelie } = await admin.from('profiles').select('id').eq('enseignant_id', fiche.id).maybeSingle();
     if (dejaRelie) throw new Error('Cet enseignant a déjà son accès');
+    // Fiche déjà reliée comme FONCTION au compte d'une personne à plusieurs fonctions (schema.sql section 125)
+    const { data: parFonction } = await admin.from('fonctions_compte').select('user_id').eq('enseignant_id', fiche.id).maybeSingle();
+    if (parFonction) throw new Error('Cet enseignant a déjà son accès (fonction ajoutée à un compte du personnel)');
 
     // Compte existant pour cette adresse ? (l'enseignant s'est peut-être déjà connecté avec Google)
     let compteId: string | null = null;
