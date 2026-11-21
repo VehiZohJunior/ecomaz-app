@@ -2922,6 +2922,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.11.21-1', nouveautes: {
+    commun: [ 'Fiabilité : les données sont maintenant lues en entier, par paquets (avant, au-delà de 1 000 lignes — notes, appels, paiements — la suite pouvait manquer sans message).', 'Sans réseau : un enregistrement refusé par le serveur au retour du réseau n’est plus jamais effacé. Il reste dans le téléphone, un bandeau rouge le signale, et vous choisissez « Réessayer » ou « Abandonner ».' ],
+    parent: [],
+    portier: [],
+    personnel: [],
+  } },
   { version: '2026.11.20-10', nouveautes: {
     commun: [ 'Nouvelles pages : Conditions générales d’utilisation, et politique de confidentialité mise à jour (pointage GPS et photo, paiement PayDunya, cookies). Liens en bas de l’écran de connexion.' ],
     parent: [],
@@ -4164,6 +4170,10 @@ function majBanniereHorsLigne(){
     el.hidden = false;
     el.className = 'offline-banner mode-hors-ligne';
     el.textContent = t('banner_offline');
+  } else if(compteurFileErreurs > 0){
+    el.hidden = false;
+    el.className = 'offline-banner mode-refus';
+    el.innerHTML = `<button type="button" class="refus-lien" onclick="ouvrirFileAttenteRefus()">⚠️ ${compteurFileErreurs} enregistrement${compteurFileErreurs > 1 ? 's' : ''} gardé${compteurFileErreurs > 1 ? 's' : ''} dans ce téléphone : refusé${compteurFileErreurs > 1 ? 's' : ''} par le serveur. Touchez pour voir.</button>`;
   } else if(compteurFileAttente > 0){
     el.hidden = false;
     el.className = 'offline-banner mode-synchro';
@@ -4172,8 +4182,8 @@ function majBanniereHorsLigne(){
     el.hidden = true;
   }
 }
-function onFileAttenteChange(n){
-  compteurFileAttente = n;
+function onFileAttenteChange(n, nbErreurs){
+  compteurFileAttente = n; compteurFileErreurs = nbErreurs || 0;
   majBanniereHorsLigne();
   if(n === 0) setTimeout(renvoyerNotifsAbsence, 1500);
   if(n === 0 && DB?.meta?.horsLigne === true){
@@ -4184,6 +4194,55 @@ function onFileAttenteChange(n){
 }
 window.addEventListener('online', majBanniereHorsLigne);
 window.addEventListener('offline', majBanniereHorsLigne);
+/* Enregistrements refusés par le serveur à la synchronisation (21/11/2026) :
+   rien n'est plus jeté en silence ; l'utilisateur voit chaque élément,
+   la raison, et choisit « Réessayer » ou « Abandonner ». */
+const LIB_TABLES_FILE = { presences_eleves: 'Appel des élèves', presences_enseignants: 'Présence d’un enseignant', paiements_scolarite: 'Paiement de scolarité', paiements_cotisations: 'Paiement d’activité', depenses: 'Dépense', notes: 'Note', devoirs: 'Cahier de textes', messages_internes: 'Message', paiements_salaires: 'Salaire', ventes_gadgets: 'Vente', eleves: 'Fiche élève' };
+function resumeElementFile(it){
+  const p = it.payload || {}, morceaux = [];
+  if(p.eleve_id){ const e = (DB?.eleves || []).find(x => x.id === p.eleve_id); if(e) morceaux.push(eleveFullName(e)); }
+  if(p.statut) morceaux.push(p.statut);
+  if(p.montant != null) morceaux.push(fmtFCFA(Number(p.montant) || 0));
+  if(p.libelle || p.categorie) morceaux.push(p.libelle || p.categorie);
+  if(p.matiere) morceaux.push(p.matiere);
+  if(p.date) morceaux.push(fmtDate(p.date));
+  return morceaux.join(' · ');
+}
+function raisonLisible(m){
+  const s = String(m || '');
+  if(/position n'a pas été vérifiée|position n’a pas été vérifiée/i.test(s)) return 'Appel envoyé hors de l’établissement ou position non vérifiée. Revenez dans l’école, activez la localisation, puis touchez « Réessayer ».';
+  if(/row-level security|row level security/i.test(s)) return 'Votre compte n’a pas le droit d’enregistrer ceci (fonction ou classe différente). Demandez à la direction.';
+  if(/null value|not-null/i.test(s)) return 'Une information obligatoire manque dans cet enregistrement.';
+  if(/duplicate key/i.test(s)) return 'Cet enregistrement existe déjà sur le serveur (fait depuis un autre appareil).';
+  return s.length > 160 ? s.slice(0, 160) + '…' : s;
+}
+async function ouvrirFileAttenteRefus(){
+  const l = (await listerFileAttente()).filter(x => x.erreur);
+  if(!l.length){ toast('Plus aucun enregistrement en attente.'); majBanniereHorsLigne(); return; }
+  openModal('Enregistrements refusés par le serveur', `<p class="hint" style="margin-top:0;">Ils sont <strong>gardés dans ce téléphone</strong> : rien n’est perdu tant que vous ne les abandonnez pas.</p>
+    <div class="kp-liste">${l.map(it => `<div class="kp-ligne pt-alerte"><span class="kp-avatar pt-avatar-alerte" aria-hidden="true">!</span>
+      <div class="kp-qui"><strong>${escapeHtml(LIB_TABLES_FILE[it.table] || it.table)}</strong><small>${escapeHtml(resumeElementFile(it))}${it.horodatage ? ' · saisi le ' + escapeHtml(new Date(it.horodatage).toLocaleString('fr-FR')) : ''}</small>
+        <span class="pt-raison">${escapeHtml(raisonLisible(it.erreur))}</span></div>
+      <div class="kp-droite"><button type="button" class="btn sm" onclick="reessayerElementFile(${Number(it.id)})">Réessayer</button><button type="button" class="btn secondary sm" onclick="abandonnerElementFileUI(${Number(it.id)})">Abandonner</button></div></div>`).join('')}</div>
+    <div class="form-actions"><button type="button" class="btn secondary" onclick="closeModal()">Fermer</button></div>`);
+}
+async function reessayerElementFile(id){
+  const it = (await listerFileAttente()).find(x => x.id === id);
+  if(it && it.table === 'presences_eleves' && /position/i.test(it.erreur || '')){
+    positionAppelOk = 0;
+    if(!(await verifierPositionAvantAppel(it.payload?.classe_id))) return;
+  }
+  toast('Nouvel essai d’envoi…');
+  await synchroniserFileAttente(true);
+  const reste = (await listerFileAttente()).find(x => x.id === id);
+  toast(reste ? 'Toujours refusé : ' + raisonLisible(reste.erreur) : 'Enregistré sur le serveur ✓');
+  if(document.querySelector('.modal-backdrop.open')) ouvrirFileAttenteRefus();
+}
+async function abandonnerElementFileUI(id){
+  if(!confirm('Abandonner cet enregistrement ? Il sera définitivement effacé de ce téléphone et ne sera jamais enregistré.')) return;
+  await abandonnerElementFile(id);
+  ouvrirFileAttenteRefus();
+}
 // Le rôle "développeur" n'est rattaché à aucune école (ecole_id null) — il
 // n'a pas accès à l'application cliente normale, seulement à sa propre
 // console de gestion des écoles clientes.

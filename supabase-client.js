@@ -215,11 +215,19 @@ function erreurReseau(e){
   return msg.includes('failed to fetch') || msg.includes('networkerror') || msg.includes('load failed') || msg.includes('network request failed') || e instanceof TypeError;
 }
 
-let compteurFileAttente = 0;
+let compteurFileAttente = 0, compteurFileErreurs = 0;
 async function majCompteurFileAttente(){
-  try{ compteurFileAttente = (await idbGetAll('file_attente')).length; }
-  catch(_e){ compteurFileAttente = 0; }
-  if(typeof onFileAttenteChange === 'function') onFileAttenteChange(compteurFileAttente);
+  try{ const l = await idbGetAll('file_attente'); compteurFileAttente = l.length; compteurFileErreurs = l.filter(x => x.erreur).length; }
+  catch(_e){ compteurFileAttente = 0; compteurFileErreurs = 0; }
+  if(typeof onFileAttenteChange === 'function') onFileAttenteChange(compteurFileAttente, compteurFileErreurs);
+}
+// Éléments refusés par le serveur : visibles et traités par l'utilisateur (21/11/2026)
+async function listerFileAttente(){ try{ return (await idbGetAll('file_attente')).sort((a, b) => a.id - b.id); }catch(_e){ return []; } }
+async function abandonnerElementFile(id){
+  const item = (await listerFileAttente()).find(x => x.id === id); if(!item) return;
+  try{ await sb.from('erreurs_client').insert({ ecole_id: session.ecoleId, role: session.role, message: 'Abandonné par l’utilisateur après refus du serveur : ' + (item.erreur || ''), pile: JSON.stringify(item).slice(0, 4000) }); }catch(_e){}
+  await idbDelete('file_attente', id);
+  await majCompteurFileAttente();
 }
 async function mettreEnFileAttente(type, table, payload){
   await idbAdd('file_attente', { type, table, payload, ecoleId: session.ecoleId, horodatage: Date.now() });
@@ -227,7 +235,8 @@ async function mettreEnFileAttente(type, table, payload){
 }
 
 let __synchroEnCours = false;
-async function synchroniserFileAttente(){
+// force = true : réessaie aussi tout de suite les éléments déjà refusés une fois
+async function synchroniserFileAttente(force){
   if(__synchroEnCours || typeof navigator === 'undefined' || navigator.onLine === false) return;
   __synchroEnCours = true;
   try{
@@ -235,6 +244,8 @@ async function synchroniserFileAttente(){
     try{ items = await idbGetAll('file_attente'); }catch(_e){ return; }
     items.sort((a,b) => a.id - b.id);
     for(const item of items){
+      // Déjà refusé : nouvel essai au plus toutes les 10 minutes (ou à la demande)
+      if(item.erreur && !force && Date.now() - (item.dernierEssai || 0) < 10 * 60000) continue;
       try{
         let error = null;
         if(item.type === 'insert'){
@@ -256,11 +267,13 @@ async function synchroniserFileAttente(){
         await idbDelete('file_attente', item.id);
       }catch(e){
         if(erreurReseau(e)) break;
-        // Erreur applicative sur un élément en file d'attente (conflit, donnée
-        // devenue invalide...) : on journalise et on retire quand même
-        // l'élément, pour ne pas bloquer indéfiniment le reste de la file.
-        try{ await sb.from('erreurs_client').insert({ ecole_id: session.ecoleId, role: session.role, message: 'Échec synchro hors-ligne : ' + e.message, pile: JSON.stringify(item).slice(0,4000) }); }catch(_e2){}
-        await idbDelete('file_attente', item.id);
+        // Refus du serveur (règle de sécurité, donnée invalide, appel hors de
+        // l'école…) : l'élément est GARDÉ dans le téléphone, marqué en erreur et
+        // montré à l'utilisateur, qui choisit de réessayer ou d'abandonner.
+        // Avant le 21/11/2026 il était supprimé : 2 dépenses perdues le 22/09.
+        if(!item.erreur){ try{ await sb.from('erreurs_client').insert({ ecole_id: session.ecoleId, role: session.role, message: 'Refus à la synchro hors-ligne (élément gardé) : ' + e.message, pile: JSON.stringify(item).slice(0,4000) }); }catch(_e2){} }
+        item.erreur = String((e && e.message) || e || 'Refus du serveur'); item.essais = (item.essais || 0) + 1; item.dernierEssai = Date.now();
+        try{ await idbPut('file_attente', item); }catch(_e3){}
       }
     }
     await majCompteurFileAttente();
@@ -282,10 +295,30 @@ if(typeof window !== 'undefined'){
 // Date du jour (heure locale) et horodatage « il y a n jours » pour limiter les historiques chargés
 function aujourdhuiLocal(){ const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
 function depuisJours(n){ return new Date(Date.now() - n * 86400000).toISOString(); }
+/* Lecture COMPLÈTE par pages (correctif du 21/11/2026).
+   Le serveur ne renvoie qu'un nombre limité de lignes par demande (1 000 par
+   défaut chez Supabase) : sans pagination, au-delà de cette limite, les lignes
+   suivantes disparaissaient SANS AUCUNE ERREUR (notes, appels, paiements…).
+   On lit donc par paquets jusqu'au dernier, dans un ordre stable (tri
+   secondaire sur id) pour qu'aucune ligne ne soit sautée ni lue deux fois.
+   Renvoie { data, error } comme une requête Supabase normale. */
+const PAGE_LIGNES = 1000;
+async function pagine(fabrique, triId = true){
+  const tout = [];
+  for(let debut = 0; debut < 500000; debut += PAGE_LIGNES){
+    let q = fabrique();
+    if(triId) q = q.order('id', { ascending: true });
+    let { data, error } = await q.range(debut, debut + PAGE_LIGNES - 1);
+    // Vue sans colonne id : même lecture, sans le tri secondaire
+    if(error && triId && /\bid\b/.test(String(error.message || '')) && /column|colonne/i.test(String(error.message || ''))){ return pagine(fabrique, false); }
+    if(error) return { data: debut ? tout : null, error };
+    tout.push(...(data || []));
+    if(!data || data.length < PAGE_LIGNES) break;
+  }
+  return { data: tout, error: null };
+}
 async function dbSelectAll(table, orderBy){
-  let q = sb.from(table).select('*').eq('ecole_id', session.ecoleId);
-  if(orderBy) q = q.order(orderBy);
-  const { data, error } = await q;
+  const { data, error } = await pagine(() => { let q = sb.from(table).select('*').eq('ecole_id', session.ecoleId); if(orderBy) q = q.order(orderBy); return q; });
   if(error) throw error;
   return rowsToCamel(data);
 }
@@ -297,7 +330,7 @@ async function dbSelectUne(table){
 // Pour une vue qui filtre déjà par école dans sa propre définition SQL
 // (pas de colonne ecole_id exposée) — voir tva_categories_lecture.
 async function dbSelectVue(vue){
-  const { data, error } = await sb.from(vue).select('*');
+  const { data, error } = await pagine(() => sb.from(vue).select('*'), false);
   if(error) throw error;
   return rowsToCamel(data);
 }
@@ -559,12 +592,12 @@ async function chargerDBParent(){
     sb.from('classes').select('*').eq('ecole_id', E),
     // Notifications concernant son/ses enfant(s) uniquement (RLS — voir
     // policy "lecture messages par parent", schema.sql section 33).
-    sb.from('messages').select('*').eq('ecole_id', E).order('date', {ascending:false}).order('heure', {ascending:false}),
+    pagine(() => sb.from('messages').select('*').eq('ecole_id', E).order('date', {ascending:false}).order('heure', {ascending:false})),
     // Annonces horaires (RLS restreint déjà au cycle de son/ses enfant(s) —
     // voir policy "lecture annonces_horaires parent", schema.sql section 35).
     sb.from('annonces_horaires_envoyees').select('*').eq('ecole_id', E).eq('date', aujourdhuiLocal()).order('created_at', {ascending:false}),
     // Messages écrits par le personnel (RLS — schema.sql section 38).
-    sb.from('messages_internes').select('*').eq('ecole_id', E).order('created_at', {ascending:false}),
+    pagine(() => sb.from('messages_internes').select('*').eq('ecole_id', E).order('created_at', {ascending:false})),
     // Tableaux d'honneur / actualités : mêmes vues publiques que l'écran
     // du hall (affichage.html, schema.sql section 34) — déjà accessibles
     // à "authenticated", aucune donnée sensible (noms déjà destinés à un
@@ -620,15 +653,15 @@ async function chargerDBParent(){
     // Réponses déjà données aux dates de l'agenda (RLS : ses enfants)
     avecReponse.length ? sur(sb.from('reponses_agenda').select('*').in('evenement_id', avecReponse), []) : [],
     // Bulletins : résultats figés (rang, moyenne de classe…) des trimestres publiés
-    bulletins ? sur(sb.from('bulletins_resultats').select('*').eq('ecole_id', E), []) : [],
+    bulletins ? sur(pagine(() => sb.from('bulletins_resultats').select('*').eq('ecole_id', E)), []) : [],
     // Bulletins : notes des trimestres publiés par l'école (RLS : ses enfants seulement)
-    bulletins ? sur(sb.from('notes').select('eleve_id, matiere, note, note_sur, trimestre, type, date, evaluation_id').eq('ecole_id', E), []) : [],
+    bulletins ? sur(pagine(() => sb.from('notes').select('eleve_id, matiere, note, note_sur, trimestre, type, date, evaluation_id').eq('ecole_id', E)), []) : [],
     // Titres des évaluations (si l'école montre les notes au fil de l'eau)
     notesContinues ? sur(sb.from('evaluations').select('id, titre, type, date, note_sur, matiere, trimestre').eq('ecole_id', E), []) : [],
     bulletins ? sur(sb.from('bulletins_commentaires').select('eleve_id, trimestre, commentaire').eq('ecole_id', E), []) : [],
     // Scolarité (reste à payer, reçus) : seulement si l'école l'a rendue visible
     scolarite ? sur(sb.from('echeances_scolarite').select('*').eq('ecole_id', E).order('ordre'), []) : [],
-    scolarite ? sur(sb.from('paiements_scolarite').select('*').eq('ecole_id', E).order('date', { ascending:false }), []) : [],
+    scolarite ? sur(pagine(() => sb.from('paiements_scolarite').select('*').eq('ecole_id', E).order('date', { ascending:false })), []) : [],
   ]);
   const reponsesAgenda = rowsToCamel(reponsesRows);
   const notesParent = rowsToCamel(notesRows);
