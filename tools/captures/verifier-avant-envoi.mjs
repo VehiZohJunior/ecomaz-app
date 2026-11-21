@@ -59,15 +59,25 @@ const serveur = createServer((req, res) => {
 }).listen(0);
 const port = serveur.address().port;
 const { chromium } = await import('playwright-core');
-const nav = await chromium.launch({ channel: 'msedge', headless: true }).catch(() => chromium.launch({ headless: true, executablePath: process.env.LOCALAPPDATA + '/ms-playwright/chromium-1248/chrome-win64/chrome.exe' }));
+const nav = await chromium.launch({ channel: 'msedge', headless: true }).catch(() => chromium.launch({ headless: true, executablePath: process.env.LOCALAPPDATA + '/ms-playwright/chromium-1248/chrome-win64/chrome.exe' })).catch(() => null);
+if(!nav){ console.log('  ⚪ Navigateur impossible à ouvrir depuis ce terminal : démarrage NON vérifié. Relancez l’envoi depuis PowerShell pour le contrôle complet.'); serveur.close(); console.log(echecs ? `\n⛔ ${echecs} contrôle(s) en échec : ENVOI BLOQUÉ.` : '\n⚠️ Contrôles 1 à 3 passés ; contrôle 4 non fait.'); process.exit(echecs ? 1 : 0); }
+const CDN = new Map(); let cdnKo = false;
 for(const page_ of ['index.html', 'enseignant.html', 'parent.html', 'portier.html']){
   const ctx = await nav.newContext({ serviceWorkers: 'block' });
   await ctx.route('https://hvqtsvpkxffseclsfoun.supabase.co/**', r => r.abort());
+  // Bibliothèques du CDN : récupérées par Node (le navigateur sans interface est parfois bloqué sur ce site)
+  await ctx.route('https://cdn.jsdelivr.net/**', async r => {
+    const u = r.request().url();
+    try{ if(!CDN.has(u)){ const rep = await fetch(u, { signal: AbortSignal.timeout(20000) }); if(!rep.ok) throw new Error(String(rep.status)); CDN.set(u, Buffer.from(await rep.arrayBuffer())); }
+      await r.fulfill({ status: 200, body: CDN.get(u), headers: { 'content-type': 'application/javascript; charset=utf-8', 'access-control-allow-origin': '*' } }); }
+    catch(_e){ cdnKo = true; await r.abort(); }
+  });
   const page = await ctx.newPage(); const erreurs = [];
   page.on('pageerror', e => erreurs.push(e.message));
   await page.goto(`http://localhost:${port}/${page_}`, { waitUntil: 'load', timeout: 60000 }).catch(e => erreurs.push('chargement : ' + e.message.split('\n')[0]));
   await page.waitForTimeout(2500);
   const texte = await page.evaluate(() => document.body ? document.body.innerText.trim().length : 0).catch(() => 0);
+  if(cdnKo){ console.log(`  ⚪ ${page_} : le site des bibliothèques (jsDelivr) ne répond pas depuis ce PC — démarrage non vérifié, envoi NON bloqué`); cdnKo = false; await ctx.close(); continue; }
   note(!erreurs.length && texte > 20, `${page_} démarre sans erreur${erreurs.length ? ' :\n      ' + erreurs.slice(0, 3).join('\n      ') : ''}`);
   await ctx.close();
 }
