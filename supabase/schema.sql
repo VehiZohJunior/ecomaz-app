@@ -4984,3 +4984,59 @@ on conflict (id) do update set public = false, file_size_limit = excluded.file_s
 drop policy if exists "pointages lecture personnel" on storage.objects;
 create policy "pointages lecture personnel" on storage.objects for select to authenticated
   using (bucket_id = 'pointages' and (storage.foldername(name))[1] = mon_ecole_id()::text and est_perso_admin());
+
+-- =====================================================================
+-- 127. ALERTES DE POINTAGE CLASSÉES : SUSPECT OU TECHNIQUE (2026-11-21)
+-- =====================================================================
+-- « fraude » : clairement hors de l'établissement, position trop parfaite
+-- (fausse position GPS), QR détourné. « technique » : position incertaine
+-- ou trop imprécise, localisation coupée — sans soupçon de fraude.
+-- Les anciennes alertes restent « fraude » (valeur par défaut prudente).
+-- =====================================================================
+alter table alertes_pointage add column if not exists gravite text not null default 'fraude';
+do $$ begin
+  if not exists (select 1 from pg_constraint where conname = 'alertes_pointage_gravite_check') then
+    alter table alertes_pointage add constraint alertes_pointage_gravite_check check (gravite in ('fraude', 'technique'));
+  end if;
+end $$;
+
+-- =====================================================================
+-- 128. MOT DE PASSE PERSONNEL OBLIGATOIRE (2026-11-21)
+-- =====================================================================
+-- Plusieurs comptes réels avaient reçu le MÊME mot de passe connu. Chaque
+-- compte qui se connecte par e-mail + mot de passe (pas Google) doit
+-- choisir son propre mot de passe à la prochaine connexion.
+-- Le drapeau ne s'efface QUE quand le mot de passe change vraiment
+-- (déclencheur sur auth.users) : ni la personne ni la direction ne peut
+-- l'effacer à la main. La direction peut en revanche l'imposer à nouveau.
+-- =====================================================================
+alter table profiles add column if not exists mdp_a_changer boolean not null default false;
+
+update profiles p set mdp_a_changer = true
+where p.role::text <> 'developpeur'
+  and exists (select 1 from auth.identities i where i.user_id = p.id and i.provider = 'email');
+
+create or replace function verrou_mdp_a_changer() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  -- Depuis l'application (utilisateur connecté) : on peut imposer, jamais effacer
+  if auth.uid() is not null and old.mdp_a_changer and not new.mdp_a_changer then
+    new.mdp_a_changer := true;
+  end if;
+  return new;
+end $$;
+drop trigger if exists verrou_mdp_a_changer on profiles;
+create trigger verrou_mdp_a_changer before update on profiles
+  for each row execute function verrou_mdp_a_changer();
+
+create or replace function mdp_change_efface_drapeau() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if new.encrypted_password is distinct from old.encrypted_password then
+    update public.profiles set mdp_a_changer = false where id = new.id;
+  end if;
+  return new;
+end $$;
+drop trigger if exists mdp_change_efface_drapeau on auth.users;
+create trigger mdp_change_efface_drapeau after update of encrypted_password on auth.users
+  for each row execute function mdp_change_efface_drapeau();

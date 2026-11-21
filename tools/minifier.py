@@ -13,6 +13,9 @@ Usage (depuis le dossier EcoMaZgit) :  python tools/minifier.py
 """
 import os, subprocess, sys
 
+# app.js est reconstruit d'abord à partir du dossier app/ (21/11/2026)
+subprocess.run([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'assembler_app.py')], check=True)
+
 RACINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SCRIPTS = ['theme.js', 'icones.js', 'motion.js', 'recherche.js', 'espace-fixe.js']
 

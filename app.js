@@ -1,3 +1,5 @@
+/* EcoMaZ — FICHIER GÉNÉRÉ par tools/assembler_app.py à partir du dossier app/.
+   Ne pas modifier ici : modifier le morceau concerné dans app/, puis lancer python tools/minifier.py. */
 /* =========================================================================
    EcoMaZ — Gestion scolaire multi-établissements
    Les données sont hébergées sur Supabase (Postgres + Auth + RLS), pas en
@@ -2937,6 +2939,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.11.21-4', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Reçus : le montant en lettres respecte maintenant la règle française (« deux cent mille », « quatre-vingt mille », « cinq cent mille »). Avant, un « s » fautif s’ajoutait devant « mille ».' ],
+  } },
   { version: '2026.11.21-3', nouveautes: {
     commun: [],
     parent: [],
@@ -11660,22 +11668,24 @@ function nombreEnLettres(n){
   if(n===0) return 'zéro';
   const U = ['','un','deux','trois','quatre','cinq','six','sept','huit','neuf','dix','onze','douze','treize','quatorze','quinze','seize','dix-sept','dix-huit','dix-neuf'];
   const D = ['','dix','vingt','trente','quarante','cinquante','soixante','soixante','quatre-vingt','quatre-vingt'];
-  function deuxChiffres(num){
+  // Règle française : « cents » et « quatre-vingts » prennent un s seulement en fin de nombre
+  // ou devant « millions / milliards » (des noms), jamais devant « mille » (21/11/2026)
+  function deuxChiffres(num, avantMille){
     if(num<20) return U[num];
     const d = Math.floor(num/10), u = num%10;
     if(d===7 || d===9){
       if(u===1) return D[d]+'-et-'+U[10+u];
       return D[d]+'-'+U[10+u];
     }
-    if(u===0) return D[d] + (d===8?'s':'');
+    if(u===0) return D[d] + (d===8 && !avantMille ? 's' : '');
     if(u===1 && d!==8) return D[d]+'-et-un';
     return D[d]+'-'+U[u];
   }
-  function troisChiffres(num){
+  function troisChiffres(num, avantMille){
     const c = Math.floor(num/100), r = num%100;
     let s = '';
-    if(c>0) s += (c===1?'cent':U[c]+' cent') + (c>1 && r===0 ? 's':'');
-    if(r>0) s += (s?' ':'') + deuxChiffres(r);
+    if(c>0) s += (c===1?'cent':U[c]+' cent') + (c>1 && r===0 && !avantMille ? 's':'');
+    if(r>0) s += (s?' ':'') + deuxChiffres(r, avantMille);
     return s;
   }
   let reste = n;
@@ -11686,7 +11696,7 @@ function nombreEnLettres(n){
   const parts = [];
   if(milliards>0) parts.push(troisChiffres(milliards)+' milliard'+(milliards>1?'s':''));
   if(millions>0) parts.push(troisChiffres(millions)+' million'+(millions>1?'s':''));
-  if(milliers>0) parts.push(milliers===1 ? 'mille' : troisChiffres(milliers)+' mille');
+  if(milliers>0) parts.push(milliers===1 ? 'mille' : troisChiffres(milliers, true)+' mille');
   if(unites>0 || parts.length===0) parts.push(troisChiffres(unites));
   return parts.join(' ').replace(/\s+/g,' ').trim();
 }

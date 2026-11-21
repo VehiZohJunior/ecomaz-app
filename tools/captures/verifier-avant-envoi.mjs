@@ -9,6 +9,7 @@
 //  3. sw.js sans marque BOM, et numéro de cache changé si l'application change.
 //  4. Démarrage réel des 4 applications dans un navigateur sans interface
 //     (base de données coupée) : aucune erreur JavaScript au démarrage.
+//  5. Gestes vitaux : tests/gestes-vitaux.mjs (connexion, appel, paiement, reçu).
 // Usage manuel : node tools/captures/verifier-avant-envoi.mjs
 // =====================================================================
 import { execFileSync, spawnSync } from 'node:child_process';
@@ -31,7 +32,7 @@ note(!fautes.length, `${js.length} fichiers vérifiés${fautes.length ? '\n     
 
 // 2. Fichiers générés à jour
 console.log('2. Fichiers générés à jour');
-const generes = ['app.min.js', 'supabase-client.min.js', 'theme.min.js', 'motion.min.js', 'icones.min.js', 'recherche.min.js', 'espace-fixe.min.js', 'enseignant.html'].filter(f => existsSync(join(RACINE, f)));
+const generes = ['app.js', 'app.min.js', 'supabase-client.min.js', 'theme.min.js', 'motion.min.js', 'icones.min.js', 'recherche.min.js', 'espace-fixe.min.js', 'enseignant.html'].filter(f => existsSync(join(RACINE, f)));
 const python = process.platform === 'win32' ? 'python' : 'python3';
 spawnSync(python, ['tools/minifier.py'], { cwd: RACINE, encoding: 'utf8', env: { ...process.env, PYTHONIOENCODING: 'utf-8' } });
 spawnSync(python, ['tools/generer_enseignant.py'], { cwd: RACINE, encoding: 'utf8', env: { ...process.env, PYTHONIOENCODING: 'utf-8' } });
@@ -65,6 +66,7 @@ const CDN = new Map(); let cdnKo = false;
 for(const page_ of ['index.html', 'enseignant.html', 'parent.html', 'portier.html']){
   const ctx = await nav.newContext({ serviceWorkers: 'block' });
   await ctx.route('https://hvqtsvpkxffseclsfoun.supabase.co/**', r => r.abort());
+  await ctx.route(/fonts\.(googleapis|gstatic)\.com/, r => r.abort());
   // Bibliothèques du CDN : récupérées par Node (le navigateur sans interface est parfois bloqué sur ce site)
   await ctx.route('https://cdn.jsdelivr.net/**', async r => {
     const u = r.request().url();
@@ -82,6 +84,12 @@ for(const page_ of ['index.html', 'enseignant.html', 'parent.html', 'portier.htm
   await ctx.close();
 }
 await nav.close(); serveur.close();
+
+// 5. Gestes vitaux (connexion, appel, paiement, reçu) sur une fausse base en mémoire
+console.log('5. Gestes vitaux');
+const gv = spawnSync(process.execPath, [join(RACINE, 'tests', 'gestes-vitaux.mjs')], { encoding: 'utf8', cwd: RACINE, timeout: 240000 });
+const nbOk = (gv.stdout.match(/✅/g) || []).length, nbKo = (gv.stdout.match(/❌/g) || []).length;
+note(gv.status === 0, gv.status === 0 ? `${nbOk} vérifications réussies` : `${nbKo} échec(s) :\n      ` + String(gv.stdout || gv.stderr || '').split('\n').filter(l => l.includes('❌') || l.includes('Error')).slice(0, 6).join('\n      '));
 
 console.log(echecs ? `\n⛔ ${echecs} contrôle(s) en échec : ENVOI BLOQUÉ. Rien n’est parti en ligne.` : '\n✅ Tous les contrôles sont passés.');
 process.exit(echecs ? 1 : 0);
