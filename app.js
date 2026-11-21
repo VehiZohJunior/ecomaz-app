@@ -1130,16 +1130,17 @@ function renderLoginGate(step, error, loading){
     return `
     <div class="login-card">
       <div class="login-logo">🔑</div>
-      <h1>${t('reset_title')}</h1>
-      <div class="sub">${t('reset_sub')}</div>
+      <h1>${session.mdpAChanger ? 'Choisissez votre mot de passe personnel' : t('reset_title')}</h1>
+      <div class="sub">${session.mdpAChanger ? 'Pour protéger les données de l’école, ce compte doit avoir un mot de passe que vous seul connaissez. Une seule fois, puis vous entrez normalement.' : t('reset_sub')}</div>
+      <div class="hint" style="text-align:left;margin:6px 0 10px;">Au moins 10 caractères, avec des lettres et des chiffres. Évitez votre nom, le nom de l’école et les suites simples (123456, azerty…).</div>
       <form class="pin-pad" onsubmit="return handleResetSubmit(event)">
         <div class="field" style="text-align:left;margin-bottom:10px;">
           <label>${t('label_new_password')}</label>
-          <input type="password" id="resetPassword1" required minlength="6" autofocus autocomplete="new-password">
+          <input type="password" id="resetPassword1" required minlength="10" autofocus autocomplete="new-password">
         </div>
         <div class="field" style="text-align:left;">
           <label>${t('label_confirm_password')}</label>
-          <input type="password" id="resetPassword2" required minlength="6" autocomplete="new-password">
+          <input type="password" id="resetPassword2" required minlength="10" autocomplete="new-password">
         </div>
         <div class="pin-error">${error?escapeHtml(error):''}</div>
         <button class="btn" type="submit" style="width:100%;margin-top:10px;" ${loading?'disabled':''}>${loading?t('btn_save_password_loading'):t('btn_save_password')}</button>
@@ -1453,15 +1454,29 @@ async function handleForgotSubmit(ev){
   $('#loginGate').innerHTML = renderLoginGate('forgot-sent');
   return false;
 }
+// Règles d'un mot de passe personnel (21/11/2026) — vérifiées avant l'envoi
+function faiblesseMotDePasse(p){
+  const s = String(p || ''), bas = s.toLowerCase();
+  if(s.length < 10) return 'Le mot de passe doit contenir au moins 10 caractères.';
+  if(!/[a-zA-ZÀ-ÿ]/.test(s) || !/[0-9]/.test(s)) return 'Mettez des lettres ET des chiffres.';
+  const interdits = ['123456', 'azerty', 'qwerty', 'password', 'motdepasse', 'ecomaz', 'success', 'vehizoh', 'abcdef', '000000', '111111'];
+  if(interdits.some(m => bas.includes(m))) return 'Ce mot de passe est trop facile à deviner : évitez les suites simples, le nom de l’école ou d’EcoMaZ.';
+  const nom = String(session.nomComplet || '').toLowerCase().split(/\s+/).filter(x => x.length >= 4);
+  if(nom.some(m => bas.includes(m))) return 'N’utilisez pas votre nom dans le mot de passe.';
+  if(/^(.)\1+$/.test(s)) return 'Ce mot de passe est trop simple.';
+  return '';
+}
 async function handleResetSubmit(ev){
   ev.preventDefault();
   const p1 = $('#resetPassword1').value, p2 = $('#resetPassword2').value;
   if(p1 !== p2){ $('#loginGate').innerHTML = renderLoginGate('reset', 'Les deux mots de passe ne correspondent pas.'); return false; }
-  if(p1.length < 6){ $('#loginGate').innerHTML = renderLoginGate('reset', 'Le mot de passe doit contenir au moins 6 caractères.'); return false; }
+  const faiblesse = faiblesseMotDePasse(p1);
+  if(faiblesse){ $('#loginGate').innerHTML = renderLoginGate('reset', faiblesse); return false; }
   $('#loginGate').innerHTML = renderLoginGate('reset', '', true);
   const res = await definirNouveauMotDePasse(p1);
   if(!res.ok){ $('#loginGate').innerHTML = renderLoginGate('reset', res.message); return false; }
   toast('Mot de passe mis à jour');
+  session.mdpAChanger = false;
   const profil = await chargerProfilCourant();
   if(profil){
     try{ await entrerSelonRole(); return false; }catch(e){ /* retombe sur l'écran de connexion */ }
@@ -2922,6 +2937,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.11.21-3', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ 'Sécurité : chaque compte qui se connecte par e-mail et mot de passe choisit, une seule fois, son propre mot de passe (au moins 10 caractères, lettres et chiffres). Les comptes Google ne sont pas concernés.' ],
+  } },
   { version: '2026.11.21-2', nouveautes: {
     commun: [ 'L’application démarre maintenant aussi sans réseau : les bibliothèques de connexion et de lecture des QR codes sont gardées dans le téléphone.' ],
     parent: [],
@@ -4394,6 +4415,8 @@ function majBoutonFonction(){
   if(n >= 2) b.textContent = 'Changer de fonction';
 }
 async function entrerSelonRole(){
+  // Mot de passe personnel obligatoire (schema.sql section 128) : rien d'autre avant
+  if(session.mdpAChanger && session.role !== 'developpeur' && navigator.onLine !== false){ showResetPassword(); return; }
   ui.role = session.role;
   // Ce compte est un compte technique de la console développeur — il n'a
   // aucune fonction sur le site client (application volontairement

@@ -1,0 +1,57 @@
+# =====================================================================
+# EcoMaZ — Sauvegarde automatique de la base, SANS l'ordinateur du fondateur
+# =====================================================================
+# À placer dans un dépôt GitHub PRIVÉ : .github/workflows/sauvegarde.yml
+# (voir tools/sauvegarde-github/GUIDE.md). Gratuit : GitHub Actions.
+# Chaque soir à 19 h (heure d'Abidjan) : copie complète de la base, CHIFFRÉE
+# (AES-256) avec une phrase secrète connue du seul fondateur, gardée 30 jours.
+# Aucune donnée en clair ne quitte la machine de GitHub : seul le fichier
+# chiffré est conservé. Sans la phrase secrète, il est illisible.
+# Secrets à créer dans le dépôt (Settings → Secrets and variables → Actions) :
+#   ECOMAZ_DB_URL              adresse « Session pooler » de la base (avec le mot de passe)
+#   ECOMAZ_PHRASE_SAUVEGARDE   phrase secrète de chiffrement (à écrire aussi sur papier)
+# =====================================================================
+name: Sauvegarde EcoMaZ
+
+on:
+  schedule:
+    - cron: '0 19 * * *'   # 19 h 00 à Abidjan (UTC+0), chaque jour
+  workflow_dispatch: {}     # bouton « Run workflow » pour lancer à la main
+
+permissions:
+  contents: read
+
+jobs:
+  sauvegarde:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Copie chiffrée de la base
+        env:
+          ECOMAZ_DB_URL: ${{ secrets.ECOMAZ_DB_URL }}
+          ECOMAZ_PHRASE: ${{ secrets.ECOMAZ_PHRASE_SAUVEGARDE }}
+        run: |
+          set -euo pipefail
+          if [ -z "${ECOMAZ_DB_URL}" ] || [ -z "${ECOMAZ_PHRASE}" ]; then echo "::error::Secrets manquants (voir GUIDE.md)"; exit 1; fi
+          JOUR=$(date -u +%Y-%m-%d)
+          mkdir -p sortie
+          # Données de l'école (schéma public) : OBLIGATOIRE
+          docker run --rm -e PGURL="${ECOMAZ_DB_URL}" postgres:17 \
+            sh -c 'pg_dump "$PGURL" --schema=public --no-owner --no-privileges -Fc' > sortie/public.dump
+          # Comptes de connexion (schéma auth) : utile pour une restauration complète, sans bloquer si refusé
+          docker run --rm -e PGURL="${ECOMAZ_DB_URL}" postgres:17 \
+            sh -c 'pg_dump "$PGURL" --schema=auth --data-only --no-owner --no-privileges -Fc' > sortie/auth.dump || { echo "::warning::Schéma auth non copié"; rm -f sortie/auth.dump; }
+          TAILLE=$(stat -c%s sortie/public.dump)
+          echo "Taille de la copie (avant chiffrement) : ${TAILLE} octets"
+          if [ "${TAILLE}" -lt 50000 ]; then echo "::error::Copie anormalement petite"; exit 1; fi
+          tar -C sortie -cf - . | gpg --batch --yes --pinentry-mode loopback --passphrase "${ECOMAZ_PHRASE}" \
+            --symmetric --cipher-algo AES256 -o "ecomaz-${JOUR}.tar.gpg"
+          rm -rf sortie
+          ls -la ecomaz-*.tar.gpg
+      - name: Conservation 30 jours (privée)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ecomaz-sauvegarde-${{ github.run_number }}
+          path: ecomaz-*.tar.gpg
+          retention-days: 30
+          if-no-files-found: error

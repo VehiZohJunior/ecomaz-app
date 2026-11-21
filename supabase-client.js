@@ -53,6 +53,7 @@ async function chargerProfilCourant(){
     session.civilite = data.civilite || null;
     session.nomAppel = data.nom_appel || null;
     session.enseignantId = data.enseignant_id || null;
+    session.mdpAChanger = data.mdp_a_changer === true;   // schema.sql section 128
     try{ localStorage.setItem('ecomaz_profil_cache', JSON.stringify(data)); }catch(_e){}
     return data;
   }catch(e){
@@ -70,6 +71,7 @@ async function chargerProfilCourant(){
         session.civilite = cache.civilite || null;
         session.nomAppel = cache.nom_appel || null;
         session.enseignantId = cache.enseignant_id || null;
+        session.mdpAChanger = cache.mdp_a_changer === true;
         return cache;
       }
     }catch(_e2){ /* pas de cache exploitable */ }
