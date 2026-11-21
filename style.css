@@ -2693,3 +2693,7 @@ tbody td input.champ-a-verifier, tbody td select.champ-a-verifier, .nt-note.cham
 .offline-banner.mode-refus .refus-lien{ all:unset; cursor:pointer; font-weight:800; text-decoration:underline; text-underline-offset:3px; display:block; width:100%; text-align:center; min-height:24px; }
 :root[data-theme="dark"] .offline-banner.mode-refus{ background:#3D1717; color:#F6B4B4; }
 @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .offline-banner.mode-refus{ background:#3D1717; color:#F6B4B4; } }
+
+/* Alertes de pointage « techniques » (position incertaine), distinctes des suspectes (2026-11-21) */
+.pt-avatar-technique{ background:linear-gradient(145deg, #6B7494, #3A4366); }
+.pt-raison-technique{ color:var(--text-dim) !important; font-weight:600; }

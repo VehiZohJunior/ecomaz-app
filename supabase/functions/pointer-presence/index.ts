@@ -84,16 +84,24 @@ Deno.serve(async (req) => {
     // ---- Décision : le GPS d'abord
     const rayon = ecole!.geofence_rayon_metres ?? 100;
     const distance = lat != null && lng != null ? Math.round(distanceMetres(lat, lng, ecole!.geofence_latitude, ecole!.geofence_longitude)) : null;
-    let refus = '';
+    // 21/11/2026 — Règles affinées (audit du code, point 3) :
+    //  - le CENTRE de la position doit être dans la zone (le GPS reste déterminant) ;
+    //  - une précision jusqu'à 300 m est acceptée si ce centre est dans la zone
+    //    (dans une salle en béton, beaucoup de téléphones donnent ± 100 à 300 m) ;
+    //  - chaque refus est classé : « fraude » (clairement dehors, position
+    //    trafiquée, QR détourné) ou « technique » (position incertaine,
+    //    localisation coupée) — la direction ne reçoit plus de fausses alertes de fraude.
+    let refus = '', gravite: 'fraude' | 'technique' = 'technique';
     if (lat == null || lng == null) refus = `Localisation indisponible ou refusée sur le téléphone${erreurGps ? ` (${erreurGps})` : ''}`;
-    else if (precision != null && precision < 1) refus = `Position anormalement parfaite (${precision} m) : possible fausse position GPS`;
-    else if (precision == null || precision > 100) refus = `Position trop imprécise (± ${precision ?? '?'} m)`;
-    else if (distance! > rayon) refus = `Hors de l’établissement : à ${distance} m de l’école (zone de ${rayon} m)`;
+    else if (precision != null && precision < 1) { refus = `Position anormalement parfaite (${precision} m) : possible fausse position GPS`; gravite = 'fraude'; }
+    else if (precision == null || precision > 300) refus = `Position trop imprécise (± ${precision ?? '?'} m) : réessayez près d’une fenêtre ou dans la cour`;
+    else if (distance! > rayon + precision) { refus = `Hors de l’établissement : à ${distance} m de l’école (zone de ${rayon} m)`; gravite = 'fraude'; }
+    else if (distance! > rayon) refus = `Position incertaine : à ${distance} m du point de l’école (± ${precision} m). Réessayez dans l’enceinte`;
 
     if (!refus && methode === 'qr') {
       const { data: j } = await admin.from('pointage_jetons').select('jeton').eq('ecole_id', profil.ecole_id).maybeSingle();
       const lu = typeof corps.jeton === 'string' ? corps.jeton.trim() : '';
-      if (!j?.jeton || lu !== j.jeton) refus = 'QR code non reconnu : ce n’est pas l’affiche de pointage de l’école';
+      if (!j?.jeton || lu !== j.jeton) { refus = 'QR code non reconnu : ce n’est pas l’affiche de pointage de l’école'; gravite = 'fraude'; }
     }
 
     // ---- Photo (gardée aussi en cas de refus : c'est une preuve)
@@ -119,7 +127,7 @@ Deno.serve(async (req) => {
       await admin.from('alertes_pointage').insert({
         ecole_id: profil.ecole_id, enseignant_id: profil.enseignant_id, date, heure,
         raison: refus, type, methode, latitude: lat, longitude: lng, distance_metres: distance,
-        precision_metres: precision, photo_chemin: photoChemin, classe_id: classeId, auteur_id: user.id, auteur_nom: nom,
+        precision_metres: precision, photo_chemin: photoChemin, classe_id: classeId, auteur_id: user.id, auteur_nom: nom, gravite,
       });
       if (type === 'enseignant' && lat != null && lng != null) {
         await admin.from('pointages_gps').insert({
@@ -130,11 +138,13 @@ Deno.serve(async (req) => {
       }
       const { data: dir } = await admin.from('profiles').select('id').eq('ecole_id', profil.ecole_id).in('role', ['direction', 'fondation']);
       await envoyerPush(admin, (dir || []).map((d: { id: string }) => d.id), {
-        title: type === 'appel' ? '⚠️ Appel des élèves refusé' : '⚠️ Pointage enseignant refusé',
+        title: gravite === 'fraude'
+          ? (type === 'appel' ? '⚠️ Appel des élèves refusé — tentative suspecte' : '⚠️ Pointage refusé — tentative suspecte')
+          : (type === 'appel' ? 'ℹ️ Appel non abouti (position incertaine)' : 'ℹ️ Pointage non abouti (position incertaine)'),
         body: `${nom} — ${refus} (${heure}, ${LIB_METHODE[methode]}). Détail : Tableau de bord → Alertes pointage.`,
         url: './index.html', tag: `alerte-pointage-${Date.now()}`,
       }).catch(() => ({ envoyes: 0, echecs: 0 }));
-      return json({ ok: false, refuse: true, raison: refus, distanceMetres: distance, rayon });
+      return json({ ok: false, refuse: true, raison: refus, gravite, distanceMetres: distance, rayon });
     }
 
     // ---- Accepté : position vérifiée dans l'établissement
@@ -160,7 +170,7 @@ Deno.serve(async (req) => {
     }
     await admin.from('pointages_gps').insert({
       ecole_id: profil.ecole_id, enseignant_id: profil.enseignant_id, action, date, heure, latitude: lat, longitude: lng,
-      precision_metres: precision, distance_metres: distance, statut: 'dans_etablissement', methode, photo_chemin: photoChemin,
+      precision_metres: precision, distance_metres: distance, statut: precision != null && precision > 100 ? 'a_verifier' : 'dans_etablissement', methode, photo_chemin: photoChemin,
     });
     return json({ ok: true, action, distanceMetres: distance, ...resultat });
   } catch (e) {

@@ -2922,6 +2922,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.11.21-2', nouveautes: {
+    commun: [ 'L’application démarre maintenant aussi sans réseau : les bibliothèques de connexion et de lecture des QR codes sont gardées dans le téléphone.' ],
+    parent: [],
+    portier: [],
+    personnel: [ 'Pointage et appel : la position est lue pendant quelques secondes pour garder la plus précise. Une position un peu imprécise est acceptée si elle tombe dans l’enceinte de l’école.', 'Alertes de pointage : « Suspect » (hors de l’école, fausse position, QR détourné) est maintenant séparé de « Position incertaine » (souci de GPS, sans soupçon de fraude).' ],
+  } },
   { version: '2026.11.21-1', nouveautes: {
     commun: [ 'Fiabilité : les données sont maintenant lues en entier, par paquets (avant, au-delà de 1 000 lignes — notes, appels, paiements — la suite pouvait manquer sans message).', 'Sans réseau : un enregistrement refusé par le serveur au retour du réseau n’est plus jamais effacé. Il reste dans le téléphone, un bandeau rouge le signale, et vous choisissez « Réessayer » ou « Abandonner ».' ],
     parent: [],
@@ -5273,13 +5279,20 @@ function renderMonPointage(){
     </div>
     <p class="pt-note">${icone('lock')}<span>Le pointage n’est accepté que <strong>dans l’enceinte de l’établissement</strong> (zone de ${m.geofenceRayonMetres || 100} m), vérifiée par le GPS du téléphone. Toute tentative refusée est signalée automatiquement à la direction.</span></p>`;
 }
+// La MEILLEURE position lue pendant quelques secondes (le GPS se précise au fil des
+// lectures, surtout à l'intérieur) : arrêt dès ± 30 m, sinon au bout de 12 s.
 function obtenirPosition(){
   return new Promise(res => {
     if(!navigator.geolocation) return res({ erreurGps: 'géolocalisation non disponible' });
-    navigator.geolocation.getCurrentPosition(
-      p => res({ latitude: p.coords.latitude, longitude: p.coords.longitude, precision: p.coords.accuracy }),
-      e => res({ erreurGps: e.code === 1 ? 'autorisation refusée' : e.code === 3 ? 'délai dépassé' : 'position introuvable' }),
-      { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 });
+    let meilleure = null, fini = false, id = null;
+    const finir = (r) => { if(fini) return; fini = true; if(id != null) navigator.geolocation.clearWatch(id); clearTimeout(minuterie); res(r); };
+    const minuterie = setTimeout(() => finir(meilleure || { erreurGps: 'délai dépassé' }), 12000);
+    id = navigator.geolocation.watchPosition(
+      p => { const c = { latitude: p.coords.latitude, longitude: p.coords.longitude, precision: p.coords.accuracy };
+        if(!meilleure || c.precision < meilleure.precision) meilleure = c;
+        if(c.precision <= 30) finir(meilleure); },
+      e => { if(e.code === 1 || !meilleure) finir(meilleure || { erreurGps: e.code === 1 ? 'autorisation refusée' : e.code === 3 ? 'délai dépassé' : 'position introuvable' }); },
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 });
   });
 }
 async function appelPointage(corps){
@@ -5376,8 +5389,9 @@ function afficherResultatPointage(r, action){
     return;
   }
   if(r?.refuse){
-    openModal('Pointage refusé', `<div class="pt-resultat refuse">${icone('circle-x')}<strong>Pointage refusé</strong><span>${escapeHtml(r.raison || '')}</span>
-      <span class="pt-prevenu">${icone('bell')} La direction a été prévenue automatiquement de cette tentative.</span></div>
+    const suspect = r.gravite !== 'technique';
+    openModal(suspect ? 'Pointage refusé' : 'Pointage non abouti', `<div class="pt-resultat refuse">${icone(suspect ? 'circle-x' : 'map-pin')}<strong>${suspect ? 'Pointage refusé' : 'Votre position n’a pas pu être confirmée'}</strong><span>${escapeHtml(r.raison || '')}</span>
+      <span class="pt-prevenu">${icone('bell')} ${suspect ? 'La direction a été prévenue automatiquement de cette tentative.' : 'La direction est informée de cet essai, sans soupçon de fraude. Réessayez.'}</span></div>
       <ul class="pt-aide"><li>Pointez depuis l’intérieur de l’école (cour, bureau).</li><li>Activez la localisation du téléphone, en « haute précision ».</li><li>À l’intérieur d’un bâtiment, approchez-vous d’une fenêtre ou sortez dans la cour, puis réessayez.</li></ul>
       <div class="form-actions"><button type="button" class="btn" onclick="closeModal()">Fermer</button></div>`);
     return;
@@ -5396,7 +5410,7 @@ async function verifierPositionAvantAppel(classeId){
   const r = await appelPointage({ methode: 'appel', classeId, ...pos });
   if(r?.ok){ positionAppelOk = Date.now(); return true; }
   openModal('Appel refusé', `<div class="pt-resultat refuse">${icone('circle-x')}<strong>Les élèves ne peuvent être notés présents que depuis l’établissement</strong><span>${escapeHtml(r?.raison || r?.error || '')}</span>
-    ${r?.refuse ? `<span class="pt-prevenu">${icone('bell')} La direction a été prévenue automatiquement de cette tentative.</span>` : ''}</div>
+    ${r?.refuse ? `<span class="pt-prevenu">${icone('bell')} ${r.gravite !== 'technique' ? 'La direction a été prévenue automatiquement de cette tentative.' : 'La direction est informée de cet essai, sans soupçon de fraude. Réessayez.'}</span>` : ''}</div>
     <ul class="pt-aide"><li>Faites l’appel depuis la classe ou la cour de l’école.</li><li>Activez la localisation du téléphone, en « haute précision ».</li><li>Vous pouvez toujours noter les absents : seuls « Présent » et « Retard » demandent la vérification.</li></ul>
     <div class="form-actions"><button type="button" class="btn" onclick="closeModal()">Fermer</button></div>`);
   return false;
@@ -5415,9 +5429,10 @@ function renderAlertesPointageDirection(){
       const nom = a.auteurNom || (a.enseignantId ? ensFullName(enseignantById(a.enseignantId)) : 'Personnel');
       const carte = a.latitude != null && a.longitude != null ? `<a class="btn secondary sm" href="https://www.google.com/maps?q=${Number(a.latitude)},${Number(a.longitude)}" target="_blank" rel="noopener">${icone('map-pin')} Carte</a>` : '';
       const photo = a.photoChemin ? `<button type="button" class="btn secondary sm" onclick="voirPhotoPointage(${jsArg(a.photoChemin)})">${icone('camera')} Photo</button>` : '';
-      return `<div class="kp-ligne pt-alerte"><span class="kp-avatar pt-avatar-alerte" aria-hidden="true">${escapeHtml(initialesNom(nom))}</span>
-        <div class="kp-qui"><strong>${escapeHtml(nom)}</strong><small>${a.type === 'appel' ? 'Appel des élèves' : `Pointage enseignant · ${escapeHtml(LIB_METHODE_POINTAGE[a.methode] || 'Badge')}`} · ${escapeHtml(fmtDate(a.date))} à ${escapeHtml(String(a.heure || '').slice(0, 5))}${a.classeId ? ' · ' + escapeHtml(classeName(a.classeId)) : ''}</small>
-          <span class="pt-raison">${escapeHtml(a.raison || '')}</span></div>
+      const suspect = a.gravite !== 'technique';
+      return `<div class="kp-ligne pt-alerte"><span class="kp-avatar ${suspect ? 'pt-avatar-alerte' : 'pt-avatar-technique'}" aria-hidden="true">${escapeHtml(initialesNom(nom))}</span>
+        <div class="kp-qui"><strong>${escapeHtml(nom)} <span class="kp-badge ${suspect ? 'kp-absent' : 'kp-attente'}">${suspect ? 'Suspect' : 'Position incertaine'}</span></strong><small>${a.type === 'appel' ? 'Appel des élèves' : `Pointage enseignant · ${escapeHtml(LIB_METHODE_POINTAGE[a.methode] || 'Badge')}`} · ${escapeHtml(fmtDate(a.date))} à ${escapeHtml(String(a.heure || '').slice(0, 5))}${a.classeId ? ' · ' + escapeHtml(classeName(a.classeId)) : ''}</small>
+          <span class="${suspect ? 'pt-raison' : 'pt-raison pt-raison-technique'}">${escapeHtml(a.raison || '')}</span></div>
         <div class="kp-droite">${carte}${photo}</div></div>`; }).join('')}</div>`;
 }
 async function voirPhotoPointage(chemin){
@@ -5576,7 +5591,7 @@ function renderDashboard(){
       ${['direction','fondation'].includes(ui.role) ? `<button type="button" class="btn secondary sm" onclick="ouvrirRapportMois()">${icone('file-text')} Rapport du mois</button>` : ''}</div>
     ${ui.role === 'enseignant' && !session.enseignantId ? renderJeMEnrole() : ''}
     ${barreRubriques([
-      rubrique('alertes', 'Alertes pointage', 'Alertes de pointage — 7 derniers jours', 'triangle-alert', (rafraichirAlertesPointage(), renderAlertesPointageDirection()), () => { const n = alertesPointageRecentes().filter(a => a.date === todayISO()).length; return n ? String(n) : ''; }),
+      rubrique('alertes', 'Alertes pointage', 'Alertes de pointage — 7 derniers jours', 'triangle-alert', (rafraichirAlertesPointage(), renderAlertesPointageDirection()), () => { const n = alertesPointageRecentes().filter(a => a.date === todayISO() && a.gravite !== 'technique').length; return n ? String(n) : ''; }),
       rubrique('afaire', 'À faire', 'À faire aujourd’hui', 'circle-dot', renderAFaireAujourdhui(), h => (h.match(/afaire-compte">(\d+)/) || [])[1] || ''),
       rubrique('suivi', 'Enseignants', 'Suivi des enseignants', 'users', renderSuiviEnseignants(), h => (h.match(/(\d+) enseignant\(s\) à relancer/) || [])[1] || ''),
       rubrique('dates', '3 semaines', 'Dans les 3 prochaines semaines', 'calendar-range', renderProchainesDatesEcole()),

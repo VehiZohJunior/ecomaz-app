@@ -6,7 +6,7 @@
    d'attente hors ligne (voir supabase-client.js) — pas ce fichier, qui ne
    s'occupe que des fichiers de l'application (HTML/CSS/JS/icônes).
    ========================================================================= */
-const CACHE_NAME = 'ecomaz-shell-v205';
+const CACHE_NAME = 'ecomaz-shell-v206';
 const SHELL_FILES = [
   './',
   './index.html',
@@ -33,14 +33,30 @@ const SHELL_FILES = [
   './icon-maskable-512.png',
 ];
 
+// Bibliothèques venant d'un autre site, indispensables au démarrage (21/11/2026) :
+// avant, elles n'étaient pas gardées → sans réseau, l'application ne démarrait pas.
+// Adresses VERSIONNÉES (le contenu ne change jamais) : gardées sans limite de temps,
+// servies depuis le téléphone d'abord. L'empreinte de sécurité (SRI) reste vérifiée.
+const CDN_FICHIERS = [
+  'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.119.0/dist/umd/supabase.min.js',
+  'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js',
+  'https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js',
+];
+const CACHE_CDN = 'ecomaz-cdn-v1';
+const estCdnGarde = (url) => CDN_FICHIERS.includes(url) || url.startsWith('https://fonts.gstatic.com/') || url.startsWith('https://fonts.googleapis.com/css');
+
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(SHELL_FILES)));
+  event.waitUntil(Promise.all([
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(SHELL_FILES)),
+    // Jamais bloquant : si le site extérieur ne répond pas, l'installation continue
+    caches.open(CACHE_CDN).then((cache) => Promise.all(CDN_FICHIERS.map((u) => cache.add(new Request(u, { mode: 'cors', credentials: 'omit' })).catch(() => null)))),
+  ]));
   self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((keys) => Promise.all(keys.filter((k) => k.startsWith('ecomaz-shell-') && k !== CACHE_NAME).map((k) => caches.delete(k))))
+    caches.keys().then((keys) => Promise.all(keys.filter((k) => (k.startsWith('ecomaz-shell-') && k !== CACHE_NAME) || (k.startsWith('ecomaz-cdn-') && k !== CACHE_CDN)).map((k) => caches.delete(k))))
   );
   self.clients.claim();
 });
@@ -50,6 +66,14 @@ self.addEventListener('activate', (event) => {
 // une mise à jour). Le cache ne sert que de repli si le réseau échoue.
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
+  // Bibliothèques extérieures : téléphone d'abord, réseau sinon (puis gardées)
+  if (estCdnGarde(event.request.url)) {
+    event.respondWith(caches.open(CACHE_CDN).then((cache) => cache.match(event.request, { ignoreVary: true }).then((trouve) => trouve || fetch(event.request).then((rep) => {
+      if (rep && (rep.ok || rep.type === 'opaque')) cache.put(event.request, rep.clone()).catch(() => {});
+      return rep;
+    }))));
+    return;
+  }
   // Seuls les fichiers de l'application sont gardés en copie : pas les données
   // du serveur ni les photos / vidéos de « Vie de l'école » (qui rempliraient
   // le téléphone), ni les lectures partielles de vidéo.

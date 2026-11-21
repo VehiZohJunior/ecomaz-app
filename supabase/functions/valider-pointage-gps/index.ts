@@ -68,10 +68,13 @@ Deno.serve(async (req) => {
     const rayon = ecole.geofence_rayon_metres ?? 100;
     const precisionNum = typeof precision === 'number' ? precision : null;
 
+    // 21/11/2026 : même règle que le pointage dans l'application — le centre de la
+    // position doit être dans la zone ; précision acceptée jusqu'à 300 m.
     let statut: 'dans_etablissement' | 'hors_etablissement' | 'a_verifier';
-    if (precisionNum !== null && precisionNum > 100) statut = 'a_verifier';
+    if (precisionNum === null || precisionNum > 300) statut = 'a_verifier';
     else if (distance <= rayon) statut = 'dans_etablissement';
-    else statut = 'hors_etablissement';
+    else if (distance > rayon + precisionNum) statut = 'hors_etablissement';
+    else statut = 'a_verifier';
 
     // Position "trop parfaite" pour un vrai GPS de téléphone = suspecte.
     if (precisionNum !== null && precisionNum < 1) {
@@ -109,7 +112,7 @@ Deno.serve(async (req) => {
         : `Position douteuse ou trop imprécise (± ${precisionNum ?? '?'} m)`;
       await supabaseAdmin.from('pointages_gps').update({ motif_refus: raison }).eq('lien_id', lien.id);
       await supabaseAdmin.from('alertes_pointage').insert({
-        ecole_id: lien.ecole_id, enseignant_id: lien.enseignant_id, date, heure, raison, type: 'enseignant', methode: 'lien',
+        ecole_id: lien.ecole_id, enseignant_id: lien.enseignant_id, date, heure, raison, type: 'enseignant', methode: 'lien', gravite: statut === 'hors_etablissement' ? 'fraude' : 'technique',
         latitude, longitude, distance_metres: Math.round(distance), precision_metres: precisionNum,
       });
       const [{ data: f }, { data: dir }] = await Promise.all([

@@ -1,0 +1,4 @@
+#!/bin/sh
+# EcoMaZ — garde-fou : aucune mise en ligne si un contrôle échoue (tools/captures/verifier-avant-envoi.mjs)
+echo "EcoMaZ : vérifications avant mise en ligne…"
+node tools/captures/verifier-avant-envoi.mjs || exit 1
