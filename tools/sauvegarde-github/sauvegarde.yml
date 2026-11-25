@@ -8,7 +8,7 @@
 # Aucune donnée en clair ne quitte la machine de GitHub : seul le fichier
 # chiffré est conservé. Sans la phrase secrète, il est illisible.
 # Secrets à créer dans le dépôt (Settings → Secrets and variables → Actions) :
-#   ECOMAZ_DB_URL              adresse « Session pooler » de la base (avec le mot de passe)
+#   ECOMAZ_DB_URL              mot de passe de la base (ou l'adresse complète : les deux marchent)
 #   ECOMAZ_PHRASE_SAUVEGARDE   phrase secrète de chiffrement (à écrire aussi sur papier)
 # =====================================================================
 name: Sauvegarde EcoMaZ
@@ -33,13 +33,48 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "${ECOMAZ_DB_URL}" ] || [ -z "${ECOMAZ_PHRASE}" ]; then echo "::error::Secrets manquants (voir GUIDE.md)"; exit 1; fi
+          # Le secret ECOMAZ_DB_URL peut contenir l'adresse complète OU le mot de passe seul :
+          # on en extrait le mot de passe, puis on reconstruit nous-mêmes une adresse correcte.
+          V=$(printf '%s' "${ECOMAZ_DB_URL}" | tr -d '\r\n\t' | sed -e 's/^ *//' -e 's/ *$//')
+          HOTE_DONNE=""
+          case "$V" in
+            postgresql://*|postgres://*)
+              RESTE="${V#*://}"; INFOS="${RESTE%@*}"; APRES="${RESTE##*@}"
+              MDP="${INFOS#*:}"; HOTE_DONNE="${APRES%%[:/?]*}";;
+            *) MDP="$V";;
+          esac
+          MDP="${MDP#[}"; MDP="${MDP%]}"
+          if [ -z "$MDP" ] || [ "$MDP" = "YOUR-PASSWORD" ]; then echo "::error::Le secret ECOMAZ_DB_URL ne contient pas le mot de passe de la base. Collez SEULEMENT le mot de passe de la base (Supabase → Database → Settings)."; exit 1; fi
+          echo "::add-mask::$MDP"
+          MDP_ENC=$(MDP="$MDP" python3 -c 'import os,urllib.parse;print(urllib.parse.quote(os.environ["MDP"],safe=""))')
+          echo "::add-mask::$MDP_ENC"
+          REF=hvqtsvpkxffseclsfoun
+          HOTES="$HOTE_DONNE aws-0-eu-west-1.pooler.supabase.com aws-1-eu-west-1.pooler.supabase.com aws-0-eu-west-2.pooler.supabase.com aws-1-eu-west-2.pooler.supabase.com aws-0-eu-central-1.pooler.supabase.com aws-1-eu-central-1.pooler.supabase.com aws-0-eu-west-3.pooler.supabase.com aws-1-eu-west-3.pooler.supabase.com"
+          docker pull -q postgres:17 >/dev/null
+          PGURL=""; MDP_REFUSE=0
+          for H in $HOTES; do
+            case "$H" in *pooler.supabase.com) ;; *) continue;; esac
+            ESSAI="postgresql://postgres.${REF}:${MDP_ENC}@${H}:5432/postgres?sslmode=require"
+            if SORTIE=$(docker run --rm -e PGURL="$ESSAI" postgres:17 psql "$ESSAI" -tAc 'select 1' 2>&1); then
+              PGURL="$ESSAI"; echo "Connexion réussie au serveur ${H}"; break
+            fi
+            case "$SORTIE" in
+              *"password authentication failed"*) MDP_REFUSE=1; echo "Serveur ${H} : mot de passe refusé"; break;;
+              *) echo "Serveur ${H} : pas le bon";;
+            esac
+          done
+          if [ -z "$PGURL" ]; then
+            if [ "$MDP_REFUSE" = 1 ]; then echo "::error::Le serveur a été trouvé mais le MOT DE PASSE est refusé : dans Supabase, régénérez le mot de passe de la base (Reset database password → Generate), copiez-le, et collez-le SEUL dans le secret ECOMAZ_DB_URL."; else echo "::error::Aucun serveur Supabase n'a reconnu le projet. Prévenez Claude."; fi
+            exit 1
+          fi
+          export PGURL
           JOUR=$(date -u +%Y-%m-%d)
           mkdir -p sortie
           # Données de l'école (schéma public) : OBLIGATOIRE
-          docker run --rm -e PGURL="${ECOMAZ_DB_URL}" postgres:17 \
+          docker run --rm -e PGURL="${PGURL}" postgres:17 \
             sh -c 'pg_dump "$PGURL" --schema=public --no-owner --no-privileges -Fc' > sortie/public.dump
           # Comptes de connexion (schéma auth) : utile pour une restauration complète, sans bloquer si refusé
-          docker run --rm -e PGURL="${ECOMAZ_DB_URL}" postgres:17 \
+          docker run --rm -e PGURL="${PGURL}" postgres:17 \
             sh -c 'pg_dump "$PGURL" --schema=auth --data-only --no-owner --no-privileges -Fc' > sortie/auth.dump || { echo "::warning::Schéma auth non copié"; rm -f sortie/auth.dump; }
           TAILLE=$(stat -c%s sortie/public.dump)
           echo "Taille de la copie (avant chiffrement) : ${TAILLE} octets"
