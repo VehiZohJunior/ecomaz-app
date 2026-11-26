@@ -2945,6 +2945,13 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.11.26-5', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ '📷 Remplissage intelligent par PHOTO réparé : la photo est maintenant lue directement sur le téléphone (gratuit), puis la fiche se remplit. La première fois, quelques secondes de plus.',
+      '📒 Registre des notes du jour : chaque thème (Parent, Paiement, Élève, Enseignant, Appel reçu, Visite, Courrier, Divers) ouvre sa petite fiche à remplir ; la note est rédigée et horodatée automatiquement.' ],
+  } },
   { version: '2026.11.26-4', nouveautes: {
     commun: [],
     parent: [],
@@ -9283,15 +9290,66 @@ async function handleSmartFillToggleRecord(){
     }, 500);
   }catch(e){ $('#smartFillBody').innerHTML = renderSmartFillModal(null, "Impossible d'accéder au microphone : autorisez-le dans le navigateur, puis réessayez."); }
 }
-async function smartFillEnvoyer(source){
+/* ---------- Lecture d'une photo SUR LE TÉLÉPHONE (26/11/2026) ----------
+   Le moteur gratuit du serveur ne lit plus les images (aucun modèle image
+   disponible) et le secours payant est désactivé. La photo est donc lue
+   dans le navigateur par Tesseract (logiciel libre, gratuit, sans compte,
+   modèle français léger : ~0,7 Mo, gardé sur le téléphone après la 1re
+   fois), puis le texte lu est analysé par le moteur gratuit, comme un
+   document. Le serveur reste essayé d'abord : s'il retrouve un moteur
+   d'image, il reprend la main sans rien changer. */
+const OCR_SRC = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
+let promesseTesseract = null;
+function chargerTesseract(){
+  if(window.Tesseract) return Promise.resolve(window.Tesseract);
+  if(promesseTesseract) return promesseTesseract;
+  promesseTesseract = new Promise((ok, ko) => {
+    const sc = document.createElement('script'); sc.src = OCR_SRC; sc.async = true;
+    sc.onload = () => window.Tesseract ? ok(window.Tesseract) : ko(new Error('Lecture de photo indisponible'));
+    sc.onerror = () => { promesseTesseract = null; ko(new Error('Lecture de photo indisponible : vérifiez la connexion internet.')); };
+    document.head.appendChild(sc);
+  });
+  return promesseTesseract;
+}
+async function lireTexteImages(base64s, surProgres){
+  const T = await chargerTesseract();
+  const worker = await T.createWorker('fra', 1, {
+    workerPath: 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/worker.min.js',
+    corePath: 'https://cdn.jsdelivr.net/npm/tesseract.js-core@5.1.1',
+    langPath: 'https://cdn.jsdelivr.net/npm/@tesseract.js-data/fra@1.0.0/4.0.0_best_int',
+    logger: m => { if(surProgres && m && typeof m.progress === 'number') surProgres(m.status, m.progress); },
+  });
+  try{
+    const textes = [];
+    for(const b of base64s){ const r = await worker.recognize('data:image/jpeg;base64,' + b); textes.push((r && r.data && r.data.text) || ''); }
+    return textes.join('\n\n').replace(/[ \t]+/g, ' ').trim();
+  }finally{ try{ await worker.terminate(); }catch(_e){} }
+}
+async function smartFillPhotoSurTelephone(base64s){
+  const zone = () => document.querySelector('#smartFillBody .hint');
+  $('#smartFillBody').innerHTML = `<div style="text-align:center;padding:30px 10px;" role="status" aria-live="polite"><div style="font-size:2rem;" class="em-spin">📷</div>
+    <div class="hint">Lecture de la photo sur ce téléphone… (la première fois, quelques secondes de plus)</div></div>`;
+  const texte = await lireTexteImages(base64s, (statut, p) => { const z = zone(); if(z) z.textContent = `Lecture de la photo… ${Math.round(p * 100)} %`; });
+  if(texte.replace(/\s/g, '').length < 12) throw new Error('La photo est trop floue ou trop sombre pour être lue : reprenez-la bien à plat, en pleine lumière, ou utilisez le texte ou la voix.');
+  return smartFillEnvoyer({ typeSource: 'document', texte: ('Texte lu sur une photo (lecture automatique : quelques lettres peuvent être mal lues) :\n' + texte).slice(0, 15000) }, true);
+}
+async function smartFillEnvoyer(source, dejaRelu){
   if(!navigator.onLine){ $('#smartFillBody').innerHTML = renderSmartFillModal(null, 'Pas de connexion internet : le remplissage automatique a besoin du réseau.'); return; }
   $('#smartFillBody').innerHTML = renderSmartFillModal('chargement');
   try{
     const { data, error } = await sb.functions.invoke('smart-fill', {
       body: { formulaire: window.__smartFillFormulaire, schema: window.__smartFillSchema, ...source },
     });
-    if(error) throw new Error(await messageErreurFonction(error));
-    if(!data?.ok) throw new Error(data?.error || 'Échec du remplissage automatique');
+    if(error){
+      const msgErr = await messageErreurFonction(error);
+      if(source.typeSource === 'photo' && !dejaRelu && /photo/i.test(msgErr)) return await smartFillPhotoSurTelephone(source.fichiersBase64 || [source.fichierBase64]);
+      throw new Error(msgErr);
+    }
+    if(!data?.ok){
+      // Photo refusée par le serveur (pas de moteur d'image) : lecture sur le téléphone, puis analyse gratuite du texte
+      if(source.typeSource === 'photo' && !dejaRelu) return await smartFillPhotoSurTelephone(source.fichiersBase64 || [source.fichierBase64]);
+      throw new Error(data?.error || 'Échec du remplissage automatique');
+    }
     window.__smartFillResultat = data.resultat;
     if(quotaRemplissage) quotaRemplissage.utilise++;
     $('#smartFillBody').innerHTML = renderSmartFillApercu(data.resultat);
@@ -16465,14 +16523,15 @@ function rnPageVideHtml(){
 function rnSaisieHtml(){
   const dictee = ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window);
   return `<form class="rn-saisie" onsubmit="event.preventDefault(); rnAjouterNote()">
-    <div class="rn-themes" role="group" aria-label="Thème de la note">${RN_THEMES.map(t => `<button type="button" class="rn-theme${rnEtat.theme === t.cle ? ' actif' : ''}" aria-pressed="${rnEtat.theme === t.cle}" onclick="rnChoisirTheme('${t.cle}')">${t.ic} ${t.cle}</button>`).join('')}</div>
+    <div class="rn-themes" role="group" aria-label="Thème de la note">${RN_THEMES.map(t => `<button type="button" class="rn-theme" onclick="rnOuvrirFormulaire('${t.cle}')">${t.ic} ${t.cle}</button>`).join('')}</div>
+    <p class="rn-astuce">Touchez un thème pour remplir sa petite fiche, ou écrivez directement une note libre ci-dessous.</p>
     <textarea id="rnTexte" rows="2" maxlength="4000" placeholder="Ex. : 9 h 10, la maman de Koffi (CE1) a appelé : il est malade aujourd’hui." aria-label="Nouvelle note"
       onkeydown="if(event.key==='Enter' && !event.shiftKey){ event.preventDefault(); rnAjouterNote(); }"></textarea>
     <div class="rn-actions">
-      ${dictee ? `<button type="button" class="btn secondary" id="rnBtnDicter" onclick="rnDicter()">🎤 Dicter</button>` : ''}
+      ${dictee ? `<button type="button" class="btn secondary" id="rnBtnDicter" onclick="rnDicter('rnTexte', 'rnBtnDicter')">🎤 Dicter</button>` : ''}
       <button type="submit" class="btn" id="rnAjouter">➕ Ajouter la note</button>
     </div>
-    <p class="rn-astuce">Sans thème choisi, l’application le devine (parent, paiement, élève…).</p>
+    <p class="rn-astuce">Note libre : le thème est deviné (parent, paiement, élève…).</p>
   </form>`;
 }
 
@@ -16540,7 +16599,6 @@ function rnRegistreHtml(){
 
 /* ------------------------------ Actions ------------------------------ */
 function rnOuvrir(id){ ui.filters.rn = Object.assign({ mois: '', recherche: '', filtre: 'tous' }, ui.filters.rn || {}, { pageId: id }); renderView('registre-notes'); window.scrollTo(0, 0); }
-function rnChoisirTheme(cle){ rnEtat.theme = rnEtat.theme === cle ? '' : cle; document.querySelectorAll('.rn-theme').forEach(b => { const a = b.textContent.trim().endsWith(rnEtat.theme) && !!rnEtat.theme; b.classList.toggle('actif', a); b.setAttribute('aria-pressed', String(a)); }); }
 
 async function rnPageDuJourCreee(){
   let p = rnMaPageDuJour();
@@ -16552,23 +16610,127 @@ async function rnPageDuJourCreee(){
   rnEtat.entrees[p.id] = [];
   return p;
 }
+// Enregistre une note (datée et horodatée par le serveur) dans la page du jour ouverte
+async function rnEnregistrerEntree(categorie, texte){
+  const ouverte = ui.filters.rn?.pageId ? (rnEtat.pages || []).find(x => x.id === ui.filters.rn.pageId) : null;
+  const p = ouverte && rnModifiable(ouverte) ? ouverte : await rnPageDuJourCreee();
+  const e = await dbInsert('notes_jour_entrees', { pageId: p.id, auteurId: session.userId, categorie, texte });
+  if(!e.createdAt) e.createdAt = new Date().toISOString();
+  (rnEtat.entrees[p.id] = rnEtat.entrees[p.id] || []).push(e);
+  return e;
+}
 async function rnAjouterNote(){
   const t = document.getElementById('rnTexte'); if(!t) return;
-  const texte = t.value.trim(); if(!texte) return;
+  const texte = t.value.trim(); if(!texte){ toast('Écrivez la note, ou touchez un thème pour remplir sa fiche.'); t.focus(); return; }
   const b = document.getElementById('rnAjouter'); if(b) b.disabled = true;
   try{
-    const ouverte = ui.filters.rn?.pageId ? (rnEtat.pages || []).find(x => x.id === ui.filters.rn.pageId) : null;
-    const p = ouverte && rnModifiable(ouverte) ? ouverte : await rnPageDuJourCreee();
-    const categorie = rnEtat.theme || rnDevinerTheme(texte);
-    const e = await dbInsert('notes_jour_entrees', { pageId: p.id, auteurId: session.userId, categorie, texte });
-    if(!e.createdAt) e.createdAt = new Date().toISOString();
-    (rnEtat.entrees[p.id] = rnEtat.entrees[p.id] || []).push(e);
-    rnEtat.theme = '';
+    const categorie = rnDevinerTheme(texte);
+    const e = await rnEnregistrerEntree(categorie, texte);
     toast(`Note ajoutée à ${rnHeure(e.createdAt)} (${categorie})`);
     rnRafraichir();
     setTimeout(() => document.getElementById('rnTexte')?.focus(), 50);
   }catch(err){ toast('Note non enregistrée : ' + (err.message || err)); if(b) b.disabled = false; }
 }
+
+/* ---------- Une petite fiche par thème : la note est rédigée à partir de la fiche ---------- */
+const RN_SUITES = ['Réglé', 'À rappeler', 'Transmis à la direction', 'En attente'];
+const RN_FORMULAIRES = {
+  'Parent': { titre: 'Parent', champs: [
+      { id: 'parent', lib: 'Nom du parent', type: 'texte', requis: true, ex: 'Mme Koné' },
+      { id: 'eleve', lib: 'Élève concerné', type: 'eleve' },
+      { id: 'objet', lib: 'Objet', type: 'choix', options: ['Information', 'Réclamation', 'Demande de rendez-vous', 'Absence signalée', 'Retrait de l’enfant avant l’heure', 'Autre'] },
+      { id: 'details', lib: 'Détails', type: 'long', dictee: true },
+      { id: 'suivre', lib: 'À suivre demain', type: 'case' } ],
+    rediger: v => `${v.parent}${v.eleve ? ` (parent de ${v.eleve})` : ''} — ${v.objet}${v.details ? ' : ' + v.details : ''}` },
+  'Paiement': { titre: 'Paiement reçu', champs: [
+      { id: 'eleve', lib: 'Élève', type: 'eleve', requis: true },
+      { id: 'montant', lib: 'Montant (F CFA)', type: 'nombre', requis: true },
+      { id: 'tranche', lib: 'Pour', type: 'choix', options: () => [...new Set([...(typeof TRANCHES_SCOLARITE !== 'undefined' ? TRANCHES_SCOLARITE : []), 'Cantine', 'Activité', 'Tenue / fournitures', 'Autre'])] },
+      { id: 'mode', lib: 'Mode de paiement', type: 'choix', options: () => (typeof MODES_PAIEMENT !== 'undefined' ? MODES_PAIEMENT : ['Espèces', 'Mobile Money']) },
+      { id: 'recu', lib: 'Reçu remis au parent', type: 'case', defaut: true },
+      { id: 'details', lib: 'Remarque', type: 'long' } ],
+    aide: 'Cette fiche garde une trace dans la note du jour. Le paiement lui-même s’enregistre dans Comptabilité → Scolarité (reçu numéroté).',
+    rediger: v => `Paiement de ${fmtFCFA(Number(v.montant) || 0)} pour ${v.eleve} (${v.tranche}, ${v.mode})${v.recu ? ', reçu remis' : ', reçu à remettre'}${v.details ? '. ' + v.details : ''}` },
+  'Élève': { titre: 'Élève', champs: [
+      { id: 'eleve', lib: 'Élève', type: 'eleve', requis: true },
+      { id: 'evenement', lib: 'Ce qui s’est passé', type: 'choix', options: ['Malade', 'Blessé(e)', 'Arrivé(e) en retard', 'Parti(e) plus tôt', 'Comportement', 'Objet perdu / trouvé', 'Autre'] },
+      { id: 'details', lib: 'Ce qui a été fait', type: 'long', dictee: true },
+      { id: 'prevenu', lib: 'Parent prévenu', type: 'case' },
+      { id: 'suivre', lib: 'À suivre demain', type: 'case' } ],
+    rediger: v => `${v.eleve} : ${v.evenement.toLowerCase()}${v.details ? '. ' + v.details : ''}${v.prevenu ? '. Parent prévenu' : '. Parent pas encore prévenu'}` },
+  'Enseignant': { titre: 'Enseignant', champs: [
+      { id: 'enseignant', lib: 'Enseignant', type: 'enseignant', requis: true },
+      { id: 'objet', lib: 'Objet', type: 'choix', options: ['Absence', 'Retard', 'Demande de permission', 'Demande de matériel', 'Information', 'Autre'] },
+      { id: 'details', lib: 'Détails', type: 'long', dictee: true },
+      { id: 'suivre', lib: 'À suivre demain', type: 'case' } ],
+    rediger: v => `${v.enseignant} — ${v.objet}${v.details ? ' : ' + v.details : ''}` },
+  'Appel reçu': { titre: 'Appel reçu', champs: [
+      { id: 'qui', lib: 'De la part de', type: 'texte', requis: true, ex: 'M. Bamba' },
+      { id: 'tel', lib: 'Numéro', type: 'tel' },
+      { id: 'objet', lib: 'Objet de l’appel', type: 'long', requis: true, dictee: true },
+      { id: 'suite', lib: 'Suite', type: 'choix', options: RN_SUITES } ],
+    rediger: v => `Appel de ${v.qui}${v.tel ? ` (${v.tel})` : ''} : ${v.objet} — ${v.suite.toLowerCase()}` },
+  'Visite': { titre: 'Visite', champs: [
+      { id: 'qui', lib: 'Visiteur', type: 'texte', requis: true, ex: 'M. Bamba' },
+      { id: 'motif', lib: 'Motif', type: 'choix', options: ['Inscription', 'Renseignements', 'Rendez-vous avec la direction', 'Livraison', 'Réunion', 'Autre'] },
+      { id: 'heure', lib: 'Heure d’arrivée', type: 'heure' },
+      { id: 'details', lib: 'Détails', type: 'long', dictee: true },
+      { id: 'suite', lib: 'Suite', type: 'choix', options: RN_SUITES } ],
+    rediger: v => `Visite de ${v.qui}${v.heure ? ` à ${v.heure.replace(':', ' h ')}` : ''} — ${v.motif}${v.details ? ' : ' + v.details : ''} — ${v.suite.toLowerCase()}` },
+  'Courrier': { titre: 'Courrier / document', champs: [
+      { id: 'sens', lib: 'Sens', type: 'choix', options: ['Reçu', 'Envoyé', 'Préparé (certificat, attestation…)'] },
+      { id: 'qui', lib: 'Expéditeur ou destinataire', type: 'texte', requis: true },
+      { id: 'objet', lib: 'Objet', type: 'texte', requis: true, ex: 'Certificat de scolarité' },
+      { id: 'remis', lib: 'Remis à', type: 'texte' } ],
+    rediger: v => `Courrier ${v.sens.toLowerCase()} — ${v.objet} (${v.qui})${v.remis ? `, remis à ${v.remis}` : ''}` },
+  'Divers': { titre: 'Note libre', champs: [ { id: 'details', lib: 'Note', type: 'long', requis: true, dictee: true }, { id: 'suivre', lib: 'À suivre demain', type: 'case' } ],
+    rediger: v => v.details },
+};
+function rnOuvrirFormulaire(cle){
+  const f = RN_FORMULAIRES[cle]; if(!f) return;
+  const dicteeOk = ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window);
+  const opts = o => (typeof o === 'function' ? o() : o);
+  const eleves = (DB.eleves || []).filter(e => e.statut === 'Actif').sort((a, b) => eleveFullName(a).localeCompare(eleveFullName(b)));
+  const champ = c => {
+    const id = 'rnF_' + c.id, lib = `<label for="${id}">${c.lib}${c.requis ? ' *' : ''}</label>`;
+    if(c.type === 'case') return `<label class="rn-case"><input type="checkbox" id="${id}"${c.defaut ? ' checked' : ''}> ${c.lib}</label>`;
+    if(c.type === 'choix') return `<div class="form-group">${lib}<select id="${id}">${opts(c.options).map(o => `<option>${escapeHtml(o)}</option>`).join('')}</select></div>`;
+    if(c.type === 'long') return `<div class="form-group">${lib}<textarea id="${id}" rows="3" maxlength="1500"></textarea>${c.dictee && dicteeOk ? `<button type="button" class="btn secondary sm rn-dicter-champ" id="${id}_dic" onclick="rnDicter('${id}', '${id}_dic')">🎤 Dicter</button>` : ''}</div>`;
+    if(c.type === 'eleve') return `<div class="form-group">${lib}<input id="${id}" list="rnListeEleves" autocomplete="off" placeholder="Tapez quelques lettres du nom"></div>`;
+    if(c.type === 'enseignant') return `<div class="form-group">${lib}<input id="${id}" list="rnListeEnseignants" autocomplete="off" placeholder="Tapez quelques lettres du nom"></div>`;
+    const type = { nombre: 'number', tel: 'tel', heure: 'time' }[c.type] || 'text';
+    const val = c.type === 'heure' ? new Date().toTimeString().slice(0, 5) : '';
+    return `<div class="form-group">${lib}<input id="${id}" type="${type}"${type === 'number' ? ' min="0" step="500" inputmode="numeric"' : ''}${c.ex ? ` placeholder="Ex. : ${escapeHtml(c.ex)}"` : ''} value="${val}"></div>`;
+  };
+  openModal(`${rnThemeIcone(cle)} ${f.titre}`, `<form class="rn-fiche" onsubmit="event.preventDefault(); rnEnregistrerFiche('${cle}')">
+      ${f.aide ? `<p class="hint">${f.aide}</p>` : ''}
+      ${f.champs.map(champ).join('')}
+      <datalist id="rnListeEleves">${eleves.map(e => `<option value="${escapeHtml(eleveFullName(e))} (${escapeHtml(classeName(e.classeId))})"></option>`).join('')}</datalist>
+      <datalist id="rnListeEnseignants">${(DB.enseignants || []).map(t => `<option value="${escapeHtml(ensFullName(t))}"></option>`).join('')}</datalist>
+      <p class="rn-astuce">L’heure de la note est enregistrée automatiquement.</p>
+      <div class="form-actions"><button type="button" class="btn secondary" onclick="closeModal()">Annuler</button><button type="submit" class="btn" id="rnFicheOk">💾 Enregistrer la note</button></div>
+    </form>`);
+  setTimeout(() => document.querySelector('.rn-fiche input:not([type=checkbox]), .rn-fiche textarea')?.focus(), 60);
+}
+async function rnEnregistrerFiche(cle){
+  const f = RN_FORMULAIRES[cle]; if(!f) return;
+  const v = {};
+  for(const c of f.champs){
+    const el = document.getElementById('rnF_' + c.id); if(!el) continue;
+    v[c.id] = c.type === 'case' ? el.checked : String(el.value || '').trim();
+    if(c.requis && !v[c.id]){ toast(`Indiquez : ${c.lib.toLowerCase()}.`); el.focus(); return; }
+  }
+  let texte = f.rediger(v).replace(/\s+/g, ' ').trim();
+  if(v.suivre) texte += ' — à suivre demain';
+  const b = document.getElementById('rnFicheOk'); if(b) b.disabled = true;
+  try{
+    const e = await rnEnregistrerEntree(cle, texte);
+    closeModal();
+    toast(`Note « ${cle} » enregistrée à ${rnHeure(e.createdAt)}`);
+    rnRafraichir();
+  }catch(err){ toast('Note non enregistrée : ' + (err.message || err)); if(b) b.disabled = false; }
+}
+
 async function rnRetirerNote(id, pageId){
   if(!confirm('Retirer cette note ?')) return;
   try{ await dbDelete('notes_jour_entrees', id); rnEtat.entrees[pageId] = (rnEtat.entrees[pageId] || []).filter(e => e.id !== id); rnRafraichir(); }
@@ -16668,9 +16830,9 @@ async function rnExporterMois(mois){
 }
 
 // Dictée à la voix (reconnaissance vocale du navigateur, gratuite)
-function rnDicter(){
-  const R = window.SpeechRecognition || window.webkitSpeechRecognition; if(!R) return;
-  const b = document.getElementById('rnBtnDicter'), t = document.getElementById('rnTexte');
+function rnDicter(idCible, idBouton){
+  const R = window.SpeechRecognition || window.webkitSpeechRecognition; if(!R){ toast('La dictée n’est pas possible sur ce navigateur : utilisez Chrome.'); return; }
+  const b = document.getElementById(idBouton || 'rnBtnDicter'), t = document.getElementById(idCible || 'rnTexte'); if(!t) return;
   if(rnEtat.dictee){ rnEtat.dictee.stop(); return; }
   const r = new R(); r.lang = 'fr-FR'; r.interimResults = false; r.continuous = false;
   const depart = t.value;

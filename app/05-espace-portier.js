@@ -151,6 +151,13 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.11.26-5', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ '📷 Remplissage intelligent par PHOTO réparé : la photo est maintenant lue directement sur le téléphone (gratuit), puis la fiche se remplit. La première fois, quelques secondes de plus.',
+      '📒 Registre des notes du jour : chaque thème (Parent, Paiement, Élève, Enseignant, Appel reçu, Visite, Courrier, Divers) ouvre sa petite fiche à remplir ; la note est rédigée et horodatée automatiquement.' ],
+  } },
   { version: '2026.11.26-4', nouveautes: {
     commun: [],
     parent: [],

@@ -417,15 +417,66 @@ async function handleSmartFillToggleRecord(){
     }, 500);
   }catch(e){ $('#smartFillBody').innerHTML = renderSmartFillModal(null, "Impossible d'accéder au microphone : autorisez-le dans le navigateur, puis réessayez."); }
 }
-async function smartFillEnvoyer(source){
+/* ---------- Lecture d'une photo SUR LE TÉLÉPHONE (26/11/2026) ----------
+   Le moteur gratuit du serveur ne lit plus les images (aucun modèle image
+   disponible) et le secours payant est désactivé. La photo est donc lue
+   dans le navigateur par Tesseract (logiciel libre, gratuit, sans compte,
+   modèle français léger : ~0,7 Mo, gardé sur le téléphone après la 1re
+   fois), puis le texte lu est analysé par le moteur gratuit, comme un
+   document. Le serveur reste essayé d'abord : s'il retrouve un moteur
+   d'image, il reprend la main sans rien changer. */
+const OCR_SRC = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
+let promesseTesseract = null;
+function chargerTesseract(){
+  if(window.Tesseract) return Promise.resolve(window.Tesseract);
+  if(promesseTesseract) return promesseTesseract;
+  promesseTesseract = new Promise((ok, ko) => {
+    const sc = document.createElement('script'); sc.src = OCR_SRC; sc.async = true;
+    sc.onload = () => window.Tesseract ? ok(window.Tesseract) : ko(new Error('Lecture de photo indisponible'));
+    sc.onerror = () => { promesseTesseract = null; ko(new Error('Lecture de photo indisponible : vérifiez la connexion internet.')); };
+    document.head.appendChild(sc);
+  });
+  return promesseTesseract;
+}
+async function lireTexteImages(base64s, surProgres){
+  const T = await chargerTesseract();
+  const worker = await T.createWorker('fra', 1, {
+    workerPath: 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/worker.min.js',
+    corePath: 'https://cdn.jsdelivr.net/npm/tesseract.js-core@5.1.1',
+    langPath: 'https://cdn.jsdelivr.net/npm/@tesseract.js-data/fra@1.0.0/4.0.0_best_int',
+    logger: m => { if(surProgres && m && typeof m.progress === 'number') surProgres(m.status, m.progress); },
+  });
+  try{
+    const textes = [];
+    for(const b of base64s){ const r = await worker.recognize('data:image/jpeg;base64,' + b); textes.push((r && r.data && r.data.text) || ''); }
+    return textes.join('\n\n').replace(/[ \t]+/g, ' ').trim();
+  }finally{ try{ await worker.terminate(); }catch(_e){} }
+}
+async function smartFillPhotoSurTelephone(base64s){
+  const zone = () => document.querySelector('#smartFillBody .hint');
+  $('#smartFillBody').innerHTML = `<div style="text-align:center;padding:30px 10px;" role="status" aria-live="polite"><div style="font-size:2rem;" class="em-spin">📷</div>
+    <div class="hint">Lecture de la photo sur ce téléphone… (la première fois, quelques secondes de plus)</div></div>`;
+  const texte = await lireTexteImages(base64s, (statut, p) => { const z = zone(); if(z) z.textContent = `Lecture de la photo… ${Math.round(p * 100)} %`; });
+  if(texte.replace(/\s/g, '').length < 12) throw new Error('La photo est trop floue ou trop sombre pour être lue : reprenez-la bien à plat, en pleine lumière, ou utilisez le texte ou la voix.');
+  return smartFillEnvoyer({ typeSource: 'document', texte: ('Texte lu sur une photo (lecture automatique : quelques lettres peuvent être mal lues) :\n' + texte).slice(0, 15000) }, true);
+}
+async function smartFillEnvoyer(source, dejaRelu){
   if(!navigator.onLine){ $('#smartFillBody').innerHTML = renderSmartFillModal(null, 'Pas de connexion internet : le remplissage automatique a besoin du réseau.'); return; }
   $('#smartFillBody').innerHTML = renderSmartFillModal('chargement');
   try{
     const { data, error } = await sb.functions.invoke('smart-fill', {
       body: { formulaire: window.__smartFillFormulaire, schema: window.__smartFillSchema, ...source },
     });
-    if(error) throw new Error(await messageErreurFonction(error));
-    if(!data?.ok) throw new Error(data?.error || 'Échec du remplissage automatique');
+    if(error){
+      const msgErr = await messageErreurFonction(error);
+      if(source.typeSource === 'photo' && !dejaRelu && /photo/i.test(msgErr)) return await smartFillPhotoSurTelephone(source.fichiersBase64 || [source.fichierBase64]);
+      throw new Error(msgErr);
+    }
+    if(!data?.ok){
+      // Photo refusée par le serveur (pas de moteur d'image) : lecture sur le téléphone, puis analyse gratuite du texte
+      if(source.typeSource === 'photo' && !dejaRelu) return await smartFillPhotoSurTelephone(source.fichiersBase64 || [source.fichierBase64]);
+      throw new Error(data?.error || 'Échec du remplissage automatique');
+    }
     window.__smartFillResultat = data.resultat;
     if(quotaRemplissage) quotaRemplissage.utilise++;
     $('#smartFillBody').innerHTML = renderSmartFillApercu(data.resultat);

@@ -117,6 +117,7 @@
     }
     function executer(){
       const passe = l => filtres.every(f => f(l));
+      if(op !== 'select'){ window.__demoEcritures = (window.__demoEcritures || 0) + 1; (window.__demoTables = window.__demoTables || []).push(op + ' ' + t); }
       if(op === 'select'){
         let r = visibles().filter(passe);
         if(tris.length) r = r.slice().sort((a, b) => { for(const [c, asc] of tris){ const k = comparer(a[c], b[c]); if(k) return asc ? k : -k; } return 0; });
@@ -212,7 +213,31 @@
     compter_applaudissements: () => 0, apercu_invitation_parent: () => null,
     creer_invitation_parent: () => 'DEMO-' + Math.random().toString(36).slice(2, 8).toUpperCase(),
   };
+  // Remplissage intelligent de la démo : pas de serveur, des valeurs fictives plausibles pour chaque champ
+  const PRENOMS = ['Awa', 'Koffi', 'Aya', 'Junior', 'Fatou', 'Ange', 'Prisca', 'Moussa'], NOMS = ['KOUASSI', 'KONÉ', 'YAO', 'BAMBA', 'TRAORÉ', 'AKA'];
+  function valeurFictive(c, i){
+    const n = (c.name + ' ' + (c.label || '') + ' ' + (c.format || '')).toLowerCase();
+    const choix = /une valeur parmi : (.*)$/.exec(c.format || ''); if(choix){ const o = choix[1].split(' | ').filter(Boolean); return o[Math.min(1, o.length - 1)] || o[0]; }
+    if(/^note_|note obtenue/.test(n)) return String(8 + ((i * 7) % 12));
+    if(/frais|montant|prix|salaire|total|vers|tarif|nombre entier/.test(n)) return String(25000 + (i % 6) * 5000);
+    if(/date|aaaa-mm-jj/.test(n)) return '2019-0' + (1 + i % 9) + '-1' + (i % 9);
+    if(/heure|hh:mm/.test(n)) return ['07:30', '10:00', '12:00', '15:30', '16:30'][i % 5];
+    if(/sexe|m ou f/.test(n)) return i % 2 ? 'M' : 'F';
+    if(/t[ée]l[ée]phone|tel\b|chiffres/.test(n)) return '07000000' + String(10 + i).slice(-2);
+    if(/mail/.test(n)) return 'parent' + (i + 1) + '@exemple.ci';
+    if(/pr[ée]nom/.test(n)) return PRENOMS[i % PRENOMS.length];
+    if(/parent|tuteur/.test(n)) return 'Mme ' + NOMS[(i + 2) % NOMS.length] + ' ' + PRENOMS[(i + 3) % PRENOMS.length];
+    if(/nom/.test(n)) return NOMS[i % NOMS.length];
+    if(/adresse|quartier/.test(n)) return 'Cocody, Abidjan';
+    if(/mati[eè]re/.test(n)) return 'Mathématiques';
+    return 'Exemple ' + (i + 1);
+  }
   const FONCTIONS = {
+    'smart-fill': (corps) => {
+      const resultat = {};
+      ((corps && corps.schema) || []).forEach((c, i) => { resultat[c.name] = { valeur: valeurFictive(c, i), confiance: i % 5 === 4 ? 'moyen' : 'élevé' }; });
+      return { ok: true, resultat, moteur: 'demo' };
+    },
     'valider-pointage-gps': () => ({ ok: true, action: 'arrivee', heure: heure(), statut: 'Présent', distanceMetres: 18, enseignant: 'Enseignant (démonstration)', minutesRetard: 0 }),
     'pointer-presence': (corps) => {
       const p = profilCourant(); const ens = p && p.enseignant_id;
@@ -228,8 +253,8 @@
   };
   const client = {
     from: requete,
-    rpc: (nom, args) => ok(RPC[nom] ? RPC[nom](args) : []),
-    functions: { invoke: async (nom, o) => { await new Promise(r => setTimeout(r, 300)); return { data: FONCTIONS[nom] ? FONCTIONS[nom](o && o.body) : { ok: true, demo: true, message: 'Action simulée (démonstration)' }, error: null }; } },
+    rpc: (nom, args) => { if(!/^(mes_|personnel_connecte|compteur|jeton|usage|ecole_a|compter|apercu|signaler_presence|quitter_presence|etat_|rapport_|affichage_|ecole_preinscription|rechercher|liste_|lire_|stat)/.test(nom)){ window.__demoEcritures = (window.__demoEcritures || 0) + 1; (window.__demoTables = window.__demoTables || []).push('rpc ' + nom); } return ok(RPC[nom] ? RPC[nom](args) : []); },
+    functions: { invoke: async (nom, o) => { window.__demoEcritures = (window.__demoEcritures || 0) + 1; (window.__demoTables = window.__demoTables || []).push('fonction ' + nom); await new Promise(r => setTimeout(r, 300)); return { data: FONCTIONS[nom] ? FONCTIONS[nom](o && o.body) : { ok: true, demo: true, message: 'Action simulée (démonstration)' }, error: null }; } },
     channel(){ const c = { on(){ return c; }, subscribe(){ return c; }, unsubscribe(){}, send(){ return Promise.resolve('ok'); } }; return c; },
     removeChannel(){}, removeAllChannels(){},
     storage: { from: () => ({

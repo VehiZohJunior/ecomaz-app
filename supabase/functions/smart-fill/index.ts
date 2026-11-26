@@ -247,7 +247,7 @@ Deno.serve(async (req) => {
           { role: 'user', content: [{ type: 'text', text: `Voici ${photos.length > 1 ? 'les photos (recto et verso) du' : 'la photo du'} document. Extrais les champs.` },
             ...photos.map((p) => ({ type: 'image_url', image_url: { url: `data:${mt};base64,${p}` } }))] }], true);
         source = 'groq';
-      } catch (e) { motifSecours = (e as Error).message.slice(0, 200); brut = await claudeSecours(schema, contenuSecours).catch(() => { throw new Error('Analyse impossible pour le moment (' + (e as Error).message.slice(0, 80) + '). Réessayez dans un instant.'); }); source = 'secours'; }
+      } catch (e) { motifSecours = (e as Error).message.slice(0, 200); brut = await claudeSecours(schema, contenuSecours).catch((e2) => { throw new Error('Analyse photo impossible — ' + motifSecours.slice(0, 300) + ' | secours : ' + String((e2 as Error)?.message || e2).slice(0, 200)); }); source = 'secours'; }
     } else {
       const contenuTexte = typeSource === 'audio' ? await transcrireAudio(fichierBase64, mimeType || 'audio/webm') : String(texte).trim();
       contenuSecours = [{ type: 'text', text: `Texte :\n"""${contenuTexte}"""` }];
@@ -261,6 +261,13 @@ Deno.serve(async (req) => {
     await admin.from('usage_remplissage_intelligent').insert({ ecole_id: profil.ecole_id, utilisateur_id: user.id, formulaire, type_source: typeSource, moteur: source || null });
     return json({ ok: true, resultat, moteur: source });
   } catch (e) {
+    // Diagnostic (26/11/2026) : la vraie raison est notée dans erreurs_client (lisible seulement par la console développeur)
+    try {
+      const admin = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
+      await admin.from('erreurs_client').insert({ message: ('smart-fill : ' + String((e as Error)?.message || e)).slice(0, 900), page: 'fonction smart-fill' });
+    } catch { /* jamais bloquant */ }
+    const brutMsg = String((e as Error)?.message || '');
+    if (/^Analyse photo/.test(brutMsg)) return json({ ok: false, error: 'La lecture des photos est momentanément indisponible. Utilisez le texte, la voix ou un document (PDF, Word, Excel) en attendant.' }, 400);
     return json({ ok: false, error: messagePublic(e) }, 400);
   }
 });

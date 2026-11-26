@@ -2839,3 +2839,10 @@ body.pc-ouvert .topbar{ z-index:310; }
   .sidebar.open .sidebar-retour{ display:inline-flex; align-self:flex-start; width:auto; align-items:center; gap:6px; margin:10px 12px 0; min-height:40px; padding:0 14px 0 10px; border-radius:var(--r-pill); border:1px solid var(--border); background:var(--surface-1); color:var(--text); font:inherit; font-weight:800; cursor:pointer; }
 }
 @media print{ .modal-retour{ display:none !important; } }
+.rn-fiche .form-group{ margin-bottom:12px; }
+.rn-fiche label{ display:block; font-weight:700; font-size:14px; margin-bottom:4px; }
+.rn-fiche input, .rn-fiche select, .rn-fiche textarea{ width:100%; min-height:44px; font:inherit; font-size:16px; padding:8px 12px; border-radius:10px; border:1px solid var(--border-strong); background:var(--surface-1); color:var(--text); }
+.rn-fiche .rn-case{ display:flex; align-items:center; gap:10px; font-weight:600; margin:8px 0; min-height:40px; }
+.rn-fiche .rn-case input{ width:22px; height:22px; min-height:0; }
+.rn-dicter-champ{ margin-top:6px; }
+.rn-theme{ min-height:40px; }
