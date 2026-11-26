@@ -120,6 +120,20 @@ D['personnel_autre'] = [
     {'id': str(uuid.UUID(int=rnd.getrandbits(128))), 'ecole_id': ECOLE, 'nom': 'BAMBA', 'prenom': 'Seydou', 'sexe': 'M', 'poste': 'Gardien', 'telephone': '00 00 00 02 01', 'salaire_mensuel': 75000, 'date_embauche': '2022-09-01', 'statut': 'Actif'},
     {'id': str(uuid.UUID(int=rnd.getrandbits(128))), 'ecole_id': ECOLE, 'nom': 'N\'GUESSAN', 'prenom': 'Adjoua', 'sexe': 'F', 'poste': 'Cuisinière', 'telephone': '00 00 00 02 02', 'salaire_mensuel': 70000, 'date_embauche': '2023-09-01', 'statut': 'Actif'}]
 
+# Cas réalistes pour l'assistant « À faire aujourd'hui » (fictifs) :
+# - 2 élèves absents aux 3 derniers appels de leur classe
+for x in [e for e in D['eleves'] if e['classe_id'] != cp1['id']][3:5]:
+    dates = sorted({p['date'] for p in D.get('presences_eleves', []) if p.get('classe_id') == x['classe_id']})[-3:]
+    for p in D.get('presences_eleves', []):
+        if p['eleve_id'] == x['id'] and p['date'] in dates:
+            p['statut'] = 'Absent'
+    connues = {p['date'] for p in D.get('presences_eleves', []) if p['eleve_id'] == x['id']}
+    for d in dates:
+        if d not in connues:
+            D['presences_eleves'].append({'id': str(uuid.UUID(int=rnd.getrandbits(128))), 'ecole_id': ECOLE, 'eleve_id': x['id'], 'classe_id': x['classe_id'], 'date': d, 'statut': 'Absent'})
+# - 6 familles n'ont pas encore réglé l'inscription (date limite passée)
+sans_inscription = {e['id'] for e in D['eleves'][10:16]}
+D['paiements_scolarite'] = [p for p in D.get('paiements_scolarite', []) if not (p['eleve_id'] in sans_inscription and p.get('tranche') == 'Inscription')]
 D['_ancre'] = max(jours) if jours else '2026-10-16'
 D['_version'] = hashlib.sha1(json.dumps(D, ensure_ascii=False, sort_keys=True).encode()).hexdigest()[:10]
 open(os.path.join(SORTIE, 'demo-donnees.js'), 'w', encoding='utf-8', newline='\n').write(

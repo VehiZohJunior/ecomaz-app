@@ -26,6 +26,7 @@ function arreterPersonnesConnectees(silencieux){
   clearInterval(pc.timer); pc.timer = null;
   clearInterval(pc.convTimer); pc.convTimer = null;
   pc.liste = []; pc.convAvec = null; pc.ouvert = false; pc.dernierNonLus = null;
+  document.body.classList.remove('pc-ouvert');
   if(!silencieux){ try{ sb.rpc('quitter_presence'); }catch(_e){} }
   const w = document.getElementById('pcWrap'); if(w) w.remove();
 }
@@ -57,7 +58,7 @@ function pcInstallerBouton(){
   w.className = 'pc-wrap'; w.id = 'pcWrap';
   w.innerHTML = `<button type="button" class="bulle-btn pc-btn" id="pcBtn" onclick="pcBasculer()" aria-haspopup="dialog" aria-expanded="false" title="Personnes connectées">
       <span aria-hidden="true">👥</span><span class="pc-compte" id="pcCompte" hidden></span><span class="bulle-badge" id="pcNonLus" hidden></span></button>
-    <div class="bulle-dropdown pc-panneau" id="pcPanneau" role="dialog" aria-label="Personnes connectées" hidden></div>`;
+    <div class="pc-panneau" id="pcPanneau" role="dialog" aria-label="Personnes connectées" hidden></div>`;
   droite.insertBefore(w, droite.firstChild);
 }
 
@@ -74,6 +75,7 @@ function pcBasculer(ouvrir){
   const p = document.getElementById('pcPanneau'); if(!p) return;
   pc.ouvert = ouvrir === undefined ? p.hidden : !!ouvrir;
   p.hidden = !pc.ouvert;
+  document.body.classList.toggle('pc-ouvert', pc.ouvert);
   const btn = document.getElementById('pcBtn'); if(btn) btn.setAttribute('aria-expanded', String(pc.ouvert));
   if(pc.ouvert){ pcMajPanneau(); pcBattement(); }
 }

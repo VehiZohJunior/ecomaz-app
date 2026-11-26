@@ -33,6 +33,8 @@
   if(!T || T._version !== SOURCE._version) T = Object.assign(neuve(), { _version: SOURCE._version });
   let minuterie = null;
   function enregistrer(){ clearTimeout(minuterie); minuterie = setTimeout(() => { try{ localStorage.setItem(CLE_BASE, JSON.stringify(T)); }catch(_e){} }, 150); }
+  // Un anniversaire « aujourd'hui » (pour montrer l'assistant), recalculé à chaque ouverture
+  try{ const ann = (T.eleves || []).find(e => e.date_naissance && e.statut === 'Actif'); if(ann){ const d = new Date(); ann.date_naissance = ann.date_naissance.slice(0, 5) + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); } }catch(_e){}
   enregistrer();
 
   // ---- Utilisateur fictif courant

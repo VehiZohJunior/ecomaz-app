@@ -2701,7 +2701,8 @@ tbody td input.champ-a-verifier, tbody td select.champ-a-verifier, .nt-note.cham
 /* ----- Personnes connectées + messages entre collègues (26/11/2026) ----- */
 .pc-wrap{ position:relative; }
 .pc-compte{ position:absolute; bottom:-4px; right:-6px; min-width:18px; height:18px; padding:0 4px; border-radius:var(--r-pill); background:var(--success); color:#fff; font-size:var(--fs-xs); font-weight:800; display:flex; align-items:center; justify-content:center; line-height:1; border:2px solid var(--surface-1); }
-.pc-panneau{ width:340px; max-height:min(520px, 75vh); padding:var(--sp-3); }
+.pc-panneau{ position:absolute; top:46px; right:0; width:340px; max-width:90vw; max-height:min(520px, 75vh); overflow-y:auto; background:var(--surface-1); border:1px solid var(--border); border-radius:var(--r-card); box-shadow:var(--shadow-3); z-index:90; padding:var(--sp-3); animation:fadeIn var(--dur) var(--ease); }
+.pc-panneau[hidden]{ display:none; }
 .pc-panneau .cn-tete{ display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
 .pc-panneau .cn-fermer{ border:0; background:none; font-size:18px; cursor:pointer; color:var(--text-dim); min-width:36px; min-height:36px; }
 .pc-groupe{ margin:0 0 8px; }
@@ -2756,9 +2757,12 @@ tbody td input.champ-a-verifier, tbody td select.champ-a-verifier, .nt-note.cham
 .rp-action{ display:flex; flex-wrap:wrap; gap:8px; margin-top:auto; }
 .rp-action .btn{ min-height:44px; }
 
-/* ----- Assistant (constats du jour) ----- */
-.as-liste{ list-style:none; margin:10px 0 0; padding:0; display:flex; flex-direction:column; gap:8px; }
-.as-liste li{ display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:8px; padding:10px 12px; border:1px solid var(--border); border-radius:12px; background:var(--surface-1); }
-.as-liste li > div:first-child{ display:flex; flex-direction:column; min-width:0; }
-.as-liste small{ color:var(--text-dim); font-size:13px; }
-.as-actions{ display:flex; gap:6px; flex-wrap:wrap; }
+/* Personnes connectées : place dans la barre du haut sur téléphone, feuille au-dessus de la barre du bas */
+body.pc-ouvert .topbar{ z-index:310; }
+@media (max-width:900px){
+  body:not(.theme-parent):not(.theme-portier) .topbar{ grid-template-columns:minmax(0,1fr) auto auto auto auto; }
+  body:not(.theme-parent):not(.theme-portier) .topbar .pc-wrap{ grid-column:4; grid-row:1 / span 2; align-self:center; }
+  body:not(.theme-parent):not(.theme-portier) .topbar .bulles{ grid-column:5; }
+  body:not(.theme-parent):not(.theme-portier) .topbar .pc-btn{ width:38px; height:38px; }
+  body.pc-ouvert::after{ content:''; position:fixed; inset:0; background:var(--scrim, rgba(0,0,0,.4)); z-index:290; }
+}
