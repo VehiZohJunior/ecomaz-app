@@ -30,6 +30,20 @@ let fautes = [];
 for(const f of js){ const r = spawnSync(process.execPath, ['--check', join(RACINE, f)], { encoding: 'utf8' }); if(r.status !== 0) fautes.push(`${f} : ${(r.stderr.split('\n').find(l => /Error/.test(l)) || 'erreur').trim()}`); }
 note(!fautes.length, `${js.length} fichiers vérifiés${fautes.length ? '\n      ' + fautes.join('\n      ') : ''}`);
 
+console.log('1 bis. Noms en double dans app/');
+// 1 bis. Noms en double dans app/ (26/11/2026) : tous les morceaux partagent les mêmes noms globaux ;
+//   une deuxième « function x » REMPLACE la première sans erreur (cas réel : famillesEnRetard, v209).
+{
+  const vus = new Map(), doubles = [];
+  for(const f of git('ls-files', 'app/*.js').split('\n').filter(Boolean).sort()){
+    for(const m of readFileSync(join(RACINE, f), 'utf8').matchAll(/^(?:async\s+)?function\s+([A-Za-z_$][\w$]*)|^(?:const|let|var|class)\s+([A-Za-z_$][\w$]*)/gm)){
+      const nom = m[1] || m[2];
+      if(vus.has(nom)) doubles.push(`${nom} : ${vus.get(nom)} et ${f}`); else vus.set(nom, f);
+    }
+  }
+  note(!doubles.length, doubles.length ? `Noms définis deux fois (le second écrase le premier) :\n      ${doubles.join('\n      ')}` : `${vus.size} noms globaux, aucun en double`);
+}
+
 // 2. Fichiers générés à jour
 console.log('2. Fichiers générés à jour');
 const generes = ['app.js', 'app.min.js', 'supabase-client.min.js', 'theme.min.js', 'motion.min.js', 'icones.min.js', 'recherche.min.js', 'espace-fixe.min.js', 'enseignant.html'].filter(f => existsSync(join(RACINE, f)));

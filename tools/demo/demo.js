@@ -169,6 +169,33 @@
   function vuDemo(id){ let h = 7; for(const c of String(id)) h = (h * 17 + c.charCodeAt(0)) >>> 0; return new Date(Date.now() - (enLigneDemo(id) ? 20 : 600 + (h % 3000)) * 60000 / 60).toISOString(); }
   const RPC = {
     signaler_presence: () => null, quitter_presence: () => null,
+    // Rapport d'activité d'un enseignant (calculé ici comme le ferait le serveur, sur la base fictive)
+    rapport_activite_enseignant: (a) => {
+      const t = (T.enseignants || []).find(x => x.id === (a && a.p_enseignant)); if(!t) return null;
+      const auj = aujourdhui(), debut = a.p_debut, fin = a.p_fin < auj ? a.p_fin : auj;
+      const jours = []; for(let d = new Date(debut + 'T12:00:00'); ; d.setDate(d.getDate() + 1)){ const iso = d.toISOString().slice(0, 10); if(iso > fin) break; if(d.getDay() >= 1 && d.getDay() <= 5) jours.push(iso); }
+      const classes = t.classes_assignees || [];
+      const pres = (T.presences_eleves || []).filter(p => classes.includes(p.classe_id) && p.date >= debut && p.date <= fin);
+      const faits = new Set(pres.map(p => p.classe_id + '|' + p.date));
+      const attendus = jours.length * classes.length;
+      const manques = []; jours.slice().reverse().forEach(j => classes.forEach(c => { if(!faits.has(c + '|' + j) && manques.length < 12) manques.push({ date: j, classe: ((T.classes || []).find(x => x.id === c) || {}).nom }); }));
+      const pe = (T.presences_enseignants || []).filter(p => p.enseignant_id === t.id && p.date >= debut && p.date <= fin);
+      const dans = (x, champ) => String(x[champ] || '').slice(0, 10) >= debut && String(x[champ] || '').slice(0, 10) <= fin;
+      const devoirs = (T.devoirs || []).filter(d => classes.includes(d.classe_id) && dans(d, 'created_at')).length;
+      const notes = (T.notes || []).filter(n => { const e = (T.eleves || []).find(x => x.id === n.eleve_id); return e && classes.includes(e.classe_id); }).length;
+      const progs = (T.programmes || []).filter(p => p.enseignant_id === t.id);
+      const chrono = pe.map(p => ({ quand: p.date + 'T' + (p.heure_arrivee || '07:30:00'), type: 'pointage', texte: 'Pointage : ' + p.statut + (p.heure_arrivee ? ' à ' + p.heure_arrivee.slice(0, 5) : '') }))
+        .concat([...new Set(pres.map(p => p.date))].map(d => ({ quand: d + 'T08:05:00', type: 'appel', texte: 'Appel — ' + classes.map(c => ((T.classes || []).find(x => x.id === c) || {}).nom).join(', ') + ' (' + d.slice(8, 10) + '/' + d.slice(5, 7) + ')' })))
+        .sort((x, y) => y.quand.localeCompare(x.quand)).slice(0, 30);
+      return {
+        enseignant: { nom: t.nom, prenom: t.prenom, sexe: t.sexe, matricule: t.matricule, classes: classes.map(c => ((T.classes || []).find(x => x.id === c) || {}).nom), matieres: t.matieres || [], a_un_compte: (T.profiles || []).some(p => p.enseignant_id === t.id) },
+        periode: { debut, fin, jours_classe: jours.length },
+        pointage: { presents: pe.filter(p => p.statut === 'Présent').length, retards: pe.filter(p => p.statut === 'Retard').length, minutes_retard: pe.reduce((s, p) => s + (p.statut === 'Retard' ? (p.minutes_retard || 0) : 0), 0), absences: pe.filter(p => p.statut === 'Absent').length, jours_pointes: pe.length },
+        appels: { attendus, faits: faits.size, par_lui: faits.size, par_autre: 0, sans_auteur: 0, manquants: Math.max(0, attendus - faits.size), manques },
+        devoirs, evaluations: 0, notes, appreciations: 0, messages: 0, publications: 0,
+        programmes: { nb: progs.length, progression: progs.length ? Math.round(progs.reduce((s, p) => s + (p.progression || 0), 0) / progs.length) : 0 },
+        chronologie: chrono };
+    },
     personnel_connecte: () => { const moi = profilCourant(); if(!moi || !PERSONNEL.includes(moi.role)) return [];
       return (T.profiles || []).filter(p => p.id !== moi.id && PERSONNEL.includes(p.role)).map(p => ({ id: p.id, nom: p.nom_complet, role: p.role, civilite: p.civilite,
         en_ligne: enLigneDemo(p.id), vu_le: vuDemo(p.id), non_lus: (T.messages_personnel || []).filter(m => m.destinataire_id === moi.id && m.expediteur_id === p.id && !m.lu_at).length }))

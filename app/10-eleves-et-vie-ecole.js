@@ -2125,7 +2125,7 @@ const CHAMPS_CORRECTION = {
   parent_tel: { lib:'Téléphone du parent', cle:'parentTel', type:'tel' },
   parent_adresse: { lib:'Adresse', cle:'parentAdresse', type:'text' },
 };
-function valeurLisible(champ, v){ return champ === 'date_naissance' && v ? fmtDate(v) : (v || '—'); }
+function valeurCorrectionLisible(champ, v){ return champ === 'date_naissance' && v ? fmtDate(v) : (v || '—'); }
 // Console parent
 function renderLienCorrection(e){
   const attente = (DB.correctionsFiches || []).filter(c => c.eleveId === e.id && c.statut === 'en_attente').length;
@@ -2175,7 +2175,7 @@ function renderCorrectionsParents(){
       <thead><tr><th>Élève</th><th>Changement demandé</th><th></th></tr></thead>
       <tbody>${liste.map(c => { const e = eleveById(c.eleveId); return `<tr>
         <td>${e ? escapeHtml(eleveFullName(e)) : '—'}<br><span class="hint">${e ? escapeHtml(classeName(e.classeId)) : ''} · ${fmtDate(String(c.createdAt).slice(0, 10))}</span></td>
-        <td>${Object.entries(c.champs || {}).map(([k, v]) => `<div><strong>${escapeHtml(CHAMPS_CORRECTION[k]?.lib || k)} :</strong> <span class="hint">${escapeHtml(valeurLisible(k, e ? e[CHAMPS_CORRECTION[k]?.cle] : ''))}</span> → <strong>${escapeHtml(valeurLisible(k, v))}</strong></div>`).join('')}${c.commentaire ? `<div class="hint">« ${escapeHtml(c.commentaire)} »</div>` : ''}</td>
+        <td>${Object.entries(c.champs || {}).map(([k, v]) => `<div><strong>${escapeHtml(CHAMPS_CORRECTION[k]?.lib || k)} :</strong> <span class="hint">${escapeHtml(valeurCorrectionLisible(k, e ? e[CHAMPS_CORRECTION[k]?.cle] : ''))}</span> → <strong>${escapeHtml(valeurCorrectionLisible(k, v))}</strong></div>`).join('')}${c.commentaire ? `<div class="hint">« ${escapeHtml(c.commentaire)} »</div>` : ''}</td>
         <td style="white-space:nowrap;"><button class="btn sm" onclick="traiterCorrectionFiche('${c.id}', true)">✓ Appliquer</button> <button class="btn secondary sm" onclick="traiterCorrectionFiche('${c.id}', false)">Refuser</button></td>
       </tr>`; }).join('')}</tbody></table></div>
   </div>`;
