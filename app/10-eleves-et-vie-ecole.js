@@ -299,7 +299,7 @@ function renderMaJournee(){
   chargerSecuriteEleves();
   const prochain = prochainJourClasse();
   const aujourd = todayISO(), jourIso = ((new Date().getDay() + 6) % 7) + 1;
-  const renfAujourdhui = (DB.horairesAnnonces?.joursRenforcement || [1,2,3,4,5]).includes(jourIso);
+  const renfAujourdhui = (DB?.horairesAnnonces?.joursRenforcement || [1,2,3,4,5]).includes(jourIso);
   const classes = classesVisibles();
   const cartes = classes.map(c => {
     const eleves = DB.eleves.filter(e => e.classeId === c.id && e.statut === 'Actif');
@@ -862,7 +862,7 @@ async function retirerAccesParentLiens(peId){
    (annonces automatiques : fonction annoncer-horaires, sections 50 et 51).
    ===================================================================== */
 function renderRenforcement(){
-  const h = DB.horairesAnnonces || {};
+  const h = DB?.horairesAnnonces || {};
   const inscrits = DB.eleves.filter(e => e.statut === 'Actif' && e.renforcement).sort((a, b) => a.nom.localeCompare(b.nom));
   const jours = h.joursRenforcement || [1,2,3,4,5];
   const debut = (h.apresmidiFinPrimaire || '16:00').slice(0, 5), fin = (h.renforcementFin || '17:00').slice(0, 5);
@@ -1743,7 +1743,7 @@ async function enregistrerCoefficients(ev){
 const CYCLE_APPEL = ['', 'Présent', 'Absent', 'Retard'];
 function joursDeClasseDuMois(mois){
   const [a, m] = mois.split('-').map(Number);
-  const jours = DB.horairesAnnonces?.joursCours || [1, 2, 3, 4, 5];
+  const jours = DB?.horairesAnnonces?.joursCours || [1, 2, 3, 4, 5];
   const res = [];
   for(let j = 1; j <= new Date(a, m, 0).getDate(); j++){
     const d = new Date(a, m - 1, j, 12), iso = ((d.getDay() + 6) % 7) + 1;
@@ -1814,7 +1814,7 @@ function renderAppelDuJour(classeId, eleves, date){
   }
   if(!eleves.length) return '<div class="empty-state"><div class="em-ic">📒</div>Aucun élève actif dans cette classe.</div>';
   const jourIso = ((new Date(auj + 'T12:00:00').getDay() + 6) % 7) + 1;
-  const jourDeClasse = (DB.horairesAnnonces?.joursCours || [1, 2, 3, 4, 5]).includes(jourIso);
+  const jourDeClasse = (DB?.horairesAnnonces?.joursCours || [1, 2, 3, 4, 5]).includes(jourIso);
   const dejaFait = DB.presencesEleves.some(p => p.date === auj && p.classeId === classeId);
   const lignes = eleves.map(e => {
     const rec = DB.presencesEleves.find(p => p.eleveId === e.id && p.date === auj);

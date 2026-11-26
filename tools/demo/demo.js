@@ -38,6 +38,7 @@
   // ---- Utilisateur fictif courant
   const ROLES = {
     direction:  { id: 'demo-direction',  email: 'direction@demo.ecomaz',  page: 'index.html',      libelle: 'Direction',  icone: '🏫', aide: 'Tableau de bord, élèves, scolarité, comptabilité' },
+    secretariat: { id: 'demo-secretariat', email: 'secretariat@demo.ecomaz', page: 'index.html', libelle: 'Secrétariat', icone: '🗂️', aide: 'Inscriptions, scolarité, reçus, rapports' },
     enseignant: { id: 'demo-enseignant', email: 'enseignant@demo.ecomaz', page: 'enseignant.html', libelle: 'Enseignant', icone: '👩🏾‍🏫', aide: 'Appel, notes, devoirs, pointage' },
     parent:     { id: 'demo-parent',     email: 'parent@demo.ecomaz',     page: 'parent.html',     libelle: 'Parent',     icone: '👨🏾‍👧🏾', aide: 'Suivi de ses enfants, absences, paiements' },
     portier:    { id: 'demo-portier',    email: 'portier@demo.ecomaz',    page: 'portier.html',    libelle: 'Portier',    icone: '🚪', aide: 'Sorties des élèves, personnes autorisées' },
@@ -54,6 +55,20 @@
   const egal = (a, b) => a === b || (a != null && b != null && String(a) === String(b));
   const comparer = (a, b) => (a == null ? (b == null ? 0 : -1) : b == null ? 1 : a > b ? 1 : a < b ? -1 : 0);
 
+  // Filtre « or » de Supabase (forme simple : col.eq.val et and(...) imbriqués)
+  function decouper(x){
+    const parts = []; let prof = 0, cour = '';
+    for(const ch of x){ if(ch === '(') prof++; if(ch === ')') prof--; if(ch === ',' && !prof){ parts.push(cour); cour = ''; } else cour += ch; }
+    if(cour) parts.push(cour);
+    return parts.map(t => t.trim()).filter(Boolean).map(t => {
+      const m = /^and\((.*)\)$/.exec(t);
+      if(m){ const sous = decouper(m[1]); return l => sous.every(f => f(l)); }
+      const [c, o, ...v] = t.split('.'); const val = v.join('.');
+      if(o === 'eq') return l => egal(l[c], val);
+      if(o === 'is') return l => val === 'null' ? l[c] == null : String(l[c]) === val;
+      return () => true;
+    });
+  }
   function requete(table){
     const t = nomTable(table);
     let op = 'select', donnees = null, filtres = [], tris = [], debut = 0, fin = null, une = false, peutEtre = false, tete = false, retour = false, conflit = 'id', colonnes = null;
@@ -71,7 +86,8 @@
       contains(c, v){ const vs = Array.isArray(v) ? v : [v]; filtres.push(l => Array.isArray(l[c]) && vs.every(x => l[c].includes(x))); return q; },
       overlaps(c, v){ filtres.push(l => Array.isArray(l[c]) && (v || []).some(x => l[c].includes(x))); return q; },
       match(o){ for(const k in o) q.eq(k, o[k]); return q; },
-      or(){ return q; }, filter(){ return q; }, textSearch(){ return q; },
+      or(expr){ const termes = decouper(String(expr || '')); if(termes.length) filtres.push(l => termes.some(tm => tm(l))); return q; },
+      filter(){ return q; }, textSearch(){ return q; },
       order(c, o){ tris.push([c, !o || o.ascending !== false]); return q; },
       limit(n){ fin = debut + n - 1; return q; }, range(a, b){ debut = a; fin = b; return q; },
       single(){ une = true; return q; }, maybeSingle(){ peutEtre = true; return q; },
@@ -86,6 +102,7 @@
     function visibles(){
       let r = lignes();
       const enfants = enfantsDuParent();
+      if(t === 'messages_personnel'){ const u = utilisateur(); r = r.filter(l => u && (l.expediteur_id === u.id || l.destinataire_id === u.id)); }
       if(enfants){ if(t === 'eleves') r = r.filter(l => enfants.has(l.id)); else if(r[0] && 'eleve_id' in r[0]) r = r.filter(l => !l.eleve_id || enfants.has(l.eleve_id)); }
       return r;
     }
@@ -128,7 +145,12 @@
     return q;
   }
   // Petits automatismes du vrai serveur (reçu numéroté après un paiement)
+  const REPONSES = ['Bien reçu, merci !', 'D’accord, je m’en occupe.', 'Merci pour l’information 👍', 'Je passe vous voir à la pause.'];
   function actionsInternes(t, faits){
+    if(t === 'messages_personnel'){
+      for(const m of faits){ const dest = (T.profiles || []).find(p => p.id === m.destinataire_id);
+        if(dest && enLigneDemo(dest.id)) setTimeout(() => { T.messages_personnel.push({ id: uuid(), ecole_id: ECOLE, expediteur_id: dest.id, destinataire_id: m.expediteur_id, contenu: REPONSES[Math.floor(Math.random() * REPONSES.length)], lu_at: null, created_at: new Date().toISOString() }); m.lu_at = new Date().toISOString(); enregistrer(); }, 3500); }
+    }
     if(t === 'paiements_scolarite' || t === 'paiements_cotisations'){
       T.recus = T.recus || [];
       for(const p of faits){ const n = T.recus.length + 1;
@@ -139,7 +161,17 @@
   const ok = data => Promise.resolve({ data, error: null });
   const heure = () => new Date().toTimeString().slice(0, 5);
   const aujourdhui = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+  const PERSONNEL = ['direction', 'fondation', 'secretariat', 'enseignant'];
+  // Présence fictive : environ la moitié du personnel « connecté », le reste vu récemment
+  function enLigneDemo(id){ let h = 0; for(const c of String(id)) h = (h * 31 + c.charCodeAt(0)) >>> 0; return h % 2 === 0; }
+  function vuDemo(id){ let h = 7; for(const c of String(id)) h = (h * 17 + c.charCodeAt(0)) >>> 0; return new Date(Date.now() - (enLigneDemo(id) ? 20 : 600 + (h % 3000)) * 60000 / 60).toISOString(); }
   const RPC = {
+    signaler_presence: () => null, quitter_presence: () => null,
+    personnel_connecte: () => { const moi = profilCourant(); if(!moi || !PERSONNEL.includes(moi.role)) return [];
+      return (T.profiles || []).filter(p => p.id !== moi.id && PERSONNEL.includes(p.role)).map(p => ({ id: p.id, nom: p.nom_complet, role: p.role, civilite: p.civilite,
+        en_ligne: enLigneDemo(p.id), vu_le: vuDemo(p.id), non_lus: (T.messages_personnel || []).filter(m => m.destinataire_id === moi.id && m.expediteur_id === p.id && !m.lu_at).length }))
+        .sort((a, b) => (b.en_ligne - a.en_ligne) || a.nom.localeCompare(b.nom)); },
+    marquer_messages_lus: (a) => { const moi = profilCourant(); let n = 0; (T.messages_personnel || []).forEach(m => { if(moi && m.destinataire_id === moi.id && m.expediteur_id === (a && a.p_de) && !m.lu_at){ m.lu_at = new Date().toISOString(); n++; } }); enregistrer(); return n; },
     mes_fonctions: () => { const p = profilCourant(); return p ? [{ role: p.role, principale: true }] : []; },
     compteur_portier_jour: () => (T.notifications_portier || []).filter(n => String(n.created_at || '').startsWith(aujourdhui())).length,
     jeton_qr_pointage: () => 'demo-jeton-qr', renouveler_jeton_qr_pointage: () => 'demo-jeton-qr',
@@ -162,7 +194,7 @@
   };
   const client = {
     from: requete,
-    rpc: (nom) => ok(RPC[nom] ? RPC[nom]() : []),
+    rpc: (nom, args) => ok(RPC[nom] ? RPC[nom](args) : []),
     functions: { invoke: async (nom, o) => { await new Promise(r => setTimeout(r, 300)); return { data: FONCTIONS[nom] ? FONCTIONS[nom](o && o.body) : { ok: true, demo: true, message: 'Action simulée (démonstration)' }, error: null }; } },
     channel(){ const c = { on(){ return c; }, subscribe(){ return c; }, unsubscribe(){}, send(){ return Promise.resolve('ok'); } }; return c; },
     removeChannel(){}, removeAllChannels(){},

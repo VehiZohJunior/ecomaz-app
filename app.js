@@ -205,6 +205,7 @@ const VIEW_TITLES = {
   services: 'Tous nos services',
   'creer-evaluation': 'Je crée une évaluation',
   'boite-evaluations': 'Boîte à évaluations',
+  rapports: 'Rapports et téléchargements',
 };
 
 /* --- Comptabilité --- */
@@ -241,8 +242,8 @@ const COMPTA_TABS = [
 
 /* --- Rôles / Interfaces --- */
 const ROLES = {
-  enseignant:  {label:'Enseignant(e)', icon:'👩‍🏫', desc:'Notes, présences, emploi du temps', nav:['dashboard','services','cahier-appel','camps-de-base','creer-evaluation','notes','presences-eleves','devoirs','emploi-temps','programmes','rapport-activite','vie-ecole','agenda']},
-  secretariat: {label:'Secrétariat', icon:'🗂️', desc:'Gestion administrative & scolarité', nav:['dashboard','services','eleves','liens-parents','renforcement','vie-ecole','agenda','devoirs','cantine','cahier-appel','camps-de-base','notes','presences-eleves','emploi-temps','programmes','pointage-scan','enseignants','presences-enseignants','comptabilite','messagerie','boite-evaluations']},
+  enseignant:  {label:'Enseignant(e)', icon:'👩‍🏫', desc:'Notes, présences, emploi du temps', nav:['dashboard','services','cahier-appel','camps-de-base','creer-evaluation','notes','presences-eleves','devoirs','emploi-temps','programmes','rapport-activite','rapports','vie-ecole','agenda']},
+  secretariat: {label:'Secrétariat', icon:'🗂️', desc:'Gestion administrative & scolarité', nav:['dashboard','services','eleves','liens-parents','renforcement','vie-ecole','agenda','devoirs','cantine','cahier-appel','camps-de-base','notes','presences-eleves','emploi-temps','programmes','pointage-scan','enseignants','presences-enseignants','comptabilite','rapports','messagerie','boite-evaluations']},
   direction:   {label:'Direction', icon:'🎩', desc:'Accès complet', nav:'all'},
   fondation:   {label:'Fondation', icon:'🏛️', desc:'Accès complet', nav:'all'},
   parent:      {label:'Parent', icon:'👪', desc:"Suivi de l'enfant", nav:[]},
@@ -939,6 +940,7 @@ function renderView(view){
     'boite-evaluations': renderBoiteEvaluations,
     'camps-de-base': renderCampsDeBase,
     renforcement: renderRenforcement,
+    rapports: renderRapports,
   };
   // Données pas encore chargées, ou déjà effacées par une déconnexion (fin
   // de session, inactivité) : rien à afficher, l'écran de connexion est là.
@@ -1855,7 +1857,7 @@ function renderPresenceSemaine(e){
   if(!Array.isArray(DB.presencesSemaine)) return '';
   const lundi = debutSemaine(new Date());
   const aujourdhui = isoLocal(new Date());
-  const joursClasse = DB.horairesAnnonces?.joursCours || [1, 2, 3, 4, 5];
+  const joursClasse = DB?.horairesAnnonces?.joursCours || [1, 2, 3, 4, 5];
   const cases = JOURS_SEMAINE.map((lib, i) => {
     if(!joursClasse.includes(i + 1)) return '';
     const d = new Date(lundi); d.setDate(lundi.getDate() + i);
@@ -2087,7 +2089,7 @@ function renderAujourdhuiParent(enfants){
   const e = enfants.find(x => x.id === ui.enfantAujourdhui) || enfants[0];
   const auj = isoLocal(new Date());
   const jourIso = ((new Date().getDay() + 6) % 7) + 1;
-  const jourDeClasse = (DB.meta?.joursCours || DB.horairesAnnonces?.joursCours || [1, 2, 3, 4, 5]).includes(jourIso);
+  const jourDeClasse = (DB.meta?.joursCours || DB?.horairesAnnonces?.joursCours || [1, 2, 3, 4, 5]).includes(jourIso);
   const p = Array.isArray(DB.presencesSemaine) ? DB.presencesSemaine.find(x => x.eleveId === e.id && x.date === auj) : null;
   const presence = p ? (p.statut === 'Présent' ? { cls:'ok', ic:'circle-check', txt:'Présent(e) à l’école' } : p.statut === 'Retard' ? { cls:'attente', ic:'clock', txt:'Arrivé(e) en retard' } : { cls:'erreur', ic:'circle-x', txt:'Absent(e) aujourd’hui' })
     : jourDeClasse ? { cls:'neutre', ic:'clock', txt:'L’appel n’est pas encore fait' } : { cls:'neutre', ic:'calendar', txt:'Pas de classe aujourd’hui' };
@@ -2124,7 +2126,7 @@ function seancesClasseDate(classeId, iso){
 }
 // Prochain jour de classe (jours de l'école, hors congés de l'agenda)
 function prochainJourDeClasse(apresIso){
-  const jours = DB.horairesAnnonces?.joursCours || [1, 2, 3, 4, 5];
+  const jours = DB?.horairesAnnonces?.joursCours || [1, 2, 3, 4, 5];
   const d = new Date(apresIso + 'T12:00:00');
   for(let i = 0; i < 21; i++){
     d.setDate(d.getDate() + 1);
@@ -2939,6 +2941,15 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.11.26-1', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ '👥 Personnes connectées : bouton en haut de l’écran. Voyant vert = la personne utilise l’application en ce moment, voyant gris = pas connectée. Touchez un nom pour lui écrire directement dans l’application (le message attend s’il n’est pas connecté).',
+      '📥 Nouveau menu « Rapports et téléchargements » : tous les rapports en un clic (rapport général du mois en Excel, comptabilité, reçus, scolarité, élèves, cahier d’appel, bulletins, emploi du temps…) et tout ce qu’on peut charger pour remplir l’application.',
+      '💡 « À faire aujourd’hui » vous signale maintenant aussi : élèves absents 3 jours de suite, familles en retard de paiement (relance WhatsApp prête), parents pas encore reliés, anniversaires du jour.',
+      'Reçus du mois : un message s’affiche quand le mois choisi n’a aucun reçu (avant, rien ne se passait).' ],
+  } },
   { version: '2026.11.21-4', nouveautes: {
     commun: [],
     parent: [],
@@ -4082,7 +4093,7 @@ function creneauxProposes(ficheId, classeIds){
     [...parJour.entries()].sort((a, b) => a[0] - b[0]).forEach(([jour, h]) => { if(h.debut < h.fin) sortie.push({ classe, jour, debut: h.debut, fin: h.fin, origine: 'edt' }); });
     // Classe sans emploi du temps (ex. maternelle) : horaires de l'école (Paramètres → Horaires), jours de classe de l'école
     if(!parJour.size){
-      const h = DB.horairesAnnonces || {}, mat = classeCycle(classe) !== 'Primaire';
+      const h = DB?.horairesAnnonces || {}, mat = classeCycle(classe) !== 'Primaire';
       const debut = hhmmEdt(mat ? h.matinDebutMaternelle : h.matinDebutPrimaire), fin = hhmmEdt(mat ? h.apresmidiFinMaternelle : h.apresmidiFinPrimaire);
       if(/^\d{2}:\d{2}$/.test(debut) && /^\d{2}:\d{2}$/.test(fin) && debut < fin)
         (h.joursCours || []).filter(j => j >= 1 && j <= 6).sort().forEach(jour => sortie.push({ classe, jour, debut, fin, origine: 'ecole' }));
@@ -4190,6 +4201,7 @@ function enterApp(){
   majBanniereHorsLigne();
   synchroniserFileAttente();
   startPollingBulles();
+  demarrerPersonnesConnectees();
   afficherNouveautes();
   activerPush(true);
 }
@@ -4510,6 +4522,7 @@ async function entrerSelonRole(){
 async function logoutRole(){
   stopIdleWatcher();
   stopPollingBulles();
+  arreterPersonnesConnectees();
   document.body.classList.remove('theme-parent', 'has-parent-nav');
   if(window.ESPACE_FIXE !== 'portier') document.body.classList.remove('theme-portier');
   const navParentEl = document.getElementById('parentNav'); if(navParentEl) navParentEl.remove();
@@ -4619,7 +4632,7 @@ function animerCompteursKpi(){
 function icone(nom){ return window.EmIcones ? EmIcones.svg(nom) : ''; }
 function estJourDeClasse(iso){
   const j = ((new Date(iso + 'T12:00:00').getDay() + 6) % 7) + 1;
-  return (DB.horairesAnnonces?.joursCours || [1, 2, 3, 4, 5]).includes(j);
+  return (DB?.horairesAnnonces?.joursCours || [1, 2, 3, 4, 5]).includes(j);
 }
 // Bande unique « À faire aujourd'hui » : appel, pointage, demandes des familles
 function renderAFaireAujourdhui(){
@@ -4639,6 +4652,7 @@ function renderAFaireAujourdhui(){
     SUJETS_A_TRAITER.filter(su => (!su.roles || su.roles.includes(ui.role)) && (c[su.cle] || 0) > 0)
       .forEach(su => lignes.push({ ic:'mail', texte:`${c[su.cle]} ${su.lib}`, detail:'', bouton:'Traiter', action:`DB.aTraiter.charge=0; go('${su.vue}')${su.cle === 'acces' ? "; allerAuxDemandesAcces()" : ''}` }));
   }
+  if(admin && typeof conseilsAssistant === 'function') lignes.push(...conseilsAssistant());
   return `<section class="panel afaire" aria-labelledby="titreAFaire">
     <div class="afaire-tete"><h2 id="titreAFaire">À faire aujourd’hui</h2>${lignes.length ? `<span class="afaire-compte">${lignes.length}</span>` : ''}</div>
     ${lignes.length ? `<ul class="afaire-liste">${lignes.map(l => `<li class="afaire-ligne">
@@ -4932,7 +4946,7 @@ function renderAccueilEnseignant(){
     ? { etat:'info', titre:`Votre arrivée est enregistrée${moiPointe.heureArrivee ? ' à ' + escapeHtml(String(moiPointe.heureArrivee).slice(0, 5)) : ''}`, detail: moiPointe.statut === 'Retard' ? `Noté en retard${moiPointe.minutesRetard ? ` (${moiPointe.minutesRetard} min)` : ''}.` : '' }
     : { etat:'info', titre:'Votre arrivée n’est pas encore enregistrée', detail:'Pointez-la dans « Mon pointage » ci-dessus (GPS, QR de l’école ou photo), depuis l’établissement, ou faites scanner votre badge à l’accueil.' });
   const jourIso = ((new Date().getDay() + 6) % 7) + 1;
-  const renfAuj = coursAuj && (DB.horairesAnnonces?.joursRenforcement || [1, 2, 3, 4, 5]).includes(jourIso);
+  const renfAuj = coursAuj && (DB?.horairesAnnonces?.joursRenforcement || [1, 2, 3, 4, 5]).includes(jourIso);
   if(coursAuj) classes.forEach(c => {
     const eleves = effectif(c.id);
     const signales = eleves.map(e => ({ e, a: absenceSignalee(e.id, auj) })).filter(x => x.a);
@@ -5943,7 +5957,7 @@ function renderMaJournee(){
   chargerSecuriteEleves();
   const prochain = prochainJourClasse();
   const aujourd = todayISO(), jourIso = ((new Date().getDay() + 6) % 7) + 1;
-  const renfAujourdhui = (DB.horairesAnnonces?.joursRenforcement || [1,2,3,4,5]).includes(jourIso);
+  const renfAujourdhui = (DB?.horairesAnnonces?.joursRenforcement || [1,2,3,4,5]).includes(jourIso);
   const classes = classesVisibles();
   const cartes = classes.map(c => {
     const eleves = DB.eleves.filter(e => e.classeId === c.id && e.statut === 'Actif');
@@ -6506,7 +6520,7 @@ async function retirerAccesParentLiens(peId){
    (annonces automatiques : fonction annoncer-horaires, sections 50 et 51).
    ===================================================================== */
 function renderRenforcement(){
-  const h = DB.horairesAnnonces || {};
+  const h = DB?.horairesAnnonces || {};
   const inscrits = DB.eleves.filter(e => e.statut === 'Actif' && e.renforcement).sort((a, b) => a.nom.localeCompare(b.nom));
   const jours = h.joursRenforcement || [1,2,3,4,5];
   const debut = (h.apresmidiFinPrimaire || '16:00').slice(0, 5), fin = (h.renforcementFin || '17:00').slice(0, 5);
@@ -7387,7 +7401,7 @@ async function enregistrerCoefficients(ev){
 const CYCLE_APPEL = ['', 'Présent', 'Absent', 'Retard'];
 function joursDeClasseDuMois(mois){
   const [a, m] = mois.split('-').map(Number);
-  const jours = DB.horairesAnnonces?.joursCours || [1, 2, 3, 4, 5];
+  const jours = DB?.horairesAnnonces?.joursCours || [1, 2, 3, 4, 5];
   const res = [];
   for(let j = 1; j <= new Date(a, m, 0).getDate(); j++){
     const d = new Date(a, m - 1, j, 12), iso = ((d.getDay() + 6) % 7) + 1;
@@ -7458,7 +7472,7 @@ function renderAppelDuJour(classeId, eleves, date){
   }
   if(!eleves.length) return '<div class="empty-state"><div class="em-ic">📒</div>Aucun élève actif dans cette classe.</div>';
   const jourIso = ((new Date(auj + 'T12:00:00').getDay() + 6) % 7) + 1;
-  const jourDeClasse = (DB.horairesAnnonces?.joursCours || [1, 2, 3, 4, 5]).includes(jourIso);
+  const jourDeClasse = (DB?.horairesAnnonces?.joursCours || [1, 2, 3, 4, 5]).includes(jourIso);
   const dejaFait = DB.presencesEleves.some(p => p.date === auj && p.classeId === classeId);
   const lignes = eleves.map(e => {
     const rec = DB.presencesEleves.find(p => p.eleveId === e.id && p.date === auj);
@@ -11816,7 +11830,7 @@ function imprimerRecusGroupes(mois){
   const liste = (DB.recus || []).filter(x => String(x.datePaiement || x.emisLe || '').slice(0, 7) === mois && (!classeF || eleveById(x.eleveId)?.classeId === classeF))
     .map(x => ({ x, e: eleveById(x.eleveId) }))
     .sort((a, b) => (a.e ? classeName(a.e.classeId) : '').localeCompare(b.e ? classeName(b.e.classeId) : '') || (a.e ? eleveFullName(a.e) : '').localeCompare(b.e ? eleveFullName(b.e) : '') || String(a.x.numero).localeCompare(String(b.x.numero)));
-  if(!liste.length) return;
+  if(!liste.length){ toast(`Aucun reçu pour ${moisLabel(mois)}${classeF ? ' dans cette classe' : ''}.`); return; }
   const recus = liste.map(({ x, e }) => buildRecuHtml({ type:'entree', refId: x.enregistrementId, montant: x.montant, date: x.datePaiement, modePaiement: x.modePaiement, objet: x.objet, personne: e ? eleveFullName(e) : '', sousInfo: e ? classeName(e.classeId) : '' }));
   const nomMois = (t => t.charAt(0).toUpperCase() + t.slice(1))(new Date(mois + '-15T12:00:00').toLocaleDateString('fr-FR', { month:'long', year:'numeric' }));
   openModal(`${liste.length} reçu(s) — ${nomMois}${classeF ? ' — ' + classeName(classeF) : ''}`, `
@@ -15855,6 +15869,455 @@ function renderBoiteEvaluations(){
 }
 
 
+/* =====================================================================
+   PERSONNES CONNECTÉES + MESSAGES ENTRE COLLÈGUES (26/11/2026)
+   Demande de Vehi Zoh Junior : « comme sur Messenger ».
+   - Barre du haut : bouton 👥 avec le nombre de personnes connectées
+     et une pastille rouge s'il y a des messages non lus.
+   - Liste dépliable : voyant VERT = connecté, voyant GRIS = pas connecté
+     (« vu il y a 12 min »). Un clic sur un nom ouvre la discussion.
+   - Personnel seulement (direction, fondation, secrétariat, enseignants) ;
+     règles côté serveur : schema.sql section 129.
+   Présence : un signal « je suis là » par minute tant que l'application
+   est à l'écran ; connecté = signal de moins de 2 minutes.
+   ===================================================================== */
+const PC_ROLES = ['direction', 'fondation', 'secretariat', 'enseignant'];
+const pc = { liste: [], timer: null, convAvec: null, convTimer: null, ouvert: false, horsLigneOuvert: false, dernierNonLus: null, envoiEnCours: false };
+
+function pcActif(){ return PC_ROLES.includes(ui.role) && !!session.userId; }
+
+function demarrerPersonnesConnectees(){
+  arreterPersonnesConnectees(true);
+  if(!pcActif()) return;
+  pcInstallerBouton();
+  pcBattement();
+  pc.timer = setInterval(pcBattement, 45000);
+}
+function arreterPersonnesConnectees(silencieux){
+  clearInterval(pc.timer); pc.timer = null;
+  clearInterval(pc.convTimer); pc.convTimer = null;
+  pc.liste = []; pc.convAvec = null; pc.ouvert = false; pc.dernierNonLus = null;
+  if(!silencieux){ try{ sb.rpc('quitter_presence'); }catch(_e){} }
+  const w = document.getElementById('pcWrap'); if(w) w.remove();
+}
+// Retour à l'écran : signal immédiat (le voyant repasse au vert sans attendre)
+document.addEventListener('visibilitychange', () => { if(!document.hidden && pc.timer) pcBattement(); });
+
+async function pcBattement(){
+  if(!pcActif() || document.hidden) return;
+  try{
+    await sb.rpc('signaler_presence');
+    const { data, error } = await sb.rpc('personnel_connecte');
+    if(error) throw error;
+    pc.liste = data || [];
+    const nonLus = pc.liste.reduce((s, p) => s + (p.non_lus || 0), 0);
+    if(pc.dernierNonLus !== null && nonLus > pc.dernierNonLus){
+      const de = pc.liste.find(p => p.non_lus > 0 && p.id !== pc.convAvec);
+      if(de) toast(`💬 Nouveau message de ${de.nom}`);
+    }
+    pc.dernierNonLus = nonLus;
+    pcMajBouton();
+    if(pc.ouvert) pcMajPanneau();
+  }catch(_e){ /* réseau : on réessaiera au prochain battement */ }
+}
+
+function pcInstallerBouton(){
+  if(document.getElementById('pcWrap')) return;
+  const droite = document.querySelector('.topbar-right'); if(!droite) return;
+  const w = document.createElement('div');
+  w.className = 'pc-wrap'; w.id = 'pcWrap';
+  w.innerHTML = `<button type="button" class="bulle-btn pc-btn" id="pcBtn" onclick="pcBasculer()" aria-haspopup="dialog" aria-expanded="false" title="Personnes connectées">
+      <span aria-hidden="true">👥</span><span class="pc-compte" id="pcCompte" hidden></span><span class="bulle-badge" id="pcNonLus" hidden></span></button>
+    <div class="bulle-dropdown pc-panneau" id="pcPanneau" role="dialog" aria-label="Personnes connectées" hidden></div>`;
+  droite.insertBefore(w, droite.firstChild);
+}
+
+function pcMajBouton(){
+  const enLigne = pc.liste.filter(p => p.en_ligne).length;
+  const nonLus = pc.liste.reduce((s, p) => s + (p.non_lus || 0), 0);
+  const c = document.getElementById('pcCompte'), b = document.getElementById('pcNonLus'), btn = document.getElementById('pcBtn');
+  if(c){ c.hidden = !enLigne; c.textContent = enLigne; }
+  if(b){ b.hidden = !nonLus; b.textContent = nonLus > 9 ? '9+' : nonLus; }
+  if(btn) btn.setAttribute('aria-label', `Personnes connectées : ${enLigne}${nonLus ? `, ${nonLus} message${nonLus > 1 ? 's' : ''} non lu${nonLus > 1 ? 's' : ''}` : ''}`);
+}
+
+function pcBasculer(ouvrir){
+  const p = document.getElementById('pcPanneau'); if(!p) return;
+  pc.ouvert = ouvrir === undefined ? p.hidden : !!ouvrir;
+  p.hidden = !pc.ouvert;
+  const btn = document.getElementById('pcBtn'); if(btn) btn.setAttribute('aria-expanded', String(pc.ouvert));
+  if(pc.ouvert){ pcMajPanneau(); pcBattement(); }
+}
+document.addEventListener('click', e => {
+  if(!pc.ouvert) return;
+  const w = document.getElementById('pcWrap');
+  if(w && !w.contains(e.target)) pcBasculer(false);
+});
+
+function pcVuIlYa(iso){
+  if(!iso) return 'pas encore connecté(e)';
+  const min = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+  if(min < 60) return `vu(e) il y a ${Math.max(min, 1)} min`;
+  const h = Math.round(min / 60);
+  if(h < 24) return `vu(e) il y a ${h} h`;
+  const j = Math.round(h / 24);
+  return j === 1 ? 'vu(e) hier' : `vu(e) il y a ${j} jours`;
+}
+function pcInitiales(nom){ return String(nom || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(m => m[0].toUpperCase()).join(''); }
+function pcFonction(role){ return (ROLES[role] && ROLES[role].label) || role; }
+
+function pcLigne(p){
+  return `<li><button type="button" class="pc-personne" onclick="pcOuvrirDiscussion('${p.id}')">
+      <span class="pc-avatar" aria-hidden="true">${escapeHtml(pcInitiales(p.nom))}<span class="pc-voyant ${p.en_ligne ? 'vert' : 'gris'}"></span></span>
+      <span class="pc-txt"><strong>${escapeHtml(p.nom)}</strong><small>${escapeHtml(pcFonction(p.role))} · ${p.en_ligne ? '<span class="pc-en-ligne">connecté(e)</span>' : pcVuIlYa(p.vu_le)}</small></span>
+      ${p.non_lus ? `<span class="pc-nl" aria-label="${p.non_lus} non lu(s)">${p.non_lus}</span>` : ''}
+    </button></li>`;
+}
+
+function pcMajPanneau(){
+  const el = document.getElementById('pcPanneau'); if(!el) return;
+  const enLigne = pc.liste.filter(p => p.en_ligne);
+  const horsLigne = pc.liste.filter(p => !p.en_ligne);
+  el.innerHTML = `
+    <div class="cn-tete"><strong>Personnes connectées</strong><button type="button" class="cn-fermer" onclick="pcBasculer(false)" aria-label="Fermer">✕</button></div>
+    <details class="pc-groupe" open>
+      <summary><span class="pc-voyant vert"></span> Connectées maintenant (${enLigne.length})</summary>
+      ${enLigne.length ? `<ul class="pc-liste">${enLigne.map(pcLigne).join('')}</ul>` : '<p class="pc-vide">Personne d’autre n’est connecté pour l’instant.</p>'}
+    </details>
+    <details class="pc-groupe"${pc.horsLigneOuvert ? ' open' : ''} ontoggle="pc.horsLigneOuvert = this.open">
+      <summary><span class="pc-voyant gris"></span> Pas connectées (${horsLigne.length})</summary>
+      ${horsLigne.length ? `<ul class="pc-liste">${horsLigne.map(pcLigne).join('')}</ul>` : '<p class="pc-vide">Tout le monde est connecté.</p>'}
+    </details>
+    <p class="pc-aide">Touchez un nom pour lui écrire. Le message reste dans l’application, même si la personne n’est pas connectée.</p>`;
+}
+
+/* ----------------------------- Discussion ----------------------------- */
+async function pcOuvrirDiscussion(id){
+  const p = pc.liste.find(x => x.id === id); if(!p) return;
+  pcBasculer(false);
+  pc.convAvec = id;
+  openModal(`💬 ${p.nom}`, `
+    <div class="pc-conv-tete"><span class="pc-voyant ${p.en_ligne ? 'vert' : 'gris'}" id="pcConvVoyant"></span>
+      <span id="pcConvEtat">${escapeHtml(pcFonction(p.role))} · ${p.en_ligne ? 'connecté(e)' : pcVuIlYa(p.vu_le)}</span></div>
+    <div class="pc-fil" id="pcFil" aria-live="polite"><p class="pc-vide">Chargement…</p></div>
+    <form class="pc-saisie" onsubmit="event.preventDefault(); pcEnvoyer()">
+      <textarea id="pcTexte" rows="2" maxlength="2000" placeholder="Écrire un message…" aria-label="Votre message"
+        onkeydown="if(event.key==='Enter' && !event.shiftKey){ event.preventDefault(); pcEnvoyer(); }"></textarea>
+      <button type="submit" class="btn" id="pcEnvoyerBtn">Envoyer</button>
+    </form>`);
+  setTimeout(() => { const t = document.getElementById('pcTexte'); if(t) t.focus(); }, 50);
+  await pcChargerFil(true);
+  clearInterval(pc.convTimer);
+  pc.convTimer = setInterval(() => {
+    if(!document.getElementById('pcFil')){ clearInterval(pc.convTimer); pc.convTimer = null; pc.convAvec = null; return; }
+    if(!document.hidden) pcChargerFil(false);
+  }, 5000);
+}
+
+async function pcChargerFil(defiler){
+  const id = pc.convAvec, moi = session.userId; if(!id || !moi) return;
+  const { data, error } = await sb.from('messages_personnel')
+    .select('id,expediteur_id,destinataire_id,contenu,lu_at,created_at')
+    .or(`and(expediteur_id.eq.${moi},destinataire_id.eq.${id}),and(expediteur_id.eq.${id},destinataire_id.eq.${moi})`)
+    .order('created_at', { ascending: true }).limit(300);
+  const fil = document.getElementById('pcFil'); if(!fil || pc.convAvec !== id) return;
+  if(error){ fil.innerHTML = '<p class="pc-vide">Impossible de charger la discussion. Vérifiez la connexion.</p>'; return; }
+  const enBas = fil.scrollHeight - fil.scrollTop - fil.clientHeight < 40;
+  const msgs = data || [];
+  let jour = '';
+  fil.innerHTML = msgs.length ? msgs.map(m => {
+    const d = new Date(m.created_at), j = d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+    const sep = j !== jour ? `<div class="pc-jour">${escapeHtml(j)}</div>` : ''; jour = j;
+    const deMoi = m.expediteur_id === moi;
+    const heure = d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+    return `${sep}<div class="pc-msg ${deMoi ? 'moi' : 'lui'}"><div class="pc-bulle">${escapeHtml(m.contenu).replace(/\n/g, '<br>')}</div>
+      <small>${heure}${deMoi ? (m.lu_at ? ' · ✓✓ lu' : ' · ✓ envoyé') : ''}</small></div>`;
+  }).join('') : '<p class="pc-vide">Aucun message pour l’instant. Écrivez le premier !</p>';
+  if(defiler || enBas) fil.scrollTop = fil.scrollHeight;
+  // Les messages reçus sont marqués lus (le voyant rouge disparaît)
+  if(msgs.some(m => m.destinataire_id === moi && !m.lu_at)){
+    try{ await sb.rpc('marquer_messages_lus', { p_de: id }); }catch(_e){}
+    const p = pc.liste.find(x => x.id === id); if(p){ p.non_lus = 0; pc.dernierNonLus = pc.liste.reduce((s, x) => s + (x.non_lus || 0), 0); pcMajBouton(); }
+  }
+}
+
+async function pcEnvoyer(){
+  const t = document.getElementById('pcTexte'); if(!t || pc.envoiEnCours) return;
+  const texte = t.value.trim(); if(!texte) return;
+  pc.envoiEnCours = true;
+  const btn = document.getElementById('pcEnvoyerBtn'); if(btn) btn.disabled = true;
+  try{
+    const { error } = await sb.from('messages_personnel').insert({ ecole_id: session.ecoleId, expediteur_id: session.userId, destinataire_id: pc.convAvec, contenu: texte });
+    if(error) throw error;
+    t.value = '';
+    await pcChargerFil(true);
+  }catch(e){
+    toast(typeof erreurReseau === 'function' && erreurReseau(e) ? 'Pas de connexion : message non envoyé, réessayez.' : 'Message non envoyé.');
+  }finally{
+    pc.envoiEnCours = false; if(btn) btn.disabled = false; t.focus();
+  }
+}
+/* =====================================================================
+   RAPPORTS ET TÉLÉCHARGEMENTS — tout au même endroit (26/11/2026)
+   Demande de Vehi Zoh Junior : « que tous les rapports soient rapidement
+   téléchargeables… et ce qu'il faut charger pour faire les remplissages,
+   facilement chargeable et remplissable ».
+   Chaque carte = un rapport, ses choix (mois, classe, trimestre) et UN
+   bouton. Les fonctions d'export existantes sont réutilisées telles
+   quelles ; seul le « Rapport général » est nouveau (un classeur Excel
+   de plusieurs feuilles : synthèse, effectifs, appels, pointage,
+   scolarité, mouvements).
+   Les droits restent ceux du serveur : le secrétariat ne télécharge pas
+   les salaires ni les dépenses (le serveur ne les lui envoie pas).
+   ===================================================================== */
+function rapportsFiltres(){
+  const f = ui.filters.rapports || (ui.filters.rapports = {});
+  const classes = classesVisibles();
+  if(!f.mois) f.mois = thisMonthISO();
+  if(!f.classeId || !classes.some(c => c.id === f.classeId)) f.classeId = classes[0] ? classes[0].id : '';
+  if(!f.trimestre) f.trimestre = TRIMESTRES[0];
+  return f;
+}
+function rapportsChoixMois(){
+  const f = rapportsFiltres();
+  return `<select class="puce-select" aria-label="Mois" onchange="ui.filters.rapports.mois=this.value; renderView('rapports')">${lastNMonths(12).reverse().map(m => `<option value="${m}"${m === f.mois ? ' selected' : ''}>${moisLabel(m)}</option>`).join('')}</select>`;
+}
+function rapportsChoixClasse(){
+  const f = rapportsFiltres(), classes = classesVisibles();
+  if(!classes.length) return '<span class="hint">Aucune classe</span>';
+  return choixClasse(classes, f.classeId, "ui.filters.rapports.classeId=this.value; renderView('rapports')");
+}
+function rapportsChoixTrimestre(){
+  const f = rapportsFiltres();
+  return `<select class="puce-select" aria-label="Trimestre" onchange="ui.filters.rapports.trimestre=this.value; renderView('rapports')">${TRIMESTRES.map(t => `<option${t === f.trimestre ? ' selected' : ''}>${t}</option>`).join('')}</select>`;
+}
+function carteRapport(ic, titre, texte, format, choix, bouton){
+  return `<article class="rp-carte">
+    <div class="rp-tete"><span class="rp-ic" aria-hidden="true">${ic}</span><div><h3>${titre}</h3><p>${texte}</p></div><span class="rp-format">${format}</span></div>
+    ${choix ? `<div class="rp-choix">${choix}</div>` : ''}
+    <div class="rp-action">${bouton}</div>
+  </article>`;
+}
+const btnRapport = (action, lib, sec) => `<button type="button" class="btn${sec ? ' secondary' : ''}" onclick="${action}">${lib}</button>`;
+
+function renderRapports(){
+  const f = rapportsFiltres();
+  const admin = ['direction', 'fondation'].includes(ui.role), perso = admin || ui.role === 'secretariat', ens = ui.role === 'enseignant';
+  const cartes = [];
+  if(perso) cartes.push(carteRapport('📊', 'Rapport général de l’école', `Tout le mois en un seul fichier : synthèse, effectifs par classe, appels, pointage des enseignants, scolarité et impayés${admin ? ', entrées et sorties d’argent' : ''}.`, 'Excel',
+    rapportsChoixMois(), btnRapport('exporterRapportGeneral()', '⬇️ Télécharger le rapport général')));
+  if(admin) cartes.push(carteRapport('💰', 'Comptabilité du mois', 'Toutes les entrées et sorties du mois (scolarité, activités, boutique, salaires, dépenses), à ouvrir dans Excel ou à donner au comptable.', 'Excel (CSV)',
+    rapportsChoixMois(), btnRapport("rapportsCompta()", '⬇️ Télécharger la comptabilité')));
+  if(perso) cartes.push(carteRapport('🧾', 'Reçus du mois', 'Tous les reçus de paiement du mois, prêts à imprimer ou à enregistrer en PDF.', 'PDF / impression',
+    rapportsChoixMois(), btnRapport("rapportsRecus()", '🖨️ Ouvrir les reçus')));
+  if(perso) cartes.push(carteRapport('💵', 'Scolarité : qui a payé, qui doit', 'État de chaque élève (dû, payé, reste, prochaine tranche) + une feuille « Impayés seulement » pour les relances.', 'Excel',
+    '', btnRapport('exporterScolariteExcel()', '⬇️ Télécharger l’état de la scolarité')));
+  if(perso) cartes.push(carteRapport('🧒', 'Liste des élèves', 'Tous les élèves avec parents et téléphones, une feuille par classe.', 'Excel',
+    '', btnRapport('exporterElevesExcel()', '⬇️ Télécharger la liste des élèves')));
+  cartes.push(carteRapport('📋', 'Cahier d’appel', 'Présents, absents et retards de la classe pour le mois, avec les totaux par élève.', 'Excel',
+    rapportsChoixClasse() + rapportsChoixMois(), btnRapport('rapportsCahierAppel()', '⬇️ Télécharger le cahier d’appel')));
+  cartes.push(carteRapport('📝', 'Bulletins de la classe', 'Les bulletins du trimestre, prêts à imprimer ou à enregistrer en PDF.', 'PDF / impression',
+    rapportsChoixClasse() + rapportsChoixTrimestre(), btnRapport("imprimerBulletinsClasse(ui.filters.rapports.classeId, ui.filters.rapports.trimestre)", '🖨️ Ouvrir les bulletins')));
+  cartes.push(carteRapport('🗓️', 'Emploi du temps', 'L’emploi du temps de la classe, à imprimer et afficher.', 'PDF / impression',
+    rapportsChoixClasse(), btnRapport("imprimerEmploiTemps(ui.filters.rapports.classeId)", '🖨️ Ouvrir l’emploi du temps')));
+  cartes.push(carteRapport('📈', ens ? 'Mon rapport d’activité' : 'Rapport d’activité des enseignants', ens ? 'Votre travail du mois en clair : appels, devoirs, notes, pointage.' : 'Le travail de chaque enseignant : appels, devoirs, notes, pointage, points forts et points à surveiller.', 'PDF / impression',
+    '', btnRapport("go('rapport-activite')", '📈 Ouvrir le rapport d’activité')));
+  if(admin) cartes.push(carteRapport('🕘', 'Pointage GPS des enseignants', 'Toutes les arrivées et tous les départs pointés depuis le téléphone, avec la distance à l’école.', 'Excel (CSV)',
+    '', btnRapport('exporterPointagesGpsCSV()', '⬇️ Télécharger le pointage')));
+  if(admin) cartes.push(carteRapport('📒', 'Grand livre (SYSCOHADA)', 'Écritures débit / crédit pour l’expert-comptable.', 'Excel (CSV)',
+    '', btnRapport('exporterGrandLivreSyscohadaCSV()', '⬇️ Télécharger le grand livre')));
+  if(admin) cartes.push(carteRapport('💾', 'Sauvegarde complète', 'Toutes les données de l’école dans un seul fichier Excel, à garder en lieu sûr.', 'Excel',
+    '', btnRapport('exporterSauvegardeComplete()', '⬇️ Télécharger la sauvegarde')));
+
+  // Ce qu'on CHARGE pour remplir l'application
+  const charger = [];
+  if(perso) charger.push(carteRapport('🧒', 'Inscrire beaucoup d’élèves d’un coup', 'Téléchargez le modèle Excel, remplissez-le (ou utilisez votre propre liste), puis chargez-le : l’application vérifie tout avant d’enregistrer.', 'Excel',
+    '', btnRapport('telechargerModeleImport()', '⬇️ Modèle vide', true) + btnRapport('ouvrirImportEleves()', '⬆️ Charger la liste')));
+  if(perso) charger.push(carteRapport('💵', 'Versements déjà reçus (cahier de caisse)', 'Une photo du cahier de caisse de la classe (ou un PDF, un Excel) suffit : les montants lus sont proposés, vous vérifiez, puis vous enregistrez.', 'Photo / PDF / Excel',
+    rapportsChoixClasse(), btnRapport("ouvrirRepriseVersements(ui.filters.rapports.classeId)", '📷 Charger le cahier de caisse')));
+  if(perso) charger.push(carteRapport('🗓️', 'Emploi du temps à partir d’une photo', 'Photographiez l’emploi du temps papier de la classe : il est rempli automatiquement, vous corrigez si besoin.', 'Photo',
+    rapportsChoixClasse(), btnRapport("ouvrirRemplissageEdt(ui.filters.rapports.classeId)", '📷 Charger l’emploi du temps')));
+  if(admin) charger.push(carteRapport('🕘', 'Horaires de l’école', 'Heures d’entrée, pauses et sortie : à partir d’une photo ou d’un texte.', 'Photo / texte',
+    '', btnRapport('ouvrirRemplissageHoraires()', '📷 Remplir les horaires')));
+  if(ens) charger.push(carteRapport('📝', 'Notes de la classe', 'Saisissez ou chargez les notes depuis l’écran des compositions (photo de la feuille de notes acceptée).', 'Photo / saisie',
+    '', btnRapport("go('notes')", '📝 Ouvrir les compositions')));
+
+  return `
+    <div class="rp-intro panel"><strong>Tout ce que vous pouvez télécharger ou charger, au même endroit.</strong>
+      <span class="hint">Choisissez le mois ou la classe sur la carte, puis touchez le bouton. Les fichiers Excel s’ouvrent aussi sur téléphone (Excel, Google Sheets, WPS).</span></div>
+    <h2 class="rp-titre">⬇️ Télécharger un rapport</h2>
+    <div class="rp-grille">${cartes.join('')}</div>
+    ${charger.length ? `<h2 class="rp-titre">⬆️ Charger pour remplir l’application</h2><div class="rp-grille">${charger.join('')}</div>` : ''}`;
+}
+
+function rapportsCompta(){
+  const avant = ui.filters.comptaPeriode;
+  ui.filters.comptaPeriode = ui.filters.rapports.mois;
+  try{ exporterComptabiliteCSV(); } finally { ui.filters.comptaPeriode = avant; }
+}
+async function rapportsCahierAppel(){
+  const avant = ui.filters.cahier;
+  ui.filters.cahier = { classeId: ui.filters.rapports.classeId, mois: ui.filters.rapports.mois };
+  try{ await exporterCahierAppel(); } finally { ui.filters.cahier = avant; }
+}
+
+/* ---------- Rapport général (Excel, plusieurs feuilles) ---------- */
+async function exporterRapportGeneral(){
+  const mois = rapportsFiltres().mois, admin = ['direction', 'fondation'].includes(ui.role);
+  try{
+    toast('Préparation du rapport…');
+    const dans = d => typeof d === 'string' && d.startsWith(mois);
+    const actifs = DB.eleves.filter(e => e.statut === 'Actif');
+    const jours = joursDeClasseDuMois(mois).filter(j => j <= todayISO());   // jours déjà passés seulement
+    // Effectifs
+    const effectifs = [['Classe', 'Élèves', 'Filles', 'Garçons', 'Parents reliés à l’application']];
+    const relies = new Set((DB.parentsEleves || []).map(pe => pe.eleveId));
+    DB.classes.forEach(c => { const el = actifs.filter(e => e.classeId === c.id);
+      effectifs.push([c.nom, el.length, el.filter(e => e.sexe === 'F').length, el.filter(e => e.sexe === 'M').length, el.filter(e => relies.has(e.id)).length]); });
+    effectifs.push([], ['TOTAL', actifs.length, actifs.filter(e => e.sexe === 'F').length, actifs.filter(e => e.sexe === 'M').length, actifs.filter(e => relies.has(e.id)).length]);
+    // Appels du mois
+    const presMois = (DB.presencesEleves || []).filter(p => dans(p.date));
+    const appels = [['Classe', 'Jours de classe', 'Jours où l’appel est fait', 'Absences', 'Retards', 'Taux de présence']];
+    DB.classes.forEach(c => { const ids = new Set(actifs.filter(e => e.classeId === c.id).map(e => e.id)); const ps = presMois.filter(p => ids.has(p.eleveId));
+      const faits = new Set(ps.map(p => p.date)).size, abs = ps.filter(p => p.statut === 'Absent').length, ret = ps.filter(p => p.statut === 'Retard').length;
+      appels.push([c.nom, jours.length, faits, abs, ret, ps.length ? Math.round(100 * (ps.length - abs) / ps.length) + ' %' : '—']); });
+    // Élèves souvent absents
+    const absParEleve = {}; presMois.filter(p => p.statut === 'Absent').forEach(p => { absParEleve[p.eleveId] = (absParEleve[p.eleveId] || 0) + 1; });
+    const absents = [['Élève', 'Classe', 'Absences du mois', 'Parent', 'Téléphone']].concat(Object.entries(absParEleve).filter(([, n]) => n >= 2).sort((a, b) => b[1] - a[1])
+      .map(([id, n]) => { const e = eleveById(id) || {}; return [eleveFullName(e), classeName(e.classeId), n, e.parentNom || '', e.parentTel || '']; }));
+    // Pointage des enseignants
+    const pointMois = (DB.presencesEnseignants || []).filter(p => dans(p.date));
+    const pointage = [['Enseignant', 'Jours pointés', 'Retards', 'Minutes de retard', 'Absences']];
+    (DB.enseignants || []).forEach(t => { const ps = pointMois.filter(p => p.enseignantId === t.id);
+      pointage.push([ensFullName(t), ps.filter(p => p.statut !== 'Absent').length, ps.filter(p => p.statut === 'Retard').length, ps.reduce((s, p) => s + (Number(p.minutesRetard) || 0), 0), ps.filter(p => p.statut === 'Absent').length]); });
+    // Scolarité
+    const scol = [['Classe', 'Élève', 'Parent', 'Téléphone', 'Dû', 'Payé', 'Reste', 'Statut']];
+    let du = 0, paye = 0;
+    DB.classes.forEach(c => actifs.filter(e => e.classeId === c.id).sort((a, b) => a.nom.localeCompare(b.nom)).forEach(e => {
+      const g = scolariteEleveParEcheance(e.id), info = scolariteEleveInfo(e.id);
+      const d = g.total || info.du, p = g.total ? g.totalPaye : info.paye, r = Math.max(0, d - p); du += d; paye += p;
+      scol.push([c.nom, eleveFullName(e), e.parentNom || '', e.parentTel || '', d, p, r, r <= 0 && d > 0 ? 'Soldé' : p > 0 ? 'Partiel' : 'Impayé']); }));
+    scol.push([], ['TOTAL', '', '', '', du, paye, Math.max(0, du - paye)]);
+    // Mouvements d'argent du mois
+    const mouv = [['Date', 'Type', 'Catégorie', 'Libellé', 'Montant (F CFA)', 'Mode']];
+    let entrees = 0, sorties = 0;
+    (DB.paiementsScolarite || []).filter(p => dans(p.date)).forEach(p => { entrees += Number(p.montant) || 0; mouv.push([fmtDate(p.date), 'Entrée', 'Scolarité', `${p.tranche || ''} — ${eleveFullName(eleveById(p.eleveId) || { prenom: '—', nom: '' })}`, Number(p.montant) || 0, p.modePaiement || '']); });
+    (DB.paiementsCotisations || []).filter(p => dans(p.date)).forEach(p => { entrees += Number(p.montant) || 0; const a = (DB.activites || []).find(x => x.id === p.activiteId); mouv.push([fmtDate(p.date), 'Entrée', 'Activité', `${a ? a.nom : '—'} — ${eleveFullName(eleveById(p.eleveId) || { prenom: '—', nom: '' })}`, Number(p.montant) || 0, p.modePaiement || '']); });
+    if(admin){
+      (DB.paiementsSalaires || []).filter(p => dans(p.datePaiement)).forEach(p => { sorties += Number(p.montant) || 0; mouv.push([fmtDate(p.datePaiement), 'Sortie', 'Salaire', `${personnelNomById(p.personnelId, p.personnelType)} — ${moisLabel(p.mois)}`, Number(p.montant) || 0, p.modePaiement || '']); });
+      (DB.depenses || []).filter(d => dans(d.date)).forEach(d => { sorties += Number(d.montant) || 0; mouv.push([fmtDate(d.date), 'Sortie', d.categorie || '', d.libelle || '', Number(d.montant) || 0, d.modePaiement || '']); });
+    }
+    // Synthèse (première feuille)
+    const m = DB.meta || {};
+    const synthese = [
+      [`${m.nomEcole || 'École'} — Rapport général`], [`Mois : ${moisLabel(mois)}`, '', `Préparé le ${fmtDate(todayISO())}`], [],
+      ['ÉLÈVES'], ['Élèves inscrits (actifs)', actifs.length], ['Parents reliés à l’application', actifs.filter(e => relies.has(e.id)).length],
+      [], ['APPEL'], ['Jours de classe dans le mois', jours.length], ['Absences enregistrées', presMois.filter(p => p.statut === 'Absent').length], ['Retards enregistrés', presMois.filter(p => p.statut === 'Retard').length], ['Élèves absents 2 fois ou plus', absents.length - 1],
+      [], ['ENSEIGNANTS'], ['Enseignants', (DB.enseignants || []).length], ['Retards au pointage', pointMois.filter(p => p.statut === 'Retard').length], ['Absences au pointage', pointMois.filter(p => p.statut === 'Absent').length],
+      [], ['SCOLARITÉ (année en cours)'], ['Total dû', du], ['Total payé', paye], ['Reste à recouvrer', Math.max(0, du - paye)], ['Taux de recouvrement', du ? Math.round(100 * paye / du) + ' %' : '—'],
+      [], ['ARGENT DU MOIS'], ['Entrées', entrees], ...(admin ? [['Sorties', sorties], ['Solde du mois', entrees - sorties]] : []),
+    ];
+    const feuilles = [['Synthèse', synthese], ['Effectifs', effectifs], ['Appels du mois', appels], ['Élèves souvent absents', absents], ['Pointage enseignants', pointage], ['Scolarité', scol], ['Mouvements du mois', mouv]];
+    await ecrireClasseurExcel(feuilles, nomFichierExport('rapport-general-' + mois));
+    toast('Rapport général prêt ✔');
+  }catch(e){ alert('Rapport impossible : ' + e.message); }
+}
+function rapportsRecus(){
+  const avant = ui.filters.soucheClasse;
+  ui.filters.soucheClasse = '';   // toute l'école (le filtre de classe de l'écran Comptabilité ne s'applique pas ici)
+  try{ imprimerRecusGroupes(ui.filters.rapports.mois); } finally { ui.filters.soucheClasse = avant; }
+}
+/* =====================================================================
+   ASSISTANT — l'application remarque ce qui demande une action (26/11/2026)
+   Demande de Vehi Zoh Junior : « rends-la très intelligente pour répondre
+   aux attentes des clients ». Ajoute au panneau « À faire aujourd'hui »
+   (direction, fondation, secrétariat) des constats calculés à partir des
+   données déjà chargées, chacun avec UNE action :
+   - élèves absents 3 jours de classe de suite → appeler / écrire au parent ;
+   - familles en retard de paiement (date limite passée) → relance WhatsApp
+     polie, préparée, à envoyer soi-même ;
+   - parents pas encore reliés à l'application → écran Parents ↔ Élèves ;
+   - anniversaires des élèves aujourd'hui.
+   Rien n'est envoyé automatiquement : la personne garde la main.
+   ===================================================================== */
+function telWa(tel){ const d = String(tel || '').replace(/\D/g, '').replace(/^225/, ''); return d.length === 10 ? '225' + d : ''; }
+
+function elevesAbsentsDeSuite(n){
+  // Les n derniers jours où l'appel a été fait dans la classe : absent à chacun
+  const parClasse = {};
+  (DB.presencesEleves || []).forEach(p => { (parClasse[p.classeId] = parClasse[p.classeId] || new Set()).add(p.date); });
+  const r = [];
+  DB.eleves.filter(e => e.statut === 'Actif').forEach(e => {
+    const jours = [...(parClasse[e.classeId] || [])].sort().slice(-n);
+    if(jours.length < n) return;
+    const ps = (DB.presencesEleves || []).filter(p => p.eleveId === e.id && jours.includes(p.date));
+    if(ps.length === n && ps.every(p => p.statut === 'Absent')) r.push({ eleve: e, depuis: jours[0] });
+  });
+  return r;
+}
+function famillesEnRetard(){
+  const auj = todayISO(), r = [];
+  DB.eleves.filter(e => e.statut === 'Actif').forEach(e => {
+    const g = scolariteEleveParEcheance(e.id);
+    const dues = g.detail.filter(d => d.dateEcheance && d.dateEcheance < auj && d.statut !== 'paye');
+    const montant = dues.reduce((s, d) => s + Math.max(0, (d.montant || 0) - (d.paye || 0)), 0);
+    if(montant > 0) r.push({ eleve: e, montant, tranches: dues.map(d => d.label), plusAncienne: dues.map(d => d.dateEcheance).sort()[0] });
+  });
+  return r.sort((a, b) => b.montant - a.montant);
+}
+function anniversairesDuJour(){
+  const md = todayISO().slice(5);
+  return DB.eleves.filter(e => e.statut === 'Actif' && e.dateNaissance && e.dateNaissance.slice(5) === md);
+}
+
+function conseilsAssistant(){
+  const lignes = [];
+  if(!['secretariat', 'direction', 'fondation'].includes(ui.role)) return lignes;
+  try{
+    const abs = elevesAbsentsDeSuite(3);
+    if(abs.length) lignes.push({ ic:'user', texte:`${abs.length} élève${abs.length > 1 ? 's' : ''} absent${abs.length > 1 ? 's' : ''} 3 jours de suite`, detail:'Prenez des nouvelles auprès des parents', bouton:'Voir et contacter', action:'ouvrirAssistantAbsences()' });
+    if(hasAccess('comptabilite')){
+      const ret = famillesEnRetard();
+      if(ret.length) lignes.push({ ic:'wallet', texte:`${ret.length} famille${ret.length > 1 ? 's' : ''} en retard de paiement`, detail:`${fmtFCFA(ret.reduce((s, x) => s + x.montant, 0))} dont la date limite est passée`, bouton:'Relancer', action:'ouvrirAssistantRetards()' });
+    }
+    const actifs = DB.eleves.filter(e => e.statut === 'Actif');
+    const relies = new Set((DB.parentsEleves || []).map(pe => pe.eleveId));
+    const nonRelies = actifs.filter(e => !relies.has(e.id)).length;
+    if(actifs.length && nonRelies / actifs.length > 0.3 && hasAccess('liens-parents'))
+      lignes.push({ ic:'users', texte:`${actifs.length - nonRelies} parent${actifs.length - nonRelies > 1 ? 's' : ''} sur ${actifs.length} élèves suivent leur enfant dans l’application`, detail:'Invitez les autres : ils verront absences, notes et paiements', bouton:'Inviter les parents', action:"go('liens-parents')" });
+    const anniv = anniversairesDuJour();
+    if(anniv.length) lignes.push({ ic:'party-popper', texte:`${anniv.length === 1 ? 'Anniversaire' : anniv.length + ' anniversaires'} aujourd’hui`, detail: anniv.slice(0, 3).map(e => `${eleveFullName(e)} (${classeName(e.classeId)})`).join(', ') + (anniv.length > 3 ? '…' : ''), bouton:'Voir', action:'ouvrirAssistantAnniversaires()' });
+  }catch(_e){ /* un constat impossible à calculer n'empêche jamais l'affichage du tableau de bord */ }
+  return lignes;
+}
+
+function ouvrirAssistantAbsences(){
+  const abs = elevesAbsentsDeSuite(3);
+  openModal('Élèves absents 3 jours de suite', `
+    <p class="hint">Absents aux 3 derniers appels de leur classe. Un appel ou un message au parent rassure la famille et montre le sérieux de l’école.</p>
+    <ul class="as-liste">${abs.map(({ eleve: e, depuis }) => { const wa = telWa(e.parentTel);
+      const msg = `Bonjour ${e.parentNom || ''}, c’est l’école ${DB.meta?.nomEcole || ''}. ${e.prenom} est absent(e) depuis le ${fmtDate(depuis)}. Tout va bien ? Merci de nous donner des nouvelles.`;
+      return `<li><div><strong>${escapeHtml(eleveFullName(e))}</strong><small>${escapeHtml(classeName(e.classeId))} · depuis le ${fmtDate(depuis)} · ${escapeHtml(e.parentNom || 'parent non renseigné')}</small></div>
+        <div class="as-actions">${e.parentTel ? `<a class="btn secondary sm" href="tel:${escapeHtml(String(e.parentTel).replace(/\s/g, ''))}">📞 Appeler</a>` : ''}${wa ? `<a class="btn sm" href="https://wa.me/${wa}?text=${encodeURIComponent(msg)}" target="_blank" rel="noopener">💬 WhatsApp</a>` : '<span class="hint">Pas de numéro</span>'}</div></li>`; }).join('')}</ul>`);
+}
+function ouvrirAssistantRetards(){
+  const ret = famillesEnRetard();
+  const nom = DB.meta?.nomEcole || 'l’école';
+  openModal('Familles en retard de paiement', `
+    <p class="hint">Date limite dépassée. Le message WhatsApp est déjà rédigé poliment : vous le relisez et vous l’envoyez vous-même.</p>
+    <ul class="as-liste">${ret.map(({ eleve: e, montant, tranches, plusAncienne }) => { const wa = telWa(e.parentTel);
+      const msg = `Bonjour ${e.parentNom || ''}, ${nom} vous rappelle que ${fmtFCFA(montant)} reste${tranches.length > 1 ? 'nt' : ''} à régler pour la scolarité de ${e.prenom} (${tranches.join(', ')}, date limite du ${fmtDate(plusAncienne)}). Vous pouvez payer à l’école ou par Mobile Money. Merci et bonne journée.`;
+      return `<li><div><strong>${escapeHtml(eleveFullName(e))}</strong><small>${escapeHtml(classeName(e.classeId))} · ${fmtFCFA(montant)} · ${escapeHtml(tranches.join(', '))}</small></div>
+        <div class="as-actions">${wa ? `<a class="btn sm" href="https://wa.me/${wa}?text=${encodeURIComponent(msg)}" target="_blank" rel="noopener">💬 Relancer</a>` : '<span class="hint">Pas de numéro</span>'}</div></li>`; }).join('')}</ul>
+    <div class="form-actions"><button type="button" class="btn secondary" onclick="closeModal(); exporterScolariteExcel()">⬇️ Liste complète (Excel)</button></div>`);
+}
+function ouvrirAssistantAnniversaires(){
+  const anniv = anniversairesDuJour();
+  openModal('🎂 Anniversaires du jour', `<ul class="as-liste">${anniv.map(e => { const age = new Date().getFullYear() - Number(e.dateNaissance.slice(0, 4)); const wa = telWa(e.parentTel);
+    const msg = `Bonjour ${e.parentNom || ''}, toute l’équipe de ${DB.meta?.nomEcole || 'l’école'} souhaite un joyeux anniversaire à ${e.prenom} pour ses ${age} ans ! 🎉`;
+    return `<li><div><strong>${escapeHtml(eleveFullName(e))}</strong><small>${escapeHtml(classeName(e.classeId))} · ${age} ans</small></div>
+      <div class="as-actions">${wa ? `<a class="btn sm" href="https://wa.me/${wa}?text=${encodeURIComponent(msg)}" target="_blank" rel="noopener">💬 Souhaiter</a>` : ''}</div></li>`; }).join('')}</ul>`);
+}
 /* =====================================================================
    ACCUEIL « FAÇON APPLICATION » (2026-11-20) — toutes les applications
    Bandeau bleu nuit (chiffre clé du rôle + 2 actions), grande barre de

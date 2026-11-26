@@ -5040,3 +5040,119 @@ end $$;
 drop trigger if exists mdp_change_efface_drapeau on auth.users;
 create trigger mdp_change_efface_drapeau after update of encrypted_password on auth.users
   for each row execute function mdp_change_efface_drapeau();
+
+-- =====================================================================
+-- 129. PERSONNES CONNECTÉES ET MESSAGES ENTRE COLLÈGUES (2026-11-26)
+-- =====================================================================
+-- Demande de Vehi Zoh Junior : « comme sur Messenger » — le personnel
+-- (direction, fondation, secrétariat, enseignants) voit qui est connecté
+-- (voyant vert) ou non (voyant gris), et peut s'écrire directement.
+-- Présence : l'application signale « je suis là » toutes les minutes tant
+-- qu'elle est ouverte ; une personne est « connectée » si son dernier
+-- signal date de moins de 2 minutes. Aucun parent, aucun portier.
+-- Messages : de personne à personne, dans la même école uniquement ;
+-- chacun ne lit que ses propres conversations ; seul le destinataire
+-- marque un message comme lu (fonction ci-dessous, pas d'écriture directe).
+-- =====================================================================
+create or replace function est_personnel() returns boolean
+language sql stable security definer set search_path = public as $$
+  select coalesce(mon_role() in ('direction','fondation','secretariat','enseignant'), false)
+$$;
+revoke all on function est_personnel() from public, anon;
+grant execute on function est_personnel() to authenticated;
+
+create table if not exists presence_personnel (
+  user_id uuid primary key references profiles(id) on delete cascade,
+  ecole_id uuid not null references ecoles(id) on delete cascade,
+  vu_le timestamptz not null default now()
+);
+alter table presence_personnel enable row level security;
+revoke all on presence_personnel from anon, authenticated;   -- lecture/écriture par les fonctions seulement
+drop policy if exists "double verification" on presence_personnel;
+create policy "double verification" on presence_personnel as restrictive for all to authenticated
+  using (double_verification_ok()) with check (double_verification_ok());
+
+create table if not exists messages_personnel (
+  id uuid primary key default gen_random_uuid(),
+  ecole_id uuid not null references ecoles(id) on delete cascade,
+  expediteur_id uuid not null references profiles(id) on delete cascade,
+  destinataire_id uuid not null references profiles(id) on delete cascade,
+  contenu text not null check (char_length(btrim(contenu)) between 1 and 2000),
+  lu_at timestamptz,
+  created_at timestamptz not null default now(),
+  check (expediteur_id <> destinataire_id)
+);
+create index if not exists messages_personnel_dest on messages_personnel (destinataire_id, lu_at);
+create index if not exists messages_personnel_conv on messages_personnel (ecole_id, expediteur_id, destinataire_id, created_at desc);
+alter table messages_personnel enable row level security;
+revoke all on messages_personnel from anon;
+revoke update, delete on messages_personnel from authenticated;
+grant select, insert on messages_personnel to authenticated;
+
+drop policy if exists "messages personnel lecture" on messages_personnel;
+create policy "messages personnel lecture" on messages_personnel for select using (
+  est_personnel() and ecole_id = mon_ecole_id() and auth.uid() in (expediteur_id, destinataire_id));
+
+drop policy if exists "messages personnel envoi" on messages_personnel;
+create policy "messages personnel envoi" on messages_personnel for insert with check (
+  est_personnel() and expediteur_id = auth.uid() and ecole_id = mon_ecole_id() and lu_at is null
+  and exists (select 1 from profiles d where d.id = destinataire_id and d.ecole_id = mon_ecole_id()
+              and d.role::text in ('direction','fondation','secretariat','enseignant')));
+
+drop policy if exists "double verification" on messages_personnel;
+create policy "double verification" on messages_personnel as restrictive for all to authenticated
+  using (double_verification_ok()) with check (double_verification_ok());
+
+-- « Je suis là » (appelé toutes les minutes par l'application ouverte)
+create or replace function signaler_presence() returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not est_personnel() or not double_verification_ok() then return; end if;
+  insert into presence_personnel (user_id, ecole_id, vu_le) values (auth.uid(), mon_ecole_id(), now())
+  on conflict (user_id) do update set ecole_id = excluded.ecole_id, vu_le = now();
+end $$;
+revoke all on function signaler_presence() from public, anon;
+grant execute on function signaler_presence() to authenticated;
+
+-- Déconnexion : le voyant passe au gris tout de suite
+create or replace function quitter_presence() returns void
+language sql security definer set search_path = public as $$
+  update presence_personnel set vu_le = now() - interval '10 minutes' where user_id = auth.uid();
+$$;
+revoke all on function quitter_presence() from public, anon;
+grant execute on function quitter_presence() to authenticated;
+
+-- Liste du personnel de MON école : nom, fonction, connecté ou non, messages non lus
+create or replace function personnel_connecte()
+returns table (id uuid, nom text, role text, civilite text, en_ligne boolean, vu_le timestamptz, non_lus integer)
+language sql stable security definer set search_path = public as $$
+  select p.id,
+         coalesce(nullif(btrim(p.nom_complet), ''), 'Sans nom'),
+         p.role::text, p.civilite,
+         coalesce(pp.vu_le > now() - interval '2 minutes', false),
+         pp.vu_le,
+         (select count(*)::int from messages_personnel m
+           where m.destinataire_id = auth.uid() and m.expediteur_id = p.id and m.lu_at is null)
+  from profiles p
+  left join presence_personnel pp on pp.user_id = p.id
+  where est_personnel() and double_verification_ok()
+    and p.ecole_id = mon_ecole_id() and p.id <> auth.uid()
+    and p.role::text in ('direction','fondation','secretariat','enseignant')
+  order by 5 desc, 2;
+$$;
+revoke all on function personnel_connecte() from public, anon;
+grant execute on function personnel_connecte() to authenticated;
+
+-- Le destinataire marque comme lus les messages reçus d'une personne
+create or replace function marquer_messages_lus(p_de uuid) returns integer
+language plpgsql security definer set search_path = public as $$
+declare n integer;
+begin
+  if not est_personnel() or not double_verification_ok() then return 0; end if;
+  update messages_personnel set lu_at = now()
+   where destinataire_id = auth.uid() and expediteur_id = p_de and lu_at is null;
+  get diagnostics n = row_count;
+  return n;
+end $$;
+revoke all on function marquer_messages_lus(uuid) from public, anon;
+grant execute on function marquer_messages_lus(uuid) to authenticated;

@@ -13,7 +13,7 @@ function animerCompteursKpi(){
 function icone(nom){ return window.EmIcones ? EmIcones.svg(nom) : ''; }
 function estJourDeClasse(iso){
   const j = ((new Date(iso + 'T12:00:00').getDay() + 6) % 7) + 1;
-  return (DB.horairesAnnonces?.joursCours || [1, 2, 3, 4, 5]).includes(j);
+  return (DB?.horairesAnnonces?.joursCours || [1, 2, 3, 4, 5]).includes(j);
 }
 // Bande unique « À faire aujourd'hui » : appel, pointage, demandes des familles
 function renderAFaireAujourdhui(){
@@ -33,6 +33,7 @@ function renderAFaireAujourdhui(){
     SUJETS_A_TRAITER.filter(su => (!su.roles || su.roles.includes(ui.role)) && (c[su.cle] || 0) > 0)
       .forEach(su => lignes.push({ ic:'mail', texte:`${c[su.cle]} ${su.lib}`, detail:'', bouton:'Traiter', action:`DB.aTraiter.charge=0; go('${su.vue}')${su.cle === 'acces' ? "; allerAuxDemandesAcces()" : ''}` }));
   }
+  if(admin && typeof conseilsAssistant === 'function') lignes.push(...conseilsAssistant());
   return `<section class="panel afaire" aria-labelledby="titreAFaire">
     <div class="afaire-tete"><h2 id="titreAFaire">À faire aujourd’hui</h2>${lignes.length ? `<span class="afaire-compte">${lignes.length}</span>` : ''}</div>
     ${lignes.length ? `<ul class="afaire-liste">${lignes.map(l => `<li class="afaire-ligne">
@@ -326,7 +327,7 @@ function renderAccueilEnseignant(){
     ? { etat:'info', titre:`Votre arrivée est enregistrée${moiPointe.heureArrivee ? ' à ' + escapeHtml(String(moiPointe.heureArrivee).slice(0, 5)) : ''}`, detail: moiPointe.statut === 'Retard' ? `Noté en retard${moiPointe.minutesRetard ? ` (${moiPointe.minutesRetard} min)` : ''}.` : '' }
     : { etat:'info', titre:'Votre arrivée n’est pas encore enregistrée', detail:'Pointez-la dans « Mon pointage » ci-dessus (GPS, QR de l’école ou photo), depuis l’établissement, ou faites scanner votre badge à l’accueil.' });
   const jourIso = ((new Date().getDay() + 6) % 7) + 1;
-  const renfAuj = coursAuj && (DB.horairesAnnonces?.joursRenforcement || [1, 2, 3, 4, 5]).includes(jourIso);
+  const renfAuj = coursAuj && (DB?.horairesAnnonces?.joursRenforcement || [1, 2, 3, 4, 5]).includes(jourIso);
   if(coursAuj) classes.forEach(c => {
     const eleves = effectif(c.id);
     const signales = eleves.map(e => ({ e, a: absenceSignalee(e.id, auj) })).filter(x => x.a);

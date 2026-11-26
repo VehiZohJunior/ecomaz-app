@@ -267,7 +267,7 @@ function imprimerRecusGroupes(mois){
   const liste = (DB.recus || []).filter(x => String(x.datePaiement || x.emisLe || '').slice(0, 7) === mois && (!classeF || eleveById(x.eleveId)?.classeId === classeF))
     .map(x => ({ x, e: eleveById(x.eleveId) }))
     .sort((a, b) => (a.e ? classeName(a.e.classeId) : '').localeCompare(b.e ? classeName(b.e.classeId) : '') || (a.e ? eleveFullName(a.e) : '').localeCompare(b.e ? eleveFullName(b.e) : '') || String(a.x.numero).localeCompare(String(b.x.numero)));
-  if(!liste.length) return;
+  if(!liste.length){ toast(`Aucun reçu pour ${moisLabel(mois)}${classeF ? ' dans cette classe' : ''}.`); return; }
   const recus = liste.map(({ x, e }) => buildRecuHtml({ type:'entree', refId: x.enregistrementId, montant: x.montant, date: x.datePaiement, modePaiement: x.modePaiement, objet: x.objet, personne: e ? eleveFullName(e) : '', sousInfo: e ? classeName(e.classeId) : '' }));
   const nomMois = (t => t.charAt(0).toUpperCase() + t.slice(1))(new Date(mois + '-15T12:00:00').toLocaleDateString('fr-FR', { month:'long', year:'numeric' }));
   openModal(`${liste.length} reçu(s) — ${nomMois}${classeF ? ' — ' + classeName(classeF) : ''}`, `

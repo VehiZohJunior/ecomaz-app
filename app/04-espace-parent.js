@@ -351,7 +351,7 @@ function renderPresenceSemaine(e){
   if(!Array.isArray(DB.presencesSemaine)) return '';
   const lundi = debutSemaine(new Date());
   const aujourdhui = isoLocal(new Date());
-  const joursClasse = DB.horairesAnnonces?.joursCours || [1, 2, 3, 4, 5];
+  const joursClasse = DB?.horairesAnnonces?.joursCours || [1, 2, 3, 4, 5];
   const cases = JOURS_SEMAINE.map((lib, i) => {
     if(!joursClasse.includes(i + 1)) return '';
     const d = new Date(lundi); d.setDate(lundi.getDate() + i);
@@ -583,7 +583,7 @@ function renderAujourdhuiParent(enfants){
   const e = enfants.find(x => x.id === ui.enfantAujourdhui) || enfants[0];
   const auj = isoLocal(new Date());
   const jourIso = ((new Date().getDay() + 6) % 7) + 1;
-  const jourDeClasse = (DB.meta?.joursCours || DB.horairesAnnonces?.joursCours || [1, 2, 3, 4, 5]).includes(jourIso);
+  const jourDeClasse = (DB.meta?.joursCours || DB?.horairesAnnonces?.joursCours || [1, 2, 3, 4, 5]).includes(jourIso);
   const p = Array.isArray(DB.presencesSemaine) ? DB.presencesSemaine.find(x => x.eleveId === e.id && x.date === auj) : null;
   const presence = p ? (p.statut === 'Présent' ? { cls:'ok', ic:'circle-check', txt:'Présent(e) à l’école' } : p.statut === 'Retard' ? { cls:'attente', ic:'clock', txt:'Arrivé(e) en retard' } : { cls:'erreur', ic:'circle-x', txt:'Absent(e) aujourd’hui' })
     : jourDeClasse ? { cls:'neutre', ic:'clock', txt:'L’appel n’est pas encore fait' } : { cls:'neutre', ic:'calendar', txt:'Pas de classe aujourd’hui' };
@@ -620,7 +620,7 @@ function seancesClasseDate(classeId, iso){
 }
 // Prochain jour de classe (jours de l'école, hors congés de l'agenda)
 function prochainJourDeClasse(apresIso){
-  const jours = DB.horairesAnnonces?.joursCours || [1, 2, 3, 4, 5];
+  const jours = DB?.horairesAnnonces?.joursCours || [1, 2, 3, 4, 5];
   const d = new Date(apresIso + 'T12:00:00');
   for(let i = 0; i < 21; i++){
     d.setDate(d.getDate() + 1);

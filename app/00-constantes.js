@@ -203,6 +203,7 @@ const VIEW_TITLES = {
   services: 'Tous nos services',
   'creer-evaluation': 'Je crée une évaluation',
   'boite-evaluations': 'Boîte à évaluations',
+  rapports: 'Rapports et téléchargements',
 };
 
 /* --- Comptabilité --- */
@@ -239,8 +240,8 @@ const COMPTA_TABS = [
 
 /* --- Rôles / Interfaces --- */
 const ROLES = {
-  enseignant:  {label:'Enseignant(e)', icon:'👩‍🏫', desc:'Notes, présences, emploi du temps', nav:['dashboard','services','cahier-appel','camps-de-base','creer-evaluation','notes','presences-eleves','devoirs','emploi-temps','programmes','rapport-activite','vie-ecole','agenda']},
-  secretariat: {label:'Secrétariat', icon:'🗂️', desc:'Gestion administrative & scolarité', nav:['dashboard','services','eleves','liens-parents','renforcement','vie-ecole','agenda','devoirs','cantine','cahier-appel','camps-de-base','notes','presences-eleves','emploi-temps','programmes','pointage-scan','enseignants','presences-enseignants','comptabilite','messagerie','boite-evaluations']},
+  enseignant:  {label:'Enseignant(e)', icon:'👩‍🏫', desc:'Notes, présences, emploi du temps', nav:['dashboard','services','cahier-appel','camps-de-base','creer-evaluation','notes','presences-eleves','devoirs','emploi-temps','programmes','rapport-activite','rapports','vie-ecole','agenda']},
+  secretariat: {label:'Secrétariat', icon:'🗂️', desc:'Gestion administrative & scolarité', nav:['dashboard','services','eleves','liens-parents','renforcement','vie-ecole','agenda','devoirs','cantine','cahier-appel','camps-de-base','notes','presences-eleves','emploi-temps','programmes','pointage-scan','enseignants','presences-enseignants','comptabilite','rapports','messagerie','boite-evaluations']},
   direction:   {label:'Direction', icon:'🎩', desc:'Accès complet', nav:'all'},
   fondation:   {label:'Fondation', icon:'🏛️', desc:'Accès complet', nav:'all'},
   parent:      {label:'Parent', icon:'👪', desc:"Suivi de l'enfant", nav:[]},

@@ -227,6 +227,7 @@ async function entrerSelonRole(){
 async function logoutRole(){
   stopIdleWatcher();
   stopPollingBulles();
+  arreterPersonnesConnectees();
   document.body.classList.remove('theme-parent', 'has-parent-nav');
   if(window.ESPACE_FIXE !== 'portier') document.body.classList.remove('theme-portier');
   const navParentEl = document.getElementById('parentNav'); if(navParentEl) navParentEl.remove();

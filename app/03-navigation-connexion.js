@@ -167,6 +167,7 @@ function renderView(view){
     'boite-evaluations': renderBoiteEvaluations,
     'camps-de-base': renderCampsDeBase,
     renforcement: renderRenforcement,
+    rapports: renderRapports,
   };
   // Données pas encore chargées, ou déjà effacées par une déconnexion (fin
   // de session, inactivité) : rien à afficher, l'écran de connexion est là.

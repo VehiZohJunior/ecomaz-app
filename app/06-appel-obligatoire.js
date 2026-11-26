@@ -106,7 +106,7 @@ function creneauxProposes(ficheId, classeIds){
     [...parJour.entries()].sort((a, b) => a[0] - b[0]).forEach(([jour, h]) => { if(h.debut < h.fin) sortie.push({ classe, jour, debut: h.debut, fin: h.fin, origine: 'edt' }); });
     // Classe sans emploi du temps (ex. maternelle) : horaires de l'école (Paramètres → Horaires), jours de classe de l'école
     if(!parJour.size){
-      const h = DB.horairesAnnonces || {}, mat = classeCycle(classe) !== 'Primaire';
+      const h = DB?.horairesAnnonces || {}, mat = classeCycle(classe) !== 'Primaire';
       const debut = hhmmEdt(mat ? h.matinDebutMaternelle : h.matinDebutPrimaire), fin = hhmmEdt(mat ? h.apresmidiFinMaternelle : h.apresmidiFinPrimaire);
       if(/^\d{2}:\d{2}$/.test(debut) && /^\d{2}:\d{2}$/.test(fin) && debut < fin)
         (h.joursCours || []).filter(j => j >= 1 && j <= 6).sort().forEach(jour => sortie.push({ classe, jour, debut, fin, origine: 'ecole' }));
@@ -214,6 +214,7 @@ function enterApp(){
   majBanniereHorsLigne();
   synchroniserFileAttente();
   startPollingBulles();
+  demarrerPersonnesConnectees();
   afficherNouveautes();
   activerPush(true);
 }

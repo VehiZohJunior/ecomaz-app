@@ -151,6 +151,15 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.11.26-1', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ '👥 Personnes connectées : bouton en haut de l’écran. Voyant vert = la personne utilise l’application en ce moment, voyant gris = pas connectée. Touchez un nom pour lui écrire directement dans l’application (le message attend s’il n’est pas connecté).',
+      '📥 Nouveau menu « Rapports et téléchargements » : tous les rapports en un clic (rapport général du mois en Excel, comptabilité, reçus, scolarité, élèves, cahier d’appel, bulletins, emploi du temps…) et tout ce qu’on peut charger pour remplir l’application.',
+      '💡 « À faire aujourd’hui » vous signale maintenant aussi : élèves absents 3 jours de suite, familles en retard de paiement (relance WhatsApp prête), parents pas encore reliés, anniversaires du jour.',
+      'Reçus du mois : un message s’affiche quand le mois choisi n’a aucun reçu (avant, rien ne se passait).' ],
+  } },
   { version: '2026.11.21-4', nouveautes: {
     commun: [],
     parent: [],

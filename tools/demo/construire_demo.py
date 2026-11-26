@@ -89,6 +89,15 @@ D['profiles'] = [
     {'id': 'demo-parent', 'ecole_id': ECOLE, 'role': 'parent', 'nom_complet': enfant1['parent_nom'], 'civilite': 'M', 'nom_appel': enfant1['parent_nom'].split()[0], 'mdp_a_changer': False},
     {'id': 'demo-portier', 'ecole_id': ECOLE, 'role': 'portier', 'nom_complet': 'Bamba Seydou', 'civilite': 'M', 'nom_appel': 'Bamba', 'mdp_a_changer': False},
 ]
+# Collègues fictifs (pour « Personnes connectées » et les messages entre collègues)
+D['profiles'] += [
+    {'id': 'demo-fondation', 'ecole_id': ECOLE, 'role': 'fondation', 'nom_complet': 'Kouadio Ama', 'civilite': 'F', 'nom_appel': 'Kouadio', 'mdp_a_changer': False},
+    {'id': 'demo-secretariat', 'ecole_id': ECOLE, 'role': 'secretariat', 'nom_complet': 'Aya Kouassi', 'civilite': 'F', 'nom_appel': 'Kouassi', 'mdp_a_changer': False}]
+for i, t in enumerate([t for t in ens if t['id'] != prof['id']][:6]):
+    D['profiles'].append({'id': f'demo-collegue-{i + 1}', 'ecole_id': ECOLE, 'role': 'enseignant', 'nom_complet': f"{t['prenom']} {t['nom']}", 'civilite': 'F' if t.get('sexe') == 'F' else 'M', 'nom_appel': t['nom'].title(), 'enseignant_id': None, 'mdp_a_changer': False})
+D['messages_personnel'] = [
+    {'id': str(uuid.UUID(int=rnd.getrandbits(128))), 'ecole_id': ECOLE, 'expediteur_id': 'demo-secretariat', 'destinataire_id': 'demo-direction', 'contenu': 'Bonjour Monsieur le Directeur, les reçus de la semaine sont prêts à signer.', 'lu_at': None, 'created_at': '2026-10-16T08:15:00+00:00'},
+    {'id': str(uuid.UUID(int=rnd.getrandbits(128))), 'ecole_id': ECOLE, 'expediteur_id': 'demo-direction', 'destinataire_id': 'demo-enseignant', 'contenu': 'Bonjour, pensez à faire l’appel avant 8 h 15. Merci !', 'lu_at': None, 'created_at': '2026-10-16T07:40:00+00:00'}]
 D['parents_eleves'] = [{'id': str(uuid.UUID(int=rnd.getrandbits(128))), 'ecole_id': ECOLE, 'parent_profile_id': 'demo-parent', 'eleve_id': x['id'], 'created_at': '2026-09-20T09:00:00+00:00'} for x in (enfant1, autre)]
 
 # Pointage des enseignants sur les 10 derniers jours de classe (fictif)
