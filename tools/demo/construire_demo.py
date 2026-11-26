@@ -28,9 +28,9 @@ for n in os.listdir(SORTIE):
     shutil.rmtree(p) if os.path.isdir(p) else os.remove(p)
 
 # 2. Fichiers de l'application
-PAGES = ['index.html', 'enseignant.html', 'parent.html', 'portier.html', 'conditions.html', 'confidentialite.html']
+PAGES = ['index.html', 'enseignant.html', 'parent.html', 'portier.html', 'conditions.html', 'confidentialite.html', 'preinscription.html', 'pointage-gps.html', 'affichage.html', '404.html']
 AUTRES = [f for f in os.listdir(RACINE) if os.path.isfile(os.path.join(RACINE, f)) and (
-    f.endswith(('.css', '.png', '.svg')) or f.endswith('.min.js') or f in ('i18n.js', 'manifest.json'))]
+    f.endswith(('.css', '.png', '.svg')) or f.endswith('.min.js') or f in ('i18n.js', 'manifest.json', 'theme.js'))]
 for f in AUTRES:
     shutil.copy2(os.path.join(RACINE, f), os.path.join(SORTIE, f))
 
@@ -43,6 +43,7 @@ for f in PAGES:
     if '<script src="config.js"></script>' in h:
         h = h.replace('<script src="config.js"></script>', '<script src="demo-donnees.js"></script>\n<script src="demo.js"></script>\n<script src="config.js"></script>')
     h = h.replace('<head>', '<head>\n<meta name="robots" content="noindex">', 1)
+    h = h.replace('/ecomaz-app/landing/', '/ecomaz-demo/').replace('/ecomaz-app/', '/ecomaz-demo/')
     h = re.sub(r'<title>([^<]*)</title>', r'<title>\1 — Démonstration</title>', h, count=1)
     open(os.path.join(SORTIE, f), 'w', encoding='utf-8', newline='\n').write(h)
 
@@ -134,6 +135,14 @@ for x in [e for e in D['eleves'] if e['classe_id'] != cp1['id']][3:5]:
 # - 6 familles n'ont pas encore réglé l'inscription (date limite passée)
 sans_inscription = {e['id'] for e in D['eleves'][10:16]}
 D['paiements_scolarite'] = [p for p in D.get('paiements_scolarite', []) if not (p['eleve_id'] in sans_inscription and p.get('tranche') == 'Inscription')]
+# Écran d'affichage : tableau d'honneur et actualités (fictifs)
+D['tableau_honneur'] = [{'id': str(uuid.UUID(int=rnd.getrandbits(128))), 'ecole_id': ECOLE, 'categorie': c, 'periode': p, 'nom_affiche': n, 'classe_ou_matiere': cm, 'libelle_periode': lp, 'commentaire': co, 'updated_at': '2026-10-15T08:00:00+00:00'} for c, p, n, cm, lp, co in [
+    ('eleve', 'mois', 'Awa KONÉ', 'CM2', 'Octobre', 'Première de la classe, toujours souriante'), ('eleve', 'trimestre', 'Junior AKA', 'CE1', '1er trimestre', 'Gros progrès en lecture'),
+    ('eleve', 'annee', 'Prisca YAO', 'CP2', '2025-2026', 'Excellente en tout'), ('enseignant', 'mois', 'Moussa KOFFI', 'CP1', 'Octobre', 'Appel fait tous les jours avant 8 h'),
+    ('enseignant', 'trimestre', 'Fatou KONÉ', 'Mathématiques', '1er trimestre', 'Classe la plus régulière'), ('enseignant', 'annee', 'Aya COULIBALY', 'Petite Section', '2025-2026', 'Toujours à l’écoute des parents')]]
+D['actualites_affichage'] = [{'id': str(uuid.UUID(int=rnd.getrandbits(128))), 'ecole_id': ECOLE, 'texte': t, 'created_at': d} for t, d in [
+    ('Réunion des parents samedi à 9 h dans la cour.', '2026-10-14T08:00:00+00:00'), ('Compositions du 1er trimestre à partir du 11 décembre.', '2026-10-13T08:00:00+00:00'),
+    ('Fête de Noël de l’école : vendredi 18 décembre.', '2026-10-12T08:00:00+00:00')]]
 D['_ancre'] = max(jours) if jours else '2026-10-16'
 D['_version'] = hashlib.sha1(json.dumps(D, ensure_ascii=False, sort_keys=True).encode()).hexdigest()[:10]
 open(os.path.join(SORTIE, 'demo-donnees.js'), 'w', encoding='utf-8', newline='\n').write(

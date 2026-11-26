@@ -169,6 +169,10 @@
   function vuDemo(id){ let h = 7; for(const c of String(id)) h = (h * 17 + c.charCodeAt(0)) >>> 0; return new Date(Date.now() - (enLigneDemo(id) ? 20 : 600 + (h % 3000)) * 60000 / 60).toISOString(); }
   const RPC = {
     signaler_presence: () => null, quitter_presence: () => null,
+    // Pages publiques de la démo
+    ecole_preinscription: () => [{ nom_ecole: (T.ecoles[0] || {}).nom_ecole, logo_url: '', classes: (T.classes || []).map(c => c.nom) }],
+    preinscrire: (a) => { T.preinscriptions = T.preinscriptions || []; T.preinscriptions.push({ id: uuid(), ecole_id: ECOLE, enfant_prenom: a.p_enfant_prenom, enfant_nom: a.p_enfant_nom, date_naissance: a.p_date_naissance, sexe: a.p_sexe, classe_souhaitee: a.p_classe, parent_nom: a.p_parent_nom, parent_tel: a.p_parent_tel, message: a.p_message, statut: 'nouvelle', created_at: new Date().toISOString() }); enregistrer(); return true; },
+    affichage_ecole: () => ({ ecole: { id: ECOLE, nom_ecole: (T.ecoles[0] || {}).nom_ecole, logo_url: '' }, honneurs: T.tableau_honneur || [], actualites: (T.actualites_affichage || []).slice().sort((x, y) => String(y.created_at).localeCompare(String(x.created_at))) }),
     // Rapport d'activité d'un enseignant (calculé ici comme le ferait le serveur, sur la base fictive)
     rapport_activite_enseignant: (a) => {
       const t = (T.enseignants || []).find(x => x.id === (a && a.p_enseignant)); if(!t) return null;
@@ -209,6 +213,7 @@
     creer_invitation_parent: () => 'DEMO-' + Math.random().toString(36).slice(2, 8).toUpperCase(),
   };
   const FONCTIONS = {
+    'valider-pointage-gps': () => ({ ok: true, action: 'arrivee', heure: heure(), statut: 'Présent', distanceMetres: 18, enseignant: 'Enseignant (démonstration)', minutesRetard: 0 }),
     'pointer-presence': (corps) => {
       const p = profilCourant(); const ens = p && p.enseignant_id;
       const action = (corps && corps.action) || 'arrivee';
@@ -325,7 +330,9 @@
     document.addEventListener('click', e => { if(!d.contains(e.target)) d.classList.remove('ouvert'); });
     document.body.appendChild(d);
   }
-  function demarrerInterface(){ if(utilisateur()) afficherPastille(); else afficherChoix(); }
+  // Pages publiques (pré-inscription, pointage GPS, écran d'affichage) : pas de choix de rôle
+  function pagePublique(){ return /(preinscription|pointage-gps|affichage|404)\.html$/.test(location.pathname); }
+  function demarrerInterface(){ if(pagePublique()) return; if(utilisateur()) afficherPastille(); else afficherChoix(); }
   if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', demarrerInterface); else demarrerInterface();
   window.ECOMAZ_DEMO = { entrer, remettreAZero(){ try{ localStorage.removeItem(CLE_BASE); }catch(_e){} } };
 })();

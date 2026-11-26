@@ -95,7 +95,7 @@ function rnSaisieHtml(){
     <textarea id="rnTexte" rows="2" maxlength="4000" placeholder="Ex. : 9 h 10, la maman de Koffi (CE1) a appelé : il est malade aujourd’hui." aria-label="Nouvelle note"
       onkeydown="if(event.key==='Enter' && !event.shiftKey){ event.preventDefault(); rnAjouterNote(); }"></textarea>
     <div class="rn-actions">
-      ${dictee ? `<button type="button" class="btn secondary" id="rnDicter" onclick="rnDicter()">🎤 Dicter</button>` : ''}
+      ${dictee ? `<button type="button" class="btn secondary" id="rnBtnDicter" onclick="rnDicter()">🎤 Dicter</button>` : ''}
       <button type="submit" class="btn" id="rnAjouter">➕ Ajouter la note</button>
     </div>
     <p class="rn-astuce">Sans thème choisi, l’application le devine (parent, paiement, élève…).</p>
@@ -296,7 +296,7 @@ async function rnExporterMois(mois){
 // Dictée à la voix (reconnaissance vocale du navigateur, gratuite)
 function rnDicter(){
   const R = window.SpeechRecognition || window.webkitSpeechRecognition; if(!R) return;
-  const b = document.getElementById('rnDicter'), t = document.getElementById('rnTexte');
+  const b = document.getElementById('rnBtnDicter'), t = document.getElementById('rnTexte');
   if(rnEtat.dictee){ rnEtat.dictee.stop(); return; }
   const r = new R(); r.lang = 'fr-FR'; r.interimResults = false; r.continuous = false;
   const depart = t.value;

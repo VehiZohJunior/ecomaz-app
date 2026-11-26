@@ -151,6 +151,13 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.11.26-3', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ '💡 « À faire aujourd’hui » repère aussi les élèves en difficulté scolaire (moyenne sous 10 ou en baisse de 2 points, avec les matières à renforcer et un message au parent déjà rédigé) et les encaissements attendus dans les 30 jours (avec un « rappel aimable » à envoyer avant la date limite).',
+      'Registre des notes du jour : le bouton 🎤 Dicter fonctionne (il ne réagissait pas).' ],
+  } },
   { version: '2026.11.26-2', nouveautes: {
     commun: [],
     parent: [],
