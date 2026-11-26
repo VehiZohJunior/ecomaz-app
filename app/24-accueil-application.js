@@ -29,13 +29,15 @@ const CATALOGUE_SERVICES = {
   'presences-enseignants': ['Pointage enseignants', 'Arrivées et retards', 'timer', 'ocean'],
   'comptabilite': ['Comptabilité', 'Scolarité, dépenses, reçus', 'wallet', 'menthe'],
   'compta-cantine': ['Cantine', 'Inscrits, paiements, reste dû', 'shopping-bag', 'ocean'],
+  'rapports': ['Rapports et téléchargements', 'Tout télécharger ou charger', 'download', 'nuit'],
+  'registre-notes': ['Registre des notes du jour', 'Notes horodatées, rapport du soir', 'scroll-text', 'indigo'],
   'messagerie': ['Messagerie', 'Messages des familles', 'mail', 'indigo'],
   'cantine': ['Menu de la cantine', 'Repas de la semaine', 'calendar', 'menthe'],
   'tableau-affichage': ['Tableau d’affichage', 'Tableau d’honneur et actualités', 'trophy', 'nuit'],
   'parametres': ['Paramètres', 'École, horaires, sécurité', 'settings', 'indigo'],
 };
 // Écrans ajoutés récemment : badge « Nouveau »
-const SERVICES_NOUVEAUX = new Set(['creer-evaluation', 'boite-evaluations', 'compta-cantine']);
+const SERVICES_NOUVEAUX = new Set(['creer-evaluation', 'boite-evaluations', 'compta-cantine', 'rapports', 'registre-notes']);
 // Les 4 tuiles de l'accueil, par rôle (les plus utilisées)
 const TUILES_ROLE = {
   enseignant: ['presences-eleves', 'devoirs', 'camps-de-base', 'creer-evaluation'],
