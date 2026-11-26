@@ -151,6 +151,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.11.26-2', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ '📒 Nouveau : « Registre des notes du jour » (secrétariat). Pendant la journée, notez chaque événement en quelques mots (ou dictez-le) : la date et l’heure sont enregistrées. Le soir, « Préparer la mise au propre » rédige le rapport du jour ; envoyez-le, la direction le valide. Chaque page validée est rangée dans le registre et n’est plus modifiable.' ],
+  } },
   { version: '2026.11.26-1', nouveautes: {
     commun: [],
     parent: [],

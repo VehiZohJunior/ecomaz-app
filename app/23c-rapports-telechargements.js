@@ -51,6 +51,8 @@ function renderRapports(){
     rapportsChoixMois(), btnRapport("rapportsCompta()", '⬇️ Télécharger la comptabilité')));
   if(perso) cartes.push(carteRapport('🧾', 'Reçus du mois', 'Tous les reçus de paiement du mois, prêts à imprimer ou à enregistrer en PDF.', 'PDF / impression',
     rapportsChoixMois(), btnRapport("rapportsRecus()", '🖨️ Ouvrir les reçus')));
+  if(perso) cartes.push(carteRapport('📒', 'Registre des notes du jour', 'Les notes du jour du secrétariat (rapport mis au propre, validation) et toutes les notes horodatées du mois.', 'Excel',
+    rapportsChoixMois(), btnRapport('rnExporterMois(ui.filters.rapports.mois)', '⬇️ Télécharger le registre')));
   if(perso) cartes.push(carteRapport('💵', 'Scolarité : qui a payé, qui doit', 'État de chaque élève (dû, payé, reste, prochaine tranche) + une feuille « Impayés seulement » pour les relances.', 'Excel',
     '', btnRapport('exporterScolariteExcel()', '⬇️ Télécharger l’état de la scolarité')));
   if(perso) cartes.push(carteRapport('🧒', 'Liste des élèves', 'Tous les élèves avec parents et téléphones, une feuille par classe.', 'Excel',

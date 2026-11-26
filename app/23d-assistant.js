@@ -29,6 +29,7 @@ function conseilsAssistant(){
     const nbRelies = actifs.filter(e => relies.has(e.id)).length;
     if(actifs.length && nbRelies / actifs.length < 0.7 && hasAccess('liens-parents'))
       lignes.push({ ic:'users', texte:`${nbRelies} élève${nbRelies > 1 ? 's' : ''} sur ${actifs.length} ont un parent relié à l’application`, detail:'Invitez les autres : ils verront absences, notes et paiements', bouton:'Inviter les parents', action:"go('liens-parents')" });
+    if(typeof conseilsRegistreNotes === 'function') lignes.push(...conseilsRegistreNotes());
   }catch(_e){ /* un constat impossible à calculer n'empêche jamais l'affichage du tableau de bord */ }
   return lignes;
 }

@@ -168,6 +168,7 @@ function renderView(view){
     'camps-de-base': renderCampsDeBase,
     renforcement: renderRenforcement,
     rapports: renderRapports,
+    'registre-notes': renderRegistreNotes,
   };
   // Données pas encore chargées, ou déjà effacées par une déconnexion (fin
   // de session, inactivité) : rien à afficher, l'écran de connexion est là.

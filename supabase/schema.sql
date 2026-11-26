@@ -5156,3 +5156,135 @@ begin
 end $$;
 revoke all on function marquer_messages_lus(uuid) from public, anon;
 grant execute on function marquer_messages_lus(uuid) to authenticated;
+
+-- =====================================================================
+-- 130. REGISTRE DES NOTES DU JOUR — SECRÉTARIAT (2026-11-26)
+-- =====================================================================
+-- Demande de Vehi Zoh Junior : la secrétaire prend des notes pendant la
+-- journée (chaque note datée et horodatée), le soir elle les met au propre
+-- et les envoie à la validation ; validée, la page entre dans le registre
+-- des notes journalières et n'est plus modifiable.
+-- Une page par jour et par auteur. Écriture : secrétariat, direction,
+-- fondation (personnel administratif). Validation : direction ou fondation,
+-- jamais sa propre page. Lecture : l'auteur, la direction et la fondation.
+-- Les règles (statut, validation, verrouillage) sont tenues par le serveur.
+-- =====================================================================
+create table if not exists notes_jour_pages (
+  id uuid primary key default gen_random_uuid(),
+  ecole_id uuid not null references ecoles(id) on delete cascade,
+  auteur_id uuid not null references profiles(id) on delete cascade,
+  auteur_nom text,
+  jour date not null,
+  contenu_propre text not null default '' check (char_length(contenu_propre) <= 20000),
+  statut text not null default 'brouillon' check (statut in ('brouillon', 'a_valider', 'a_corriger', 'validee')),
+  soumis_le timestamptz,
+  valide_par uuid references profiles(id) on delete set null,
+  valide_par_nom text,
+  valide_le timestamptz,
+  commentaire_validation text check (char_length(commentaire_validation) <= 2000),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (ecole_id, auteur_id, jour)
+);
+create index if not exists notes_jour_pages_ecole_jour on notes_jour_pages (ecole_id, jour desc);
+
+create table if not exists notes_jour_entrees (
+  id uuid primary key default gen_random_uuid(),
+  ecole_id uuid not null references ecoles(id) on delete cascade,
+  page_id uuid not null references notes_jour_pages(id) on delete cascade,
+  auteur_id uuid not null references profiles(id) on delete cascade,
+  categorie text not null default 'Divers' check (char_length(categorie) <= 40),
+  texte text not null check (char_length(btrim(texte)) between 1 and 4000),
+  created_at timestamptz not null default now()
+);
+create index if not exists notes_jour_entrees_page on notes_jour_entrees (page_id, created_at);
+
+alter table notes_jour_pages enable row level security;
+alter table notes_jour_entrees enable row level security;
+revoke all on notes_jour_pages, notes_jour_entrees from anon;
+grant select, insert, update on notes_jour_pages to authenticated;
+revoke delete on notes_jour_pages from authenticated;
+grant select, insert, delete on notes_jour_entrees to authenticated;
+revoke update on notes_jour_entrees from authenticated;
+
+-- Pages
+drop policy if exists "notes jour lecture" on notes_jour_pages;
+create policy "notes jour lecture" on notes_jour_pages for select using (
+  ecole_id = mon_ecole_id() and est_perso_admin() and (auteur_id = auth.uid() or est_admin()));
+drop policy if exists "notes jour creation" on notes_jour_pages;
+create policy "notes jour creation" on notes_jour_pages for insert with check (
+  ecole_id = mon_ecole_id() and est_perso_admin() and auteur_id = auth.uid() and statut = 'brouillon'
+  and valide_par is null and valide_le is null and soumis_le is null);
+drop policy if exists "notes jour modification" on notes_jour_pages;
+create policy "notes jour modification" on notes_jour_pages for update using (
+  ecole_id = mon_ecole_id() and est_perso_admin() and (auteur_id = auth.uid() or est_admin()))
+  with check (ecole_id = mon_ecole_id());
+
+-- Garde du serveur : qui peut changer quoi, horodatage, verrouillage après validation
+create or replace function garder_notes_jour_pages() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare v_nom text;
+begin
+  if tg_op = 'INSERT' then
+    select nullif(btrim(nom_complet), '') into v_nom from profiles where id = new.auteur_id;
+    new.auteur_nom := coalesce(v_nom, 'Secrétariat');
+    new.created_at := now(); new.updated_at := now();
+    return new;
+  end if;
+  if old.statut = 'validee' then raise exception 'Cette note du jour est validée : elle ne peut plus être modifiée.'; end if;
+  -- Champs jamais modifiables
+  new.id := old.id; new.ecole_id := old.ecole_id; new.auteur_id := old.auteur_id; new.auteur_nom := old.auteur_nom;
+  new.jour := old.jour; new.created_at := old.created_at;
+  if new.statut in ('validee', 'a_corriger') and new.statut is distinct from old.statut then
+    -- Validation : direction / fondation, page envoyée, jamais sa propre page
+    if not coalesce(est_admin(), false) then raise exception 'Seules la direction et la fondation valident les notes du jour.'; end if;
+    if old.auteur_id = auth.uid() then raise exception 'On ne valide pas sa propre note du jour.'; end if;
+    if old.statut <> 'a_valider' then raise exception 'Cette note n''a pas été envoyée à la validation.'; end if;
+    select nullif(btrim(nom_complet), '') into v_nom from profiles where id = auth.uid();
+    new.contenu_propre := old.contenu_propre; new.soumis_le := old.soumis_le;
+    new.valide_par := auth.uid(); new.valide_par_nom := coalesce(v_nom, 'Direction'); new.valide_le := now();
+    if new.statut = 'a_corriger' and coalesce(btrim(new.commentaire_validation), '') = '' then
+      raise exception 'Indiquez ce qu''il faut corriger.'; end if;
+  else
+    -- Auteur : brouillon ou envoi à la validation ; rien sur les champs de validation
+    if old.auteur_id <> auth.uid() then raise exception 'Seul l''auteur modifie sa note du jour.'; end if;
+    if new.statut not in ('brouillon', 'a_valider') then new.statut := old.statut; end if;
+    new.valide_par := old.valide_par; new.valide_par_nom := old.valide_par_nom; new.valide_le := old.valide_le;
+    new.commentaire_validation := old.commentaire_validation;
+    if new.statut = 'a_valider' and old.statut <> 'a_valider' then
+      if coalesce(btrim(new.contenu_propre), '') = '' then raise exception 'Mettez la note au propre avant de l''envoyer.'; end if;
+      new.soumis_le := now();
+    else new.soumis_le := old.soumis_le; end if;
+  end if;
+  new.updated_at := now();
+  return new;
+end $$;
+drop trigger if exists garder_notes_jour_pages on notes_jour_pages;
+create trigger garder_notes_jour_pages before insert or update on notes_jour_pages
+  for each row execute function garder_notes_jour_pages();
+
+-- Notes de la journée (entrées horodatées par le serveur)
+drop policy if exists "notes jour entrees lecture" on notes_jour_entrees;
+create policy "notes jour entrees lecture" on notes_jour_entrees for select using (
+  ecole_id = mon_ecole_id() and exists (select 1 from notes_jour_pages p where p.id = page_id));
+drop policy if exists "notes jour entrees ajout" on notes_jour_entrees;
+create policy "notes jour entrees ajout" on notes_jour_entrees for insert with check (
+  ecole_id = mon_ecole_id() and auteur_id = auth.uid()
+  and exists (select 1 from notes_jour_pages p where p.id = page_id and p.auteur_id = auth.uid() and p.statut in ('brouillon', 'a_corriger')));
+drop policy if exists "notes jour entrees retrait" on notes_jour_entrees;
+create policy "notes jour entrees retrait" on notes_jour_entrees for delete using (
+  ecole_id = mon_ecole_id() and auteur_id = auth.uid()
+  and exists (select 1 from notes_jour_pages p where p.id = page_id and p.statut in ('brouillon', 'a_corriger')));
+
+create or replace function horodater_note_jour_entree() returns trigger
+language plpgsql as $$ begin new.created_at := now(); return new; end $$;
+drop trigger if exists horodater_note_jour_entree on notes_jour_entrees;
+create trigger horodater_note_jour_entree before insert on notes_jour_entrees
+  for each row execute function horodater_note_jour_entree();
+
+drop policy if exists "double verification" on notes_jour_pages;
+create policy "double verification" on notes_jour_pages as restrictive for all to authenticated
+  using (double_verification_ok()) with check (double_verification_ok());
+drop policy if exists "double verification" on notes_jour_entrees;
+create policy "double verification" on notes_jour_entrees as restrictive for all to authenticated
+  using (double_verification_ok()) with check (double_verification_ok());
