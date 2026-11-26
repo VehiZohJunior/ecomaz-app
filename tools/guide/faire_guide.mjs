@@ -78,8 +78,8 @@ for (const role of roles) {
     b{ font-weight:800; background:#e6f7ef; border-radius:1mm; padding:0 .6mm; }
     .pied{ margin-top:6mm; font-size:9.5pt; color:#5a6b80; text-align:center; }
   </style></head><body>
-    <div class="couverture"><div class="marque">EcoMaZ</div><h1>Guide express<br>${esc(def.titre)}</h1><p>${esc(def.intro.replace('en une minute', 'en quelques pages'))} Les écrans montrés sont ceux d’une école exemple : votre école apparaît à leur place.</p><span class="puce">Mis à jour le ${new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}</span></div>
-    <div class="video"><div class="qr" id="qr"></div><div><strong>▶ La vidéo d’une minute</strong><p>Scannez le code avec l’appareil photo du téléphone, ou ouvrez :<br>${esc(video)}</p></div></div>
+    <div class="couverture"><div class="marque">EcoMaZ</div><h1>Guide express<br>${esc(def.titre)}</h1><p>${esc(def.intro.replace('en moins de 2 minutes', 'en quelques pages'))} Les écrans montrés sont ceux d’une école exemple : votre école apparaît à leur place.</p><span class="puce">Mis à jour le ${new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}</span></div>
+    <div class="video"><div class="qr" id="qr"></div><div><strong>▶ La vidéo (moins de 2 minutes)</strong><p>Scannez le code avec l’appareil photo du téléphone, ou ouvrez :<br>${esc(video)}</p></div></div>
     <h3 class="titre">Pour tout le monde</h3>
     <div class="tous">${POUR_TOUS.map(([t, l]) => `<div class="bloc"><h4>${t}</h4><ul>${l.map(x => `<li>${x}</li>`).join('')}</ul></div>`).join('')}</div>
     <div class="gestes"><h3 class="titre">Les gestes essentiels — ${esc(def.titre)}</h3>${etapesHtml}</div>

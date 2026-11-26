@@ -21,7 +21,7 @@ const PERSONNES = (avec) => [
 export const SCENES = {
   enseignant: {
     id: 'demo-enseignant', page: 'enseignant.html', titre: 'Enseignants', couleur: '#0f766e',
-    intro: 'EcoMaZ pour les enseignants : l’essentiel en une minute.',
+    intro: 'EcoMaZ pour les enseignants : l’essentiel en moins de 2 minutes.',
     scenes: [
       { nom: 'accueil', titre: 'Votre accueil : les tâches du jour', avant: vue('dashboard'), attente: 1200,
         voix: 'Votre accueil affiche les tâches du jour : l’appel, les devoirs, les notes.',
@@ -49,7 +49,7 @@ export const SCENES = {
   },
   secretariat: {
     id: 'demo-secretariat', page: 'index.html', titre: 'Secrétariat', couleur: '#7c3aed',
-    intro: 'EcoMaZ pour le secrétariat : l’essentiel en une minute.',
+    intro: 'EcoMaZ pour le secrétariat : l’essentiel en moins de 2 minutes.',
     scenes: [
       { nom: 'tableau-de-bord', titre: 'Le tableau de bord', avant: vue('dashboard'), attente: 1400,
         voix: 'Le tableau de bord résume la journée : présences, argent encaissé, et ce qui reste à faire.',
@@ -80,7 +80,7 @@ export const SCENES = {
   },
   direction: {
     id: 'demo-direction', page: 'index.html', titre: 'Direction et Fondation', couleur: '#b45309',
-    intro: 'EcoMaZ pour la direction et la fondation : l’essentiel en une minute.',
+    intro: 'EcoMaZ pour la direction et la fondation : l’essentiel en moins de 2 minutes.',
     scenes: [
       { nom: 'tableau-de-bord', titre: 'L’école d’un coup d’œil', avant: vue('dashboard'), attente: 1400,
         voix: 'Le tableau de bord montre l’école d’un coup d’œil : présences, encaissements, recouvrement.',
