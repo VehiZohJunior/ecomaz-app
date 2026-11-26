@@ -132,8 +132,10 @@ function go(view){
   if(view!==('eleves')) ui.eleveProfileId = null;
   $$('.nav-item').forEach(b=>b.classList.toggle('active', b.dataset.view===view));
   $('#viewTitle').textContent = view === 'dashboard' ? titreTableauDeBord() : (VIEW_TITLES[view] || '');
+  if(typeof noterNavigation === 'function') noterNavigation(ui.currentView, view);
   ui.currentView = view;
   renderView(view);
+  if(typeof majBoutonRetour === 'function') majBoutonRetour();
   if(ui.role === 'enseignant') setTimeout(verifierAppelObligatoire, 0);
   $('#sidebar').classList.remove('open');
   $('#sidebarBackdrop').classList.remove('open');

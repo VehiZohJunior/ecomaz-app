@@ -151,6 +151,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.11.26-4', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ '← Bouton « Retour » en haut de chaque écran : il ramène à l’écran précédent. Les fenêtres et le menu du téléphone ont aussi leur « ← Retour ». Le bouton retour du téléphone fait pareil (il ferme d’abord la fenêtre ouverte).' ],
+  } },
   { version: '2026.11.26-3', nouveautes: {
     commun: [],
     parent: [],

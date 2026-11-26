@@ -906,8 +906,10 @@ function go(view){
   if(view!==('eleves')) ui.eleveProfileId = null;
   $$('.nav-item').forEach(b=>b.classList.toggle('active', b.dataset.view===view));
   $('#viewTitle').textContent = view === 'dashboard' ? titreTableauDeBord() : (VIEW_TITLES[view] || '');
+  if(typeof noterNavigation === 'function') noterNavigation(ui.currentView, view);
   ui.currentView = view;
   renderView(view);
+  if(typeof majBoutonRetour === 'function') majBoutonRetour();
   if(ui.role === 'enseignant') setTimeout(verifierAppelObligatoire, 0);
   $('#sidebar').classList.remove('open');
   $('#sidebarBackdrop').classList.remove('open');
@@ -2943,6 +2945,12 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.11.26-4', nouveautes: {
+    commun: [],
+    parent: [],
+    portier: [],
+    personnel: [ '← Bouton « Retour » en haut de chaque écran : il ramène à l’écran précédent. Les fenêtres et le menu du téléphone ont aussi leur « ← Retour ». Le bouton retour du téléphone fait pareil (il ferme d’abord la fenêtre ouverte).' ],
+  } },
   { version: '2026.11.26-3', nouveautes: {
     commun: [],
     parent: [],
@@ -4538,6 +4546,7 @@ async function logoutRole(){
   stopIdleWatcher();
   stopPollingBulles();
   arreterPersonnesConnectees();
+  if(typeof viderNavigation === 'function') viderNavigation();
   if(typeof rnEtat !== "undefined"){ rnEtat.pages = null; rnEtat.entrees = {}; }
   document.body.classList.remove('theme-parent', 'has-parent-nav');
   if(window.ESPACE_FIXE !== 'portier') document.body.classList.remove('theme-portier');
@@ -16687,6 +16696,56 @@ function conseilsRegistreNotes(){
     l.push({ ic: 'notebook-pen', texte: p ? 'Mettez au propre la note du jour' : 'Note du jour pas encore commencée', detail: 'Préparez le rapport du jour et envoyez-le à la direction', bouton: 'Ouvrir', action: "go('registre-notes')" });
   return l;
 }
+/* =====================================================================
+   BOUTON « RETOUR » (26/11/2026) — demande de Vehi Zoh Junior :
+   « ajoute un bouton RETOUR à chaque module ou menu qui s'ouvre ».
+   - Barre du haut : « ← Retour » sur chaque écran (sauf l'accueil) ;
+     revient à l'écran précédent, ou à l'accueil s'il n'y en a pas.
+   - Le bouton « retour » du téléphone (Android) fait la même chose ;
+     il ferme d'abord la fenêtre ou le menu ouvert, s'il y en a un.
+   go() appelle noterNavigation() et majBoutonRetour().
+   ===================================================================== */
+const navPile = [];
+let navDepuisRetour = false;
+
+function noterNavigation(de, vers){
+  if(!de || de === vers) return;
+  if(navDepuisRetour){ navDepuisRetour = false; return; }
+  navPile.push(de);
+  if(navPile.length > 40) navPile.shift();
+  try{ history.pushState({ ecomaz: vers }, ''); }catch(_e){}
+}
+function majBoutonRetour(){
+  const b = document.getElementById('btnRetour'); if(!b) return;
+  const visible = !!ui.role && !['parent', 'portier'].includes(ui.role) && ui.currentView && ui.currentView !== 'dashboard';
+  b.hidden = !visible;
+  document.body.classList.toggle('avec-retour', visible);
+}
+// Bouton de la barre du haut
+function retourArriere(){
+  if(fermerCoucheOuverte()) return;
+  if(navPile.length){ try{ history.back(); return; }catch(_e){} }
+  if(ui.currentView !== 'dashboard') go('dashboard');
+}
+// Ferme d'abord ce qui est ouvert par-dessus l'écran (fenêtre, menu, panneaux)
+function fermerCoucheOuverte(){
+  if(document.querySelector('#modalBackdrop.open')){ closeModal(); return true; }
+  const sb = document.getElementById('sidebar');
+  if(sb && sb.classList.contains('open')){ sb.classList.remove('open'); document.getElementById('sidebarBackdrop')?.classList.remove('open'); return true; }
+  if(typeof pc !== 'undefined' && pc.ouvert){ pcBasculer(false); return true; }
+  const centre = document.getElementById('centreNotif');
+  if(centre && centre.style.display !== 'none' && typeof toggleCentre === 'function'){ toggleCentre(false); return true; }
+  return false;
+}
+// Bouton « retour » du téléphone
+window.addEventListener('popstate', () => {
+  if(!ui.role || ['parent', 'portier'].includes(ui.role)) return;
+  if(fermerCoucheOuverte()){ try{ history.pushState({ ecomaz: ui.currentView }, ''); }catch(_e){} return; }
+  const v = navPile.pop();
+  if(v){ navDepuisRetour = true; go(v); }
+  else if(ui.currentView && ui.currentView !== 'dashboard'){ navDepuisRetour = true; go('dashboard'); }
+});
+function viderNavigation(){ navPile.length = 0; navDepuisRetour = false; majBoutonRetour(); }
 /* =====================================================================
    ACCUEIL « FAÇON APPLICATION » (2026-11-20) — toutes les applications
    Bandeau bleu nuit (chiffre clé du rôle + 2 actions), grande barre de

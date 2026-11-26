@@ -48,6 +48,7 @@
   <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
   <!-- SIDEBAR -->
   <aside class="sidebar" id="sidebar">
+    <button type="button" class="sidebar-retour" onclick="document.getElementById('sidebar').classList.remove('open'); document.getElementById('sidebarBackdrop').classList.remove('open')"><span aria-hidden="true">←</span> Retour</button>
     <div class="brand">
       <div class="brand-logo-wrap">
         <img class="brand-logo-img" id="brandLogoImg" alt="Logo" style="display:none;">
@@ -133,6 +134,7 @@
     <div class="offline-banner" id="offlineBanner" hidden></div>
     <header class="topbar">
       <button class="burger" id="burger">☰</button>
+      <button type="button" class="btn-retour" id="btnRetour" onclick="retourArriere()" hidden aria-label="Retour à l’écran précédent" title="Retour"><span aria-hidden="true">←</span><span class="br-txt">Retour</span></button>
       <h1 id="viewTitle">Tableau de bord</h1>
       <div class="topbar-right">
         <div class="bulles" id="bullesContainer"></div>
@@ -150,6 +152,7 @@
 <div class="modal-backdrop" id="modalBackdrop">
   <div class="modal" id="modal">
     <div class="modal-header">
+      <button type="button" class="modal-retour" onclick="closeModal()" aria-label="Retour"><span aria-hidden="true">←</span> Retour</button>
       <h3 id="modalTitle">Titre</h3>
       <button class="modal-close" id="modalClose">✕</button>
     </div>
@@ -163,6 +166,7 @@
 <div class="modal-backdrop" id="smartFillBackdrop">
   <div class="modal" id="smartFillModal">
     <div class="modal-header">
+      <button type="button" class="modal-retour" onclick="closeSmartFillModal()" aria-label="Retour"><span aria-hidden="true">←</span> Retour</button>
       <h3 id="smartFillTitle">✨ Remplissage intelligent</h3>
       <button class="modal-close" id="smartFillClose">✕</button>
     </div>
