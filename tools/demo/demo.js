@@ -220,7 +220,7 @@
     const choix = /une valeur parmi : (.*)$/.exec(c.format || ''); if(choix){ const o = choix[1].split(' | ').filter(Boolean); return o[Math.min(1, o.length - 1)] || o[0]; }
     if(/^note_|note obtenue/.test(n)) return String(8 + ((i * 7) % 12));
     if(/frais|montant|prix|salaire|total|vers|tarif|nombre entier/.test(n)) return String(25000 + (i % 6) * 5000);
-    if(/date|aaaa-mm-jj/.test(n)) return '2019-0' + (1 + i % 9) + '-1' + (i % 9);
+    if(/date|aaaa-mm-jj/.test(n)){ if(/naissance|né/.test(n)) return '2019-0' + (1 + i % 9) + '-1' + (i % 9); const d = new Date(Date.now() + (2 + i) * 86400000); return d.toISOString().slice(0, 10); }
     if(/heure|hh:mm/.test(n)) return ['07:30', '10:00', '12:00', '15:30', '16:30'][i % 5];
     if(/sexe|m ou f/.test(n)) return i % 2 ? 'M' : 'F';
     if(/t[ée]l[ée]phone|tel\b|chiffres/.test(n)) return '07000000' + String(10 + i).slice(-2);

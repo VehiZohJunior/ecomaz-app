@@ -511,9 +511,9 @@ ${boutonRemplissage('grille', "SCHEMA_GRILLE", 'formAssistant')}
       <div class="field"><label>Classe(s) concernée(s) — même montant</label>
         <div style="display:flex;flex-wrap:wrap;gap:10px;">${DB.classes.map(c => `<label style="display:flex;align-items:center;gap:6px;"><input type="checkbox" name="classe" value="${c.id}"> ${escapeHtml(c.nom)}</label>`).join('')}</div></div>
       <div class="form-grid">
-        <div class="field"><label>Frais d’inscription (${DEVISE})</label><input type="number" name="inscription" min="0" step="500" value="0"></div>
+        <div class="field"><label>Frais d’inscription (${DEVISE})</label><input type="number" name="inscription" min="0" step="any" value="0"></div>
         <div class="field"><label>Date limite de l’inscription</label><input type="date" name="dateInscription"></div>
-        <div class="field"><label>Scolarité annuelle, hors inscription (${DEVISE})</label><input type="number" name="scolarite" min="0" step="500" required></div>
+        <div class="field"><label>Scolarité annuelle, hors inscription (${DEVISE})</label><input type="number" name="scolarite" min="0" step="any" required></div>
         <div class="field"><label>Nombre de versements</label><select name="nb" onchange="document.getElementById('assistantDates').innerHTML = lignesDatesAssistant(Number(this.value))">${[1,2,3,4,5,6].map(n => `<option ${n===3?'selected':''}>${n}</option>`).join('')}</select></div>
       </div>
       <div class="form-grid" id="assistantDates">${lignesDates(3)}</div>
@@ -555,7 +555,7 @@ ${boutonRemplissage('echeance', "SCHEMA_ECHEANCE", 'formEcheance')}
       <input type="hidden" name="classeId" value="${portee}">
       <div class="form-grid">
         <div class="field span2"><label>Libellé</label><input name="label" required placeholder="Ex : Frais d’inscription, 1er versement" value="${e?escapeHtml(e.label):''}"></div>
-        <div class="field"><label>Montant (${DEVISE})</label><input type="number" name="montant" min="0" step="500" required value="${e?e.montant:50000}"></div>
+        <div class="field"><label>Montant (${DEVISE})</label><input type="number" name="montant" min="0" step="any" required value="${e?e.montant:50000}"></div>
         <div class="field"><label>Date limite (facultatif)</label><input type="date" name="dateEcheance" value="${e&&e.dateEcheance?e.dateEcheance:''}"></div>
       </div>
       <div class="form-actions"><button type="button" class="btn secondary" onclick="closeModal()">Annuler</button><button type="submit" class="btn">Enregistrer</button></div>

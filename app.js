@@ -917,6 +917,8 @@ function go(view){
 }
 
 function renderView(view){
+  // Parents et portier ont leur propre accueil : ne jamais dessiner un écran du personnel chez eux (audit 26/11/2026)
+  if(ui.role === 'parent' || ui.role === 'portier'){ if(DB) rafraichirAccueil(); return; }
   const map = {
     dashboard: renderDashboard,
     eleves: renderEleves,
@@ -2945,6 +2947,13 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.11.26-6', nouveautes: {
+    commun: [],
+    parent: [ 'Sécurité & santé : ajouter une personne autorisée à chercher l’enfant ne montre plus de message d’erreur.' ],
+    portier: [],
+    personnel: [ 'Salaires : « Payer » ouvre maintenant une petite fiche (montant modifiable, mode de paiement, date) avant d’enregistrer ; un salaire à 0 F CFA n’est plus possible.',
+      'Tous les montants (paiements, dépenses, salaires, loyer, tarifs…) acceptent maintenant n’importe quelle somme, par exemple 12 750 F CFA (avant, certaines sommes étaient refusées par le navigateur).' ],
+  } },
   { version: '2026.11.26-5', nouveautes: {
     commun: [],
     parent: [],
@@ -10551,7 +10560,7 @@ function openEnseignantForm(id){
         <div class="field"><label>Téléphone</label><input name="telephone" required value="${t?escapeHtml(t.telephone):''}"></div>
         <div class="field span2"><label>Email</label><input type="email" name="email" value="${t?escapeHtml(t.email):''}"></div>
         <div class="field"><label>Date d'embauche</label><input type="date" name="dateEmbauche" value="${t?t.dateEmbauche:todayISO()}"></div>
-        ${(ui.role==='direction' || ui.role==='fondation') ? `<div class="field"><label>Salaire mensuel (${DEVISE})</label><input type="number" name="salaireMensuel" min="0" step="1000" value="${t?t.salaireMensuel||0:75000}"></div>` : ''}
+        ${(ui.role==='direction' || ui.role==='fondation') ? `<div class="field"><label>Salaire mensuel (${DEVISE})</label><input type="number" name="salaireMensuel" min="0" step="any" value="${t?t.salaireMensuel||0:75000}"></div>` : ''}
         <div class="field"><label>Statut</label>
           <select name="statut"><option ${t?.statut==='Actif'?'selected':''}>Actif</option><option ${t?.statut==='Inactif'?'selected':''}>Inactif</option></select>
         </div>
@@ -12383,7 +12392,7 @@ function renderComptaBudget(){
     const bon = type==='recette' ? ecart>=0 : ecart<=0;
     return `<tr>
       <td>${categorie}</td>
-      <td><input type="number" min="0" step="1000" value="${prevu}" onchange="handleSaveBudget('${type}','${categorie}','${mois}',this.value)" style="width:110px;"></td>
+      <td><input type="number" min="0" step="any" value="${prevu}" onchange="handleSaveBudget('${type}','${categorie}','${mois}',this.value)" style="width:110px;"></td>
       <td>${fmtFCFA(realise)}</td>
       <td style="font-weight:700;color:${bon?'var(--green)':'var(--red)'};">${ecart>=0?'+':''}${fmtFCFA(ecart)}</td>
     </tr>`;
@@ -12831,7 +12840,7 @@ function ouvrirRepriseVersements(classeId){
     return `<div class="rv-eleve"><strong>${escapeHtml(eleveFullName(e))}</strong>
       <div class="rv-echs">${ouvertes.map(d => { const reste = d.montant - d.paye; return `<div class="rv-ech">
         <span class="rv-lib">${escapeHtml(d.label)}<small>reste ${fmtFCFA(reste)}</small></span>
-        <input type="number" inputmode="numeric" class="rv-montant" min="0" step="500" max="${reste}" placeholder="0" aria-label="${escapeHtml(eleveFullName(e) + ' — ' + d.label)}"
+        <input type="number" inputmode="numeric" class="rv-montant" min="0" step="any" max="${reste}" placeholder="0" aria-label="${escapeHtml(eleveFullName(e) + ' — ' + d.label)}"
           data-eleve="${e.id}" data-tranche="${escapeHtml(d.label)}" data-reste="${reste}" oninput="totalReprise()">
         <button type="button" class="btn secondary sm" onclick="const i=this.previousElementSibling; i.value = i.value == ${reste} ? '' : ${reste}; totalReprise()">Payée</button>
       </div>`; }).join('')}</div></div>`;
@@ -13021,7 +13030,7 @@ function openPaiementScolariteForm(eleveId, trancheLabel){
     ${boutonRemplissage('paiement', 'SCHEMA_PAIEMENT', 'formPaiement')}
     <form id="formPaiement" onsubmit="return handleSavePaiementScolarite(event,'${eleveId}')">
       <div class="form-grid">
-        <div class="field"><label>Montant (${DEVISE})</label><input type="number" id="paiementMontant" name="montant" min="500" step="500" required value="${montantDefaut}"></div>
+        <div class="field"><label>Montant (${DEVISE})</label><input type="number" id="paiementMontant" name="montant" min="500" step="any" required value="${montantDefaut}"></div>
         <div class="field"><label>Échéance / Tranche</label><select name="tranche" onchange="const o=this.selectedOptions[0]; if(o && o.dataset.montant) document.getElementById('paiementMontant').value = o.dataset.montant;">${optionsEcheancesScolarite(trancheLabel, e?.classeId)}</select></div>
         <div class="field"><label>Date</label><input type="date" name="date" value="${todayISO()}"></div>
         <div class="field"><label>Mode de paiement</label><select name="modePaiement">${MODES_PAIEMENT.map(m=>`<option>${m}</option>`).join('')}</select></div>
@@ -13087,7 +13096,7 @@ function openModifierPaiementScolariteForm(paiementId){
 ${boutonRemplissage('paiement', "SCHEMA_PAIEMENT", 'formPaiementModif')}
     <form id="formPaiementModif" onsubmit="return handleModifierPaiementScolarite(event,'${paiementId}')">
       <div class="form-grid">
-        <div class="field"><label>Montant (${DEVISE})</label><input type="number" name="montant" min="500" step="500" required value="${p.montant}"></div>
+        <div class="field"><label>Montant (${DEVISE})</label><input type="number" name="montant" min="500" step="any" required value="${p.montant}"></div>
         <div class="field"><label>Échéance / Tranche</label><select name="tranche">${optionsEcheancesScolarite(p.tranche, eleveById(p.eleveId)?.classeId)}</select></div>
         <div class="field"><label>Date</label><input type="date" name="date" value="${p.date}"></div>
         <div class="field"><label>Mode de paiement</label><select name="modePaiement">${MODES_PAIEMENT.map(m=>`<option ${p.modePaiement===m?'selected':''}>${m}</option>`).join('')}</select></div>
@@ -13130,7 +13139,7 @@ function openFraisScolariteForm(){
 ${boutonRemplissage('frais', "schemaFrais()", 'formFrais')}
     <form id="formFrais" onsubmit="return handleSaveFraisScolarite(event)">
       <div class="form-grid">
-        ${DB.classes.map(c=>`<div class="field"><label>${c.nom}</label><input type="number" name="frais_${c.id}" min="0" step="1000" value="${DB.fraisScolarite[c.id]||0}"></div>`).join('')}
+        ${DB.classes.map(c=>`<div class="field"><label>${c.nom}</label><input type="number" name="frais_${c.id}" min="0" step="any" value="${DB.fraisScolarite[c.id]||0}"></div>`).join('')}
       </div>
       <div class="hint">Montant annuel en ${DEVISE} par classe.</div>
       <div class="form-actions"><button type="button" class="btn secondary" onclick="closeModal()">Annuler</button><button type="submit" class="btn">Enregistrer</button></div>
@@ -13217,7 +13226,7 @@ ${boutonRemplissage('activite', "SCHEMA_ACTIVITE", 'formActivite')}
     <form id="formActivite" onsubmit="return handleSaveActivite(event,'${id||''}')">
       <div class="form-grid">
         <div class="field span2"><label>Nom de l'activité</label><input name="nom" required value="${a?escapeHtml(a.nom):''}"></div>
-        <div class="field"><label>Cotisation (${DEVISE})</label><input type="number" name="montantCotisation" min="0" step="500" required value="${a?a.montantCotisation:10000}"></div>
+        <div class="field"><label>Cotisation (${DEVISE})</label><input type="number" name="montantCotisation" min="0" step="any" required value="${a?a.montantCotisation:10000}"></div>
         <div class="field"><label>Périodicité</label>
           <select name="periode"><option ${a?.periode==='Mensuel'?'selected':''}>Mensuel</option><option ${!a||a?.periode==='Trimestriel'?'selected':''}>Trimestriel</option><option ${a?.periode==='Annuel'?'selected':''}>Annuel</option></select>
         </div>
@@ -13305,7 +13314,7 @@ function openPaiementCotisationForm(eleveId, activiteId){
 ${boutonRemplissage('cotisation', "SCHEMA_COTISATION", 'formCotisation')}
     <form id="formCotisation" onsubmit="return handleSavePaiementCotisation(event,'${eleveId}','${activiteId}')">
       <div class="form-grid">
-        <div class="field"><label>Montant (${DEVISE})</label><input type="number" name="montant" min="500" step="500" required value="${solde||act.montantCotisation}"></div>
+        <div class="field"><label>Montant (${DEVISE})</label><input type="number" name="montant" min="500" step="any" required value="${solde||act.montantCotisation}"></div>
         <div class="field"><label>Date</label><input type="date" name="date" value="${todayISO()}"></div>
         <div class="field span2"><label>Mode de paiement</label><select name="modePaiement">${MODES_PAIEMENT.map(m=>`<option>${m}</option>`).join('')}</select></div>
       </div>
@@ -13404,7 +13413,7 @@ function formulaireTarifCantine(act){
   return `${boutonRemplissage('cantine-tarif', "SCHEMA_CANTINE_TARIF", 'formCantineTarif')}
     <form id="formCantineTarif" onsubmit="return enregistrerTarifCantine(event)">
       <div class="form-grid">
-        <div class="field"><label>Tarif par élève (${DEVISE})</label><input type="number" name="montantCotisation" min="0" step="500" required value="${act ? act.montantCotisation : ''}" placeholder="Ex : 15000"></div>
+        <div class="field"><label>Tarif par élève (${DEVISE})</label><input type="number" name="montantCotisation" min="0" step="any" required value="${act ? act.montantCotisation : ''}" placeholder="Ex : 15000"></div>
         <div class="field"><label>Payé par</label><select name="periode">${[['Mensuel', 'mois'], ['Trimestriel', 'trimestre'], ['Annuel', 'année']].map(([v, l]) => `<option value="${v}" ${(act ? act.periode : 'Mensuel') === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
       </div>
       <div class="form-actions">${act ? '<button type="button" class="btn secondary" onclick="closeModal()">Annuler</button>' : ''}<button type="submit" class="btn">Enregistrer le tarif</button></div>
@@ -13512,7 +13521,7 @@ ${boutonRemplissage('article', "SCHEMA_GADGET", 'formGadget')}
     <form id="formGadget" onsubmit="return handleSaveGadget(event,'${id||''}')">
       <div class="form-grid">
         <div class="field span2"><label>Nom de l'article</label><input name="nom" required value="${g?escapeHtml(g.nom):''}"></div>
-        <div class="field"><label>Prix unitaire (${DEVISE})</label><input type="number" name="prixUnitaire" min="0" step="100" required value="${g?g.prixUnitaire:1000}"></div>
+        <div class="field"><label>Prix unitaire (${DEVISE})</label><input type="number" name="prixUnitaire" min="0" step="any" required value="${g?g.prixUnitaire:1000}"></div>
         <div class="field"><label>Stock disponible</label><input type="number" name="stock" min="0" required value="${g?g.stock:10}"></div>
       </div>
       <div class="form-actions"><button type="button" class="btn secondary" onclick="closeModal()">Annuler</button><button type="submit" class="btn">Enregistrer</button></div>
@@ -13620,7 +13629,7 @@ function openPersonnelForm(id){
         <div class="field"><label>Nom</label><input name="nom" required value="${p?escapeHtml(p.nom):''}"></div>
         <div class="field span2"><label>Poste / Fonction</label><input name="poste" list="postesList" required value="${p?escapeHtml(p.poste):''}"></div>
         <datalist id="postesList">${POSTES_PERSONNEL.map(po=>`<option value="${po}">`).join('')}</datalist>
-        <div class="field"><label>Salaire mensuel (${DEVISE})</label><input type="number" name="salaireMensuel" min="0" step="1000" required value="${p?p.salaireMensuel:60000}"></div>
+        <div class="field"><label>Salaire mensuel (${DEVISE})</label><input type="number" name="salaireMensuel" min="0" step="any" required value="${p?p.salaireMensuel:60000}"></div>
         <div class="field"><label>Téléphone</label><input name="telephone" value="${p?escapeHtml(p.telephone):''}"></div>
         <div class="field"><label>Date d'embauche</label><input type="date" name="dateEmbauche" value="${p?p.dateEmbauche:todayISO()}"></div>
         <div class="field"><label>Statut</label><select name="statut"><option ${p?.statut==='Actif'?'selected':''}>Actif</option><option ${p?.statut==='Inactif'?'selected':''}>Inactif</option></select></div>
@@ -13659,15 +13668,35 @@ async function deletePersonnel(id){
     renderView('comptabilite');
   }catch(e){ alert('Erreur : ' + e.message); }
 }
-async function payerSalaire(personnelId, personnelType, mois, montant){
+// « Payer » ouvre une petite fiche de confirmation (26/11/2026, audit) : avant, un seul toucher
+// enregistrait le salaire, même à 0 F CFA quand le salaire n'était pas renseigné sur la fiche.
+function payerSalaire(personnelId, personnelType, mois, montant){
+  const nom = personnelNomById(personnelId, personnelType);
+  const modes = (typeof MODES_PAIEMENT !== 'undefined' ? MODES_PAIEMENT : ['Espèces', 'Mobile Money', 'Virement bancaire', 'Chèque']);
+  openModal(`💵 Payer le salaire — ${nom}`, `<form id="formPayerSalaire" onsubmit="event.preventDefault(); enregistrerPaiementSalaire('${personnelId}', '${personnelType}', '${mois}')">
+      <p class="hint">Salaire de ${escapeHtml(moisLabel(mois))}. ${Number(montant) > 0 ? 'Montant repris de la fiche : vérifiez avant de valider.' : '<strong>Aucun salaire n’est renseigné sur la fiche</strong> : indiquez le montant payé.'}</p>
+      <div class="form-group"><label for="psMontant">Montant payé (F CFA) *</label><input id="psMontant" name="montant" type="number" min="0" step="any" inputmode="numeric" required value="${Number(montant) > 0 ? Number(montant) : ''}"></div>
+      <div class="form-group"><label for="psMode">Mode de paiement</label><select id="psMode" name="modePaiement">${modes.map(m => `<option${m === 'Espèces' ? ' selected' : ''}>${escapeHtml(m)}</option>`).join('')}</select></div>
+      <div class="form-group"><label for="psDate">Date du paiement</label><input id="psDate" name="datePaiement" type="date" required value="${todayISO()}" max="${todayISO()}"></div>
+      <div class="form-actions"><button type="button" class="btn secondary" onclick="closeModal()">Annuler</button><button type="submit" class="btn" id="psOk">💵 Valider le paiement</button></div>
+    </form>`);
+  setTimeout(() => document.getElementById('psMontant')?.focus(), 60);
+}
+async function enregistrerPaiementSalaire(personnelId, personnelType, mois){
+  const montant = parseFloat(document.getElementById('psMontant')?.value || '0');
+  if(!(montant > 0)){ toast('Indiquez le montant payé.'); document.getElementById('psMontant')?.focus(); return; }
+  const modePaiement = document.getElementById('psMode')?.value || 'Espèces';
+  const datePaiement = document.getElementById('psDate')?.value || todayISO();
+  const b = document.getElementById('psOk'); if(b) b.disabled = true;
   try{
-    const rec = await dbInsert('paiements_salaires', {personnelId, personnelType, mois, montant:parseFloat(montant), datePaiement: todayISO(), modePaiement:'Virement bancaire'});
+    const rec = await dbInsert('paiements_salaires', {personnelId, personnelType, mois, montant, datePaiement, modePaiement});
     DB.paiementsSalaires.push(rec);
     journaliserCompta('paiements_salaires', rec.id, 'creation', null, rec);
+    closeModal();
     toast('Salaire payé');
     renderView('comptabilite');
     openRecu({type:'sortie', refId:rec.id, montant:rec.montant, date:rec.datePaiement, modePaiement:rec.modePaiement, objet:`Salaire — ${moisLabel(mois)}`, personne: personnelNomById(personnelId, personnelType)});
-  }catch(e){ alert('Erreur : ' + e.message); }
+  }catch(e){ if(b) b.disabled = false; alert('Erreur : ' + e.message); }
 }
 function reimprimerRecuSalaire(paiementId){
   const p = DB.paiementsSalaires.find(x=>x.id===paiementId);
@@ -13693,7 +13722,7 @@ function openModifierPaiementSalaireForm(paiementId){
 ${boutonRemplissage('salaire', "SCHEMA_SALAIRE", 'formSalaireModif')}
     <form id="formSalaireModif" onsubmit="return handleModifierPaiementSalaire(event,'${paiementId}')">
       <div class="form-grid">
-        <div class="field"><label>Montant (${DEVISE})</label><input type="number" name="montant" min="0" step="1000" required value="${p.montant}"></div>
+        <div class="field"><label>Montant (${DEVISE})</label><input type="number" name="montant" min="0" step="any" required value="${p.montant}"></div>
         <div class="field"><label>Date de paiement</label><input type="date" name="datePaiement" value="${p.datePaiement}"></div>
         <div class="field"><label>Mode de paiement</label><select name="modePaiement">${MODES_PAIEMENT.map(m=>`<option ${p.modePaiement===m?'selected':''}>${m}</option>`).join('')}</select></div>
       </div>
@@ -13722,10 +13751,13 @@ async function payerToutLePersonnel(mois){
     ...DB.personnelAutre.filter(p=>p.statut==='Actif').map(p=>({id:p.id, type:'autre', salaire:p.salaireMensuel||0})),
   ];
   const restants = personnel.filter(p=>!DB.paiementsSalaires.some(x=>x.personnelId===p.id && x.personnelType===p.type && x.mois===mois));
+  const sansSalaire = restants.filter(p => !(p.salaire > 0));
+  const aPayer = restants.filter(p => p.salaire > 0);
   if(restants.length===0){ toast('Tout le personnel est déjà payé pour ce mois'); return; }
-  if(!confirm(`Payer ${restants.length} employé(s) pour ${moisLabel(mois)} — total ${fmtFCFA(restants.reduce((s,p)=>s+p.salaire,0))} ?`)) return;
+  if(!aPayer.length){ toast(`Aucun salaire renseigné sur les ${sansSalaire.length} fiche(s) restantes : payez-les une par une (bouton « Payer »).`); return; }
+  if(!confirm(`Payer ${aPayer.length} employé(s) pour ${moisLabel(mois)} — total ${fmtFCFA(aPayer.reduce((s,p)=>s+p.salaire,0))} ?${sansSalaire.length ? `\n\n${sansSalaire.length} fiche(s) sans salaire renseigné ne seront pas payées : faites-les une par une.` : ''}`)) return;
   try{
-    const rows = restants.map(p=>({personnelId:p.id, personnelType:p.type, mois, montant:p.salaire, datePaiement: todayISO(), modePaiement:'Virement bancaire'}));
+    const rows = aPayer.map(p=>({personnelId:p.id, personnelType:p.type, mois, montant:p.salaire, datePaiement: todayISO(), modePaiement:'Virement bancaire'}));
     const inseres = await dbInsertMany('paiements_salaires', rows);
     DB.paiementsSalaires.push(...inseres);
     inseres.forEach(rec => journaliserCompta('paiements_salaires', rec.id, 'creation', null, rec));
@@ -13781,7 +13813,7 @@ function openDepenseForm(id){
     <form id="formDepense" onsubmit="return handleSaveDepense(event,'${id||''}')">
       <div class="form-grid">
         <div class="field"><label>Catégorie</label><select name="categorie">${CATEGORIES_DEPENSES.map(c=>`<option ${d?.categorie===c?'selected':''}>${c}</option>`).join('')}</select></div>
-        <div class="field"><label>Montant (${DEVISE})</label><input type="number" name="montant" min="0" step="500" required value="${d?d.montant:10000}"></div>
+        <div class="field"><label>Montant (${DEVISE})</label><input type="number" name="montant" min="0" step="any" required value="${d?d.montant:10000}"></div>
         <div class="field span2"><label>Libellé</label><input name="libelle" required value="${d?escapeHtml(d.libelle):''}"></div>
         <div class="field"><label>Date</label><input type="date" name="date" value="${d?d.date:todayISO()}"></div>
         <div class="field"><label>Mode de paiement</label><select name="modePaiement">${MODES_PAIEMENT.map(m=>`<option ${d?.modePaiement===m?'selected':''}>${m}</option>`).join('')}</select></div>
@@ -13845,7 +13877,7 @@ function openLoyerConfigForm(){
   openModal('Configurer le loyer mensuel', `
 ${boutonRemplissage('loyer', "SCHEMA_LOYER", 'formLoyer')}
     <form id="formLoyer" onsubmit="return handleSaveLoyerConfig(event)">
-      <div class="form-grid single"><div class="field"><label>Loyer mensuel (${DEVISE})</label><input type="number" name="loyerMensuel" min="0" step="1000" required value="${DB.meta.loyerMensuel}"></div></div>
+      <div class="form-grid single"><div class="field"><label>Loyer mensuel (${DEVISE})</label><input type="number" name="loyerMensuel" min="0" step="any" required value="${DB.meta.loyerMensuel}"></div></div>
       <div class="form-actions"><button type="button" class="btn secondary" onclick="closeModal()">Annuler</button><button type="submit" class="btn">Enregistrer</button></div>
     </form>`);
 }
@@ -15156,9 +15188,9 @@ ${boutonRemplissage('grille', "SCHEMA_GRILLE", 'formAssistant')}
       <div class="field"><label>Classe(s) concernée(s) — même montant</label>
         <div style="display:flex;flex-wrap:wrap;gap:10px;">${DB.classes.map(c => `<label style="display:flex;align-items:center;gap:6px;"><input type="checkbox" name="classe" value="${c.id}"> ${escapeHtml(c.nom)}</label>`).join('')}</div></div>
       <div class="form-grid">
-        <div class="field"><label>Frais d’inscription (${DEVISE})</label><input type="number" name="inscription" min="0" step="500" value="0"></div>
+        <div class="field"><label>Frais d’inscription (${DEVISE})</label><input type="number" name="inscription" min="0" step="any" value="0"></div>
         <div class="field"><label>Date limite de l’inscription</label><input type="date" name="dateInscription"></div>
-        <div class="field"><label>Scolarité annuelle, hors inscription (${DEVISE})</label><input type="number" name="scolarite" min="0" step="500" required></div>
+        <div class="field"><label>Scolarité annuelle, hors inscription (${DEVISE})</label><input type="number" name="scolarite" min="0" step="any" required></div>
         <div class="field"><label>Nombre de versements</label><select name="nb" onchange="document.getElementById('assistantDates').innerHTML = lignesDatesAssistant(Number(this.value))">${[1,2,3,4,5,6].map(n => `<option ${n===3?'selected':''}>${n}</option>`).join('')}</select></div>
       </div>
       <div class="form-grid" id="assistantDates">${lignesDates(3)}</div>
@@ -15200,7 +15232,7 @@ ${boutonRemplissage('echeance', "SCHEMA_ECHEANCE", 'formEcheance')}
       <input type="hidden" name="classeId" value="${portee}">
       <div class="form-grid">
         <div class="field span2"><label>Libellé</label><input name="label" required placeholder="Ex : Frais d’inscription, 1er versement" value="${e?escapeHtml(e.label):''}"></div>
-        <div class="field"><label>Montant (${DEVISE})</label><input type="number" name="montant" min="0" step="500" required value="${e?e.montant:50000}"></div>
+        <div class="field"><label>Montant (${DEVISE})</label><input type="number" name="montant" min="0" step="any" required value="${e?e.montant:50000}"></div>
         <div class="field"><label>Date limite (facultatif)</label><input type="date" name="dateEcheance" value="${e&&e.dateEcheance?e.dateEcheance:''}"></div>
       </div>
       <div class="form-actions"><button type="button" class="btn secondary" onclick="closeModal()">Annuler</button><button type="submit" class="btn">Enregistrer</button></div>
@@ -16700,7 +16732,7 @@ function rnOuvrirFormulaire(cle){
     if(c.type === 'enseignant') return `<div class="form-group">${lib}<input id="${id}" list="rnListeEnseignants" autocomplete="off" placeholder="Tapez quelques lettres du nom"></div>`;
     const type = { nombre: 'number', tel: 'tel', heure: 'time' }[c.type] || 'text';
     const val = c.type === 'heure' ? new Date().toTimeString().slice(0, 5) : '';
-    return `<div class="form-group">${lib}<input id="${id}" type="${type}"${type === 'number' ? ' min="0" step="500" inputmode="numeric"' : ''}${c.ex ? ` placeholder="Ex. : ${escapeHtml(c.ex)}"` : ''} value="${val}"></div>`;
+    return `<div class="form-group">${lib}<input id="${id}" type="${type}"${type === 'number' ? ' min="0" step="any" inputmode="numeric"' : ''}${c.ex ? ` placeholder="Ex. : ${escapeHtml(c.ex)}"` : ''} value="${val}"></div>`;
   };
   openModal(`${rnThemeIcone(cle)} ${f.titre}`, `<form class="rn-fiche" onsubmit="event.preventDefault(); rnEnregistrerFiche('${cle}')">
       ${f.aide ? `<p class="hint">${f.aide}</p>` : ''}

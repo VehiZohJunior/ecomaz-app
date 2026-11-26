@@ -268,7 +268,7 @@ function rnOuvrirFormulaire(cle){
     if(c.type === 'enseignant') return `<div class="form-group">${lib}<input id="${id}" list="rnListeEnseignants" autocomplete="off" placeholder="Tapez quelques lettres du nom"></div>`;
     const type = { nombre: 'number', tel: 'tel', heure: 'time' }[c.type] || 'text';
     const val = c.type === 'heure' ? new Date().toTimeString().slice(0, 5) : '';
-    return `<div class="form-group">${lib}<input id="${id}" type="${type}"${type === 'number' ? ' min="0" step="500" inputmode="numeric"' : ''}${c.ex ? ` placeholder="Ex. : ${escapeHtml(c.ex)}"` : ''} value="${val}"></div>`;
+    return `<div class="form-group">${lib}<input id="${id}" type="${type}"${type === 'number' ? ' min="0" step="any" inputmode="numeric"' : ''}${c.ex ? ` placeholder="Ex. : ${escapeHtml(c.ex)}"` : ''} value="${val}"></div>`;
   };
   openModal(`${rnThemeIcone(cle)} ${f.titre}`, `<form class="rn-fiche" onsubmit="event.preventDefault(); rnEnregistrerFiche('${cle}')">
       ${f.aide ? `<p class="hint">${f.aide}</p>` : ''}

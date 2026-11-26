@@ -151,6 +151,13 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.11.26-6', nouveautes: {
+    commun: [],
+    parent: [ 'Sécurité & santé : ajouter une personne autorisée à chercher l’enfant ne montre plus de message d’erreur.' ],
+    portier: [],
+    personnel: [ 'Salaires : « Payer » ouvre maintenant une petite fiche (montant modifiable, mode de paiement, date) avant d’enregistrer ; un salaire à 0 F CFA n’est plus possible.',
+      'Tous les montants (paiements, dépenses, salaires, loyer, tarifs…) acceptent maintenant n’importe quelle somme, par exemple 12 750 F CFA (avant, certaines sommes étaient refusées par le navigateur).' ],
+  } },
   { version: '2026.11.26-5', nouveautes: {
     commun: [],
     parent: [],

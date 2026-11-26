@@ -295,7 +295,7 @@ function openEnseignantForm(id){
         <div class="field"><label>Téléphone</label><input name="telephone" required value="${t?escapeHtml(t.telephone):''}"></div>
         <div class="field span2"><label>Email</label><input type="email" name="email" value="${t?escapeHtml(t.email):''}"></div>
         <div class="field"><label>Date d'embauche</label><input type="date" name="dateEmbauche" value="${t?t.dateEmbauche:todayISO()}"></div>
-        ${(ui.role==='direction' || ui.role==='fondation') ? `<div class="field"><label>Salaire mensuel (${DEVISE})</label><input type="number" name="salaireMensuel" min="0" step="1000" value="${t?t.salaireMensuel||0:75000}"></div>` : ''}
+        ${(ui.role==='direction' || ui.role==='fondation') ? `<div class="field"><label>Salaire mensuel (${DEVISE})</label><input type="number" name="salaireMensuel" min="0" step="any" value="${t?t.salaireMensuel||0:75000}"></div>` : ''}
         <div class="field"><label>Statut</label>
           <select name="statut"><option ${t?.statut==='Actif'?'selected':''}>Actif</option><option ${t?.statut==='Inactif'?'selected':''}>Inactif</option></select>
         </div>

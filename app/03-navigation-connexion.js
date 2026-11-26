@@ -143,6 +143,8 @@ function go(view){
 }
 
 function renderView(view){
+  // Parents et portier ont leur propre accueil : ne jamais dessiner un écran du personnel chez eux (audit 26/11/2026)
+  if(ui.role === 'parent' || ui.role === 'portier'){ if(DB) rafraichirAccueil(); return; }
   const map = {
     dashboard: renderDashboard,
     eleves: renderEleves,
