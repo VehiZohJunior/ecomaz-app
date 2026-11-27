@@ -135,6 +135,31 @@ for x in [e for e in D['eleves'] if e['classe_id'] != cp1['id']][3:5]:
 # - 6 familles n'ont pas encore réglé l'inscription (date limite passée)
 sans_inscription = {e['id'] for e in D['eleves'][10:16]}
 D['paiements_scolarite'] = [p for p in D.get('paiements_scolarite', []) if not (p['eleve_id'] in sans_inscription and p.get('tranche') == 'Inscription')]
+# Cantine, activités (taekwondo le samedi), renforcement, permissions (fictifs)
+def nid():
+    return str(uuid.UUID(int=rnd.getrandbits(128)))
+ACT = {'cantine': nid(), 'taekwondo': nid(), 'danse': nid()}
+D['activites'] = [
+    {'id': ACT['cantine'], 'ecole_id': ECOLE, 'nom': 'Cantine', 'type': 'cantine', 'montant_cotisation': 15000, 'periode': 'Mensuel', 'jours_appel': None},
+    {'id': ACT['taekwondo'], 'ecole_id': ECOLE, 'nom': 'Taekwondo', 'type': 'activite', 'montant_cotisation': 10000, 'periode': 'Trimestriel', 'jours_appel': [6]},
+    {'id': ACT['danse'], 'ecole_id': ECOLE, 'nom': 'Danse', 'type': 'activite', 'montant_cotisation': 7500, 'periode': 'Trimestriel', 'jours_appel': [3]}]
+actifs = [e for e in D['eleves'] if e.get('statut', 'Actif') == 'Actif']
+D['inscriptions_activites'] = []
+for cle, pas in (('cantine', 2), ('taekwondo', 6), ('danse', 7)):
+    for e in actifs[::pas]:
+        D['inscriptions_activites'].append({'id': nid(), 'ecole_id': ECOLE, 'eleve_id': e['id'], 'activite_id': ACT[cle], 'date_inscription': '2026-09-15'})
+for e in eleves_cp1[:4] + [x for x in actifs if x['classe_id'].endswith('-cm2')][:4]:
+    e['renforcement'] = True
+D['paiements_cotisations'] = [{'id': nid(), 'ecole_id': ECOLE, 'eleve_id': i['eleve_id'], 'activite_id': i['activite_id'], 'montant': 15000 if i['activite_id'] == ACT['cantine'] else 10000,
+    'date': max(jours) if jours else '2026-10-16', 'mode_paiement': rnd.choice(['Espèces', 'Mobile Money']), 'mois': '2026-10'} for i in D['inscriptions_activites'][:18]]
+D['permissions'] = [
+    {'id': nid(), 'ecole_id': ECOLE, 'categorie': 'personnel', 'demandeur_id': 'demo-collegue-1', 'demandeur_nom': D['profiles'][-1]['nom_complet'] if False else 'Fatou KONÉ', 'eleve_id': None, 'type': 'Absence (journée)',
+     'date_debut': max(jours) if jours else '2026-10-16', 'date_fin': max(jours) if jours else '2026-10-16', 'heure_debut': None, 'heure_fin': None, 'motif': 'Rendez-vous à l’hôpital pour mon enfant.', 'qui_recupere': None,
+     'statut': 'en_attente', 'decision_par': None, 'decision_nom': None, 'decision_le': None, 'commentaire': None, 'heure_retour': None, 'created_at': '2026-10-15T07:10:00+00:00'},
+    {'id': nid(), 'ecole_id': ECOLE, 'categorie': 'parent', 'demandeur_id': 'demo-parent', 'demandeur_nom': enfant1['parent_nom'], 'eleve_id': enfant1['id'], 'type': 'Sortie avant l’heure',
+     'date_debut': max(jours) if jours else '2026-10-16', 'date_fin': max(jours) if jours else '2026-10-16', 'heure_debut': '11:00:00', 'heure_fin': None, 'motif': 'Vaccination au centre de santé.', 'qui_recupere': 'Sa tante, Mme Ama',
+     'statut': 'en_attente', 'decision_par': None, 'decision_nom': None, 'decision_le': None, 'commentaire': None, 'heure_retour': None, 'created_at': '2026-10-15T08:30:00+00:00'}]
+
 # Écran d'affichage : tableau d'honneur et actualités (fictifs)
 D['tableau_honneur'] = [{'id': str(uuid.UUID(int=rnd.getrandbits(128))), 'ecole_id': ECOLE, 'categorie': c, 'periode': p, 'nom_affiche': n, 'classe_ou_matiere': cm, 'libelle_periode': lp, 'commentaire': co, 'updated_at': '2026-10-15T08:00:00+00:00'} for c, p, n, cm, lp, co in [
     ('eleve', 'mois', 'Awa KONÉ', 'CM2', 'Octobre', 'Première de la classe, toujours souriante'), ('eleve', 'trimestre', 'Junior AKA', 'CE1', '1er trimestre', 'Gros progrès en lecture'),

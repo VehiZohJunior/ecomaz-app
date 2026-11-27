@@ -5288,3 +5288,171 @@ create policy "double verification" on notes_jour_pages as restrictive for all t
 drop policy if exists "double verification" on notes_jour_entrees;
 create policy "double verification" on notes_jour_entrees as restrictive for all to authenticated
   using (double_verification_ok()) with check (double_verification_ok());
+
+-- =====================================================================
+-- 131. APPELS DE LA CANTINE, DES ACTIVITÉS ET DU RENFORCEMENT ;
+--      DEMANDES DE PERMISSION (2026-11-27)
+-- =====================================================================
+-- Demande de Vehi Zoh Junior :
+--  - appel des élèves à la cantine chaque midi, au taekwondo (et toute autre
+--    activité) les jours d'entraînement, au cours de renforcement (espace
+--    enseignant) ;
+--  - demandes de permission : personnel → direction, parent → école,
+--    élève → enseignant (noté par l'enseignant).
+-- =====================================================================
+
+-- Jours où l'on fait l'appel d'une activité (1 = lundi … 7 = dimanche)
+alter table activites add column if not exists jours_appel int[];
+
+create table if not exists appels_groupes (
+  id uuid primary key default gen_random_uuid(),
+  ecole_id uuid not null references ecoles(id) on delete cascade,
+  groupe text not null check (groupe = 'renforcement' or groupe ~ '^activite:[0-9a-f-]{36}$'),
+  eleve_id uuid not null references eleves(id) on delete cascade,
+  date date not null,
+  statut text not null check (statut in ('Présent', 'Absent', 'Retard')),
+  saisi_par uuid default auth.uid(),
+  saisi_le timestamptz not null default now(),
+  unique (ecole_id, groupe, eleve_id, date)
+);
+create index if not exists appels_groupes_jour on appels_groupes (ecole_id, groupe, date);
+alter table appels_groupes enable row level security;
+revoke all on appels_groupes from anon;
+grant select, insert, update, delete on appels_groupes to authenticated;
+
+-- Peut faire l'appel de cet élève dans ce groupe ?
+--  personnel administratif : toujours ; enseignant : activités de l'école,
+--  et renforcement seulement pour les élèves de ses classes.
+create or replace function peut_appeler_groupe(p_groupe text, p_eleve uuid) returns boolean
+language sql stable security definer set search_path = public as $$
+  select exists (select 1 from eleves e where e.id = p_eleve and e.ecole_id = mon_ecole_id())
+     and (coalesce(est_perso_admin(), false)
+          or (mon_role() = 'enseignant' and (
+                p_groupe like 'activite:%'
+                or exists (select 1 from eleves e join enseignants t on t.id = mon_enseignant_id()
+                           where e.id = p_eleve and e.classe_id = any(coalesce(t.classes_assignees, '{}'))))))
+$$;
+revoke all on function peut_appeler_groupe(text, uuid) from public, anon;
+grant execute on function peut_appeler_groupe(text, uuid) to authenticated;
+
+drop policy if exists "appels groupes lecture" on appels_groupes;
+create policy "appels groupes lecture" on appels_groupes for select using (ecole_id = mon_ecole_id() and peut_appeler_groupe(groupe, eleve_id));
+drop policy if exists "appels groupes ecriture" on appels_groupes;
+create policy "appels groupes ecriture" on appels_groupes for insert with check (ecole_id = mon_ecole_id() and peut_appeler_groupe(groupe, eleve_id) and date <= current_date and date >= current_date - 7);
+drop policy if exists "appels groupes modification" on appels_groupes;
+create policy "appels groupes modification" on appels_groupes for update using (ecole_id = mon_ecole_id() and peut_appeler_groupe(groupe, eleve_id))
+  with check (ecole_id = mon_ecole_id() and peut_appeler_groupe(groupe, eleve_id) and date <= current_date and date >= current_date - 7);
+drop policy if exists "appels groupes retrait" on appels_groupes;
+create policy "appels groupes retrait" on appels_groupes for delete using (ecole_id = mon_ecole_id() and peut_appeler_groupe(groupe, eleve_id) and date >= current_date - 7);
+drop policy if exists "double verification" on appels_groupes;
+create policy "double verification" on appels_groupes as restrictive for all to authenticated using (double_verification_ok()) with check (double_verification_ok());
+
+create or replace function horodater_appel_groupe() returns trigger language plpgsql as $$
+begin new.saisi_par := auth.uid(); new.saisi_le := now(); return new; end $$;
+drop trigger if exists horodater_appel_groupe on appels_groupes;
+create trigger horodater_appel_groupe before insert or update on appels_groupes for each row execute function horodater_appel_groupe();
+
+-- Les enseignants peuvent LIRE les activités et leurs inscrits (pour faire l'appel), sans les modifier
+drop policy if exists "activites lecture enseignant" on activites;
+create policy "activites lecture enseignant" on activites for select using (ecole_id = mon_ecole_id() and mon_role() = 'enseignant');
+drop policy if exists "inscriptions activites lecture enseignant" on inscriptions_activites;
+create policy "inscriptions activites lecture enseignant" on inscriptions_activites for select using (ecole_id = mon_ecole_id() and mon_role() = 'enseignant');
+
+-- ---------------------------------------------------------------------
+-- Demandes de permission
+-- ---------------------------------------------------------------------
+create table if not exists permissions (
+  id uuid primary key default gen_random_uuid(),
+  ecole_id uuid not null references ecoles(id) on delete cascade,
+  categorie text not null check (categorie in ('personnel', 'parent', 'eleve')),
+  demandeur_id uuid not null references profiles(id) on delete cascade,
+  demandeur_nom text,
+  eleve_id uuid references eleves(id) on delete cascade,
+  type text not null check (char_length(type) between 2 and 60),
+  date_debut date not null,
+  date_fin date not null,
+  heure_debut time,
+  heure_fin time,
+  motif text not null check (char_length(btrim(motif)) between 2 and 1000),
+  qui_recupere text check (char_length(qui_recupere) <= 120),
+  statut text not null default 'en_attente' check (statut in ('en_attente', 'accordee', 'refusee', 'annulee')),
+  decision_par uuid references profiles(id) on delete set null,
+  decision_nom text,
+  decision_le timestamptz,
+  commentaire text check (char_length(commentaire) <= 1000),
+  heure_retour time,
+  created_at timestamptz not null default now(),
+  check (date_fin >= date_debut),
+  check ((categorie = 'personnel') = (eleve_id is null))
+);
+create index if not exists permissions_ecole on permissions (ecole_id, date_debut desc);
+alter table permissions enable row level security;
+revoke all on permissions from anon;
+grant select, insert, update on permissions to authenticated;
+revoke delete on permissions from authenticated;
+
+drop policy if exists "permissions lecture" on permissions;
+create policy "permissions lecture" on permissions for select using (
+  ecole_id = mon_ecole_id() and (
+    demandeur_id = auth.uid()
+    or coalesce(est_admin(), false)
+    or (mon_role() = 'secretariat' and categorie in ('parent', 'eleve'))
+    or (mon_role() = 'enseignant' and categorie in ('parent', 'eleve') and exists (select 1 from eleves e join enseignants t on t.id = mon_enseignant_id()
+          where e.id = eleve_id and e.classe_id = any(coalesce(t.classes_assignees, '{}'))))
+    or (coalesce(est_portier(), false) and categorie = 'parent' and statut = 'accordee' and current_date between date_debut and date_fin)));
+drop policy if exists "permissions creation" on permissions;
+create policy "permissions creation" on permissions for insert with check (
+  ecole_id = mon_ecole_id() and demandeur_id = auth.uid() and (
+    (categorie = 'personnel' and (coalesce(est_personnel(), false) or coalesce(est_portier(), false)) and statut = 'en_attente')
+    or (categorie = 'parent' and coalesce(est_parent_de(eleve_id), false) and statut = 'en_attente')
+    or (categorie = 'eleve' and (coalesce(est_perso_admin(), false) or (mon_role() = 'enseignant' and peut_appeler_groupe('renforcement', eleve_id))) and statut = 'accordee')));
+drop policy if exists "permissions modification" on permissions;
+create policy "permissions modification" on permissions for update using (ecole_id = mon_ecole_id() and (demandeur_id = auth.uid() or coalesce(est_perso_admin(), false)))
+  with check (ecole_id = mon_ecole_id());
+drop policy if exists "double verification" on permissions;
+create policy "double verification" on permissions as restrictive for all to authenticated using (double_verification_ok()) with check (double_verification_ok());
+
+-- Garde du serveur : nom du demandeur, décision réservée, plus rien ne bouge après décision
+create or replace function garder_permissions() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare v_nom text;
+begin
+  if tg_op = 'INSERT' then
+    select nullif(btrim(nom_complet), '') into v_nom from profiles where id = new.demandeur_id;
+    new.demandeur_nom := coalesce(v_nom, new.demandeur_nom, 'Demandeur');
+    new.created_at := now();
+    if new.categorie = 'eleve' then new.decision_par := auth.uid(); new.decision_nom := v_nom; new.decision_le := now();
+    else new.decision_par := null; new.decision_nom := null; new.decision_le := null; new.commentaire := null; end if;
+    return new;
+  end if;
+  -- champs jamais modifiables
+  new.id := old.id; new.ecole_id := old.ecole_id; new.categorie := old.categorie; new.demandeur_id := old.demandeur_id;
+  new.demandeur_nom := old.demandeur_nom; new.eleve_id := old.eleve_id; new.created_at := old.created_at;
+  if old.categorie = 'eleve' then
+    -- permission en classe : seul l'heure de retour se complète
+    new.type := old.type; new.motif := old.motif; new.date_debut := old.date_debut; new.date_fin := old.date_fin;
+    new.heure_debut := old.heure_debut; new.statut := old.statut; new.decision_par := old.decision_par; new.decision_nom := old.decision_nom; new.decision_le := old.decision_le;
+    return new;
+  end if;
+  if old.statut <> 'en_attente' then raise exception 'Cette demande a déjà reçu une réponse : elle ne peut plus être modifiée.'; end if;
+  if new.statut in ('accordee', 'refusee') then
+    if old.demandeur_id = auth.uid() then raise exception 'On ne répond pas à sa propre demande.'; end if;
+    if old.categorie = 'personnel' and not coalesce(est_admin(), false) then raise exception 'Seules la direction et la fondation répondent aux demandes du personnel.'; end if;
+    if old.categorie = 'parent' and not coalesce(est_perso_admin(), false) then raise exception 'Réponse réservée à l’administration.'; end if;
+    select nullif(btrim(nom_complet), '') into v_nom from profiles where id = auth.uid();
+    new.decision_par := auth.uid(); new.decision_nom := coalesce(v_nom, 'Direction'); new.decision_le := now();
+    -- la demande elle-même ne change pas
+    new.type := old.type; new.motif := old.motif; new.date_debut := old.date_debut; new.date_fin := old.date_fin;
+    new.heure_debut := old.heure_debut; new.heure_fin := old.heure_fin; new.qui_recupere := old.qui_recupere;
+  elsif new.statut = 'annulee' then
+    if old.demandeur_id <> auth.uid() then raise exception 'Seul le demandeur annule sa demande.'; end if;
+    new.decision_par := null; new.decision_nom := null; new.decision_le := null; new.commentaire := old.commentaire;
+  else
+    -- encore en attente : seul le demandeur modifie sa demande
+    if old.demandeur_id <> auth.uid() then raise exception 'Seul le demandeur modifie sa demande.'; end if;
+    new.statut := 'en_attente'; new.decision_par := null; new.decision_nom := null; new.decision_le := null; new.commentaire := old.commentaire;
+  end if;
+  return new;
+end $$;
+drop trigger if exists garder_permissions on permissions;
+create trigger garder_permissions before insert or update on permissions for each row execute function garder_permissions();

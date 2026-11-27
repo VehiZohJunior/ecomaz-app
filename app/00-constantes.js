@@ -205,6 +205,8 @@ const VIEW_TITLES = {
   'boite-evaluations': 'Boîte à évaluations',
   rapports: 'Rapports et téléchargements',
   'registre-notes': 'Registre des notes du jour',
+  'appels-groupes': 'Appels : cantine, activités, renforcement',
+  permissions: 'Demandes de permission',
 };
 
 /* --- Comptabilité --- */
@@ -225,6 +227,7 @@ const FRAIS_SCOLARITE_DEFAUT = {
 };
 const COMPTA_TABS = [
   {id:'apercu', label:'Aperçu', icon:'📊'},
+  {id:'rapport', label:'Rapport financier', icon:'📈'},
   {id:'scolarite', label:'Scolarité', icon:'🎓'},
   {id:'cantine', label:'Cantine', icon:'🍽️'},
   {id:'activites', label:'Activités extra-scolaires', icon:'🎨'},
@@ -241,8 +244,8 @@ const COMPTA_TABS = [
 
 /* --- Rôles / Interfaces --- */
 const ROLES = {
-  enseignant:  {label:'Enseignant(e)', icon:'👩‍🏫', desc:'Notes, présences, emploi du temps', nav:['dashboard','services','cahier-appel','camps-de-base','creer-evaluation','notes','presences-eleves','devoirs','emploi-temps','programmes','rapport-activite','rapports','vie-ecole','agenda']},
-  secretariat: {label:'Secrétariat', icon:'🗂️', desc:'Gestion administrative & scolarité', nav:['dashboard','services','eleves','liens-parents','renforcement','vie-ecole','agenda','devoirs','cantine','cahier-appel','camps-de-base','notes','presences-eleves','emploi-temps','programmes','pointage-scan','enseignants','presences-enseignants','comptabilite','rapports','registre-notes','messagerie','boite-evaluations']},
+  enseignant:  {label:'Enseignant(e)', icon:'👩‍🏫', desc:'Notes, présences, emploi du temps', nav:['dashboard','services','cahier-appel','camps-de-base','creer-evaluation','notes','presences-eleves','devoirs','emploi-temps','programmes','rapport-activite','rapports','appels-groupes','permissions','vie-ecole','agenda']},
+  secretariat: {label:'Secrétariat', icon:'🗂️', desc:'Gestion administrative & scolarité', nav:['dashboard','services','eleves','liens-parents','renforcement','vie-ecole','agenda','devoirs','cantine','cahier-appel','camps-de-base','notes','presences-eleves','emploi-temps','programmes','pointage-scan','enseignants','presences-enseignants','comptabilite','rapports','registre-notes','appels-groupes','permissions','messagerie','boite-evaluations']},
   direction:   {label:'Direction', icon:'🎩', desc:'Accès complet', nav:'all'},
   fondation:   {label:'Fondation', icon:'🏛️', desc:'Accès complet', nav:'all'},
   parent:      {label:'Parent', icon:'👪', desc:"Suivi de l'enfant", nav:[]},

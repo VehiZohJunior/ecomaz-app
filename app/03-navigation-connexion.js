@@ -173,6 +173,8 @@ function renderView(view){
     renforcement: renderRenforcement,
     rapports: renderRapports,
     'registre-notes': renderRegistreNotes,
+    'appels-groupes': renderAppelsGroupes,
+    permissions: renderPermissions,
   };
   // Données pas encore chargées, ou déjà effacées par une déconnexion (fin
   // de session, inactivité) : rien à afficher, l'écran de connexion est là.

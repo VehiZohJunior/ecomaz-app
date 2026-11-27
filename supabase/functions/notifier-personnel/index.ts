@@ -33,7 +33,9 @@ Deno.serve(async (req) => {
     const { data: { user } } = await appelant.auth.getUser();
     if (!user) throw new Error('Non authentifié');
     await limiter(createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!), user.id, 'notifier-personnel', 30, 60);
-    const { type } = await req.json();
+    const body = await req.json();
+    const { type } = body;
+    let ciblesDirectes: string[] | null = null;
     const admin = createClient(url, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
     const depuis = new Date(Date.now() - 5 * 60 * 1000).toISOString();
 
@@ -100,13 +102,35 @@ Deno.serve(async (req) => {
       titre = '🖨️ Évaluation à imprimer';
       const quand = s.date_prevue ? ` (prévue le ${String(s.date_prevue).split('-').reverse().join('/')})` : '';
       texte = `« ${s.titre} » — ${s.type}, ${s.matiere}, ${c?.nom || 'classe'}${quand}, par ${e ? (e.sexe === 'F' ? 'Mme ' : 'M. ') + e.prenom + ' ' + e.nom : 'un enseignant'}. Dans la Boîte à évaluations.`;
+    } else if (type === 'permission') {
+      // Nouvelle demande de permission (schema.sql section 131) → direction / fondation (+ secrétariat pour les parents)
+      const { data: p } = await admin.from('permissions').select('ecole_id, categorie, demandeur_nom, eleve_id, type, date_debut, date_fin, heure_debut')
+        .eq('demandeur_id', user.id).eq('statut', 'en_attente').gte('created_at', depuis).order('created_at', { ascending: false }).limit(1).maybeSingle();
+      if (!p) throw new Error('Demande introuvable');
+      ecoleId = p.ecole_id; roles = p.categorie === 'parent' ? ['secretariat', 'direction', 'fondation'] : ['direction', 'fondation'];
+      let qui = p.demandeur_nom || 'Quelqu’un';
+      if (p.eleve_id) { const { data: e } = await admin.from('eleves').select('nom, prenom').eq('id', p.eleve_id).single(); if (e) qui = `${p.demandeur_nom || 'Un parent'} pour ${e.prenom} ${e.nom}`; }
+      const quand = p.date_debut === p.date_fin ? `le ${String(p.date_debut).split('-').reverse().join('/')}` : `du ${String(p.date_debut).split('-').reverse().join('/')} au ${String(p.date_fin).split('-').reverse().join('/')}`;
+      titre = '✋ Demande de permission';
+      texte = `${qui} : ${p.type} ${quand}${p.heure_debut ? ' à ' + String(p.heure_debut).slice(0, 5) : ''}. À traiter dans Permissions.`;
+    } else if (type === 'permission_reponse') {
+      // Réponse donnée → seulement la personne qui a demandé
+      const { permissionId } = body as { permissionId?: string };
+      const { data: moi } = await admin.from('profiles').select('ecole_id, role').eq('id', user.id).single();
+      if (!moi || !['secretariat', 'direction', 'fondation'].includes(moi.role)) throw new Error('Non autorisé');
+      const { data: p } = await admin.from('permissions').select('ecole_id, demandeur_id, statut, type, commentaire, decision_par').eq('id', permissionId || '').maybeSingle();
+      if (!p || p.ecole_id !== moi.ecole_id || p.decision_par !== user.id || !['accordee', 'refusee'].includes(p.statut)) throw new Error('Réponse introuvable');
+      ecoleId = p.ecole_id; ciblesDirectes = [p.demandeur_id];
+      titre = p.statut === 'accordee' ? '✅ Permission accordée' : '❌ Permission refusée';
+      texte = `${p.type}${p.commentaire ? ' — ' + String(p.commentaire).slice(0, 140) : ''}`;
+      page = './index.html';
     } else {
       throw new Error('Type inconnu');
     }
 
     // Destinataires : comptes de l'école ayant ces rôles ; un enseignant
     // seulement si la classe de l'élève fait partie de ses classes.
-    const { data: comptes } = await admin.from('profiles').select('id, role, enseignant_id').eq('ecole_id', ecoleId).in('role', roles);
+    const { data: comptes } = ciblesDirectes ? { data: [] } : await admin.from('profiles').select('id, role, enseignant_id').eq('ecole_id', ecoleId).in('role', roles);
     let cibles = (comptes || []).filter((c: { role: string }) => c.role !== 'enseignant').map((c: { id: string }) => c.id);
     const profs = (comptes || []).filter((c: { role: string; enseignant_id: string | null }) => c.role === 'enseignant' && c.enseignant_id);
     if (classeId && profs.length) {
@@ -114,6 +138,7 @@ Deno.serve(async (req) => {
       const ok = new Set((fiches || []).filter((f: { classes_assignees: string[] | null }) => (f.classes_assignees || []).includes(classeId!)).map((f: { id: string }) => f.id));
       cibles = cibles.concat(profs.filter((p: { enseignant_id: string }) => ok.has(p.enseignant_id)).map((p: { id: string }) => p.id));
     }
+    if (ciblesDirectes) cibles = ciblesDirectes;
     const r = await envoyerPush(admin, cibles, { title: titre, body: texte, url: page, tag: `${type}-${Date.now()}` });
     return json({ ok: true, destinataires: cibles.length, ...r });
   } catch (e) {

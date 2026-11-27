@@ -693,6 +693,7 @@ function renderParentDashboard(){
       rubrique('p-enfants', plusieurs ? 'Mes enfants' : 'Mon enfant', plusieurs ? 'Mes enfants' : 'Mon enfant', 'users', `<div class="enfants${plusieurs ? ' enfants--carrousel' : ''}">${mesEnfants.map(renderFicheEnfant).join('')}</div>`, () => plusieurs ? String(mesEnfants.length) : ''),
       rubrique('p-devoirs', 'Devoirs', 'Devoirs', 'book', `<div id="secDevoirs">${renderDevoirsParent(mesEnfants)}</div>`),
       { id: 'p-absence', court: 'Absence', titre: 'Signaler une absence à l’avance', ic: 'calendar', action: 'ouvrirSignalerAbsence()' },
+      { id: 'p-permission', court: 'Permission', titre: 'Demander une permission (sortie avant l’heure…)', ic: 'hand', action: 'permOuvrirParent()' },
       { id: 'p-document', court: 'Document', titre: 'Demander un document', ic: 'file-text', action: 'ouvrirDemandeDocument()' },
     ], { titre: 'C’est vous seul qui voyez ces informations', sous: 'Aucun autre parent n’y a accès.', ic: 'lock' })}
     ${renderBandeDefilanteParent()}

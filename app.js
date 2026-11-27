@@ -207,6 +207,8 @@ const VIEW_TITLES = {
   'boite-evaluations': 'Boîte à évaluations',
   rapports: 'Rapports et téléchargements',
   'registre-notes': 'Registre des notes du jour',
+  'appels-groupes': 'Appels : cantine, activités, renforcement',
+  permissions: 'Demandes de permission',
 };
 
 /* --- Comptabilité --- */
@@ -227,6 +229,7 @@ const FRAIS_SCOLARITE_DEFAUT = {
 };
 const COMPTA_TABS = [
   {id:'apercu', label:'Aperçu', icon:'📊'},
+  {id:'rapport', label:'Rapport financier', icon:'📈'},
   {id:'scolarite', label:'Scolarité', icon:'🎓'},
   {id:'cantine', label:'Cantine', icon:'🍽️'},
   {id:'activites', label:'Activités extra-scolaires', icon:'🎨'},
@@ -243,8 +246,8 @@ const COMPTA_TABS = [
 
 /* --- Rôles / Interfaces --- */
 const ROLES = {
-  enseignant:  {label:'Enseignant(e)', icon:'👩‍🏫', desc:'Notes, présences, emploi du temps', nav:['dashboard','services','cahier-appel','camps-de-base','creer-evaluation','notes','presences-eleves','devoirs','emploi-temps','programmes','rapport-activite','rapports','vie-ecole','agenda']},
-  secretariat: {label:'Secrétariat', icon:'🗂️', desc:'Gestion administrative & scolarité', nav:['dashboard','services','eleves','liens-parents','renforcement','vie-ecole','agenda','devoirs','cantine','cahier-appel','camps-de-base','notes','presences-eleves','emploi-temps','programmes','pointage-scan','enseignants','presences-enseignants','comptabilite','rapports','registre-notes','messagerie','boite-evaluations']},
+  enseignant:  {label:'Enseignant(e)', icon:'👩‍🏫', desc:'Notes, présences, emploi du temps', nav:['dashboard','services','cahier-appel','camps-de-base','creer-evaluation','notes','presences-eleves','devoirs','emploi-temps','programmes','rapport-activite','rapports','appels-groupes','permissions','vie-ecole','agenda']},
+  secretariat: {label:'Secrétariat', icon:'🗂️', desc:'Gestion administrative & scolarité', nav:['dashboard','services','eleves','liens-parents','renforcement','vie-ecole','agenda','devoirs','cantine','cahier-appel','camps-de-base','notes','presences-eleves','emploi-temps','programmes','pointage-scan','enseignants','presences-enseignants','comptabilite','rapports','registre-notes','appels-groupes','permissions','messagerie','boite-evaluations']},
   direction:   {label:'Direction', icon:'🎩', desc:'Accès complet', nav:'all'},
   fondation:   {label:'Fondation', icon:'🏛️', desc:'Accès complet', nav:'all'},
   parent:      {label:'Parent', icon:'👪', desc:"Suivi de l'enfant", nav:[]},
@@ -947,6 +950,8 @@ function renderView(view){
     renforcement: renderRenforcement,
     rapports: renderRapports,
     'registre-notes': renderRegistreNotes,
+    'appels-groupes': renderAppelsGroupes,
+    permissions: renderPermissions,
   };
   // Données pas encore chargées, ou déjà effacées par une déconnexion (fin
   // de session, inactivité) : rien à afficher, l'écran de connexion est là.
@@ -2205,6 +2210,7 @@ function renderParentDashboard(){
       rubrique('p-enfants', plusieurs ? 'Mes enfants' : 'Mon enfant', plusieurs ? 'Mes enfants' : 'Mon enfant', 'users', `<div class="enfants${plusieurs ? ' enfants--carrousel' : ''}">${mesEnfants.map(renderFicheEnfant).join('')}</div>`, () => plusieurs ? String(mesEnfants.length) : ''),
       rubrique('p-devoirs', 'Devoirs', 'Devoirs', 'book', `<div id="secDevoirs">${renderDevoirsParent(mesEnfants)}</div>`),
       { id: 'p-absence', court: 'Absence', titre: 'Signaler une absence à l’avance', ic: 'calendar', action: 'ouvrirSignalerAbsence()' },
+      { id: 'p-permission', court: 'Permission', titre: 'Demander une permission (sortie avant l’heure…)', ic: 'hand', action: 'permOuvrirParent()' },
       { id: 'p-document', court: 'Document', titre: 'Demander un document', ic: 'file-text', action: 'ouvrirDemandeDocument()' },
     ], { titre: 'C’est vous seul qui voyez ces informations', sous: 'Aucun autre parent n’y a accès.', ic: 'lock' })}
     ${renderBandeDefilanteParent()}
@@ -2820,7 +2826,8 @@ function enterAppPortier(){
   afficherNouveautes();
 }
 function refreshPortierDashboard(){
-  $('#viewContainer').innerHTML = renderPortierDashboard();
+  $('#viewContainer').innerHTML = renderPortierDashboard() + '<section class="panel" id="portierSorties"></section>';
+  if(typeof renderSortiesAutoriseesPortier === 'function') renderSortiesAutoriseesPortier('portierSorties');
   const input = $('#portierRecherche');
   if(input){ input.focus(); const pos = input.value.length; input.setSelectionRange(pos, pos); }
 }
@@ -2947,6 +2954,14 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.11.27-1', nouveautes: {
+    commun: [],
+    parent: [ '✋ Nouveau : « Permission » — demandez que votre enfant sorte avant l’heure, s’absente ou arrive plus tard, et indiquez qui vient le chercher. L’école vous répond dans l’application.' ],
+    portier: [ '✋ Les sorties autorisées du jour s’affichent en bas de l’écran, avec la personne qui vient chercher l’enfant.' ],
+    personnel: [ '📈 Comptabilité → « Rapport financier » (aussi pour le secrétariat) : encaissements par source, par mode de paiement, par classe et jour par jour, recouvrement, retards et sommes attendues, sur la période de votre choix ; impression et Excel.',
+      '🍽️ « Appels : cantine, activités, renforcement » : l’appel de la cantine chaque midi, du taekwondo le samedi (jours réglables par activité), du cours de renforcement (les enseignants voient les élèves de leurs classes).',
+      '✋ « Demandes de permission » : le personnel demande à la direction ; les demandes des parents arrivent ici ; les enseignants notent les sorties d’élèves pendant la classe (heure de sortie et de retour).' ],
+  } },
   { version: '2026.11.26-6', nouveautes: {
     commun: [],
     parent: [ 'Sécurité & santé : ajouter une personne autorisée à chercher l’enfant ne montre plus de message d’erreur.' ],
@@ -4564,6 +4579,7 @@ async function logoutRole(){
   arreterPersonnesConnectees();
   if(typeof viderNavigation === 'function') viderNavigation();
   if(typeof rnEtat !== "undefined"){ rnEtat.pages = null; rnEtat.entrees = {}; }
+  if(typeof permEtat !== "undefined"){ permEtat.liste = null; }
   document.body.classList.remove('theme-parent', 'has-parent-nav');
   if(window.ESPACE_FIXE !== 'portier') document.body.classList.remove('theme-portier');
   const navParentEl = document.getElementById('parentNav'); if(navParentEl) navParentEl.remove();
@@ -11942,7 +11958,7 @@ function renderComptabilite(){
   const tab = ui.filters.comptaTab || 'apercu';
   ui.filters.comptaTab = tab;
   const renderers = {
-    apercu: renderComptaApercu, scolarite: renderComptaScolarite, cantine: renderComptaCantine, activites: renderComptaActivites,
+    apercu: renderComptaApercu, rapport: renderComptaRapportFinancier, scolarite: renderComptaScolarite, cantine: renderComptaCantine, activites: renderComptaActivites,
     ventes: renderComptaVentes, salaires: renderComptaSalaires, depenses: renderComptaDepenses,
     journal: renderComptaJournal, annees: renderComptaAnnees, budget: renderComptaBudget, fne: renderComptaFne,
     syscohada: renderComptaSyscohada, rapprochement: renderComptaRapprochement,
@@ -16223,6 +16239,8 @@ function renderRapports(){
   const cartes = [];
   if(perso) cartes.push(carteRapport('📊', 'Rapport général de l’école', `Tout le mois en un seul fichier : synthèse, effectifs par classe, appels, pointage des enseignants, scolarité et impayés${admin ? ', entrées et sorties d’argent' : ''}.`, 'Excel',
     rapportsChoixMois(), btnRapport('exporterRapportGeneral()', '⬇️ Télécharger le rapport général')));
+  if(perso) cartes.push(carteRapport('📈', 'Rapport financier', 'Encaissements par source, par mode de paiement, par classe et jour par jour, recouvrement et retards, sur la période de votre choix — à imprimer ou en Excel.', 'PDF / Excel',
+    '', btnRapport("ui.filters.comptaTab='rapport'; go('comptabilite')", '📈 Ouvrir le rapport financier')));
   if(admin) cartes.push(carteRapport('💰', 'Comptabilité du mois', 'Toutes les entrées et sorties du mois (scolarité, activités, boutique, salaires, dépenses), à ouvrir dans Excel ou à donner au comptable.', 'Excel (CSV)',
     rapportsChoixMois(), btnRapport("rapportsCompta()", '⬇️ Télécharger la comptabilité')));
   if(perso) cartes.push(carteRapport('🧾', 'Reçus du mois', 'Tous les reçus de paiement du mois, prêts à imprimer ou à enregistrer en PDF.', 'PDF / impression',
@@ -16379,6 +16397,8 @@ function conseilsAssistant(){
       lignes.push({ ic:'users', texte:`${nbRelies} élève${nbRelies > 1 ? 's' : ''} sur ${actifs.length} ont un parent relié à l’application`, detail:'Invitez les autres : ils verront absences, notes et paiements', bouton:'Inviter les parents', action:"go('liens-parents')" });
     if(typeof conseilsRegistreNotes === 'function') lignes.push(...conseilsRegistreNotes());
     lignes.push(...conseilsAssistant2());
+    if(typeof conseilsAppelsGroupes === 'function') lignes.push(...conseilsAppelsGroupes());
+    if(typeof conseilsPermissions === 'function') lignes.push(...conseilsPermissions());
   }catch(_e){ /* un constat impossible à calculer n'empêche jamais l'affichage du tableau de bord */ }
   return lignes;
 }
@@ -16941,6 +16961,522 @@ window.addEventListener('popstate', () => {
 });
 function viderNavigation(){ navPile.length = 0; navDepuisRetour = false; majBoutonRetour(); }
 /* =====================================================================
+   RAPPORT FINANCIER (27/11/2026) — demande de Vehi Zoh Junior :
+   « rapport financier pour la comptabilité, sur le compte secrétariat ».
+   Onglet « Rapport financier » de la Comptabilité (secrétariat, direction,
+   fondation) + carte dans Rapports et téléchargements.
+   Période au choix ; entrées par source, par mode de paiement, par jour et
+   par classe ; recouvrement de la scolarité, retards et encaissements à
+   venir ; comparaison avec la période précédente. Les sorties (salaires,
+   dépenses) n'apparaissent que pour la direction et la fondation (le
+   serveur ne les envoie pas au secrétariat). Impression / PDF et Excel.
+   ===================================================================== */
+function rfPeriode(){
+  const f = ui.filters.rf || (ui.filters.rf = { code: 'mois', du: '', au: '' });
+  const auj = todayISO(), d = new Date();
+  const iso = x => toISO(x);
+  let du, au = auj, lib;
+  if(f.code === 'jour'){ du = auj; lib = 'Aujourd’hui'; }
+  else if(f.code === 'semaine'){ const l = new Date(d); l.setDate(d.getDate() - ((d.getDay() + 6) % 7)); du = iso(l); lib = 'Cette semaine'; }
+  else if(f.code === 'mois'){ du = auj.slice(0, 8) + '01'; lib = moisLabel(auj.slice(0, 7)); }
+  else if(f.code === 'mois-prec'){ const p = new Date(d.getFullYear(), d.getMonth() - 1, 1), q = new Date(d.getFullYear(), d.getMonth(), 0); du = iso(p); au = iso(q); lib = moisLabel(du.slice(0, 7)); }
+  else if(f.code === 'trimestre'){ const m = d.getMonth() + 1; const debutM = m >= 9 ? 9 : m >= 4 ? 4 : 1; du = `${m >= 9 ? d.getFullYear() : d.getFullYear()}-${String(debutM).padStart(2, '0')}-01`; lib = 'Ce trimestre'; }
+  else if(f.code === 'annee'){ const a = d.getMonth() + 1 >= 8 ? d.getFullYear() : d.getFullYear() - 1; du = `${a}-09-01`; lib = `Année scolaire ${a}-${a + 1}`; }
+  else { du = f.du || auj.slice(0, 8) + '01'; au = f.au || auj; lib = `Du ${fmtDate(du)} au ${fmtDate(au)}`; }
+  if(du > au) [du, au] = [au, du];
+  // période précédente de même durée (comparaison)
+  const nbJ = Math.round((new Date(au + 'T12:00:00') - new Date(du + 'T12:00:00')) / 86400000) + 1;
+  const pAu = new Date(new Date(du + 'T12:00:00').getTime() - 86400000), pDu = new Date(pAu.getTime() - (nbJ - 1) * 86400000);
+  return { du, au, lib, nbJ, precDu: iso(pDu), precAu: iso(pAu), code: f.code };
+}
+function rfCalculer(du, au){
+  const dans = x => typeof x === 'string' && x.slice(0, 10) >= du && x.slice(0, 10) <= au;
+  const admin = ['direction', 'fondation'].includes(ui.role);
+  const actCantine = new Set((DB.activites || []).filter(a => a.type === 'cantine').map(a => a.id));
+  const lignes = [];
+  (DB.paiementsScolarite || []).filter(p => dans(p.date)).forEach(p => { const e = eleveById(p.eleveId); lignes.push({ sens: 'entree', source: 'Scolarité', date: p.date, montant: Number(p.montant) || 0, mode: p.modePaiement || '—', classe: e ? classeName(e.classeId) : '—', libelle: `${p.tranche || ''} — ${e ? eleveFullName(e) : '—'}` }); });
+  (DB.paiementsCotisations || []).filter(p => dans(p.date)).forEach(p => { const e = eleveById(p.eleveId), a = (DB.activites || []).find(x => x.id === p.activiteId); lignes.push({ sens: 'entree', source: actCantine.has(p.activiteId) ? 'Cantine' : 'Activités', date: p.date, montant: Number(p.montant) || 0, mode: p.modePaiement || '—', classe: e ? classeName(e.classeId) : '—', libelle: `${a ? a.nom : 'Activité'} — ${e ? eleveFullName(e) : '—'}` }); });
+  (DB.ventesGadgets || []).filter(v => dans(v.date)).forEach(v => { const g = (DB.gadgets || []).find(x => x.id === v.gadgetId); lignes.push({ sens: 'entree', source: 'Boutique', date: v.date, montant: Number(v.montantTotal) || 0, mode: v.modePaiement || '—', classe: '—', libelle: `${g ? g.nom : 'Article'} ×${v.quantite || 1}` }); });
+  if(admin){
+    (DB.paiementsSalaires || []).filter(p => dans(p.datePaiement)).forEach(p => lignes.push({ sens: 'sortie', source: 'Salaires', date: p.datePaiement, montant: Number(p.montant) || 0, mode: p.modePaiement || '—', classe: '—', libelle: `${personnelNomById(p.personnelId, p.personnelType)} — ${moisLabel(p.mois)}` }));
+    (DB.depenses || []).filter(d => dans(d.date)).forEach(d => lignes.push({ sens: 'sortie', source: d.categorie || 'Dépenses', date: d.date, montant: Number(d.montant) || 0, mode: d.modePaiement || '—', classe: '—', libelle: d.libelle || '' }));
+  }
+  lignes.sort((a, b) => a.date.localeCompare(b.date));
+  const somme = (l) => l.reduce((s, x) => s + x.montant, 0);
+  const grouper = (l, cle) => { const g = {}; l.forEach(x => { g[x[cle]] = (g[x[cle]] || 0) + x.montant; }); return Object.entries(g).sort((a, b) => b[1] - a[1]); };
+  const entrees = lignes.filter(x => x.sens === 'entree'), sorties = lignes.filter(x => x.sens === 'sortie');
+  return { lignes, entrees, sorties, totalE: somme(entrees), totalS: somme(sorties), parSource: grouper(entrees, 'source'), parMode: grouper(entrees, 'mode'),
+    parClasse: grouper(entrees.filter(x => x.source === 'Scolarité'), 'classe'), parJour: grouper(entrees, 'date').sort((a, b) => a[0].localeCompare(b[0])), parSortie: grouper(sorties, 'source'), admin };
+}
+function rfRecouvrement(){
+  let du = 0, paye = 0;
+  DB.eleves.filter(e => e.statut === 'Actif').forEach(e => { const g = scolariteEleveParEcheance(e.id), info = scolariteEleveInfo(e.id); du += g.total || info.du; paye += g.total ? g.totalPaye : info.paye; });
+  const retards = (DB.paiementsScolarite || []).length && typeof famillesEnRetard === 'function' ? famillesEnRetard(null) : [];
+  const avenir = typeof encaissementsAVenir === 'function' ? encaissementsAVenir(30) : [];
+  return { du, paye, reste: Math.max(0, du - paye), taux: du ? Math.round(100 * paye / du) : 0, retards, montantRetards: retards.reduce((s, f) => s + f.total, 0), avenir, montantAvenir: avenir.reduce((s, x) => s + x.reste, 0) };
+}
+function rfBarres(liste, total, fmt){
+  if(!liste.length) return '<p class="hint">Aucun mouvement sur la période.</p>';
+  const max = Math.max(...liste.map(x => x[1])) || 1;
+  return `<ul class="rf-barres">${liste.map(([k, v]) => `<li><span class="rf-lib">${escapeHtml(fmt ? fmt(k) : k)}</span><span class="rf-barre"><span style="width:${Math.max(2, Math.round(100 * v / max))}%"></span></span><span class="rf-val">${fmtFCFA(v)}${total ? ` <small>${Math.round(100 * v / total)} %</small>` : ''}</span></li>`).join('')}</ul>`;
+}
+function renderComptaRapportFinancier(){
+  const P = rfPeriode(), R = rfCalculer(P.du, P.au), A = rfCalculer(P.precDu, P.precAu), rec = rfRecouvrement();
+  const evo = A.totalE ? Math.round(100 * (R.totalE - A.totalE) / A.totalE) : null;
+  const choix = [['jour', 'Aujourd’hui'], ['semaine', 'Cette semaine'], ['mois', 'Ce mois'], ['mois-prec', 'Mois dernier'], ['trimestre', 'Ce trimestre'], ['annee', 'Année scolaire'], ['perso', 'Dates au choix']];
+  const f = ui.filters.rf;
+  return `<div class="rf">
+    <div class="panel rf-tete">
+      <div class="segmente rf-periodes" role="tablist" aria-label="Période">${choix.map(([k, l]) => `<button type="button" role="tab" class="seg${f.code === k ? ' actif' : ''}" aria-selected="${f.code === k}" onclick="ui.filters.rf.code='${k}'; renderView('comptabilite')">${l}</button>`).join('')}</div>
+      ${f.code === 'perso' ? `<div class="rf-dates"><label>Du <input type="date" value="${P.du}" onchange="ui.filters.rf.du=this.value; renderView('comptabilite')"></label><label>au <input type="date" value="${P.au}" max="${todayISO()}" onchange="ui.filters.rf.au=this.value; renderView('comptabilite')"></label></div>` : ''}
+      <div class="rf-actions"><button type="button" class="btn" onclick="rfImprimer()">🖨️ Imprimer / PDF</button><button type="button" class="btn secondary" onclick="rfExcel()">⬇️ Excel</button></div>
+    </div>
+    <h2 class="rf-titre">📈 Rapport financier — ${escapeHtml(P.lib)} <small>(${fmtDate(P.du)} → ${fmtDate(P.au)})</small></h2>
+    <div class="rf-kpis">
+      <div class="rf-kpi rf-entree"><small>Encaissé</small><strong>${fmtFCFA(R.totalE)}</strong><em>${R.entrees.length} paiement(s)${evo !== null ? ` · ${evo >= 0 ? '▲' : '▼'} ${Math.abs(evo)} % vs période précédente` : ''}</em></div>
+      ${R.admin ? `<div class="rf-kpi rf-sortie"><small>Sorties</small><strong>${fmtFCFA(R.totalS)}</strong><em>${R.sorties.length} mouvement(s)</em></div>
+      <div class="rf-kpi ${R.totalE - R.totalS >= 0 ? 'rf-entree' : 'rf-sortie'}"><small>Solde de la période</small><strong>${fmtFCFA(R.totalE - R.totalS)}</strong><em>entrées − sorties</em></div>` : ''}
+      <div class="rf-kpi"><small>Recouvrement scolarité (année)</small><strong>${rec.taux} %</strong><em>${fmtFCFA(rec.paye)} sur ${fmtFCFA(rec.du)}</em></div>
+      <div class="rf-kpi rf-sortie"><small>Retards (date limite passée)</small><strong>${fmtFCFA(rec.montantRetards)}</strong><em>${rec.retards.length} famille(s)</em></div>
+      <div class="rf-kpi"><small>Attendu sous 30 jours</small><strong>${fmtFCFA(rec.montantAvenir)}</strong><em>${new Set(rec.avenir.map(x => x.eleve.id)).size} élève(s)</em></div>
+    </div>
+    <div class="rf-grille">
+      <section class="panel"><h3>Entrées par source</h3>${rfBarres(R.parSource, R.totalE)}</section>
+      <section class="panel"><h3>Entrées par mode de paiement</h3>${rfBarres(R.parMode, R.totalE)}</section>
+      <section class="panel"><h3>Scolarité encaissée par classe</h3>${rfBarres(R.parClasse, R.parClasse.reduce((s, x) => s + x[1], 0))}</section>
+      <section class="panel"><h3>Encaissements jour par jour</h3>${rfBarres(R.parJour, 0, fmtDate)}</section>
+      ${R.admin ? `<section class="panel"><h3>Sorties par catégorie</h3>${rfBarres(R.parSortie, R.totalS)}</section>` : `<section class="panel"><h3>Sorties</h3><p class="hint">Les salaires et les dépenses sont réservés à la direction et à la fondation : ils figurent dans leur rapport.</p></section>`}
+    </div>
+    <section class="panel"><h3>Détail des mouvements (${R.lignes.length})</h3>
+      ${R.lignes.length ? `<div class="table-wrap"><table class="table"><thead><tr><th>Date</th><th>Source</th><th>Libellé</th><th>Mode</th><th style="text-align:right">Montant</th></tr></thead><tbody>
+        ${R.lignes.slice(-300).reverse().map(x => `<tr><td>${fmtDate(x.date)}</td><td>${escapeHtml(x.source)}</td><td>${escapeHtml(x.libelle)}</td><td>${escapeHtml(x.mode)}</td><td style="text-align:right;color:${x.sens === 'sortie' ? 'var(--danger)' : 'inherit'}">${x.sens === 'sortie' ? '−' : ''}${fmtFCFA(x.montant)}</td></tr>`).join('')}</tbody></table></div>` : '<p class="hint">Aucun mouvement sur la période.</p>'}
+    </section>
+  </div>`;
+}
+function rfImprimer(){
+  const P = rfPeriode(), R = rfCalculer(P.du, P.au), rec = rfRecouvrement(), m = DB.meta || {};
+  const tab = (titre, l, total) => `<h4>${titre}</h4><table class="table"><tbody>${l.map(([k, v]) => `<tr><td>${escapeHtml(k)}</td><td style="text-align:right">${fmtFCFA(v)}</td><td style="text-align:right">${total ? Math.round(100 * v / total) + ' %' : ''}</td></tr>`).join('') || '<tr><td>Aucun</td></tr>'}</tbody></table>`;
+  openModal('Rapport financier — impression', `
+    <div class="form-actions no-print" style="margin-top:0;justify-content:flex-end;"><button type="button" class="btn" onclick="window.print()">🖨️ Imprimer / PDF</button></div>
+    <section class="rf-impression">
+      <div class="recu-head">${m.logo ? `<img src="${escapeHtml(m.logo)}" alt="">` : '<div class="recu-logo-ph">🎓</div>'}
+        <div><strong>${escapeHtml(m.nomEcole || '')}</strong><div class="hint">${escapeHtml(m.adresse || '')}</div></div>
+        <div style="margin-left:auto;text-align:right;"><strong>RAPPORT FINANCIER</strong><div class="hint">${escapeHtml(P.lib)} · du ${fmtDate(P.du)} au ${fmtDate(P.au)}</div><div class="hint">Imprimé le ${fmtDate(todayISO())}</div></div></div>
+      <table class="table"><tbody>
+        <tr><td><strong>Total encaissé</strong></td><td style="text-align:right"><strong>${fmtFCFA(R.totalE)}</strong></td></tr>
+        ${R.admin ? `<tr><td>Total des sorties</td><td style="text-align:right">${fmtFCFA(R.totalS)}</td></tr><tr><td><strong>Solde</strong></td><td style="text-align:right"><strong>${fmtFCFA(R.totalE - R.totalS)}</strong></td></tr>` : ''}
+        <tr><td>Recouvrement de la scolarité (année)</td><td style="text-align:right">${rec.taux} % — ${fmtFCFA(rec.paye)} / ${fmtFCFA(rec.du)}</td></tr>
+        <tr><td>Retards (date limite passée)</td><td style="text-align:right">${fmtFCFA(rec.montantRetards)} — ${rec.retards.length} famille(s)</td></tr>
+        <tr><td>Attendu dans les 30 jours</td><td style="text-align:right">${fmtFCFA(rec.montantAvenir)}</td></tr>
+      </tbody></table>
+      ${tab('Entrées par source', R.parSource, R.totalE)}${tab('Entrées par mode de paiement', R.parMode, R.totalE)}${tab('Scolarité par classe', R.parClasse, 0)}
+      ${R.admin ? tab('Sorties par catégorie', R.parSortie, R.totalS) : ''}
+      <div class="rn-signatures"><div>Le secrétariat</div><div>La direction</div></div>
+    </section>`);
+}
+async function rfExcel(){
+  const P = rfPeriode(), R = rfCalculer(P.du, P.au), rec = rfRecouvrement();
+  const synthese = [[`${DB.meta?.nomEcole || 'École'} — Rapport financier`], [`${P.lib} : du ${fmtDate(P.du)} au ${fmtDate(P.au)}`], [],
+    ['Total encaissé', R.totalE], ...(R.admin ? [['Total des sorties', R.totalS], ['Solde', R.totalE - R.totalS]] : []),
+    ['Recouvrement scolarité (année)', rec.taux + ' %'], ['Scolarité due (année)', rec.du], ['Scolarité payée (année)', rec.paye], ['Retards (date limite passée)', rec.montantRetards], ['Attendu sous 30 jours', rec.montantAvenir], [],
+    ['ENTRÉES PAR SOURCE'], ...R.parSource, [], ['PAR MODE DE PAIEMENT'], ...R.parMode, [], ['SCOLARITÉ PAR CLASSE'], ...R.parClasse, ...(R.admin ? [[], ['SORTIES PAR CATÉGORIE'], ...R.parSortie] : [])];
+  const detail = [['Date', 'Entrée / Sortie', 'Source', 'Libellé', 'Classe', 'Mode', 'Montant (F CFA)']].concat(R.lignes.map(x => [fmtDate(x.date), x.sens === 'entree' ? 'Entrée' : 'Sortie', x.source, x.libelle, x.classe, x.mode, x.sens === 'sortie' ? -x.montant : x.montant]));
+  try{ await ecrireClasseurExcel([['Synthèse', synthese], ['Mouvements', detail], ['Par jour', [['Date', 'Encaissé'], ...R.parJour.map(([d, v]) => [fmtDate(d), v])]]], nomFichierExport('rapport-financier-' + P.du + '_' + P.au)); toast('Rapport financier prêt ✔'); }
+  catch(e){ alert('Export impossible : ' + e.message); }
+}
+/* =====================================================================
+   APPELS : CANTINE, ACTIVITÉS (TAEKWONDO…), RENFORCEMENT (27/11/2026)
+   Demande de Vehi Zoh Junior : appel à la cantine chaque midi, au
+   taekwondo chaque samedi avant l'entraînement, au cours de renforcement
+   (espace enseignant).
+   - Groupes : chaque activité de type « cantine », chaque activité
+     extra-scolaire (élèves inscrits dans Comptabilité → Activités), et le
+     cours de renforcement (élèves cochés sur leur fiche ; un enseignant ne
+     voit que ceux de ses classes).
+   - Jours d'appel par activité (ex. Taekwondo : samedi) ; la cantine les
+     jours de classe ; le renforcement les jours de renforcement.
+   - Appel du jour ou des 7 derniers jours (règle du serveur, section 131).
+   ===================================================================== */
+const AG_JOURS = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
+const agEtat = { appels: {}, charge: {} };
+
+function agGroupes(){
+  const g = [];
+  (DB.activites || []).filter(a => a.type === 'cantine').forEach(a => g.push({ cle: 'activite:' + a.id, ic: '🍽️', nom: a.nom || 'Cantine', act: a, cantine: true }));
+  (DB.activites || []).filter(a => a.type !== 'cantine' && !/renforcement/i.test(a.nom || '')).forEach(a => g.push({ cle: 'activite:' + a.id, ic: /taekw|karat|judo|sport|foot|basket/i.test(a.nom || '') ? '🥋' : /danse/i.test(a.nom || '') ? '💃' : '🎨', nom: a.nom, act: a }));
+  g.push({ cle: 'renforcement', ic: '📘', nom: 'Cours de renforcement', renf: true });
+  return g;
+}
+function agJoursAppel(gr){
+  if(gr.renf) return (DB.horairesAnnonces?.joursRenforcement || [1, 2, 3, 4, 5]);
+  if(gr.act && Array.isArray(gr.act.joursAppel) && gr.act.joursAppel.length) return gr.act.joursAppel;
+  if(gr.cantine) return (DB.horairesAnnonces?.joursCours || [1, 2, 3, 4, 5]);
+  return null;   // activité sans jours définis : appel possible tous les jours
+}
+function agEleves(gr){
+  let l;
+  if(gr.renf){
+    l = DB.eleves.filter(e => e.statut === 'Actif' && e.renforcement);
+    if(ui.role === 'enseignant'){ const mes = new Set(classesVisibles().map(c => c.id)); l = l.filter(e => mes.has(e.classeId)); }
+  }else{
+    const ids = new Set((DB.inscriptionsActivites || []).filter(i => i.activiteId === gr.act.id).map(i => i.eleveId));
+    l = DB.eleves.filter(e => e.statut === 'Actif' && ids.has(e.id));
+  }
+  return l.sort((a, b) => classeName(a.classeId).localeCompare(classeName(b.classeId)) || eleveFullName(a).localeCompare(eleveFullName(b)));
+}
+async function agCharger(cle, date){
+  const k = cle + '|' + date;
+  if(agEtat.charge[k]) return;
+  agEtat.charge[k] = 'en cours';
+  try{
+    const { data, error } = await sb.from('appels_groupes').select('eleve_id,statut,saisi_le').eq('groupe', cle).eq('date', date);
+    if(error) throw error;
+    agEtat.appels[k] = Object.fromEntries((data || []).map(r => [r.eleve_id, { statut: r.statut, enregistre: true, saisiLe: r.saisi_le }]));
+  }catch(_e){ agEtat.appels[k] = agEtat.appels[k] || {}; }
+  agEtat.charge[k] = 'ok';
+  if(ui.currentView === 'appels-groupes') renderView('appels-groupes');
+}
+
+function renderAppelsGroupes(){
+  const f = ui.filters.ag || (ui.filters.ag = {});
+  const groupes = agGroupes();
+  if(!f.cle || !groupes.some(g => g.cle === f.cle)){
+    // par défaut : la cantine à midi, le renforcement en fin de journée, l'activité du jour le samedi
+    const h = new Date().getHours(), jIso = ((new Date().getDay() + 6) % 7) + 1;
+    const duJour = groupes.find(g => g.act && !g.cantine && (agJoursAppel(g) || []).includes(jIso));
+    f.cle = (duJour && jIso >= 6 ? duJour : h >= 15 ? groupes.find(g => g.renf) : groupes.find(g => g.cantine) || groupes[0]).cle;
+  }
+  if(!f.date) f.date = todayISO();
+  const gr = groupes.find(g => g.cle === f.cle);
+  const k = gr.cle + '|' + f.date;
+  if(!agEtat.charge[k]) agCharger(gr.cle, f.date);
+  const appel = agEtat.appels[k] || {};
+  const eleves = agEleves(gr);
+  const jours = agJoursAppel(gr), jIso = ((new Date(f.date + 'T12:00:00').getDay() + 6) % 7) + 1;
+  const horsJour = jours && !jours.includes(jIso);
+  const admin = ['secretariat', 'direction', 'fondation'].includes(ui.role);
+  const fait = eleves.length && eleves.every(e => appel[e.id]?.enregistre);
+  const nbP = eleves.filter(e => (appel[e.id]?.statut || '') === 'Présent').length, nbA = eleves.filter(e => appel[e.id]?.statut === 'Absent').length, nbR = eleves.filter(e => appel[e.id]?.statut === 'Retard').length;
+  const min = toISO(new Date(Date.now() - 7 * 86400000));
+  return `<div class="ag">
+    <div class="ag-groupes" role="tablist" aria-label="Appel de quel groupe ?">${groupes.map(g => `<button type="button" role="tab" class="ag-groupe${g.cle === gr.cle ? ' actif' : ''}" aria-selected="${g.cle === gr.cle}" onclick="ui.filters.ag.cle='${g.cle}'; renderView('appels-groupes')"><span aria-hidden="true">${g.ic}</span> ${escapeHtml(g.nom)}</button>`).join('')}
+      ${!groupes.some(g => g.cantine) && admin ? `<button type="button" class="ag-groupe ag-ajout" onclick="agCreerCantine()">🍽️ + Créer la cantine</button>` : ''}</div>
+    <section class="panel">
+      <div class="ag-tete"><div><h2>${gr.ic} Appel — ${escapeHtml(gr.nom)}</h2>
+        <p class="hint">${gr.cantine ? 'Chaque midi, avant le repas.' : gr.renf ? 'Au début du cours de renforcement.' : 'Avant l’entraînement.'} Jours d’appel : <strong>${jours ? jours.slice().sort().map(j => AG_JOURS[j - 1]).join(', ') : 'tous les jours'}</strong>${gr.act && admin ? ` · <button type="button" class="lien-bouton" onclick="agReglerJours('${gr.act.id}')">modifier</button>` : ''}</p></div>
+        <label class="ag-date">Jour <input type="date" value="${f.date}" min="${min}" max="${todayISO()}" onchange="ui.filters.ag.date=this.value; renderView('appels-groupes')"></label></div>
+      ${horsJour ? `<div class="ag-info">📅 Pas d’appel prévu ce jour-là pour ce groupe (${jours.map(j => AG_JOURS[j - 1]).join(', ')}). Vous pouvez tout de même le faire en cas de séance exceptionnelle.</div>` : ''}
+      ${fait ? `<div class="ag-ok">✅ Appel enregistré : ${nbP} présent(s), ${nbA} absent(s), ${nbR} retard(s).</div>` : ''}
+      ${!eleves.length ? `<div class="etat-vide">${gr.renf ? `Aucun élève ${ui.role === 'enseignant' ? 'de vos classes ' : ''}n’est inscrit au cours de renforcement.${admin ? ` <button type="button" class="btn sm" onclick="go('renforcement')">Inscrire des élèves</button>` : ''}`
+          : `Aucun élève inscrit à « ${escapeHtml(gr.nom)} ».${admin ? ` <button type="button" class="btn sm" onclick="agInscrire('${gr.act.id}')">➕ Inscrire des élèves</button>` : ' La direction ou le secrétariat inscrit les élèves.'}`}</div>`
+        : `<div class="ag-barre"><button type="button" class="btn secondary sm" onclick="agTous('${gr.cle}', '${f.date}')">✓ Tous présents</button>${admin && gr.act ? `<button type="button" class="btn secondary sm" onclick="agInscrire('${gr.act.id}')">➕ Inscrire d’autres élèves</button>` : ''}<span class="hint">${eleves.length} élève(s)</span></div>
+          <ul class="ag-liste">${eleves.map(e => { const s = appel[e.id]?.statut || ''; return `<li class="ag-ligne ${s ? 'ag-' + (s === 'Présent' ? 'p' : s === 'Absent' ? 'a' : 'r') : ''}">
+            <span class="ag-nom"><strong>${escapeHtml(eleveFullName(e))}</strong><small>${escapeHtml(classeName(e.classeId))}</small></span>
+            <span class="ag-choix" role="group" aria-label="Présence de ${escapeHtml(eleveFullName(e))}">${['Présent', 'Absent', 'Retard'].map(x => `<button type="button" class="ag-c${s === x ? ' actif' : ''}" aria-pressed="${s === x}" onclick="agMarquer('${gr.cle}', '${f.date}', '${e.id}', '${x}')">${x}</button>`).join('')}</span></li>`; }).join('')}</ul>
+          <div class="ag-valider"><button type="button" class="btn" id="agValider" onclick="agValider('${gr.cle}', '${f.date}')">💾 Enregistrer l’appel</button></div>`}
+    </section>
+    <section class="panel"><h3>📊 Les 30 derniers jours</h3><div id="agHistorique"><button type="button" class="btn secondary sm" onclick="agHistorique('${gr.cle}')">Afficher la présence de chaque élève</button></div></section>
+  </div>`;
+}
+function agMarquer(cle, date, eleveId, statut){
+  const k = cle + '|' + date; const a = agEtat.appels[k] = agEtat.appels[k] || {};
+  a[eleveId] = { statut, enregistre: false };
+  renderView('appels-groupes');
+}
+function agTous(cle, date){
+  const gr = agGroupes().find(g => g.cle === cle); if(!gr) return;
+  const k = cle + '|' + date; const a = agEtat.appels[k] = agEtat.appels[k] || {};
+  agEleves(gr).forEach(e => { if(!a[e.id] || !a[e.id].statut) a[e.id] = { statut: 'Présent', enregistre: false }; });
+  renderView('appels-groupes');
+}
+async function agValider(cle, date){
+  const gr = agGroupes().find(g => g.cle === cle); if(!gr) return;
+  const k = cle + '|' + date; const a = agEtat.appels[k] || {};
+  const eleves = agEleves(gr), manquants = eleves.filter(e => !a[e.id]?.statut);
+  if(manquants.length){ toast(`Indiquez présent / absent pour ${manquants.length} élève(s) (ou touchez « Tous présents »).`); return; }
+  const lignes = eleves.map(e => ({ id: crypto.randomUUID(), ecole_id: session.ecoleId, groupe: cle, eleve_id: e.id, date, statut: a[e.id].statut }));
+  const b = document.getElementById('agValider'); if(b) b.disabled = true;
+  try{
+    const { error } = await sb.from('appels_groupes').upsert(lignes, { onConflict: 'ecole_id,groupe,eleve_id,date', ignoreDuplicates: false });
+    if(error) throw error;
+    eleves.forEach(e => { a[e.id].enregistre = true; });
+    const abs = eleves.filter(e => a[e.id].statut === 'Absent').length;
+    toast(`✅ Appel enregistré — ${eleves.length - abs} présent(s), ${abs} absent(s)`);
+    renderView('appels-groupes');
+  }catch(err){ if(b) b.disabled = false; toast('Appel non enregistré : ' + (erreurLisible ? erreurLisible(err).message : err.message)); }
+}
+async function agHistorique(cle){
+  const z = document.getElementById('agHistorique'); if(!z) return;
+  z.innerHTML = '<p class="hint">Chargement…</p>';
+  const gr = agGroupes().find(g => g.cle === cle); if(!gr) return;
+  const depuis = toISO(new Date(Date.now() - 30 * 86400000));
+  const { data, error } = await sb.from('appels_groupes').select('eleve_id,date,statut').eq('groupe', cle).gte('date', depuis);
+  if(error){ z.innerHTML = '<p class="hint">Historique indisponible (connexion ?).</p>'; return; }
+  const jours = [...new Set((data || []).map(r => r.date))].sort();
+  const lignes = agEleves(gr).map(e => { const r = (data || []).filter(x => x.eleve_id === e.id); return { e, p: r.filter(x => x.statut !== 'Absent').length, a: r.filter(x => x.statut === 'Absent').length }; });
+  window.__agHisto = { gr, jours, data: data || [], lignes };
+  z.innerHTML = !jours.length ? '<p class="hint">Aucun appel enregistré ces 30 derniers jours.</p>' : `<p class="hint">${jours.length} appel(s) depuis le ${fmtDate(depuis)}.</p>
+    <div class="table-wrap"><table class="table"><thead><tr><th>Élève</th><th>Classe</th><th>Présent</th><th>Absent</th></tr></thead><tbody>${lignes.map(l => `<tr><td>${escapeHtml(eleveFullName(l.e))}</td><td>${escapeHtml(classeName(l.e.classeId))}</td><td>${l.p}</td><td${l.a ? ' style="color:var(--danger);font-weight:700"' : ''}>${l.a}</td></tr>`).join('')}</tbody></table></div>
+    <button type="button" class="btn secondary sm" onclick="agExcel()">⬇️ Excel</button>`;
+}
+async function agExcel(){
+  const h = window.__agHisto; if(!h) return;
+  const lettre = s => s === 'Présent' ? 'P' : s === 'Absent' ? 'A' : s === 'Retard' ? 'R' : '';
+  const lignes = [['Élève', 'Classe', ...h.jours.map(fmtDate), 'Présences', 'Absences']].concat(h.lignes.map(l => [eleveFullName(l.e), classeName(l.e.classeId), ...h.jours.map(j => lettre((h.data.find(x => x.eleve_id === l.e.id && x.date === j) || {}).statut)), l.p, l.a]));
+  try{ await ecrireClasseurExcel([[h.gr.nom.slice(0, 28), lignes]], nomFichierExport('appel-' + simplifierTexte(h.gr.nom).replace(/ /g, '-'))); }catch(e){ alert('Export impossible : ' + e.message); }
+}
+// Inscrire des élèves à une activité / à la cantine (direction, fondation, secrétariat)
+function agInscrire(activiteId){
+  const act = (DB.activites || []).find(a => a.id === activiteId); if(!act) return;
+  const deja = new Set((DB.inscriptionsActivites || []).filter(i => i.activiteId === activiteId).map(i => i.eleveId));
+  openModal(`➕ Inscrire à « ${act.nom} »`, `<form onsubmit="event.preventDefault(); agEnregistrerInscriptions('${activiteId}')">
+    <p class="hint">Cochez les élèves, classe par classe. Ceux qui sont déjà inscrits sont cochés.</p>
+    <input type="search" class="rn-cherche" placeholder="Chercher un élève…" oninput="const q=simplifierTexte(this.value); document.querySelectorAll('.ag-insc li').forEach(li => li.hidden = q && !simplifierTexte(li.textContent).includes(q))">
+    ${DB.classes.map(c => { const el = DB.eleves.filter(e => e.classeId === c.id && e.statut === 'Actif').sort((a, b) => eleveFullName(a).localeCompare(eleveFullName(b))); if(!el.length) return '';
+      return `<details class="ag-classe"><summary>${escapeHtml(c.nom)} <small>(${el.filter(e => deja.has(e.id)).length}/${el.length})</small></summary><ul class="ag-insc">${el.map(e => `<li><label><input type="checkbox" name="el" value="${e.id}"${deja.has(e.id) ? ' checked' : ''}> ${escapeHtml(eleveFullName(e))}</label></li>`).join('')}</ul></details>`; }).join('')}
+    <div class="form-actions"><button type="button" class="btn secondary" onclick="closeModal()">Annuler</button><button type="submit" class="btn">Enregistrer</button></div></form>`);
+}
+async function agEnregistrerInscriptions(activiteId){
+  const coches = new Set([...document.querySelectorAll('#modalBody input[name=el]:checked')].map(x => x.value));
+  const actuels = (DB.inscriptionsActivites || []).filter(i => i.activiteId === activiteId);
+  const aAjouter = [...coches].filter(id => !actuels.some(i => i.eleveId === id));
+  const aRetirer = actuels.filter(i => !coches.has(i.eleveId));
+  try{
+    if(aAjouter.length){ const ins = await dbInsertMany('inscriptions_activites', aAjouter.map(eleveId => ({ eleveId, activiteId, dateInscription: todayISO() }))); DB.inscriptionsActivites = (DB.inscriptionsActivites || []).concat(ins); }
+    for(const i of aRetirer){ await dbDelete('inscriptions_activites', i.id); }
+    DB.inscriptionsActivites = (DB.inscriptionsActivites || []).filter(i => !aRetirer.includes(i));
+    closeModal(); toast(`${coches.size} élève(s) inscrit(s)`); renderView(ui.currentView);
+  }catch(e){ alert('Erreur : ' + e.message); }
+}
+function agReglerJours(activiteId){
+  const act = (DB.activites || []).find(a => a.id === activiteId); if(!act) return;
+  const j = new Set(act.joursAppel || []);
+  openModal(`📅 Jours d’appel — ${act.nom}`, `<form onsubmit="event.preventDefault(); agEnregistrerJours('${activiteId}')">
+    <p class="hint">Les jours où l’on fait l’appel (ex. Taekwondo : samedi). Sans jour coché : ${act.type === 'cantine' ? 'les jours de classe' : 'tous les jours'}.</p>
+    <div class="ag-jours">${AG_JOURS.map((n, i) => `<label class="ag-jour"><input type="checkbox" name="j" value="${i + 1}"${j.has(i + 1) ? ' checked' : ''}> ${n}</label>`).join('')}</div>
+    <div class="form-actions"><button type="button" class="btn secondary" onclick="closeModal()">Annuler</button><button type="submit" class="btn">Enregistrer</button></div></form>`);
+}
+async function agEnregistrerJours(activiteId){
+  const jours = [...document.querySelectorAll('#modalBody input[name=j]:checked')].map(x => Number(x.value));
+  try{ await dbUpdate('activites', activiteId, { joursAppel: jours.length ? jours : null }); const a = DB.activites.find(x => x.id === activiteId); if(a) a.joursAppel = jours.length ? jours : null; closeModal(); toast('Jours d’appel enregistrés'); renderView(ui.currentView); }
+  catch(e){ alert('Erreur : ' + e.message); }
+}
+async function agCreerCantine(){
+  try{ const a = await dbInsert('activites', { nom: 'Cantine', type: 'cantine', montantCotisation: 0, periode: 'Mensuel' }); DB.activites = (DB.activites || []).concat(a); ui.filters.ag = { cle: 'activite:' + a.id }; toast('Cantine créée : inscrivez les élèves qui mangent à l’école.'); renderView('appels-groupes'); setTimeout(() => agInscrire(a.id), 300); }
+  catch(e){ alert('Erreur : ' + e.message); }
+}
+// « À faire aujourd'hui » : appel de la cantine (après 11 h 30) et des activités du jour pas encore faits
+function conseilsAppelsGroupes(){
+  const l = [];
+  if(!['secretariat', 'direction', 'fondation'].includes(ui.role)) return l;
+  const auj = todayISO(), jIso = ((new Date().getDay() + 6) % 7) + 1, h = new Date().getHours() + new Date().getMinutes() / 60;
+  agGroupes().filter(g => !g.renf).forEach(g => {
+    const jours = agJoursAppel(g); if(jours && !jours.includes(jIso)) return;
+    if(g.cantine && h < 11.5) return;
+    if(!agEleves(g).length) return;
+    const k = g.cle + '|' + auj;
+    if(!agEtat.charge[k]){ agCharger(g.cle, auj).then(() => { if(ui.currentView === 'dashboard') renderView('dashboard'); }); return; }
+    const a = agEtat.appels[k] || {};
+    if(!Object.values(a).some(x => x.enregistre)) l.push({ ic: 'clipboard', texte: `Appel « ${g.nom} » pas encore fait`, detail: g.cantine ? 'Chaque midi, avant le repas' : 'Avant l’entraînement', bouton: 'Faire l’appel', action: `ui.filters.ag={ cle:'${g.cle}', date:'${auj}' }; go('appels-groupes')` });
+  });
+  return l;
+}
+/* =====================================================================
+   DEMANDES DE PERMISSION (27/11/2026) — demande de Vehi Zoh Junior :
+   - personnel → direction (absence, sortie, arrivée tardive) : la
+     direction ou la fondation accorde ou refuse, avec un mot ;
+   - parent → école (sortie de l'enfant avant l'heure, absence, arrivée
+     tardive) : l'administration répond ; le portier voit les sorties
+     accordées du jour et qui vient chercher l'enfant ;
+   - élève → enseignant (toilettes, infirmerie…) : notée par l'enseignant,
+     avec l'heure de sortie et l'heure de retour.
+   Règles tenues par le serveur : schema.sql section 131 (table permissions).
+   ===================================================================== */
+const PERM_TYPES = {
+  personnel: ['Absence (journée)', 'Sortie pendant les heures', 'Arrivée tardive', 'Départ anticipé', 'Autre'],
+  parent: ['Sortie avant l’heure', 'Absence', 'Arrivée tardive', 'Autre'],
+  eleve: ['Toilettes', 'Infirmerie', 'Appeler les parents', 'Bureau de la direction', 'Rendez-vous médical', 'Autre'],
+};
+const PERM_STATUTS = { en_attente: ['En attente', 'rn-attente'], accordee: ['Accordée', 'rn-validee'], refusee: ['Refusée', 'rn-corriger'], annulee: ['Annulée', 'rn-brouillon'] };
+const permEtat = { liste: null, promesse: null };
+
+function chargerPermissions(){
+  if(permEtat.promesse) return permEtat.promesse;
+  permEtat.promesse = (async () => {
+    try{ const { data, error } = await sb.from('permissions').select('*').order('created_at', { ascending: false }).limit(400); if(error) throw error; permEtat.liste = rowsToCamel(data || []); }
+    catch(_e){ if(permEtat.liste === null) permEtat.liste = []; }
+    permEtat.promesse = null;
+  })();
+  return permEtat.promesse;
+}
+function permRafraichir(){
+  if(ui.role === 'parent' || ui.role === 'portier'){ if(document.getElementById('modalBody')?.querySelector('.perm')) permOuvrirParent(); return; }
+  if(ui.currentView === 'permissions') renderView('permissions');
+}
+function permQuand(p){
+  const j = p.dateDebut === p.dateFin ? `le ${fmtDate(p.dateDebut)}` : `du ${fmtDate(p.dateDebut)} au ${fmtDate(p.dateFin)}`;
+  const h = p.heureDebut ? ` à partir de ${String(p.heureDebut).slice(0, 5).replace(':', ' h ')}` : '';
+  return j + h + (p.heureFin ? ` jusqu’à ${String(p.heureFin).slice(0, 5).replace(':', ' h ')}` : '');
+}
+function permCarte(p, actions){
+  const [lib, cls] = PERM_STATUTS[p.statut] || PERM_STATUTS.en_attente;
+  const e = p.eleveId ? eleveById(p.eleveId) : null;
+  return `<li class="perm-carte">
+    <div class="perm-haut"><strong>${escapeHtml(p.type)}</strong><span class="rn-statut ${cls}">${p.categorie === 'eleve' ? (p.heureRetour ? 'Revenu(e)' : 'Sorti(e)') : lib}</span></div>
+    <div class="perm-qui">${p.categorie === 'personnel' ? escapeHtml(p.demandeurNom || '') : `${e ? escapeHtml(eleveFullName(e)) + ' · ' + escapeHtml(classeName(e.classeId)) : 'Élève'}${p.categorie === 'parent' ? ' — demandé par ' + escapeHtml(p.demandeurNom || 'le parent') : ''}`}</div>
+    <div class="perm-quand">${p.categorie === 'eleve' ? `Sortie à ${String(p.heureDebut || '').slice(0, 5)}${p.heureRetour ? ` · retour à ${String(p.heureRetour).slice(0, 5)}` : ''} — ${fmtDate(p.dateDebut)}` : permQuand(p)}${p.quiRecupere ? ` · récupéré(e) par <strong>${escapeHtml(p.quiRecupere)}</strong>` : ''}</div>
+    <div class="perm-motif">${escapeHtml(p.motif)}</div>
+    ${p.decisionLe && p.categorie !== 'eleve' ? `<div class="perm-decision">${p.statut === 'accordee' ? '✅' : '❌'} ${escapeHtml(p.decisionNom || '')} — ${fmtDate(String(p.decisionLe).slice(0, 10))}${p.commentaire ? ` : « ${escapeHtml(p.commentaire)} »` : ''}</div>` : ''}
+    ${actions ? `<div class="perm-actions">${actions}</div>` : ''}
+  </li>`;
+}
+
+/* ------------------------------ Écran du personnel ------------------------------ */
+function renderPermissions(){
+  if(permEtat.liste === null){ if(!permEtat.promesse) chargerPermissions().then(permRafraichir); return '<div class="panel"><p class="hint">Chargement…</p></div>'; }
+  const f = ui.filters.perm || (ui.filters.perm = { onglet: '' });
+  const admin = ['direction', 'fondation'].includes(ui.role), perso = admin || ui.role === 'secretariat', ens = ui.role === 'enseignant';
+  const onglets = [];
+  if(perso) onglets.push(['traiter', 'À traiter']);
+  onglets.push(['miennes', 'Mes demandes']);
+  if(ens || perso) onglets.push(['classe', 'En classe (élèves)']);
+  if(perso || ens) onglets.push(['parents', 'Demandes des parents']);
+  if(perso) onglets.push(['historique', 'Historique']);
+  if(!f.onglet || !onglets.some(o => o[0] === f.onglet)) f.onglet = onglets[0][0];
+  const L = permEtat.liste;
+  const peutRepondre = p => p.statut === 'en_attente' && p.demandeurId !== session.userId && (p.categorie === 'parent' ? perso : admin);
+  const boutonsDecision = p => peutRepondre(p) ? `<button type="button" class="btn sm" onclick="permDecider('${p.id}', 'accordee')">✅ Accorder</button><button type="button" class="btn secondary sm" onclick="permDecider('${p.id}', 'refusee')">❌ Refuser</button>` : '';
+  let corps = '';
+  if(f.onglet === 'traiter'){
+    const l = L.filter(p => p.statut === 'en_attente' && p.categorie !== 'eleve' && p.demandeurId !== session.userId && (p.categorie === 'parent' || admin));
+    corps = l.length ? `<ul class="perm-liste">${l.map(p => permCarte(p, boutonsDecision(p))).join('')}</ul>` : '<div class="etat-vide etat-vide-ok">Aucune demande en attente.</div>';
+  }else if(f.onglet === 'miennes'){
+    const l = L.filter(p => p.demandeurId === session.userId && p.categorie === 'personnel');
+    corps = `<button type="button" class="btn" onclick="permNouvelle('personnel')">✋ Demander une permission</button>
+      ${l.length ? `<ul class="perm-liste">${l.map(p => permCarte(p, p.statut === 'en_attente' ? `<button type="button" class="btn secondary sm" onclick="permAnnuler('${p.id}')">Annuler ma demande</button>` : '')).join('')}</ul>` : '<p class="hint">Vous n’avez encore fait aucune demande.</p>'}`;
+  }else if(f.onglet === 'classe'){
+    const auj = todayISO();
+    const l = L.filter(p => p.categorie === 'eleve' && (perso || p.demandeurId === session.userId));
+    const dehors = l.filter(p => p.dateDebut === auj && !p.heureRetour);
+    corps = `<button type="button" class="btn" onclick="permNouvelle('eleve')">🚶 Un élève demande à sortir</button>
+      ${dehors.length ? `<h3 class="perm-sous">Hors de la classe en ce moment (${dehors.length})</h3><ul class="perm-liste">${dehors.map(p => permCarte(p, p.demandeurId === session.userId || perso ? `<button type="button" class="btn sm" onclick="permRetour('${p.id}')">↩️ Revenu(e) en classe</button>` : '')).join('')}</ul>` : ''}
+      <h3 class="perm-sous">Aujourd’hui et avant</h3>${l.filter(p => !dehors.includes(p)).length ? `<ul class="perm-liste">${l.filter(p => !dehors.includes(p)).slice(0, 60).map(p => permCarte(p)).join('')}</ul>` : '<p class="hint">Aucune permission en classe enregistrée.</p>'}`;
+  }else if(f.onglet === 'parents'){
+    const l = L.filter(p => p.categorie === 'parent');
+    corps = l.length ? `<ul class="perm-liste">${l.slice(0, 80).map(p => permCarte(p, boutonsDecision(p))).join('')}</ul>` : '<p class="hint">Aucune demande des parents.</p>';
+  }else{
+    const l = L.filter(p => p.statut !== 'en_attente' || p.categorie === 'eleve');
+    corps = `<button type="button" class="btn secondary sm" onclick="permExcel()">⬇️ Excel</button>${l.length ? `<ul class="perm-liste">${l.slice(0, 120).map(p => permCarte(p)).join('')}</ul>` : '<p class="hint">Rien pour l’instant.</p>'}`;
+  }
+  const nbAtt = L.filter(p => p.statut === 'en_attente' && p.categorie !== 'eleve' && p.demandeurId !== session.userId && (p.categorie === 'parent' || admin)).length;
+  return `<div class="perm">
+    <div class="segmente" role="tablist">${onglets.map(([k, l]) => `<button type="button" role="tab" class="seg${f.onglet === k ? ' actif' : ''}" aria-selected="${f.onglet === k}" onclick="ui.filters.perm.onglet='${k}'; renderView('permissions')">${l}${k === 'traiter' && nbAtt ? ` <span class="cn-compte">${nbAtt}</span>` : ''}</button>`).join('')}</div>
+    <section class="panel">${corps}</section></div>`;
+}
+
+/* ------------------------------ Formulaires ------------------------------ */
+function permNouvelle(categorie, eleveIdParent){
+  const auj = todayISO(), types = PERM_TYPES[categorie];
+  const eleves = categorie === 'parent'
+    ? DB.eleves.filter(e => !eleveIdParent || e.id === eleveIdParent)
+    : (ui.role === 'enseignant' ? DB.eleves.filter(e => e.statut === 'Actif' && classesVisibles().some(c => c.id === e.classeId)) : DB.eleves.filter(e => e.statut === 'Actif'));
+  const titre = { personnel: '✋ Demander une permission', parent: '✋ Demander une permission pour mon enfant', eleve: '🚶 Permission de sortie de la classe' }[categorie];
+  openModal(titre, `<form class="rn-fiche perm-form" onsubmit="event.preventDefault(); permEnregistrer('${categorie}')">
+    ${categorie !== 'personnel' ? `<div class="form-group"><label for="pmEleve">${categorie === 'parent' ? 'Enfant' : 'Élève'} *</label><select id="pmEleve" required>${eleves.length > 1 ? '<option value="">— Choisir —</option>' : ''}${eleves.sort((a, b) => eleveFullName(a).localeCompare(eleveFullName(b))).map(e => `<option value="${e.id}">${escapeHtml(eleveFullName(e))} (${escapeHtml(classeName(e.classeId))})</option>`).join('')}</select></div>` : ''}
+    <div class="form-group"><label for="pmType">Objet</label><select id="pmType">${types.map(t => `<option>${escapeHtml(t)}</option>`).join('')}</select></div>
+    ${categorie === 'eleve' ? `<div class="form-group"><label for="pmHeure">Heure de sortie</label><input id="pmHeure" type="time" value="${new Date().toTimeString().slice(0, 5)}"></div>`
+      : `<div class="perm-2"><div class="form-group"><label for="pmDu">Date *</label><input id="pmDu" type="date" required value="${auj}" min="${auj}"></div>
+         <div class="form-group"><label for="pmAu">Jusqu’au (si plusieurs jours)</label><input id="pmAu" type="date" min="${auj}"></div></div>
+         <div class="perm-2"><div class="form-group"><label for="pmHeure">À partir de (heure)</label><input id="pmHeure" type="time"></div>
+         <div class="form-group"><label for="pmHeureFin">Jusqu’à (heure)</label><input id="pmHeureFin" type="time"></div></div>`}
+    ${categorie === 'parent' ? `<div class="form-group"><label for="pmQui">Qui vient chercher l’enfant ?</label><input id="pmQui" maxlength="120" placeholder="Ex. : sa tante, Mme Kouassi Ama"></div>` : ''}
+    <div class="form-group"><label for="pmMotif">Motif *</label><textarea id="pmMotif" rows="3" maxlength="1000" required placeholder="${categorie === 'eleve' ? 'Ex. : mal au ventre' : 'Expliquez brièvement'}"></textarea></div>
+    <p class="rn-astuce">${categorie === 'personnel' ? 'La direction reçoit votre demande et vous répond dans l’application.' : categorie === 'parent' ? 'L’école vous répond dans l’application. Si c’est accordé, le portier est informé.' : 'L’heure est notée ; touchez « Revenu(e) en classe » à son retour.'}</p>
+    <div class="form-actions"><button type="button" class="btn secondary" onclick="closeModal()">Annuler</button><button type="submit" class="btn" id="pmOk">${categorie === 'eleve' ? 'Enregistrer la sortie' : 'Envoyer la demande'}</button></div>
+  </form>`);
+}
+async function permEnregistrer(categorie){
+  const v = id => (document.getElementById(id)?.value || '').trim();
+  const motif = v('pmMotif'); if(motif.length < 2){ toast('Indiquez le motif.'); return; }
+  const eleveId = categorie === 'personnel' ? null : v('pmEleve'); if(categorie !== 'personnel' && !eleveId){ toast('Choisissez l’élève.'); return; }
+  const du = categorie === 'eleve' ? todayISO() : v('pmDu'), au = categorie === 'eleve' ? todayISO() : (v('pmAu') || du);
+  if(au < du){ toast('La date de fin est avant la date de début.'); return; }
+  const ligne = { categorie, demandeurId: session.userId, demandeurNom: session.nomComplet || '', eleveId, type: v('pmType'), dateDebut: du, dateFin: au,
+    heureDebut: v('pmHeure') || null, heureFin: categorie === 'eleve' ? null : (v('pmHeureFin') || null), motif, quiRecupere: categorie === 'parent' ? (v('pmQui') || null) : null,
+    statut: categorie === 'eleve' ? 'accordee' : 'en_attente' };
+  const b = document.getElementById('pmOk'); if(b) b.disabled = true;
+  try{
+    const r = await dbInsert('permissions', ligne);
+    permEtat.liste = [r, ...(permEtat.liste || [])];
+    if(categorie !== 'eleve'){ try{ sb.functions.invoke('notifier-personnel', { body: { type: 'permission' } }); }catch(_e){} }
+    closeModal();
+    toast(categorie === 'eleve' ? 'Sortie notée' : '📨 Demande envoyée');
+    if(categorie === 'parent') permOuvrirParent(); else permRafraichir();
+  }catch(e){ if(b) b.disabled = false; toast('Non envoyé : ' + e.message); }
+}
+function permDecider(id, statut){
+  const p = (permEtat.liste || []).find(x => x.id === id); if(!p) return;
+  openModal(statut === 'accordee' ? '✅ Accorder la permission' : '❌ Refuser la permission', `<form onsubmit="event.preventDefault(); permEnregistrerDecision('${id}', '${statut}')">
+    <ul class="perm-liste">${permCarte(p)}</ul>
+    <div class="form-group"><label for="pmComm">Un mot pour ${p.categorie === 'parent' ? 'le parent' : 'la personne'} ${statut === 'refusee' ? '*' : '(facultatif)'}</label><textarea id="pmComm" rows="2" maxlength="1000"${statut === 'refusee' ? ' required' : ''}></textarea></div>
+    <div class="form-actions"><button type="button" class="btn secondary" onclick="closeModal()">Annuler</button><button type="submit" class="btn">${statut === 'accordee' ? 'Accorder' : 'Refuser'}</button></div></form>`);
+}
+async function permEnregistrerDecision(id, statut){
+  const commentaire = (document.getElementById('pmComm')?.value || '').trim() || null;
+  try{
+    await dbUpdate('permissions', id, { statut, commentaire, decisionNom: session.nomComplet || '', decisionLe: new Date().toISOString() });
+    const p = permEtat.liste.find(x => x.id === id); if(p) Object.assign(p, { statut, commentaire, decisionNom: session.nomComplet || '', decisionLe: new Date().toISOString() });
+    try{ sb.functions.invoke('notifier-personnel', { body: { type: 'permission_reponse', permissionId: id } }); }catch(_e){}
+    closeModal(); toast(statut === 'accordee' ? 'Permission accordée' : 'Permission refusée'); permRafraichir();
+  }catch(e){ toast(e.message || 'Réponse impossible.'); }
+}
+async function permAnnuler(id){
+  if(!confirm('Annuler cette demande ?')) return;
+  try{ await dbUpdate('permissions', id, { statut: 'annulee' }); const p = permEtat.liste.find(x => x.id === id); if(p) p.statut = 'annulee'; toast('Demande annulée'); if(ui.role === 'parent') permOuvrirParent(); else permRafraichir(); }
+  catch(e){ toast(e.message); }
+}
+async function permRetour(id){
+  const h = new Date().toTimeString().slice(0, 8);
+  try{ await dbUpdate('permissions', id, { heureRetour: h }); const p = permEtat.liste.find(x => x.id === id); if(p) p.heureRetour = h; toast('Retour en classe noté'); permRafraichir(); }
+  catch(e){ toast(e.message); }
+}
+async function permExcel(){
+  const l = permEtat.liste || [];
+  const lignes = [['Catégorie', 'Objet', 'Demandeur', 'Élève', 'Classe', 'Du', 'Au', 'Heure', 'Motif', 'Qui récupère', 'Statut', 'Réponse de', 'Commentaire']].concat(l.map(p => { const e = p.eleveId ? eleveById(p.eleveId) : null;
+    return [{ personnel: 'Personnel', parent: 'Parent', eleve: 'En classe' }[p.categorie], p.type, p.demandeurNom || '', e ? eleveFullName(e) : '', e ? classeName(e.classeId) : '', fmtDate(p.dateDebut), fmtDate(p.dateFin), String(p.heureDebut || '').slice(0, 5), p.motif, p.quiRecupere || '', (PERM_STATUTS[p.statut] || [''])[0], p.decisionNom || '', p.commentaire || '']; }));
+  try{ await ecrireClasseurExcel([['Permissions', lignes]], nomFichierExport('permissions')); }catch(e){ alert('Export impossible : ' + e.message); }
+}
+
+/* ------------------------------ Parent ------------------------------ */
+async function permOuvrirParent(){
+  if(permEtat.liste === null) await chargerPermissions();
+  const l = (permEtat.liste || []).filter(p => p.categorie === 'parent' && p.demandeurId === session.userId);
+  openModal('✋ Mes demandes de permission', `<div class="perm">
+    <button type="button" class="btn" onclick="permNouvelle('parent')">✋ Nouvelle demande</button>
+    <p class="hint">Sortie avant l’heure, absence, arrivée tardive : l’école vous répond ici. Une sortie accordée est communiquée au portier.</p>
+    ${l.length ? `<ul class="perm-liste">${l.map(p => permCarte(p, p.statut === 'en_attente' ? `<button type="button" class="btn secondary sm" onclick="permAnnuler('${p.id}')">Annuler</button>` : '')).join('')}</ul>` : '<p class="hint">Aucune demande pour l’instant.</p>'}</div>`);
+}
+
+/* ------------------------------ Portier ------------------------------ */
+async function renderSortiesAutoriseesPortier(cible){
+  const z = typeof cible === 'string' ? document.getElementById(cible) : cible; if(!z) return;
+  if(permEtat.liste === null || !permEtat.lu || Date.now() - permEtat.lu > 60000){ await chargerPermissions(); permEtat.lu = Date.now(); }
+  const auj = todayISO();
+  const l = (permEtat.liste || []).filter(p => p.categorie === 'parent' && p.statut === 'accordee' && p.dateDebut <= auj && p.dateFin >= auj);
+  z.innerHTML = `<h3>✋ Sorties autorisées aujourd’hui (${l.length})</h3>${l.length ? `<ul class="perm-liste">${l.map(p => permCarte(p)).join('')}</ul>` : '<p class="hint">Aucune sortie autorisée pour aujourd’hui.</p>'}`;
+}
+
+/* ------------------------------ Assistant ------------------------------ */
+function conseilsPermissions(){
+  const l = [];
+  if(!['secretariat', 'direction', 'fondation'].includes(ui.role)) return l;
+  if(permEtat.liste === null){ if(!permEtat.promesse) chargerPermissions().then(() => { if(ui.currentView === 'dashboard' && (permEtat.liste || []).length) renderView('dashboard'); }); return l; }
+  const admin = ['direction', 'fondation'].includes(ui.role);
+  const n = permEtat.liste.filter(p => p.statut === 'en_attente' && p.categorie !== 'eleve' && p.demandeurId !== session.userId && (p.categorie === 'parent' || admin)).length;
+  if(n) l.push({ ic: 'hand', texte: `${n} demande${n > 1 ? 's' : ''} de permission à traiter`, detail: 'Personnel et parents', bouton: 'Répondre', action: "ui.filters.perm={ onglet:'traiter' }; go('permissions')" });
+  return l;
+}
+/* =====================================================================
    ACCUEIL « FAÇON APPLICATION » (2026-11-20) — toutes les applications
    Bandeau bleu nuit (chiffre clé du rôle + 2 actions), grande barre de
    recherche, « Nos services » (4 tuiles + Voir tout) et écran « Tous nos
@@ -16973,13 +17509,15 @@ const CATALOGUE_SERVICES = {
   'compta-cantine': ['Cantine', 'Inscrits, paiements, reste dû', 'shopping-bag', 'ocean'],
   'rapports': ['Rapports et téléchargements', 'Tout télécharger ou charger', 'download', 'nuit'],
   'registre-notes': ['Registre des notes du jour', 'Notes horodatées, rapport du soir', 'scroll-text', 'indigo'],
+  'appels-groupes': ['Appels cantine & activités', 'Cantine, taekwondo, renforcement', 'clipboard', 'menthe'],
+  'permissions': ['Demandes de permission', 'Personnel, parents, élèves', 'hand', 'ocean'],
   'messagerie': ['Messagerie', 'Messages des familles', 'mail', 'indigo'],
   'cantine': ['Menu de la cantine', 'Repas de la semaine', 'calendar', 'menthe'],
   'tableau-affichage': ['Tableau d’affichage', 'Tableau d’honneur et actualités', 'trophy', 'nuit'],
   'parametres': ['Paramètres', 'École, horaires, sécurité', 'settings', 'indigo'],
 };
 // Écrans ajoutés récemment : badge « Nouveau »
-const SERVICES_NOUVEAUX = new Set(['creer-evaluation', 'boite-evaluations', 'compta-cantine', 'rapports', 'registre-notes']);
+const SERVICES_NOUVEAUX = new Set(['creer-evaluation', 'boite-evaluations', 'compta-cantine', 'rapports', 'registre-notes', 'appels-groupes', 'permissions']);
 // Les 4 tuiles de l'accueil, par rôle (les plus utilisées)
 const TUILES_ROLE = {
   enseignant: ['presences-eleves', 'devoirs', 'camps-de-base', 'creer-evaluation'],

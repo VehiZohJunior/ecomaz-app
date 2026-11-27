@@ -230,6 +230,7 @@ async function logoutRole(){
   arreterPersonnesConnectees();
   if(typeof viderNavigation === 'function') viderNavigation();
   if(typeof rnEtat !== "undefined"){ rnEtat.pages = null; rnEtat.entrees = {}; }
+  if(typeof permEtat !== "undefined"){ permEtat.liste = null; }
   document.body.classList.remove('theme-parent', 'has-parent-nav');
   if(window.ESPACE_FIXE !== 'portier') document.body.classList.remove('theme-portier');
   const navParentEl = document.getElementById('parentNav'); if(navParentEl) navParentEl.remove();

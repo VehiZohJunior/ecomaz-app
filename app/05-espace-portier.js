@@ -24,7 +24,8 @@ function enterAppPortier(){
   afficherNouveautes();
 }
 function refreshPortierDashboard(){
-  $('#viewContainer').innerHTML = renderPortierDashboard();
+  $('#viewContainer').innerHTML = renderPortierDashboard() + '<section class="panel" id="portierSorties"></section>';
+  if(typeof renderSortiesAutoriseesPortier === 'function') renderSortiesAutoriseesPortier('portierSorties');
   const input = $('#portierRecherche');
   if(input){ input.focus(); const pos = input.value.length; input.setSelectionRange(pos, pos); }
 }
@@ -151,6 +152,14 @@ async function handleNotifierPortier(eleveId){
 // Chaque version garde sa liste : un utilisateur qui a manqué une version voit
 // aussi ses nouveautés (la plus récente en premier).
 const VERSIONS = [
+  { version: '2026.11.27-1', nouveautes: {
+    commun: [],
+    parent: [ '✋ Nouveau : « Permission » — demandez que votre enfant sorte avant l’heure, s’absente ou arrive plus tard, et indiquez qui vient le chercher. L’école vous répond dans l’application.' ],
+    portier: [ '✋ Les sorties autorisées du jour s’affichent en bas de l’écran, avec la personne qui vient chercher l’enfant.' ],
+    personnel: [ '📈 Comptabilité → « Rapport financier » (aussi pour le secrétariat) : encaissements par source, par mode de paiement, par classe et jour par jour, recouvrement, retards et sommes attendues, sur la période de votre choix ; impression et Excel.',
+      '🍽️ « Appels : cantine, activités, renforcement » : l’appel de la cantine chaque midi, du taekwondo le samedi (jours réglables par activité), du cours de renforcement (les enseignants voient les élèves de leurs classes).',
+      '✋ « Demandes de permission » : le personnel demande à la direction ; les demandes des parents arrivent ici ; les enseignants notent les sorties d’élèves pendant la classe (heure de sortie et de retour).' ],
+  } },
   { version: '2026.11.26-6', nouveautes: {
     commun: [],
     parent: [ 'Sécurité & santé : ajouter une personne autorisée à chercher l’enfant ne montre plus de message d’erreur.' ],

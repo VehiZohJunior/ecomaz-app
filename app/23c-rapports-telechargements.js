@@ -47,6 +47,8 @@ function renderRapports(){
   const cartes = [];
   if(perso) cartes.push(carteRapport('📊', 'Rapport général de l’école', `Tout le mois en un seul fichier : synthèse, effectifs par classe, appels, pointage des enseignants, scolarité et impayés${admin ? ', entrées et sorties d’argent' : ''}.`, 'Excel',
     rapportsChoixMois(), btnRapport('exporterRapportGeneral()', '⬇️ Télécharger le rapport général')));
+  if(perso) cartes.push(carteRapport('📈', 'Rapport financier', 'Encaissements par source, par mode de paiement, par classe et jour par jour, recouvrement et retards, sur la période de votre choix — à imprimer ou en Excel.', 'PDF / Excel',
+    '', btnRapport("ui.filters.comptaTab='rapport'; go('comptabilite')", '📈 Ouvrir le rapport financier')));
   if(admin) cartes.push(carteRapport('💰', 'Comptabilité du mois', 'Toutes les entrées et sorties du mois (scolarité, activités, boutique, salaires, dépenses), à ouvrir dans Excel ou à donner au comptable.', 'Excel (CSV)',
     rapportsChoixMois(), btnRapport("rapportsCompta()", '⬇️ Télécharger la comptabilité')));
   if(perso) cartes.push(carteRapport('🧾', 'Reçus du mois', 'Tous les reçus de paiement du mois, prêts à imprimer ou à enregistrer en PDF.', 'PDF / impression',

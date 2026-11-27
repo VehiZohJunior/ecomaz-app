@@ -31,6 +31,8 @@ function conseilsAssistant(){
       lignes.push({ ic:'users', texte:`${nbRelies} élève${nbRelies > 1 ? 's' : ''} sur ${actifs.length} ont un parent relié à l’application`, detail:'Invitez les autres : ils verront absences, notes et paiements', bouton:'Inviter les parents', action:"go('liens-parents')" });
     if(typeof conseilsRegistreNotes === 'function') lignes.push(...conseilsRegistreNotes());
     lignes.push(...conseilsAssistant2());
+    if(typeof conseilsAppelsGroupes === 'function') lignes.push(...conseilsAppelsGroupes());
+    if(typeof conseilsPermissions === 'function') lignes.push(...conseilsPermissions());
   }catch(_e){ /* un constat impossible à calculer n'empêche jamais l'affichage du tableau de bord */ }
   return lignes;
 }

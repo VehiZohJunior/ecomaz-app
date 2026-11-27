@@ -287,7 +287,7 @@ function renderComptabilite(){
   const tab = ui.filters.comptaTab || 'apercu';
   ui.filters.comptaTab = tab;
   const renderers = {
-    apercu: renderComptaApercu, scolarite: renderComptaScolarite, cantine: renderComptaCantine, activites: renderComptaActivites,
+    apercu: renderComptaApercu, rapport: renderComptaRapportFinancier, scolarite: renderComptaScolarite, cantine: renderComptaCantine, activites: renderComptaActivites,
     ventes: renderComptaVentes, salaires: renderComptaSalaires, depenses: renderComptaDepenses,
     journal: renderComptaJournal, annees: renderComptaAnnees, budget: renderComptaBudget, fne: renderComptaFne,
     syscohada: renderComptaSyscohada, rapprochement: renderComptaRapprochement,
